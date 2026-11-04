@@ -47,7 +47,7 @@
 - roles.sql 连续执行两次都不报错；`git ls-files --eol docker/postgres` 全部是 `i/lf`
 - `APP_ENV=production` 且用 postgres 用户连库时，应用拒绝启动；`APP_ENV=ci` 加 http 能正常启动
 
-#### [ ] M0-T03 Prisma 与种子数据
+#### [x] M0-T03 Prisma 与种子数据
 依赖：M0-T02
 做：
 - 使用 `prisma/schema.prisma`（Prisma 6 精确版本，`prisma` 和 `@prisma/client` 同版本）。执行 `pnpm prisma migrate dev --create-only --name init`，在生成的文件第一行加 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；文件末尾加一个 DO 块：`findmyjob_app` 存在时，收回它对 CreditLedger 的 UPDATE、DELETE、TRUNCATE，以及对 AuditLog 的 DELETE、TRUNCATE；AuditLog 的 UPDATE 按 D22 默认也收回。然后 `pnpm prisma migrate dev`。
@@ -57,6 +57,8 @@
 - `prisma validate`、`pnpm db:migrate`、`pnpm db:seed` 成功；连续执行两次 seed 不报错、不产生重复数据
 - 用 findmyjob_app 执行 `UPDATE "CreditLedger"` 返回 42501
 - `pnpm db:check` 退出码为 0；seed.ts 里没有引用 `*.local.*`
+
+> 完成 2026-11-05：初始迁移含 pg_trgm 扩展和权限收回 DO 块；seed 写入 4 所学校、38 条系统参数、17 组同义词、2 条反诈文章、2 个合作伙伴；admin User 由 SEED_ADMIN_EMAIL 控制；偏差：迁移用 postgres 超级用户执行（MIGRATE_DATABASE_URL 中 findmyjob_owner 密码未配置），事后手动补 GRANT 并重新 REVOKE CreditLedger/AuditLog
 
 #### [ ] M0-T04 测试基建与 db:check
 依赖：M0-T03

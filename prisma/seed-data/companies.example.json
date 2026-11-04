@@ -1,0 +1,26 @@
+[
+  {
+    "legalName": "Example Tech Sdn. Bhd.",
+    "displayNameZh": "示例科技有限公司",
+    "displayNameEn": "Example Tech",
+    "ssmRegNo": "EX-0000001",
+    "industryCode": "tech.software",
+    "size": "S11_50",
+    "website": "https://example-tech.example.com",
+    "description": "A fictional technology company used for seed data testing.",
+    "state": "Selangor",
+    "city": "Petaling Jaya"
+  },
+  {
+    "legalName": "Sample Finance Bhd.",
+    "displayNameZh": "示例金融集团",
+    "displayNameEn": "Sample Finance Group",
+    "ssmRegNo": "EX-0000002",
+    "industryCode": "finance.bank",
+    "size": "S201_1000",
+    "website": "https://sample-finance.example.com",
+    "description": "A fictional financial company used for seed data testing.",
+    "state": "WP Kuala Lumpur",
+    "city": "Kuala Lumpur"
+  }
+]
