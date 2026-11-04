@@ -70,7 +70,12 @@ DENY=(AskUserQuestion
   "Bash(npx prisma db push *)" "Bash(pnpm prisma db push *)" "Bash(docker compose down *)"
   "Edit(**/CLAUDE.md)" "Write(**/CLAUDE.md)" "Edit(.claude/**)" "Write(.claude/**)"
   "Edit(.githooks/**)" "Write(.githooks/**)"
+  "Edit(.auto-build/**)" "Write(.auto-build/**)"
   "Skill(superpowers:brainstorming)" "Skill(brainstorming)" "Skill(security-threat-model)")   # Skill(...) 语法待 M0-H01 核实
+
+# --settings 文件只认这两个；.auto-build/ 被 git 忽略，GUARD 看不到它的改动，所以每轮开始前比对哈希
+case "$SETTINGS" in scripts/headless-settings.json | .auto-build/headless-run.json) ;; *) stop 1 "AUTO_BUILD_SETTINGS 只能是 scripts/headless-settings.json 或 .auto-build/headless-run.json" ;; esac
+settings_sum="$(sha256sum "$SETTINGS" | cut -d' ' -f1)"
 
 GUARD=('*CLAUDE.md' .claude .githooks scripts/auto-build.sh scripts/unattended.md scripts/auto_build_status.py
   scripts/headless-settings.json)
@@ -89,6 +94,7 @@ for ((i = 1; i <= MAX_ROUNDS; i++)); do
   esac
   [[ -n "${AUTO_BUILD_DRY_RUN:-}" ]] && stop 0 "dry-run：下一个任务 $id"
 
+  [[ "$(sha256sum "$SETTINGS" | cut -d' ' -f1)" == "$settings_sum" ]] || stop 3 "$SETTINGS 在运行中被改动（人工检查后重新运行）"
   log "=== ${MILESTONE} · 第 ${i} 轮 · ${id} ==="
   out="$RUN_DIR/r${i}-${id}"
   before="$(git rev-parse HEAD)"
