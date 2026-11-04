@@ -8,6 +8,7 @@ function createSendBoss(): PgBoss {
     max: 2,
     supervise: false,
     schedule: false,
+    createSchema: false, // 同 src/worker.ts：schema 由 db-setup.sql 预建
   })
 }
 

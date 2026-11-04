@@ -171,6 +171,7 @@
 - `pnpm worker` 启动后 5 秒内不报错，示例任务已注册；Ctrl+C 能优雅退出
 
 > 完成 2026-11-05：pg-boss@12.38.0；src/worker.ts（max=4，优雅退出 SIGINT/SIGTERM）；src/server/jobs/registry.ts（registerJobs，注册 example 任务）；src/server/jobs/boss.ts（Next.js send-only，max=2，supervise=false，schedule=false）；pnpm lint/typecheck/test 全部通过；偏差：tsx --conditions=react-server 实测可用（server-only 解析为 empty.js）；pg-boss 使用命名导出 { PgBoss }（v12 无默认导出）
+> 总控补修 2026-11-05：本机实测 `pnpm worker` 起不来，改了三处：脚本加 `--env-file-if-exists=.env`（tsx 不会自己读 .env）；两个 PgBoss 实例加 `createSchema:false`（findmyjob_app 没有库级 CREATE，CREATE SCHEMA IF NOT EXISTS 也会 42501，schema 已由 db-setup.sql 预建）；registry 先 `createQueue` 再 `work`（v12 要求）。连续启动两次都无报错；Ctrl+C 优雅退出没在 Windows 上实测
 
 #### [ ] M0-H01 D1.5 auto-build 演练（人工）
 依赖：无（D1 建仓并完成首次提交后、M0 正式开跑前做；做完由人勾选）

@@ -14,7 +14,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:check": "bash scripts/db/check.sh",
-    "worker": "tsx --conditions=react-server src/worker.ts"
+    "worker": "tsx --env-file-if-exists=.env --conditions=react-server src/worker.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

@@ -9,6 +9,9 @@ async function main() {
   const boss = new PgBoss({
     connectionString,
     max: 4,
+    // pgboss schema 由 docker/postgres/db-setup.sql 预先建好并归 findmyjob_app；
+    // 应用角色没有库级 CREATE 权限，CREATE SCHEMA IF NOT EXISTS 也会被拒（42501）
+    createSchema: false,
   })
 
   boss.on('error', (err: unknown) => logger.error({ err }, 'pg-boss error'))
