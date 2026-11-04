@@ -77,7 +77,7 @@
 
 > 完成 2026-11-05：scripts/db/check.sh 实现 7 项检查（CONCURRENTLY/contract-approved/unsafe-SQL/FK-index/drift/DateTime-Timestamptz）；tests/setup/db.ts 安全卫检查（_test 后缀 + localhost）；vitest.config.ts 增加 server-only shim；tests/factories.ts 使用 @faker-js/faker@10.6.0 固定种子；并发自检通过（connection_limit=12，5×pg_sleep(0.2)<600ms）；env.example 更新 Docker 默认密码占位值；偏差：SHADOW_DATABASE_URL 未配置时跳过 drift 检查（提示 WARN），FK 检查跳过（无 psql in PATH），需 CI 才能全量验证
 
-#### [ ] M0-T05 国际化与基础布局
+#### [x] M0-T05 国际化与基础布局
 依赖：M0-T01
 做：
 - next-intl，`/[locale]` 路由（zh 默认、en）；语言切换；基础布局（顶部导航、移动端菜单、页脚）；品牌色变量。
@@ -88,6 +88,8 @@
 - `/zh`、`/en` 首页可访问，切换语言后停留在同一页；页面上没有硬编码的中英文案（全部来自 messages）
 - E2E：`/zh` 页面的 lang 是 zh-Hans，`/en` 页面是 en
 - `find .next -name '*.woff2' -size +500k` 找不到文件；验证码框可以粘贴
+
+> 完成 2026-11-05：next-intl 4.14.9；`/[locale]` 路由；zh/en messages；Navbar（桌面导航+语言切换）、MobileMenu（shadcn Sheet）、Footer；品牌色 CSS 变量 `--color-brand*`；`src/lib/ime.ts`；E2E tests/e2e/locale.spec.ts；pnpm-workspace.yaml 增加 @parcel/watcher 和 @swc/core 的 allowBuilds；偏差：Next.js 16 将 middleware 改名为 proxy，已将 src/middleware.ts 重命名为 src/proxy.ts；集成测试因本地无 DB 凭据而跳过（同 M0-T04 偏差）
 
 #### [ ] M0-T06 CI
 依赖：M0-T04

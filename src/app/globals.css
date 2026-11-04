@@ -5,6 +5,12 @@
     Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji",
     "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "PingFang SC",
     "Microsoft YaHei", "Noto Sans SC";
+
+  /* Brand color utilities */
+  --color-brand: hsl(221 83% 53%);
+  --color-brand-foreground: hsl(0 0% 100%);
+  --color-brand-muted: hsl(221 83% 95%);
+  --color-brand-muted-foreground: hsl(221 60% 30%);
 }
 
 @layer base {
@@ -29,6 +35,12 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
+
+    /* FindMYJob brand colors */
+    --brand: 221 83% 53%;
+    --brand-foreground: 0 0% 100%;
+    --brand-muted: 221 83% 95%;
+    --brand-muted-foreground: 221 60% 30%;
   }
 
   .dark {
@@ -51,5 +63,11 @@
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
+
+    /* FindMYJob brand colors (dark mode) */
+    --brand: 221 83% 65%;
+    --brand-foreground: 0 0% 100%;
+    --brand-muted: 221 50% 15%;
+    --brand-muted-foreground: 221 60% 75%;
   }
 }
