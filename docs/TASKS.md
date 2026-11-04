@@ -107,7 +107,7 @@
 
 > 完成 2026-11-05：ci.yml（verify job + e2e job + guard step）；dependabot.yml（npm 每月 5 PR，忽略 prisma 大版本；github-actions 每月合成一组）；所有 uses 均固定 40 位 SHA；PII_KEYS/DB 密码在 CI 现场 openssl 生成并 add-mask；偏差：本地集成测试因无 DB 凭据失败（同 M0-T04/M0-T05 已知偏差，CI 有真实 postgres service 时全量通过）；security-guidance 标记 TURNSTILE 测试 key 为假阳性（该 key 已在 env.example 中使用，Cloudflare 官方公开文档 key）
 
-#### [ ] M0-T07 服务层基础、action/route 包装与 ESLint 红线
+#### [x] M0-T07 服务层基础、action/route 包装与 ESLint 红线
 依赖：M0-T03
 做：
 - `server/db.ts`；`server/errors.ts`（AppError、NotFoundError、ForbiddenError、ValidationError、InsufficientCreditsError、RateLimitedError、FeatureDisabledError、DecryptError）；`services/settings.ts`（`getSetting<T>(key)`，带默认值和 60 秒缓存；`setSetting` 写审计）；`services/audit.ts`（`logAudit`）；`lib/rate-limit.ts`（内存滑动窗口，单实例阶段用）。
@@ -122,6 +122,8 @@
 - 在 unlock.ts 里写一行 `tx.creditLedger.create({})`，`pnpm lint` 报错
 - 在 `use server` 文件里加一个没包装的 export，检查失败；带 `Origin: https://evil.example` 的 POST 被拒
 - `pnpm test` 通过，server-only 在测试里不抛错
+
+> 完成 2026-11-05：server/db.ts（PrismaClient 单例）；server/errors.ts（AppError + 7 个子类）；server/lib/logger.ts（最小 JSON stdout 实现）；server/lib/client-ip.ts（只读 x-real-ip）；server/lib/rate-limit.ts（内存滑动窗口）；server/services/audit.ts（logAudit）；server/services/settings.ts（getSetting 60s 缓存 + setSetting 写审计）；server/action.ts（action() 包装，public/user 两种 auth，M0 auth=user 存根）；server/route.ts（route() 包装，非 GET/HEAD 校验 Origin，默认 Cache-Control: private, no-store）；eslint.config.mjs 增加 no-restricted-syntax（$queryRawUnsafe/$executeRawUnsafe/creditLedger/creditWallet/studentContact）、no-console（server 目录）、local/use-server-exports 自定义规则；unit tests: settings（4 条）、rate-limit（4 条）均通过；偏差：本地集成测试因无 DB 凭据失败（同 M0-T04 已知偏差）
 
 #### [ ] M0-T08 带 PII 脱敏的日志和告警出口
 依赖：M0-T07
