@@ -1,4 +1,5 @@
 import 'server-only'
+import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { AppError, ForbiddenError } from './errors'
 import { logger } from './lib/logger'
@@ -47,6 +48,7 @@ export function route(opts: {
   input?: z.ZodType<unknown>
 }, handler: RouteHandler): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
+    const requestId = req.headers.get('x-request-id') ?? randomUUID()
     try {
       // Origin check for state-mutating methods
       if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -102,9 +104,10 @@ export function route(opts: {
           },
         })
       }
-      logger.error('Unhandled route error', {
+      logger.error({
+        requestId,
         err: err instanceof Error ? err.message : String(err),
-      })
+      }, 'Unhandled route error')
       return new Response(JSON.stringify({ ok: false, code: 'INTERNAL_ERROR' }), {
         status: 500,
         headers: {

@@ -52,9 +52,9 @@ export function action<TInput = void, TOutput = void>(opts: {
       if (err instanceof AppError) {
         return { ok: false, code: err.code }
       }
-      logger.error('Unhandled action error', {
+      logger.error({
         err: err instanceof Error ? err.message : String(err),
-      })
+      }, 'Unhandled action error')
       return { ok: false, code: 'INTERNAL_ERROR' }
     }
   }

@@ -125,7 +125,7 @@
 
 > 完成 2026-11-05：server/db.ts（PrismaClient 单例）；server/errors.ts（AppError + 7 个子类）；server/lib/logger.ts（最小 JSON stdout 实现）；server/lib/client-ip.ts（只读 x-real-ip）；server/lib/rate-limit.ts（内存滑动窗口）；server/services/audit.ts（logAudit）；server/services/settings.ts（getSetting 60s 缓存 + setSetting 写审计）；server/action.ts（action() 包装，public/user 两种 auth，M0 auth=user 存根）；server/route.ts（route() 包装，非 GET/HEAD 校验 Origin，默认 Cache-Control: private, no-store）；eslint.config.mjs 增加 no-restricted-syntax（$queryRawUnsafe/$executeRawUnsafe/creditLedger/creditWallet/studentContact）、no-console（server 目录）、local/use-server-exports 自定义规则；unit tests: settings（4 条）、rate-limit（4 条）均通过；偏差：本地集成测试因无 DB 凭据失败（同 M0-T04 已知偏差）
 
-#### [ ] M0-T08 带 PII 脱敏的日志和告警出口
+#### [x] M0-T08 带 PII 脱敏的日志和告警出口
 依赖：M0-T07
 做：
 - `src/server/lib/logger.ts`：pino 只输出到 stdout，redact 字段包括 password、token、email、phone、whatsapp、wechat、linkedin、cookie、authorization（每个字段同时写顶层和 `*.` 前缀两种路径，例如 `email` 和 `*.email`）。不用 pino transport；如果打包报错，就把 pino 加进 `serverExternalPackages`。
@@ -134,6 +134,8 @@
 验收：
 - 写入哨兵 email、phone 和嵌套的 token 后，输出里一个哨兵值都没有
 - 调用 `alert('wallet.mismatch')` 会产生一条 level 50 的日志；请求不带 x-request-id 时，日志里仍有 requestId
+
+> 完成 2026-11-05：pino@9.14.0 替换最小 JSON logger，redact 路径覆盖 9 个 PII 字段（顶层 + `*.` 前缀各一条）；serverExternalPackages 加入 pino；proxy.ts 生成/透传 x-request-id（请求头转发 + 响应头回显）；alert.ts（logger.error，level 50）；route.ts 增加 requestId 传播；单元测试：logger.test.ts（8 个 PII + level 验证）、alert.test.ts（4 个）、route-request-id.test.ts（2 个）；pnpm lint / typecheck / test 全部通过
 
 #### [ ] M0-T09 秘密防线：gitleaks 自定义规则和 CI 全历史扫描
 依赖：M0-T06
