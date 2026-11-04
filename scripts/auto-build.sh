@@ -9,6 +9,7 @@
 #   AUTO_BUILD_TOTAL_BUDGET_USD   本次累计预算（默认 30）
 #   AUTO_BUILD_TIMEOUT            每轮超时（默认 90m）
 #   AUTO_BUILD_MODEL              可选，固定模型 ID（中转支持哪些 ID 待核实）
+#   AUTO_BUILD_SETTINGS           可选，替换 --settings 的文件（相对仓库根）；工作区没被信任时用它带上允许列表
 # 退出码：0 正常停止（完成/闸门/人工/dry-run/轮数/预算），1 环境或校验失败，2 BLOCKED/依赖/超时，3 触碰红线文件
 # 钩子降级：--settings scripts/headless-settings.json 为主，下面的 export 兜底（哪个生效以 M0-H01 实测为准）。
 set -uo pipefail
@@ -26,7 +27,7 @@ TOTAL_BUDGET="${AUTO_BUILD_TOTAL_BUDGET_USD:-30}"
 RUN_DIR=".auto-build/$(date +%Y%m%d-%H%M%S)-${MILESTONE}"
 SG_LOG="$HOME/.claude/security/log.txt"
 HELPER=("$SCRIPT_DIR/auto_build_status.py")
-SETTINGS="scripts/headless-settings.json"   # 即 $SCRIPT_DIR/headless-settings.json；已 cd 到仓库根，用相对路径，免得 Git Bash 把 /c/... 传给 Windows 版 claude
+SETTINGS="${AUTO_BUILD_SETTINGS:-scripts/headless-settings.json}"   # autopilot 传入 .auto-build/headless-run.json（加了允许列表和认证方式）；默认 即 $SCRIPT_DIR/headless-settings.json；已 cd 到仓库根，用相对路径，免得 Git Bash 把 /c/... 传给 Windows 版 claude
 
 # 无人值守时的钩子开关（兜底；主配置在 headless-settings.json）
 export ENABLE_STOP_REVIEW=0                                    # -p 下 Stop 审查退化为同步 decision:block，会多跑一轮
@@ -52,7 +53,7 @@ py() { "$PY" -X utf8 "${HELPER[@]}" "$@"; }
 [[ "$MILESTONE" =~ ^M[0-9]+$ ]] || stop 1 "里程碑必须写成 M<数字>，例如 M2"
 [[ "$MAX_ROUNDS" =~ ^[0-9]+$ ]] || stop 1 "最多轮数必须是整数"
 for c in claude pnpm gitleaks timeout "$PY"; do command -v "$c" >/dev/null || stop 1 "缺少命令 $c"; done
-for f in scripts/unattended.md scripts/mcp-none.json scripts/headless-settings.json scripts/auto_build_status.py; do
+for f in scripts/unattended.md scripts/mcp-none.json scripts/headless-settings.json scripts/auto_build_status.py "$SETTINGS"; do
   [[ -f "$f" ]] || stop 1 "缺少 $f"
 done
 branch="$(git rev-parse --abbrev-ref HEAD)"
