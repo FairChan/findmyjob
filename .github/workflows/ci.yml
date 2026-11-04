@@ -1,0 +1,282 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    env:
+      APP_ENV: ci
+      APP_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      # Cloudflare official always-pass test keys (publicly documented)
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      EMAIL_PROVIDER: smtp
+      EMAIL_FROM: FindMYJob <no-reply@example.test>
+      SMTP_URL: smtp://127.0.0.1:1025
+      LOG_LEVEL: error
+      HSTS_MAX_AGE: "300"
+      # S3 values are fake; no MinIO service in verify job
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_REGION: ap-southeast-5
+      S3_BUCKET: findmyjob-files
+      S3_ACCESS_KEY_ID: ci_key
+      S3_SECRET_ACCESS_KEY: ci_secret
+
+    services:
+      postgres:
+        image: postgres:16.6-bookworm
+        env:
+          POSTGRES_DB: findmyjob
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a3252b7982787005ab0d526cef51e8c8d1fe4b5d  # v4.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate CI secrets
+        run: |
+          OWNER_PASS=$(openssl rand -hex 16)
+          APP_PASS=$(openssl rand -hex 16)
+          PII_KEY=$(openssl rand -base64 32 | tr -d '\n')
+          AUTH_SECRET=$(openssl rand -hex 32)
+
+          echo "::add-mask::$OWNER_PASS"
+          echo "::add-mask::$APP_PASS"
+          echo "::add-mask::$PII_KEY"
+          echo "::add-mask::$AUTH_SECRET"
+
+          {
+            echo "DB_OWNER_PASS=$OWNER_PASS"
+            echo "DB_APP_PASS=$APP_PASS"
+            echo "PII_KEYS=v1:$PII_KEY"
+            echo "PII_ACTIVE_KEY_ID=v1"
+            echo "BETTER_AUTH_SECRET=$AUTH_SECRET"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup database
+        env:
+          PGPASSWORD: postgres_ci
+        run: |
+          psql -h 127.0.0.1 -U postgres \
+            -v owner_password="$DB_OWNER_PASS" \
+            -v app_password="$DB_APP_PASS" \
+            -f docker/postgres/roles.sql
+
+          psql -h 127.0.0.1 -U postgres -d findmyjob \
+            -f docker/postgres/db-setup.sql
+
+          psql -h 127.0.0.1 -U postgres \
+            -c "CREATE DATABASE findmyjob_test OWNER findmyjob_owner;"
+          psql -h 127.0.0.1 -U postgres -d findmyjob_test \
+            -f docker/postgres/db-setup.sql
+
+          psql -h 127.0.0.1 -U postgres \
+            -c "CREATE DATABASE findmyjob_shadow OWNER findmyjob_owner;"
+          psql -h 127.0.0.1 -U postgres -d findmyjob_shadow \
+            -f docker/postgres/db-setup.sql
+
+          {
+            echo "MIGRATE_DATABASE_URL=postgresql://findmyjob_owner:$DB_OWNER_PASS@127.0.0.1:5432/findmyjob"
+            echo "DATABASE_URL=postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob?connection_limit=5"
+            echo "SHADOW_DATABASE_URL=postgresql://findmyjob_owner:$DB_OWNER_PASS@127.0.0.1:5432/findmyjob_shadow"
+            echo "TEST_DATABASE_URL=postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob_test?connection_limit=12"
+            echo "TEST_ADMIN_DATABASE_URL=postgresql://findmyjob_owner:$DB_OWNER_PASS@127.0.0.1:5432/findmyjob_test"
+            echo "WORKER_DATABASE_URL=postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob?connection_limit=3"
+          } >> "$GITHUB_ENV"
+
+      - name: Migrate
+        run: pnpm prisma migrate deploy
+
+      - name: Migrate test database
+        run: |
+          DATABASE_URL="postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob_test" \
+          MIGRATE_DATABASE_URL="postgresql://findmyjob_owner:$DB_OWNER_PASS@127.0.0.1:5432/findmyjob_test" \
+          pnpm prisma migrate deploy
+
+      - name: Check database
+        run: pnpm db:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: SKIP_ENV_VALIDATION=1 pnpm build
+
+      - name: Guard
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Existing migrations must not be modified, deleted, or renamed
+          CHANGED=$(git diff --name-only --diff-filter=MD "origin/$BASE_REF...HEAD" -- prisma/migrations/ 2>/dev/null || true)
+          if [ -n "$CHANGED" ]; then
+            echo "::error::Existing migration files were modified or deleted:"
+            echo "$CHANGED"
+            exit 1
+          fi
+
+          RENAMED=$(git diff --name-only --diff-filter=R "origin/$BASE_REF...HEAD" -- prisma/migrations/ 2>/dev/null || true)
+          if [ -n "$RENAMED" ]; then
+            echo "::error::Existing migration files were renamed:"
+            echo "$RENAMED"
+            exit 1
+          fi
+
+          # No sensitive files in repository
+          SENSITIVE=$(git ls-files | grep -E '(^|\/)\.env[^\/]*$|\.local\.[^\/]+$|\.dump$|CLAUDE-SECURITY-|static_analysis_' || true)
+          if [ -n "$SENSITIVE" ]; then
+            echo "::error::Sensitive files found in repository:"
+            echo "$SENSITIVE"
+            exit 1
+          fi
+
+          # Dependency audit
+          pnpm audit --prod --audit-level high
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    env:
+      APP_ENV: ci
+      APP_URL: http://localhost:3000
+      BETTER_AUTH_URL: http://localhost:3000
+      TURNSTILE_SITE_KEY: 1x00000000000000000000AA
+      TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
+      EMAIL_PROVIDER: smtp
+      EMAIL_FROM: FindMYJob <no-reply@example.test>
+      SMTP_URL: smtp://127.0.0.1:1025
+      LOG_LEVEL: error
+      S3_ENDPOINT: http://127.0.0.1:9000
+      S3_REGION: ap-southeast-5
+      S3_BUCKET: findmyjob-files
+      S3_ACCESS_KEY_ID: ci_key
+      S3_SECRET_ACCESS_KEY: ci_secret
+
+    services:
+      postgres:
+        image: postgres:16.6-bookworm
+        env:
+          POSTGRES_DB: findmyjob
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@a3252b7982787005ab0d526cef51e8c8d1fe4b5d  # v4.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af  # v4.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Generate CI secrets
+        run: |
+          OWNER_PASS=$(openssl rand -hex 16)
+          APP_PASS=$(openssl rand -hex 16)
+          PII_KEY=$(openssl rand -base64 32 | tr -d '\n')
+          AUTH_SECRET=$(openssl rand -hex 32)
+
+          echo "::add-mask::$OWNER_PASS"
+          echo "::add-mask::$APP_PASS"
+          echo "::add-mask::$PII_KEY"
+          echo "::add-mask::$AUTH_SECRET"
+
+          {
+            echo "DB_OWNER_PASS=$OWNER_PASS"
+            echo "DB_APP_PASS=$APP_PASS"
+            echo "PII_KEYS=v1:$PII_KEY"
+            echo "PII_ACTIVE_KEY_ID=v1"
+            echo "BETTER_AUTH_SECRET=$AUTH_SECRET"
+          } >> "$GITHUB_ENV"
+
+      - name: Setup database
+        env:
+          PGPASSWORD: postgres_ci
+        run: |
+          psql -h 127.0.0.1 -U postgres \
+            -v owner_password="$DB_OWNER_PASS" \
+            -v app_password="$DB_APP_PASS" \
+            -f docker/postgres/roles.sql
+
+          psql -h 127.0.0.1 -U postgres -d findmyjob \
+            -f docker/postgres/db-setup.sql
+
+          {
+            echo "MIGRATE_DATABASE_URL=postgresql://findmyjob_owner:$DB_OWNER_PASS@127.0.0.1:5432/findmyjob"
+            echo "DATABASE_URL=postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob?connection_limit=5"
+          } >> "$GITHUB_ENV"
+
+      - name: Migrate
+        run: pnpm prisma migrate deploy
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+
+      - name: Upload playwright report
+        if: failure()
+        uses: actions/upload-artifact@6f51ac03b9356b520f9a7191b8a333551f1ca5d0  # v4.4.0
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

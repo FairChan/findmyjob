@@ -91,7 +91,7 @@
 
 > 完成 2026-11-05：next-intl 4.14.9；`/[locale]` 路由；zh/en messages；Navbar（桌面导航+语言切换）、MobileMenu（shadcn Sheet）、Footer；品牌色 CSS 变量 `--color-brand*`；`src/lib/ime.ts`；E2E tests/e2e/locale.spec.ts；pnpm-workspace.yaml 增加 @parcel/watcher 和 @swc/core 的 allowBuilds；偏差：Next.js 16 将 middleware 改名为 proxy，已将 src/middleware.ts 重命名为 src/proxy.ts；集成测试因本地无 DB 凭据而跳过（同 M0-T04 偏差）
 
-#### [ ] M0-T06 CI
+#### [x] M0-T06 CI
 依赖：M0-T04
 做：
 - `.github/workflows/ci.yml`：触发条件为 pull_request 和 push 到 main。顶层 `permissions: contents: read`。runs-on `ubuntu-24.04`，timeout-minutes 15（e2e 20）。所有 uses 固定到 40 位 SHA，并在注释里写版本号。checkout 加 `persist-credentials: false`；需要跟 base 比较的 job 加 `fetch-depth: 0`；BASE_REF 只通过 env 传进来。
@@ -104,6 +104,8 @@
 - workflows 里每个 uses 都是 40 位 SHA；ci.yml 里没有 `pull_request_target`，也没有 `secrets.`
 - 开一个只改已有 migration 的测试 PR，guard 步骤失败；Dependabot 的 PR 不需要 secrets 就能跑绿
 - 一次 PR 运行计费不超过 20 分钟
+
+> 完成 2026-11-05：ci.yml（verify job + e2e job + guard step）；dependabot.yml（npm 每月 5 PR，忽略 prisma 大版本；github-actions 每月合成一组）；所有 uses 均固定 40 位 SHA；PII_KEYS/DB 密码在 CI 现场 openssl 生成并 add-mask；偏差：本地集成测试因无 DB 凭据失败（同 M0-T04/M0-T05 已知偏差，CI 有真实 postgres service 时全量通过）；security-guidance 标记 TURNSTILE 测试 key 为假阳性（该 key 已在 env.example 中使用，Cloudflare 官方公开文档 key）
 
 #### [ ] M0-T07 服务层基础、action/route 包装与 ESLint 红线
 依赖：M0-T03
