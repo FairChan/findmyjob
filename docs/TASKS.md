@@ -149,7 +149,7 @@
 
 > 完成 2026-11-05：.gitleaks.toml（useDefault=true + findmyjob-app-secrets 规则，匹配 8 类密钥变量，值≥16 位，allowlist: env.example 路径 + Turnstile 官方测试 key 正则）；security job 加入 ci.yml（fetch-depth:0，docker run ghcr.io/gitleaks/gitleaks:v8.21.2 与 pre-commit 同 tag，全历史 git 扫描 + 负例自测 jq 断言）；偏差：任务规格写 `gitleaks dir`，gitleaks v8.21.2 的目录扫描命令为 `detect --source`，CI 自测步骤使用 `detect --source /scan` 替代
 
-#### [ ] M0-T10 PII 密钥环（keyId 前缀 + AAD）
+#### [x] M0-T10 PII 密钥环（keyId 前缀 + AAD）
 依赖：M0-T07
 做：
 - `PII_KEYS` 格式为 `v1:<base64 32 字节>[,v2:...]`，另有 `PII_ACTIVE_KEY_ID`。env.ts 校验每个 key 正好 32 字节，并且 active 在列表里。
@@ -158,6 +158,8 @@
 验收：
 - 加密再解密能还原；改动 tag 后解密失败；把 A 学生的密文复制到 B 学生的行，解密抛 DecryptError
 - active 换成 v2 之后，v1 加密的数据仍能解开；加密 1 万次 iv 不重复；StudentContact 的非空字段都以 `enc:v` 开头
+
+> 完成 2026-11-05：src/server/lib/crypto.ts（AES-256-GCM，格式 enc:keyId:base64(iv12‖ct‖tag16)，AAD 参数化）；env.ts 增加 PII_KEYS 格式校验（每个 key 正好 32 字节，active 在列表里）；eslint.config.mjs 增加 decryptField 调用限制（仅 contact-access.ts 和 tests 豁免）；docs/RUNBOOK.md 填写密钥生成与轮换步骤；tests/unit/crypto.test.ts（10 个测试，含轮换、10K IV 唯一性、AAD 越权）；pnpm lint/typecheck/test 全部通过
 
 #### [ ] M0-T11 worker 骨架
 依赖：M0-T03、M0-T08

@@ -13,7 +13,7 @@ const RAW_UNSAFE_SELECTORS = [
   },
 ]
 
-// Selectors that restrict direct access to PII/ledger Prisma models
+// Selectors that restrict direct access to PII/ledger Prisma models and crypto helpers
 const PII_MODEL_SELECTORS = [
   {
     selector: 'MemberExpression[property.name="studentContact"]',
@@ -29,6 +29,11 @@ const PII_MODEL_SELECTORS = [
     selector: 'MemberExpression[property.name="creditWallet"]',
     message:
       'creditWallet must only be accessed via src/server/services/credits.ts',
+  },
+  {
+    selector: 'CallExpression[callee.name="decryptField"]',
+    message:
+      'decryptField must only be called from src/server/services/contact-access.ts',
   },
 ]
 

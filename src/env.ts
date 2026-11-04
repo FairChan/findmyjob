@@ -100,6 +100,39 @@ const schema = z
       }
     }
 
+    // Validate PII_KEYS: each entry must be keyId:<base64 32 bytes>; active key must exist
+    if (data.PII_KEYS) {
+      const piiKeyIds: string[] = []
+      for (const entry of data.PII_KEYS.split(",")) {
+        const sep = entry.indexOf(":")
+        if (sep === -1) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["PII_KEYS"],
+            message: `Invalid PII_KEYS entry (expected keyId:base64): ${entry}`,
+          })
+          continue
+        }
+        const keyId = entry.slice(0, sep)
+        const keyBytes = Buffer.from(entry.slice(sep + 1), "base64")
+        piiKeyIds.push(keyId)
+        if (keyBytes.length !== 32) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["PII_KEYS"],
+            message: `PII key "${keyId}" must be exactly 32 bytes, got ${keyBytes.length}`,
+          })
+        }
+      }
+      if (!piiKeyIds.includes(data.PII_ACTIVE_KEY_ID)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["PII_ACTIVE_KEY_ID"],
+          message: `PII_ACTIVE_KEY_ID "${data.PII_ACTIVE_KEY_ID}" is not present in PII_KEYS`,
+        })
+      }
+    }
+
     // Email provider-specific requirements
     if (data.EMAIL_PROVIDER === "smtp" && !data.SMTP_URL) {
       ctx.addIssue({
