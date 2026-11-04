@@ -137,7 +137,7 @@
 
 > 完成 2026-11-05：pino@9.14.0 替换最小 JSON logger，redact 路径覆盖 9 个 PII 字段（顶层 + `*.` 前缀各一条）；serverExternalPackages 加入 pino；proxy.ts 生成/透传 x-request-id（请求头转发 + 响应头回显）；alert.ts（logger.error，level 50）；route.ts 增加 requestId 传播；单元测试：logger.test.ts（8 个 PII + level 验证）、alert.test.ts（4 个）、route-request-id.test.ts（2 个）；pnpm lint / typecheck / test 全部通过
 
-#### [ ] M0-T09 秘密防线：gitleaks 自定义规则和 CI 全历史扫描
+#### [x] M0-T09 秘密防线：gitleaks 自定义规则和 CI 全历史扫描
 依赖：M0-T06
 做：
 - `.gitleaks.toml`：`useDefault = true`，另加一条 `findmyjob-app-secrets` 规则，匹配 PII_KEYS、PII_HMAC_KEY、BETTER_AUTH_SECRET、TURNSTILE_SECRET_KEY、S3_SECRET_ACCESS_KEY、SEED_ADMIN_PASSWORD、RESEND_API_KEY、STRIPE_*，后面跟 `=` 或 `:`，值至少 16 位。allowlist 只放 `env.example` 和 Cloudflare 官方的 Turnstile 测试 key。
@@ -146,6 +146,8 @@
 验收：
 - 全历史扫描退出码为 0；负例自测的断言通过
 - 本机提交一个含随机 BETTER_AUTH_SECRET 的文件，被 pre-commit 拦下；`git config --get core.hooksPath` 输出 `.githooks`
+
+> 完成 2026-11-05：.gitleaks.toml（useDefault=true + findmyjob-app-secrets 规则，匹配 8 类密钥变量，值≥16 位，allowlist: env.example 路径 + Turnstile 官方测试 key 正则）；security job 加入 ci.yml（fetch-depth:0，docker run ghcr.io/gitleaks/gitleaks:v8.21.2 与 pre-commit 同 tag，全历史 git 扫描 + 负例自测 jq 断言）；偏差：任务规格写 `gitleaks dir`，gitleaks v8.21.2 的目录扫描命令为 `detect --source`，CI 自测步骤使用 `detect --source /scan` 替代
 
 #### [ ] M0-T10 PII 密钥环（keyId 前缀 + AAD）
 依赖：M0-T07

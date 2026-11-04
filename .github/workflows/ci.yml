@@ -280,3 +280,39 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  security:
+    name: Security Scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Gitleaks full-history scan
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -e GIT_CONFIG_COUNT=1 \
+            -e GIT_CONFIG_KEY_0=safe.directory \
+            -e GIT_CONFIG_VALUE_0=/repo \
+            ghcr.io/gitleaks/gitleaks:v8.21.2 \
+            git --redact --exit-code 1 /repo
+
+      - name: Gitleaks self-test (negative example)
+        run: |
+          mkdir -p "$RUNNER_TEMP/leak"
+          printf 'PII_KEYS=%s\n' "$(openssl rand -hex 24)" > "$RUNNER_TEMP/leak/.env.leak"
+          result=$(docker run --rm \
+            -v "$GITHUB_WORKSPACE/.gitleaks.toml:/config/.gitleaks.toml:ro" \
+            -v "$RUNNER_TEMP/leak:/scan:ro" \
+            ghcr.io/gitleaks/gitleaks:v8.21.2 \
+            detect --source /scan \
+            --config /config/.gitleaks.toml \
+            --no-banner --report-format json --report-path - || true)
+          echo "$result" | jq -e 'map(select(.RuleID == "findmyjob-app-secrets")) | length > 0' \
+            || { echo "::error::Self-test failed: findmyjob-app-secrets rule did not fire"; exit 1; }

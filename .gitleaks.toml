@@ -1,0 +1,29 @@
+title = "FindMYJob"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "findmyjob-app-secrets"
+description = "FindMYJob application secret environment variables"
+regex = '''(?i)(?:PII_KEYS|PII_HMAC_KEY|BETTER_AUTH_SECRET|TURNSTILE_SECRET_KEY|S3_SECRET_ACCESS_KEY|SEED_ADMIN_PASSWORD|RESEND_API_KEY|STRIPE_[A-Z_]+)\s*[=:]\s*['"]?([^\s'"]{16,})'''
+secretGroup = 1
+keywords = [
+  "PII_KEYS",
+  "PII_HMAC_KEY",
+  "BETTER_AUTH_SECRET",
+  "TURNSTILE_SECRET_KEY",
+  "S3_SECRET_ACCESS_KEY",
+  "SEED_ADMIN_PASSWORD",
+  "RESEND_API_KEY",
+  "STRIPE_",
+]
+
+  [rules.allowlist]
+  description = "Known safe values in example files and official test keys"
+  regexes = [
+    '''1x0000000000000000000000000000000AA''',
+  ]
+  paths = [
+    '''env\.example''',
+  ]
