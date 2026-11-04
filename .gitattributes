@@ -1,0 +1,15 @@
+# 所有文本文件在仓库和工作区都用 LF（core.autocrlf=true 时 .sh 也不会变成 CRLF）
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.png binary
+*.pdf binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.age binary

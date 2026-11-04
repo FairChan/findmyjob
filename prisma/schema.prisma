@@ -1,0 +1,1011 @@
+// FindMYJob · 数据模型草案 v0.2（2026-11-03）
+//
+// 约定：
+// - 认证四表（User / Session / Account / Verification）对齐 Better Auth 核心 schema。
+//   实施时用 Better Auth CLI 生成一次做比对，以官方为准，再保留这里的业务字段。
+// - Prisma 锁定 6.x（prisma 和 @prisma/client 同一个精确版本）；7.x 不再支持在 datasource 里写 url。
+// - 订单、套餐金额用整数「分」(sen)；薪资用整数 MYR / 月。
+// - 操作人字段（xxxById、reporterId、resolverId）只存 id、不建外键：用户删除后，审计和账本仍需保留。
+// - StudentContact 的字段在应用层加密（PII 密钥环，带 keyId 和 AAD），只能经 contact-access 服务读写。
+// - 时间字段（DateTime）一律加 @db.Timestamptz(3)，按 UTC 存储。
+// - 索引只用 schema 能表达的写法：trigram 用 ops: raw("gin_trgm_ops")，否则下一次迁移会把手写索引删掉。
+//   每个外键标量都要有以它开头的索引（db:check 会查）。
+// - 主键用 cuid()；本项目自己发的令牌只存 sha256 哈希（例如 CompanyInvite.tokenHash）。
+//   Better Auth 自管的 Session.token、Verification.value 按官方实现，不在此列。
+// - 不给表或列做名称映射（不写 Prisma 的 map 属性）；上线后要改名时，才用映射保留旧列名。
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("MIGRATE_DATABASE_URL")
+}
+
+// ==================== 枚举 ====================
+
+enum UserRole {
+  STUDENT
+  EMPLOYER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum Locale {
+  zh
+  en
+  ms
+}
+
+enum DegreeLevel {
+  FOUNDATION
+  DIPLOMA
+  BACHELOR
+  MASTER
+  PHD
+}
+
+/// 工作资格：决定能否实习 / 全职，是企业的高频筛选项
+enum WorkAuth {
+  MY_CITIZEN
+  MY_PR
+  STUDENT_PASS
+  DEPENDANT_PASS
+  NEEDS_WORK_PASS
+  OTHER
+}
+
+enum JobType {
+  INTERNSHIP
+  FULL_TIME
+  PART_TIME
+}
+
+enum Visibility {
+  PUBLIC
+  HIDDEN
+}
+
+enum ExperienceKind {
+  INTERNSHIP
+  WORK
+  PROJECT
+  CAMPUS
+  AWARD
+}
+
+enum LanguageLevel {
+  BASIC
+  CONVERSATIONAL
+  FLUENT
+  NATIVE
+}
+
+enum CompanySize {
+  S1_10
+  S11_50
+  S51_200
+  S201_1000
+  S1000_PLUS
+}
+
+enum VerificationStatus {
+  UNSUBMITTED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum CompanyMemberRole {
+  OWNER
+  ADMIN
+  RECRUITER
+}
+
+enum JobStatus {
+  DRAFT
+  PENDING_REVIEW
+  PUBLISHED
+  CLOSED
+  REJECTED
+}
+
+enum WorkMode {
+  ONSITE
+  HYBRID
+  REMOTE
+}
+
+enum ApplicationStatus {
+  APPLIED
+  VIEWED
+  SHORTLISTED
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum InvitationStatus {
+  SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+}
+
+enum UnlockSource {
+  CREDIT // 企业花点数解锁
+  APPLICATION // 学生投递自动授权
+  ADMIN // 运营手动授权
+}
+
+enum LedgerReason {
+  PILOT_GRANT
+  PURCHASE
+  PLAN_GRANT
+  UNLOCK
+  REFUND
+  ADMIN_ADJUST
+  EXPIRE
+}
+
+enum OrderKind {
+  PLAN
+  CREDIT_PACK
+  STUDENT_VIEW_PACK // 预留：学生端查看额度包（billing.studentEnabled=false 时不显示入口）
+}
+
+enum OrderStatus {
+  PENDING
+  AWAITING_CONFIRMATION
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  FREE
+  BANK_TRANSFER
+  FPX
+  CARD
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+}
+
+enum ConsentType {
+  TERMS
+  PRIVACY
+  TALENT_POOL
+  MARKETING
+}
+
+enum PartnerType {
+  SCHOOL
+  ALUMNI_ASSOCIATION
+  SOE
+  ENTERPRISE
+  GOVERNMENT
+  NGO
+}
+
+enum DataRequestType {
+  EXPORT
+  DELETE
+  CORRECT
+}
+
+enum DataRequestStatus {
+  OPEN
+  DONE
+  REJECTED
+}
+
+/// 公司定位标签：只由运营设置，企业不能自己打
+enum CompanyTag {
+  FORTUNE_500
+  MULTINATIONAL
+  MY_LEADING
+  CN_OVERSEAS
+  SOE
+  ALUMNI
+  CHINESE_MY
+}
+
+enum ReferralStatus {
+  PENDING
+  QUALIFIED
+  VOID
+}
+
+/// 查看额度的额外来源（BASE、REFERRAL 由公式计算，不落表）
+enum ViewGrantSource {
+  PURCHASE // 学生端收费接口（预留）
+  ADMIN_GRANT
+}
+
+enum ArticleCategory {
+  FRAUD_CASE
+  GUIDE
+  CONTACT
+}
+
+enum JobReportReason {
+  ASKS_PAYMENT
+  FAKE_SALARY
+  ILLEGAL_WORK
+  MISMATCH
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+// ==================== 认证（Better Auth） ====================
+
+model User {
+  id            String     @id @default(cuid())
+  name          String
+  email         String     @unique
+  emailVerified Boolean    @default(false)
+  image         String?
+  role          UserRole   @default(STUDENT)
+  locale        Locale     @default(zh)
+  status        UserStatus @default(ACTIVE)
+  deletedAt     DateTime?  @db.Timestamptz(3)
+  lastLoginAt   DateTime?  @db.Timestamptz(3)
+  createdAt     DateTime   @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime   @updatedAt @db.Timestamptz(3)
+
+  sessions       Session[]
+  accounts       Account[]
+  studentProfile StudentProfile?
+  memberships    CompanyMember[]
+  consents       Consent[]
+  notifications  Notification[]
+  dataRequests   DataRequest[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime @db.Timestamptz(3)
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime? @db.Timestamptz(3)
+  refreshTokenExpiresAt DateTime? @db.Timestamptz(3)
+  scope                 String?
+  idToken               String?
+  password              String?
+  createdAt             DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime  @updatedAt @db.Timestamptz(3)
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime @db.Timestamptz(3)
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @db.Timestamptz(3)
+
+  @@index([identifier])
+}
+
+// ==================== 学校 / 合作伙伴 ====================
+
+model School {
+  id           String   @id @default(cuid())
+  nameZh       String
+  nameEn       String
+  shortName    String?
+  country      String   @default("MY")
+  state        String?
+  emailDomains String[] // 例：["xmu.edu.my"]（以学校实际后缀为准）
+  isPartner    Boolean  @default(false)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+
+  students   StudentProfile[]
+  educations Education[]
+}
+
+/// 首页展示的背书方 / 合作机构
+model Partner {
+  id           String      @id @default(cuid())
+  name         String
+  nameEn       String?
+  type         PartnerType
+  logoKey      String?
+  website      String?
+  description  String?
+  showOnHome   Boolean     @default(true)
+  sortOrder    Int         @default(0)
+  agreementKey String? // 合作协议扫描件（私有）
+  notes        String? // 内部备注
+  createdAt    DateTime    @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime    @updatedAt @db.Timestamptz(3)
+}
+
+// ==================== 学生 ====================
+
+model StudentProfile {
+  id                  String       @id @default(cuid())
+  userId              String       @unique
+  user                User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName            String
+  headline            String? // 一句话介绍
+  summary             String?
+  schoolId            String?
+  school              School?      @relation(fields: [schoolId], references: [id])
+  schoolEmail         String?      @unique // 统一转小写后存储；同一学校邮箱只能认证一个账号
+  schoolVerifiedAt    DateTime?    @db.Timestamptz(3)
+  degreeLevel         DegreeLevel?
+  major               String?
+  graduationYear      Int?
+  graduationMonth     Int?
+  cgpa                Decimal?     @db.Decimal(3, 2) // 可选，0.00–4.00
+  nationality         String? // ISO 3166-1 alpha-2
+  workAuth            WorkAuth?
+  intents             JobType[]
+  availableFrom       DateTime?    @db.Timestamptz(3)
+  preferredStates     String[] // 马来西亚州属代码
+  preferredIndustries String[]
+  expectedSalaryMin   Int? // MYR / 月
+  expectedSalaryMax   Int?
+  skills              String[]
+  visibility          Visibility   @default(HIDDEN)
+  completeness        Int          @default(0)
+  referralCode        String?      @unique // 邀请码，首次打开邀请页时生成
+  lastActiveAt        DateTime     @default(now()) @db.Timestamptz(3)
+  createdAt           DateTime     @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime     @updatedAt @db.Timestamptz(3)
+
+  contact          StudentContact?
+  languages        StudentLanguage[]
+  educations       Education[]
+  experiences      Experience[]
+  resumes          ResumeFile[]
+  blockedCompanies BlockedCompany[]
+  applications     Application[]
+  invitations      Invitation[]
+  unlocks          TalentUnlock[]
+  views            ProfileView[]
+  folderItems      TalentFolderItem[]
+  jobViews         JobView[]
+  viewGrants       JobViewGrant[]
+  referralsMade    Referral[]         @relation("referrer")
+  referredBy       Referral?          @relation("invitee")
+
+  @@index([visibility, completeness, lastActiveAt])
+  @@index([schoolId, graduationYear])
+  @@index([skills], type: Gin)
+  @@index([major(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([headline(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+/// 联系方式：应用层加密，只能经 contact-access 服务访问
+model StudentContact {
+  studentId   String         @id
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  phone       String?
+  email       String?
+  whatsapp    String?
+  wechat      String?
+  linkedinUrl String?
+  updatedAt   DateTime       @updatedAt @db.Timestamptz(3)
+}
+
+model StudentLanguage {
+  id        String         @id @default(cuid())
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  language  String // zh / en / ms / ta / yue ...
+  level     LanguageLevel
+
+  @@unique([studentId, language])
+}
+
+model Education {
+  id          String         @id @default(cuid())
+  studentId   String
+  student     StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  schoolId    String?
+  school      School?        @relation(fields: [schoolId], references: [id])
+  schoolName  String
+  degreeLevel DegreeLevel?
+  major       String?
+  startDate   DateTime?      @db.Timestamptz(3)
+  endDate     DateTime?      @db.Timestamptz(3)
+  gpa         String?
+  description String?
+  sortOrder   Int            @default(0)
+
+  @@index([studentId])
+  @@index([schoolId])
+}
+
+model Experience {
+  id           String         @id @default(cuid())
+  studentId    String
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  kind         ExperienceKind
+  title        String
+  organization String?
+  startDate    DateTime?      @db.Timestamptz(3)
+  endDate      DateTime?      @db.Timestamptz(3)
+  description  String?
+  sortOrder    Int            @default(0)
+
+  @@index([studentId])
+}
+
+model ResumeFile {
+  id         String         @id @default(cuid())
+  studentId  String
+  student    StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  storageKey String
+  fileName   String
+  mimeType   String
+  sizeBytes  Int
+  pageCount  Int? // 上传时用 getPageCount 写入，≤ resume.maxPages
+  isPrimary  Boolean        @default(false)
+  parsedJson Json? // M9：AI 解析结果
+  createdAt  DateTime       @default(now()) @db.Timestamptz(3)
+
+  applications Application[]
+
+  @@index([studentId])
+}
+
+model BlockedCompany {
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@id([studentId, companyId])
+  @@index([companyId])
+}
+
+// ==================== 企业 ====================
+
+model Company {
+  id                 String             @id @default(cuid())
+  legalName          String
+  displayNameZh      String?
+  displayNameEn      String?
+  ssmRegNo           String?            @unique
+  industryCode       String? // 两级行业代码，例如 finance.bank
+  tags               CompanyTag[] // 只由运营设置
+  size               CompanySize?
+  website            String?
+  logoKey            String?
+  description        String?
+  address            String?
+  state              String?
+  city               String?
+  verificationStatus VerificationStatus @default(UNSUBMITTED)
+  verifiedAt         DateTime?          @db.Timestamptz(3)
+  approvedJobCount   Int                @default(0) // 用于 jobs.autoPublishAfter
+  isFoundingPartner  Boolean            @default(false)
+  isManaged          Boolean            @default(false) // 代管企业：由平台运营代建、代发职位，移交后为 false
+  isActive           Boolean            @default(true)
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  members       CompanyMember[]
+  invites       CompanyInvite[]
+  verifications CompanyVerification[]
+  wallet        CreditWallet?
+  jobs          Job[]
+  unlocks       TalentUnlock[]
+  views         ProfileView[]
+  folders       TalentFolder[]
+  invitations   Invitation[]
+  orders        Order[]
+  subscriptions Subscription[]
+  blockedBy     BlockedCompany[]
+
+  @@index([industryCode])
+}
+
+model CompanyMember {
+  id        String            @id @default(cuid())
+  companyId String
+  company   Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      CompanyMemberRole
+  title     String?
+  createdAt DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, userId])
+  @@index([userId])
+}
+
+model CompanyInvite {
+  id          String            @id @default(cuid())
+  companyId   String
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email       String // 被邀请的邮箱（小写）；接受者的已验证邮箱必须与它一致
+  role        CompanyMemberRole
+  tokenHash   String            @unique // sha256(令牌)；明文只出现在邮件链接里
+  expiresAt   DateTime          @db.Timestamptz(3)
+  acceptedAt  DateTime?         @db.Timestamptz(3) // 有值即已使用，再次使用拒绝
+  createdById String
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+
+  @@index([companyId])
+}
+
+model CompanyVerification {
+  id            String             @id @default(cuid())
+  companyId     String
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  documentKeys  String[]
+  note          String?
+  status        VerificationStatus @default(PENDING)
+  submittedById String
+  reviewerId    String?
+  reviewNote    String?
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+  reviewedAt    DateTime?          @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@index([companyId])
+}
+
+// ==================== 职位 / 投递 / 邀请 ====================
+
+model Job {
+  id                 String    @id @default(cuid())
+  companyId          String
+  company            Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdById        String
+  title              String
+  type               JobType
+  description        String
+  requirements       String?
+  benefits           String?
+  workMode           WorkMode  @default(ONSITE)
+  state              String?
+  city               String?
+  salaryMin          Int? // MYR / 月（实习为津贴）
+  salaryMax          Int?
+  salaryVisible      Boolean   @default(true)
+  category           String? // 职位类别
+  lat                Float?
+  lng                Float?
+  areaName           String? // 商圈 / 地标名（P2 地图筛选）
+  languages          String[]
+  skills             String[]
+  acceptsStudentPass Boolean   @default(false)
+  sponsorsWorkPass   Boolean   @default(false)
+  headcount          Int?
+  status             JobStatus @default(DRAFT)
+  reviewNote         String?
+  publishedAt        DateTime? @db.Timestamptz(3)
+  deadline           DateTime? @db.Timestamptz(3)
+  closedAt           DateTime? @db.Timestamptz(3)
+  viewCount          Int       @default(0)
+  createdAt          DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
+
+  applications Application[]
+  invitations  Invitation[]
+  views        JobView[]
+  reports      JobReport[]
+
+  @@index([status, publishedAt])
+  @@index([companyId, status])
+  @@index([salaryMax])
+  @@index([skills], type: Gin)
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin)
+}
+
+model Application {
+  id          String            @id @default(cuid())
+  jobId       String
+  job         Job               @relation(fields: [jobId], references: [id])
+  studentId   String
+  student     StudentProfile    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  resumeId    String?
+  resume      ResumeFile?       @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  coverNote   String?
+  status      ApplicationStatus @default(APPLIED)
+  companyNote String? // 企业内部备注，学生不可见
+  createdAt   DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(3)
+
+  events     ApplicationEvent[]
+  invitation Invitation?
+
+  @@unique([jobId, studentId])
+  @@index([studentId, createdAt])
+  @@index([resumeId])
+}
+
+model ApplicationEvent {
+  id            String             @id @default(cuid())
+  applicationId String
+  application   Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStatus    ApplicationStatus?
+  toStatus      ApplicationStatus
+  actorId       String?
+  note          String?
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@index([applicationId])
+}
+
+model Invitation {
+  id            String           @id @default(cuid())
+  companyId     String
+  company       Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobId         String?
+  job           Job?             @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  studentId     String
+  student       StudentProfile   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  sentById      String
+  message       String?
+  status        InvitationStatus @default(SENT)
+  applicationId String?          @unique
+  application   Application?     @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  respondedAt   DateTime?        @db.Timestamptz(3)
+  expiresAt     DateTime         @db.Timestamptz(3)
+  createdAt     DateTime         @default(now()) @db.Timestamptz(3)
+
+  @@index([studentId, status])
+  @@index([companyId, createdAt])
+  @@index([jobId])
+  @@index([status, expiresAt])
+}
+
+// ==================== 人才库 / 解锁 / 收藏 ====================
+
+model TalentUnlock {
+  id           String         @id @default(cuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  unlockedById String
+  source       UnlockSource
+  creditsSpent Int            @default(0)
+  createdAt    DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@unique([companyId, studentId])
+  @@index([studentId, createdAt])
+  @@index([unlockedById, createdAt])
+}
+
+model ProfileView {
+  id        String         @id @default(cuid())
+  companyId String
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  viewerId  String
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@index([studentId, createdAt])
+  @@index([viewerId, createdAt])
+  @@index([companyId, createdAt])
+}
+
+model TalentFolder {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  createdById String
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+
+  items TalentFolderItem[]
+
+  @@index([companyId])
+}
+
+model TalentFolderItem {
+  id        String         @id @default(cuid())
+  folderId  String
+  folder    TalentFolder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  note      String?
+  addedById String
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@unique([folderId, studentId])
+  @@index([studentId])
+}
+
+// ==================== 点数 / 计费 ====================
+
+model CreditWallet {
+  id        String   @id @default(cuid())
+  companyId String   @unique
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  balance   Int      @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+
+  ledger CreditLedger[]
+}
+
+/// 只追加，不修改、不删除
+model CreditLedger {
+  id           String       @id @default(cuid())
+  walletId     String
+  wallet       CreditWallet @relation(fields: [walletId], references: [id])
+  delta        Int
+  balanceAfter Int
+  reason       LedgerReason
+  refType      String?
+  refId        String?
+  actorId      String?
+  note         String?
+  createdAt    DateTime     @default(now()) @db.Timestamptz(3)
+
+  @@index([walletId, createdAt])
+}
+
+model Plan {
+  id              String    @id @default(cuid())
+  code            String    @unique // FREE / CREDITS_10 / STANDARD_Y / PARTNER_Y
+  kind            OrderKind
+  nameZh          String
+  nameEn          String
+  priceSen        Int
+  credits         Int       @default(0)
+  durationDays    Int? // 年费 365；点数包为空
+  jobPostLimit    Int? // 空 = 不限
+  seatLimit       Int?
+  invitationQuota Int? // 每月
+  isPublic        Boolean   @default(true)
+  isActive        Boolean   @default(true)
+  sortOrder       Int       @default(0)
+  createdAt       DateTime  @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime  @updatedAt @db.Timestamptz(3)
+
+  orders        Order[]
+  subscriptions Subscription[]
+}
+
+model Order {
+  id            String         @id @default(cuid())
+  orderNo       String         @unique // FMJ-YYYYMMDD-XXXX
+  companyId     String
+  company       Company        @relation(fields: [companyId], references: [id])
+  planId        String
+  plan          Plan           @relation(fields: [planId], references: [id])
+  kind          OrderKind
+  amountSen     Int
+  discountSen   Int            @default(0)
+  currency      String         @default("MYR")
+  status        OrderStatus    @default(PENDING)
+  paymentMethod PaymentMethod?
+  externalRef   String?        @unique // 支付网关交易号，用于 webhook 幂等
+  proofKey      String? // 银行转账回单
+  createdById   String
+  confirmedById String?
+  paidAt        DateTime?      @db.Timestamptz(3)
+  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+
+  subscription Subscription?
+  invoice      Invoice?
+
+  @@index([companyId, createdAt])
+  @@index([status])
+  @@index([planId])
+}
+
+model Subscription {
+  id        String             @id @default(cuid())
+  companyId String
+  company   Company            @relation(fields: [companyId], references: [id])
+  planId    String
+  plan      Plan               @relation(fields: [planId], references: [id])
+  orderId   String?            @unique
+  order     Order?             @relation(fields: [orderId], references: [id])
+  startsAt  DateTime           @db.Timestamptz(3)
+  endsAt    DateTime           @db.Timestamptz(3)
+  status    SubscriptionStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@index([companyId, status, endsAt])
+  @@index([planId])
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  orderId     String   @unique
+  order       Order    @relation(fields: [orderId], references: [id])
+  invoiceNo   String   @unique
+  pdfKey      String?
+  einvoiceRef String? // LHDN MyInvois 文档 UUID（预留）
+  issuedAt    DateTime @default(now()) @db.Timestamptz(3)
+}
+
+// ==================== 合规 / 系统 ====================
+
+/// 只追加：每次同意或撤回都新增一条，最新一条生效
+model Consent {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      ConsentType
+  version   String
+  granted   Boolean
+  ip        String?
+  userAgent String?
+  createdAt DateTime    @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, type, createdAt])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  payload   Json
+  readAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
+
+  @@index([userId, readAt, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String? // 空 = 系统
+  action     String
+  targetType String
+  targetId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([targetType, targetId])
+  @@index([actorId, createdAt])
+  @@index([action, createdAt])
+}
+
+model SystemSetting {
+  key         String   @id
+  value       Json
+  updatedById String?
+  updatedAt   DateTime @updatedAt @db.Timestamptz(3)
+}
+
+model DataRequest {
+  id         String            @id @default(cuid())
+  userId     String
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       DataRequestType
+  status     DataRequestStatus @default(OPEN)
+  note       String?
+  resultKey  String? // 导出文件
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  resolvedAt DateTime?         @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([status, createdAt])
+}
+
+// ==================== 查看额度 / 邀请 / 搜索 / 反诈（v0.2） ====================
+
+/// 学生主动打开过的职位详情；复合主键保证同一职位只计一次
+model JobView {
+  studentId String
+  student   StudentProfile @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  jobId     String
+  job       Job            @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@id([studentId, jobId])
+  @@index([jobId])
+}
+
+/// 额度的额外发放（购买预留、运营加额度）；运营发放必须写原因
+model JobViewGrant {
+  id          String          @id @default(cuid())
+  studentId   String
+  student     StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  source      ViewGrantSource
+  amount      Int
+  orderId     String? // 预留：学生端订单在开启学生收费时再定（Order 目前只属于企业），先不建外键
+  note        String?
+  createdById String?
+  createdAt   DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@index([studentId, createdAt])
+}
+
+/// 一个被邀请人只记给一个邀请人（inviteeId 唯一）。学生删号只做匿名化、不物理删档案，已给的额度不收回
+model Referral {
+  id          String         @id @default(cuid())
+  referrerId  String
+  referrer    StudentProfile @relation("referrer", fields: [referrerId], references: [id], onDelete: Cascade)
+  inviteeId   String         @unique
+  invitee     StudentProfile @relation("invitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  status      ReferralStatus @default(PENDING)
+  qualifiedAt DateTime?      @db.Timestamptz(3)
+  voidReason  String?
+  createdAt   DateTime       @default(now()) @db.Timestamptz(3)
+
+  @@index([referrerId, status])
+}
+
+/// 关联搜索用的同义词组（双向）
+model SearchSynonymGroup {
+  id        String   @id @default(cuid())
+  terms     String[]
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
+}
+
+/// 反诈专区内容
+model Article {
+  id        String          @id @default(cuid())
+  category  ArticleCategory
+  title     String
+  body      String
+  videoUrl  String?
+  sortOrder Int             @default(0)
+  published Boolean         @default(false)
+  createdAt DateTime        @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime        @updatedAt @db.Timestamptz(3)
+}
+
+/// 职位举报，进运营队列
+model JobReport {
+  id         String          @id @default(cuid())
+  jobId      String
+  job        Job             @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  reporterId String
+  reason     JobReportReason
+  note       String?
+  status     ReportStatus    @default(OPEN)
+  resolverId String?
+  resolvedAt DateTime?       @db.Timestamptz(3)
+  createdAt  DateTime        @default(now()) @db.Timestamptz(3)
+
+  @@index([status, createdAt])
+  @@index([jobId])
+  @@index([reporterId, createdAt])
+}

@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* 配色参考智联招聘：主蓝 #426EFF、页面底色 #F4F6F9 */
+@theme {
+  --color-brand-50: #eef3ff;
+  --color-brand-100: #dce6ff;
+  --color-brand-200: #b9ccff;
+  --color-brand-300: #8eacff;
+  --color-brand-400: #6b8dff;
+  --color-brand-500: #426eff;
+  --color-brand-600: #2f58e6;
+  --color-brand-700: #2446bd;
+  --color-brand-800: #1d3893;
+  --color-brand-900: #182f74;
+  --color-page: #f4f6f9;
+  --color-menu: #4e5366;
+  --font-sans: "Helvetica Neue", Helvetica, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+}
+
+@utility wrap {
+  width: 100%;
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 16px;
+}
+
+html {
+  background: var(--color-page);
+  color: #1f2329;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes slidein {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}

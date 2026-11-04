@@ -1,0 +1,41 @@
+# .dockerignore 的模式相对构建上下文根目录；嵌套目录要写 **/
+# 与 .gitignore 相同的部分
+**/node_modules
+**/.next
+out
+coverage
+playwright-report
+test-results
+**/*.log
+**/__pycache__
+**/.env
+**/.env.*
+prisma/seed-data/*.local.*
+**/*.dump
+**/*.dump.age
+backups
+load/results
+load/accounts.local.json
+.auto-build
+.reports
+.sec-out
+CLAUDE-SECURITY-*
+static_analysis_*
+security_best_practices_report*.md
+*-threat-model.md
+**/*.sarif
+.claude/settings.local.json
+.claude/*.local.*
+prototype/.claude
+
+# 镜像里不需要的开发文件
+.git
+.github
+.githooks
+.claude
+docs
+tests
+load
+prototype
+CLAUDE.md
+scripts/auto-build.sh

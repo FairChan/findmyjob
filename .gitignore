@@ -1,0 +1,36 @@
+# 依赖和构建产物
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+*.log
+__pycache__/
+
+# 环境变量：只提交 env.example（模板不以 .env 开头，所以不需要例外规则）
+.env
+.env.*
+
+# 真实数据和备份：永远不进仓库
+prisma/seed-data/*.local.*
+*.dump
+*.dump.age
+backups/
+load/results/
+load/accounts.local.json
+
+# auto-build 运行记录、扫描报告
+.auto-build/
+.reports/
+.sec-out/
+CLAUDE-SECURITY-*/
+static_analysis_*/
+security_best_practices_report*.md
+/*-threat-model.md
+*.sarif
+
+# Claude Code 本地设置
+.claude/settings.local.json
+.claude/*.local.*
+prototype/.claude/

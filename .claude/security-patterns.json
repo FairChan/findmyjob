@@ -1,0 +1,40 @@
+{
+  "patterns": [
+    {
+      "rule_name": "prisma-raw-unsafe",
+      "regex": "\\$(queryRawUnsafe|executeRawUnsafe)\\b",
+      "paths": ["*/src/*", "*/scripts/*", "*/prisma/*", "*/tests/*"],
+      "reminder": "FindMYJob red line: never use $queryRawUnsafe or $executeRawUnsafe. Use $queryRaw / $executeRaw tagged templates or Prisma.sql, quote table and column names, and escape backslash, % and _ before user input goes into ILIKE. ESLint (no-restricted-properties) and db:check also block this."
+    },
+    {
+      "rule_name": "next-public-secret",
+      "regex": "NEXT_PUBLIC_(?![A-Z0-9_]*SITE_KEY)[A-Z0-9_]*(SECRET|TOKEN|PASSWORD|PRIVATE|_KEY)",
+      "exclude_paths": ["*.md"],
+      "reminder": "NEXT_PUBLIC_* variables are shipped to every browser. Never put secrets, tokens, passwords or private keys there. Only public values (Sentry DSN, Turnstile site key) may use the NEXT_PUBLIC_ prefix; keep the secret half server-only in src/env.ts."
+    },
+    {
+      "rule_name": "hardcoded-secret",
+      "regex": "(PII_KEYS|PII_HMAC_KEY|BETTER_AUTH_SECRET|TURNSTILE_SECRET_KEY|S3_SECRET_ACCESS_KEY|SEED_ADMIN_PASSWORD|RESEND_API_KEY|STRIPE_[A-Z_]+)\\s*[:=]\\s*['\"]?[A-Za-z0-9+/=_:.-]{16,}",
+      "exclude_paths": ["env.example", "*/env.example", "*.md", ".gitleaks.toml", "*/.gitleaks.toml"],
+      "reminder": "This looks like a hardcoded FindMYJob secret. Secrets live only in /opt/findmyjob/env/*.env on the server (and in two people's password managers); locally the human copies env.example to .env. Read secrets through src/env.ts. Never commit them, never put them in Docker ARG/ENV/COPY or CI files, and never add a gitleaks allowlist entry to get past the pre-commit hook."
+    },
+    {
+      "rule_name": "client-company-id",
+      "regex": "(searchParams\\.get\\(\\s*['\"]companyId|formData\\.get\\(\\s*['\"]companyId|params\\.companyId|input\\.companyId|body\\.companyId)",
+      "paths": ["*/src/*"],
+      "reminder": "FindMYJob red line: employer-side companyId must come from requireCompanyMember(), never from params, query, form data or the request body. The only exception is a public resource keyed by company id (for example the logo proxy), which must not return private data."
+    },
+    {
+      "rule_name": "auth-weakening",
+      "regex": "(disableCSRFCheck|useSecureCookies\\s*:\\s*false|trustedOrigins\\s*:\\s*\\[\\s*['\"]\\*|cookieCache|input\\s*:\\s*true|requireEmailVerification\\s*:\\s*false)",
+      "paths": ["*auth*.ts", "*/src/server/*"],
+      "reminder": "Better Auth baseline (ARCHITECTURE 5.11): no wildcard trustedOrigins, no disableCSRFCheck, useSecureCookies stays on in production, cookieCache stays off, role and status are input:false, requireEmailVerification stays on. Any new /api/auth path must be covered by Turnstile and rate limiting."
+    },
+    {
+      "rule_name": "shared-cache-user-data",
+      "regex": "('use cache'|\"use cache\"|unstable_cache\\(|dynamic\\s*=\\s*['\"]force-static)",
+      "paths": ["*/src/app/*/s/*", "*/src/app/*/e/*", "*/src/app/*/admin/*", "*/src/server/*", "*/src/app/api/*"],
+      "reminder": "Pages under /s, /e, /admin and code in src/server must not use 'use cache', unstable_cache or force-static: a shared cache can serve one user's data (or PII) to another. Logged-in and PII responses need Cache-Control: private, no-store and X-Robots-Tag: noindex."
+    }
+  ]
+}

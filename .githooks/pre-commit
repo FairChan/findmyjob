@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# 提交前用 gitleaks 扫暂存区里的秘密。启用（由人执行一次）：git config core.hooksPath .githooks
+# 优先用本机 gitleaks；没有时用固定 tag 的官方镜像；两者都没有就拒绝提交。
+# 镜像 tag 与 CI（M0-T09）保持一致；以 Z0-4 实际安装的版本为准，升级时两处一起改。
+set -euo pipefail
+
+GITLEAKS_IMAGE="${GITLEAKS_IMAGE:-ghcr.io/gitleaks/gitleaks:v8.21.2}"
+root="$(git rev-parse --show-toplevel)"
+
+if command -v gitleaks >/dev/null 2>&1; then
+  exec gitleaks git --pre-commit --staged --redact --no-banner "$root"
+fi
+
+if command -v docker >/dev/null 2>&1; then
+  # Git Bash 下要把路径转成 Windows 形式，并关掉 MSYS 的路径改写
+  src="$(cd "$root" && (pwd -W 2>/dev/null || pwd))"
+  MSYS_NO_PATHCONV=1 exec docker run --rm \
+    -v "${src}:/repo" -w /repo \
+    -e GIT_CONFIG_COUNT=1 -e GIT_CONFIG_KEY_0=safe.directory -e GIT_CONFIG_VALUE_0=/repo \
+    "$GITLEAKS_IMAGE" git --pre-commit --staged --redact --no-banner /repo
+fi
+
+echo "pre-commit：找不到 gitleaks，也没有 docker，拒绝提交。" >&2
+echo "安装方法：Windows 用 winget search gitleaks 查到 id 后 winget install -e --id <id>；macOS 用 brew install gitleaks；或者安装 Docker。" >&2
+exit 1
