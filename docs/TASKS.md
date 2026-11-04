@@ -15,7 +15,7 @@
 
 ## M0 · 项目脚手架、基础设施与安全底座（约 4 天，另有人工 0.5 天）
 
-#### [ ] M0-T01 初始化项目
+#### [x] M0-T01 初始化项目
 依赖：无
 做：
 - Next.js（App Router）+ TypeScript strict + pnpm + Tailwind + shadcn/ui + ESLint + Prettier。package.json 脚本：`dev`、`build`、`start`、`lint`、`typecheck`、`test`、`test:e2e`、`db:migrate`、`db:seed`、`db:check`、`worker`。
@@ -27,6 +27,8 @@
 - `pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm build` 通过；install 输出里没有 Ignored build scripts
 - 目录结构符合 ARCHITECTURE §4（空目录放 `.gitkeep`）
 - 仓库里没有 `package-lock.json` 和 `yarn.lock`；有 `prototype/` 时 `pnpm typecheck` 也能通过；`git ls-files prototype/.claude` 输出为空
+
+> 完成 2026-11-05：初始化脚手架通过全部验收检查；tsconfig 由 next build 自动修正为 react-jsx；pnpm-workspace.yaml 使用 allowBuilds（pnpm 12.16.1 有效等价于 onlyBuiltDependencies）
 
 #### [ ] M0-T02 本地基础设施、数据库角色与环境变量
 依赖：M0-T01
