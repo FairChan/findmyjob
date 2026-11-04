@@ -129,3 +129,4 @@
 
 | 日期 | 任务 | 决策 | 理由 |
 |---|---|---|---|
+| 2026-11-05 | M0-T02 | MIGRATE_DATABASE_URL 对 app/worker 进程必须设置，且应使用 findmyjob_app 凭据（与 DATABASE_URL 相同）；仅迁移进程使用 findmyjob_owner 凭据 | Prisma schema 中 directUrl = env("MIGRATE_DATABASE_URL") 在客户端初始化时就会读取，若未设置则抛错。生产环境 app.env 和 migrate.env 分开，各自配置不同用户 |

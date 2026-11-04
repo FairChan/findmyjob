@@ -30,7 +30,7 @@
 
 > 完成 2026-11-05：初始化脚手架通过全部验收检查；tsconfig 由 next build 自动修正为 react-jsx；pnpm-workspace.yaml 使用 allowBuilds（pnpm 12.16.1 有效等价于 onlyBuiltDependencies）
 
-#### [ ] M0-T02 本地基础设施、数据库角色与环境变量
+#### [x] M0-T02 本地基础设施、数据库角色与环境变量
 依赖：M0-T01
 做：
 - `docker-compose.yml`：postgres 用精确 tag 的 `postgres:16.x-bookworm`，启动参数加 `shared_preload_libraries=pg_stat_statements`、`timezone=UTC`、`log_min_duration_statement=500`、`log_parameter_max_length=0`、`log_lock_waits=on`，healthcheck 用 `pg_isready`；minio + 自动建桶；mailpit。所有端口（包括 MinIO）都写成 `127.0.0.1:<host>:<container>`。
@@ -41,6 +41,7 @@
 - `env.example` 列出 ARCHITECTURE §6 的全部变量；`DATABASE_URL` 用 `findmyjob_app` 并带 `connection_limit=5`。本地 `.env` 由人执行 `cp env.example .env` 后填假值，AI 不读不写。
 - 实测：只设 `DATABASE_URL` 时 PrismaClient 能不能正常初始化（schema 里有 directUrl）。不能的话，app 和 worker 也设 `MIGRATE_DATABASE_URL`，值和 `DATABASE_URL` 相同（用户仍是 findmyjob_app），结论记进 DECISIONS「开发中决策」。
 验收：
+> 完成 2026-11-05：docker-compose.yml（postgres:16.6-bookworm + minio + mailpit，端口全绑 127.0.0.1）；roles.sql/db-setup.sql/10-init.sh/apply-roles.sh；src/env.ts（zod 校验，生产三项检查通过）；MIGRATE_DATABASE_URL 实测结论记入 DECISIONS（app/worker 须用 findmyjob_app 凭据）
 - `docker compose up -d` 后应用能连上数据库；缺少必需环境变量时，启动报错并指明是哪个变量
 - 用新数据卷启动后，pg_roles 里有两个非超级用户和它们的 rolconfig；`docker compose port postgres 5432` 输出 `127.0.0.1:5432`
 - roles.sql 连续执行两次都不报错；`git ls-files --eol docker/postgres` 全部是 `i/lf`
