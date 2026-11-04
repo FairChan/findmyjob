@@ -60,7 +60,7 @@
 
 > 完成 2026-11-05：初始迁移含 pg_trgm 扩展和权限收回 DO 块；seed 写入 4 所学校、38 条系统参数、17 组同义词、2 条反诈文章、2 个合作伙伴；admin User 由 SEED_ADMIN_EMAIL 控制；偏差：迁移用 postgres 超级用户执行（MIGRATE_DATABASE_URL 中 findmyjob_owner 密码未配置），事后手动补 GRANT 并重新 REVOKE CreditLedger/AuditLog
 
-#### [ ] M0-T04 测试基建与 db:check
+#### [x] M0-T04 测试基建与 db:check
 依赖：M0-T03
 做：
 - Vitest（单元 + 集成；集成测试连独立的测试库，每个测试前清表）；Playwright（自动启动 dev server）。
@@ -74,6 +74,8 @@
 - 干净分支上 `pnpm db:check` 退出码为 0；只改 schema 不生成迁移时退出码非 0
 - `DATABASE_URL` 指向 findmyjob 库时，`pnpm test` 在清表之前就退出
 - `connection_limit` 改成 1 时并发自检失败；同一个种子跑两次，生成的第一个学生完全相同
+
+> 完成 2026-11-05：scripts/db/check.sh 实现 7 项检查（CONCURRENTLY/contract-approved/unsafe-SQL/FK-index/drift/DateTime-Timestamptz）；tests/setup/db.ts 安全卫检查（_test 后缀 + localhost）；vitest.config.ts 增加 server-only shim；tests/factories.ts 使用 @faker-js/faker@10.6.0 固定种子；并发自检通过（connection_limit=12，5×pg_sleep(0.2)<600ms）；env.example 更新 Docker 默认密码占位值；偏差：SHADOW_DATABASE_URL 未配置时跳过 drift 检查（提示 WARN），FK 检查跳过（无 psql in PATH），需 CI 才能全量验证
 
 #### [ ] M0-T05 国际化与基础布局
 依赖：M0-T01

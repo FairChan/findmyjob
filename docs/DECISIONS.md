@@ -130,3 +130,4 @@
 | 日期 | 任务 | 决策 | 理由 |
 |---|---|---|---|
 | 2026-11-05 | M0-T02 | MIGRATE_DATABASE_URL 对 app/worker 进程必须设置，且应使用 findmyjob_app 凭据（与 DATABASE_URL 相同）；仅迁移进程使用 findmyjob_owner 凭据 | Prisma schema 中 directUrl = env("MIGRATE_DATABASE_URL") 在客户端初始化时就会读取，若未设置则抛错。生产环境 app.env 和 migrate.env 分开，各自配置不同用户 |
+| 2026-11-05 | M0-T04 | 新增 @faker-js/faker@10.6.0（devDep）：测试数据生成；备选：chance.js（功能较弱）。新增 @axe-core/playwright@4.10.1（devDep）：E2E 可访问性断言；备选：playwright-axe（wrapper，包裹层过深）。两者均无 install script，无需加入 allowBuilds | 确定性种子生成测试数据；axe 是业界标准 a11y 检测库 |
