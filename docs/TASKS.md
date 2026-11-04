@@ -161,7 +161,7 @@
 
 > 完成 2026-11-05：src/server/lib/crypto.ts（AES-256-GCM，格式 enc:keyId:base64(iv12‖ct‖tag16)，AAD 参数化）；env.ts 增加 PII_KEYS 格式校验（每个 key 正好 32 字节，active 在列表里）；eslint.config.mjs 增加 decryptField 调用限制（仅 contact-access.ts 和 tests 豁免）；docs/RUNBOOK.md 填写密钥生成与轮换步骤；tests/unit/crypto.test.ts（10 个测试，含轮换、10K IV 唯一性、AAD 越权）；pnpm lint/typecheck/test 全部通过
 
-#### [ ] M0-T11 worker 骨架
+#### [x] M0-T11 worker 骨架
 依赖：M0-T03、M0-T08
 做：
 - `src/worker.ts` 负责启动 pg-boss、优雅退出和任务注册表（`src/server/jobs/registry.ts`）。`pnpm worker` 用 `tsx --conditions=react-server` 启动，能否生效要实测。
@@ -169,6 +169,8 @@
 - 注册一个示例任务。业务任务由各自的任务实现时注册（purge-unverified、requalify-referrals、pilot-monthly-credits、reconcile-wallets 等）。
 验收：
 - `pnpm worker` 启动后 5 秒内不报错，示例任务已注册；Ctrl+C 能优雅退出
+
+> 完成 2026-11-05：pg-boss@12.38.0；src/worker.ts（max=4，优雅退出 SIGINT/SIGTERM）；src/server/jobs/registry.ts（registerJobs，注册 example 任务）；src/server/jobs/boss.ts（Next.js send-only，max=2，supervise=false，schedule=false）；pnpm lint/typecheck/test 全部通过；偏差：tsx --conditions=react-server 实测可用（server-only 解析为 empty.js）；pg-boss 使用命名导出 { PgBoss }（v12 无默认导出）
 
 #### [ ] M0-H01 D1.5 auto-build 演练（人工）
 依赖：无（D1 建仓并完成首次提交后、M0 正式开跑前做；做完由人勾选）
