@@ -1,5 +1,6 @@
 // eslint-config-next exports a native flat config array in Next.js 16
 import nextConfig from 'eslint-config-next'
+import vitest from '@vitest/eslint-plugin'
 
 // Selectors that ban unsafe Prisma raw SQL helpers (apply everywhere)
 const RAW_UNSAFE_SELECTORS = [
@@ -129,6 +130,16 @@ const eslintConfig = [
     rules: {
       // Keep unsafe SQL ban, but lift PII model restrictions
       'no-restricted-syntax': ['error', ...RAW_UNSAFE_SELECTORS],
+    },
+  },
+
+  // Vitest：测试里必须有断言，且断言不能藏在条件分支里（M1-T11 复审发现过 `if (!x) return` 的空测试；运行时另有 tests/setup/assertions.ts 兜底）
+  {
+    files: ['tests/unit/**/*.ts', 'tests/integration/**/*.ts'],
+    plugins: { vitest },
+    rules: {
+      'vitest/expect-expect': 'error',
+      'vitest/no-conditional-expect': 'error',
     },
   },
 

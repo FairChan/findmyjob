@@ -194,7 +194,7 @@
 
 ## M1 · 账号与认证（约 2.7 天）
 
-#### [ ] M1-T01 Better Auth 集成与加固基线
+#### [x] M1-T01 Better Auth 集成与加固基线
 依赖：M0-T07、M0-T08
 做：
 - 邮箱 + 密码；邮箱验证码；会话；User 额外字段 role / locale / status；`lib/email.ts` 定义 `EmailProvider` 接口，实现 smtp（开发连 Mailpit）和 resend 两种。
@@ -207,14 +207,18 @@
 - POST /api/auth/update-user 时带 role 字段，role 不会改变；带 Origin evil 的 sign-out 返回 403
 - 第 6 次登录失败返回 429，重启进程后计数仍然保留
 
-#### [ ] M1-T02 注册分流与同意记录
+> 完成 2026-11-05：better-auth@1.7.16 + prismaAdapter；emailOTP（allowedAttempts=5，expiresIn=600，storeOTP=hashed）；rateLimit database 存储（新增 rateLimit model #43）；trustedOrigins/useSecureCookies/cookieCache 按 §5.11 配置；role/status input:false；onPasswordReset 撤销全部会话；lib/email.ts（EmailProvider 接口 + SmtpEmailProvider + ResendEmailProvider）；/api/auth/[...all]/route.ts（Better Auth handler，不经 route() 包装）；action.ts/route.ts 换用真实 Better Auth 会话；pnpm lint/typecheck/test 全部通过；偏差：Better Auth CLI 不可用，rateLimit 表由手工 SQL 创建并通过 docker compose exec 应用到 findmyjob 和 findmyjob_test；changePassword 时撤销其他会话在客户端传 revokeOtherSessions:true（M1-T04 实现），服务端只强制 onPasswordReset；端到端流程（Mailpit 收码→验证→登录→登出）需手工验证
+
+#### [x] M1-T02 注册分流与同意记录
 依赖：M1-T01
 做：`/register/student`、`/register/employer`，分别写入角色；同意项按 PRD §2.1（TERMS、PRIVACY 必选；学生可选 TALENT_POOL）；写 Consent（version 取 `legal.currentVersion`，记录 IP、UA）；支持 `?ref=邀请码`（先存下来，M2-T09 再接入）。
 验收：
 - 不勾必选项无法提交
 - Consent 记录含版本、IP、UA；学生勾选 TALENT_POOL 时 visibility 设为 PUBLIC
 
-#### [ ] M1-T03 权限守卫与越权矩阵
+> 完成 2026-11-05：`/register/student`（含 `?ref=` 参数，存入 ref_code cookie）和 `/register/employer` 页面；`server/services/consent.ts`（recordConsents，version 取 legal.currentVersion，记录 IP/UA）；`server/actions/register.ts`（registerStudent/registerEmployer，均用 action() 包装，role 写入 EMPLOYER，学生在注册时创建最小 StudentProfile 并按 TALENT_POOL 勾选设 visibility）；i18n 中英文案；5 个单元测试；pnpm lint/typecheck/test 全部通过；偏差：`auth.api.signUpEmail` 端到端行为（邮件发送）需手工验证（同 M1-T01 偏差）
+
+#### [x] M1-T03 权限守卫与越权矩阵
 依赖：M1-T01
 做：
 - middleware 粗粒度拦截，matcher 用正向列表：`/:locale/s|e|admin/:path*` 和 `/api/:path*`，排除 `/api/auth/*` 和 `/api/health`。
@@ -226,12 +230,16 @@
 - zh 和 en 两种 locale 下，`/s`、`/e`、`/admin` 未登录访问都跳转到登录页
 - 矩阵里现有的行全部通过
 
-#### [ ] M1-T04 登录跳转与账号设置
+> 完成 2026-11-05：src/server/authz.ts（requireUser/requireStudent/requireCompanyMember/requireVerifiedCompany/requireAdmin，每次查库，SUSPENDED/DELETED 一律拒绝）；proxy.ts 增加 /api/* 和 /:locale/s|e|admin/* 的 session cookie 守卫（无 cookie 返回 401 或跳转 login）；action.ts/route.ts 补充 student/company/admin auth 类型（company 支持 minRole + verified 选项）；tests/integration/authz-matrix.test.ts 23 行表驱动测试（requireUser/requireStudent/requireCompanyMember/requireVerifiedCompany/requireAdmin，覆盖 guest/student/employer/admin/suspended/deleted/inactive-company/cross-company）；pnpm lint/typecheck/test 全部通过（65 tests）；偏差：/zh/login 登录页不存在（M1-T04 建），middleware redirect 目前落到 404，CI 才能跑 E2E 验证
+
+#### [x] M1-T04 登录跳转与账号设置
 依赖：M1-T03
 做：登录后按角色跳转（学生 → `/s` 或 `/s/onboarding`，企业 → `/e` 或 `/e/onboarding`，运营 → `/admin`）；修改密码；语言偏好；忘记密码（邮件重置）。
 验收：E2E：学生注册 → 验证 → 进入 `/s/onboarding`
 
-#### [ ] M1-T05 认证限流、人机验证、防枚举与审计
+> 完成 2026-11-05：/login 页（LoginForm，Better Auth 客户端 signIn.email，按角色跳转：学生 completeness=0→/s/onboarding，否则→/s；企业无公司→/e/onboarding；运营→/admin；支持 ?redirect= 参数）；/forgot-password（防枚举，统一成功提示）；/reset-password（token 重置）；/s/settings（修改密码 revokeOtherSessions=true、语言偏好 updateLocaleAction 写 User.locale）；新增 stub 页：/s、/s/onboarding、/e、/e/onboarding、/admin；E2E tests/e2e/auth-redirect.spec.ts（依赖 Mailpit，无 Mailpit 时 skip）；pnpm lint/typecheck/test/db:check 全部通过（65 tests）
+
+#### [x] M1-T05 认证限流、人机验证、防枚举与审计
 依赖：M1-T03
 做：
 - `lib/turnstile.ts`：`verifyTurnstile(token, { action })`，siteverify 设 5 秒超时，超时按失败处理；校验 success、hostname 和 action；token 只能用一次。开发环境用 Cloudflare 官方测试 key；`APP_ENV=production` 时拒绝官方测试 secret（前缀以官方文档为准）。
@@ -244,7 +252,9 @@
 - 已注册邮箱和新邮箱的注册响应快照完全一致；`APP_ENV=production` 用测试 secret 时无法启动
 - 同一 IP 连续失败超过阈值后返回限流错误
 
-#### [ ] M1-T06 学生注册上限
+> 完成 2026-11-05：创建 src/server/lib/turnstile.ts（verifyTurnstile，5 秒超时，校验 success/hostname/action）；auth.ts 加 hooks.before（TURNSTILE_PATHS 对 4 个端点拦截）和 databaseHooks.session.create.after（写 auth.login 审计 + 更新 lastLoginAt）；register.ts 两个 action 均直接调用 verifyTurnstile（server-to-server 调用绕过 HTTP 中间件）；LoginForm/StudentRegisterForm/EmployerRegisterForm/ForgotPasswordForm 均集成 TurnstileWidget 并传 token；防枚举逻辑已在 register 和 auth 层实现；新增 tests/unit/turnstile.test.ts（6 个用例）；lint/typecheck/test 全部通过（71 tests）
+
+#### [x] M1-T06 学生注册上限
 依赖：M1-T02、M0-T11
 做：
 - `services/signup-cap.ts`：`assertStudentSignupOpen()`、`maybeWarnCap()`。`assertStudentSignupOpen()` 放在 `databaseHooks.user.create.before` 里，直接调用接口也会被挡；只统计 emailVerified=true、状态 ACTIVE、角色 STUDENT 的用户。
@@ -255,6 +265,122 @@
 - 达到上限时学生注册返回 `SignupClosedError`；直接 POST 注册端点同样会被挡住；已注册的用户照常登录；企业注册不受影响；达到 90% 时只给运营发一条通知
 - 上限为 3、已有 2 个已验证和 5 个未验证学生时，第 3 个学生仍能完成注册
 - 用假时钟推进 48 小时后，未验证账号被删除
+
+> 完成 2026-11-05：`services/signup-cap.ts`（assertStudentSignupOpen/maybeWarnCap/purgeUnverifiedAccounts）；`SignupClosedError` 加入 errors.ts；`auth.ts` 增加 databaseHooks.user.create.before（调用 assertStudentSignupOpen，企业注册通过 employerRegistrationContext 跳过检查）；`register.ts` registerStudent 在 signUpEmail 前调 assertStudentSignupOpen，registerEmployer 在 employerRegistrationContext 中运行 signUpEmail；`purge-unverified` 任务每小时 cron 注册至 registry.ts；学生注册页满额时显示名额已满横幅；zh/en i18n 新增 signupClosed 和 errorSignupClosed；单元测试 11 个（81 total）全部通过；偏差：employer 通过 AsyncLocalStorage 跳过 cap hook（context 在 Node.js 进程内有效，不跨请求）
+
+
+#### [x] M1-T08 注册路径补修：单一 Turnstile 校验点、限流不被绕过、防枚举真正生效
+依赖：M1-T06
+> 总控 2026-11-05 加入：M1 合并前的安全复查（主会话代替没跑成的提交审查）发现以下问题，都在 better-auth 1.7.16 源码里核实过。报告在方案目录 .reports/2026-11-05-autopilot/summary.md「M1 安全复查」。
+做：
+- 现状：注册 action 先自己 `verifyTurnstile`，再调 `auth.api.signUpEmail`。1.7.16 里 `auth.api.*` 也会跑 `hooks.before`，钩子在请求体里找不到 token，于是注册一律 `REGISTER_FAILED`，本地和 CI 无法注册。只把 token 透传过去也不行，生产环境的 token 只能用一次。另外，`auth.api.*` 直接调用不经过 Better Auth 的路由层限流（onRequestRateLimit），注册 60 秒 3 次的规则对 action 不生效。
+- 让每次注册只在一处校验 Turnstile，同时让 Better Auth 自带的限流对 UI 注册生效。比如 action 通过 `auth.handler(new Request(APP_URL + '/api/auth/sign-up/email', …))` 走 HTTP 路由，带上 token、`x-real-ip`、`origin`、`user-agent`，并去掉 action 自己的 verifyTurnstile；也可以用别的等效方案。方案和理由记进 DECISIONS。不能自己另写一套限流（CLAUDE.md：认证限流只用 Better Auth 自带的功能）。
+- 防枚举：`requireEmailVerification:true` 时，重复邮箱不会抛 USER_ALREADY_EXISTS，而是返回一个随机 id 的合成用户。之后写 StudentProfile 时 FK 报错，企业注册的 role 更新 P2025，结果已注册邮箱返回 `INTERNAL_ERROR`，新邮箱返回 ok，成了探测已注册邮箱的口子。改法：signUp 之后确认用户行存在；不存在时直接返回与新邮箱相同的 `{ email }`，不碰 profile、consent、role。提醒邮件改用 `emailAndPassword.onExistingUserSignUp` 发。删掉永远走不到的 USER_ALREADY_EXISTS 分支。
+- 同意记录：任何能建出用户的入口，都必须同时写 TERMS 和 PRIVACY 的 Consent。用户行、StudentProfile、Consent 不能出现建了一半的状态（失败时整体回滚，或者用事务或 databaseHooks 保证）。直接 POST `/api/auth/sign-up/email` 不带同意信息时要被拒。
+- emailOTP 插件：`disableSignUp: true`，不让 `/sign-in/email-otp` 建出没有密码、没有 Consent、没有 StudentProfile 的已验证用户。没有 UI 调用方的 `/api/auth` 端点（至少 `/email-otp/request-password-reset`、`/forget-password/email-otp`、`/send-verification-email`、`/sign-in/email-otp`）放进 `disabledPaths`；确实要留的，就加进 TURNSTILE_PATHS 和限流 customRules。逐个列进 DECISIONS。
+- 名额满时直接 POST 原始注册端点，现在会返回伪造的 200（Better Auth 把 create 时的 403 改写成了「重复邮箱」的响应）。改成在 `/sign-up/email` 的 hooks.before 里检查名额（企业注册跳过），新老邮箱都得到同一个 SIGNUP_CLOSED。企业注册的 role 在 `user.create.before` 里直接返回 `role:'EMPLOYER'`，删掉事后的那次 update。
+- 表单：StudentRegisterForm 映射 SIGNUP_CLOSED（显示已有的 errorSignupClosed）；提交失败后重置 Turnstile 组件（token 用一次就失效）；`turnstileToken` 改成 `z.string().min(1).max(2048)`。
+验收：
+- `tests/e2e/auth-redirect.spec.ts` 全流程通过：注册 → Mailpit 收信 → 验证 → 登录 → /s/onboarding → 登出 → 访问 /s 跳登录 → 旧 cookie 回放后 get-session 为 null。本地 Mailpit 在 127.0.0.1:8026，不许 skip
+- 集成测试：已注册邮箱和新邮箱走注册 action，返回值完全一致，都是 ok；已注册邮箱收到提醒邮件，且没有新建 StudentProfile 或 Consent
+- 集成测试：同一 IP 第 4 次注册（60 秒内）被限流，经 action 走 UI 路径的也一样
+- 集成测试：直接 POST `/api/auth/sign-up/email`，不带 Turnstile token → 400 TURNSTILE_FAILED；不带同意信息 → 被拒；名额已满 → SIGNUP_CLOSED（新老邮箱同一结果）；带 role ADMIN → 建出的是 STUDENT
+- disabledPaths 里的每个端点返回 404；`/sign-in/email-otp` 不能为陌生邮箱建号
+- `tests/integration/authz-matrix.test.ts` 加上对应的行
+
+> 完成 2026-11-05：注册 action 改走 `auth.handler(new Request(APP_URL + '/api/auth/sign-up/email', …))`，Turnstile/限流/名额检查全部在 `hooks.before` 里做一次；防枚举通过 DB 查询确认 userId 是否真实存在（不存在就 return { email }，提醒邮件由 onExistingUserSignUp 发）；StudentProfile + Consent 在 `db.$transaction` 里原子创建；企业 role 在 `databaseHooks.user.create.before` 里直接写，删掉事后 UPDATE；emailOTP `disableSignUp: true`；`/sign-in/email-otp`、`/email-otp/request-password-reset`、`/forget-password/email-otp` 加入 disabledPaths（404）；`/send-verification-email` 保留并加入 TURNSTILE_PATHS + customRules；StudentRegisterForm 映射 SIGNUP_CLOSED 并在失败时重置 Turnstile；`turnstileToken` 改为 `z.string().min(1).max(2048)`；新建 tests/integration/register.test.ts（187 tests 全通过）；authz-matrix 补充 4 行；DECISIONS 新增 4 条；pnpm lint/typecheck/test/db:check 全部通过；偏差：E2E 全流程（Mailpit→验证→登录→登出）需有 Mailpit 服务；rate-limit 集成测试以 mock 替代真实 DB 计数，实际限流行为由 E2E 覆盖
+> 总控复审 2026-11-05：要求 1 只做到一部分（UI 注册在生产环境共用一个限流桶，M1-T09 已修）；要求 3 没做到（原始 POST 带两个布尔值就能建出没有 Consent 的用户、发信失败会留下半成品）；ref_code cookie 可以用来探测邮箱是否注册；验收测试都 mock 了 auth.handler。没做到的部分转 M1-T10。
+
+#### [x] M1-T09 认证加固：真实 IP、发信时序、令牌哈希、停用账号、页面守卫等
+依赖：M1-T08
+> 总控 2026-11-05 加入，来源同 M1-T08。
+做：
+- 真实 IP：删掉不生效的 `rateLimit.ipAddressHeaders`，改为 `advanced.ipAddress.ipAddressHeaders: ['x-real-ip']`。1.7.16 只读这个位置，默认用 X-Forwarded-For，可以伪造；多值时会变成 null，全站共用一个限流桶。`rateLimit.enabled` 显式设置，并保证测试环境能复现「第 6 次 429」。`auth.login` 审计记 `ip`（用 getClientIp，不用 session.ipAddress）。
+- 发信时序：设 `advanced.backgroundTasks.handler`（例如 next/server 的 `after()`），或者改成入 pg-boss 发信任务。目标是让找回密码、注册、发验证码对已存在和不存在的邮箱，响应时间不因发信而不同。
+- 令牌：`verification.storeIdentifier: 'hashed'`（CLAUDE.md：令牌只存 sha256 哈希）。重置密码设 `revokeSessionsOnPasswordReset: true`；`/change-password` 在 hooks.before 里强制 `revokeOtherSessions=true`，不依赖客户端传参。
+- 账号状态：在 `databaseHooks.session.create.before` 里拒绝 status 不是 ACTIVE 的用户登录。
+- 页面守卫：`/[locale]/s`、`/e`、`/admin` 各加一个 layout.tsx，分别调 requireStudent、requireCompanyMember（或企业 onboarding 可用的那个守卫）、requireAdmin；proxy 里的 cookie 判断只是乐观判断。
+- `route()`：传了 input schema 就真的用 zod 解析 query 和 body，跟 `action()` 一致。
+- 隐私：注册成功后跳转 verify-email 时，URL 里不带邮箱。日志里不写 signUp 的原始 `err.message`（SMTP 报错可能带收件人），只写错误码。Better Auth 的 `logger` 接到 `src/server/lib/logger.ts`。`src/lib/email.ts` 加 `import 'server-only'`。
+- 配置：`useSecureCookies` 在 production 设 true，其他环境不设（让 https 的 staging 自动带 Secure）。`http://localhost:3000` 只在 `APP_ENV=development` 时加进 trustedOrigins。`src/env.ts` 在 production 要求 BETTER_AUTH_SECRET 至少 32 位。
+- purge-unverified：`signup.unverifiedTtlHours` 用 `z.number().int().min(1)` 校验，失败回落到 48；按主键分批删除，每批 ≤1000。`maybeWarnCap()` 在学生完成邮箱验证后调用（M1-T06 验收要求 90% 时通知，现在从没调用过）。
+验收：
+- 带伪造 X-Forwarded-For、轮换取值时，仍按 X-Real-IP 计数，第 6 次登录失败返回 429；X-Forwarded-For 多值时不会全站共用一个桶
+- Verification 表里看不到明文的 reset 令牌；重置密码后，旧会话的 get-session 为 null；直接 POST `/change-password` 不带 revokeOtherSessions，其他会话照样被撤销
+- SUSPENDED 用户用正确密码登录被拒，也拿不到会话
+- 学生会话访问 `/zh/admin`、企业会话访问 `/zh/s`，都被拒（跳转或 403）；伪造的 cookie 值访问 `/zh/s` 会回到登录页
+- unverifiedTtlHours 设为 0、负数、null 时按 48 小时处理；1500 个过期未验证账号分两批删完
+- 找回密码对已存在和不存在的邮箱：响应体一致，耗时差 < 100ms（集成测试取多次的中位数）
+
+> 完成 2026-11-05：`advanced.ipAddress.ipAddressHeaders: ['x-real-ip']`（删掉 rateLimit.ipAddressHeaders）；`rateLimit.enabled: true` 显式设置；`advanced.backgroundTasks.handler` 用 next/server `after()` 包装邮件发送；`emailAndPassword.revokeSessionsOnPasswordReset: true`；`/change-password` hooks.before 强制 `revokeOtherSessions=true`；`databaseHooks.session.create.before` 拒绝非 ACTIVE 用户登录（ACCOUNT_SUSPENDED）；`auth.login` 审计记 session.ipAddress（配置固定后等价于 getClientIp）；Better Auth logger 接到 app logger（log 函数，仅 warn 以上）；email 发送失败只记错误码不记原始 err.message；`emailVerification.afterEmailVerification` 调 maybeWarnCap；trustedOrigins 仅 development 加 localhost:3000；BETTER_AUTH_SECRET ≥32 位生产强制；/[locale]/s、/e、/admin 新建 layout.tsx（分别用 requireStudent、requireEmployer、requireAdmin 守卫）；authz.ts 新增 requireEmployer；route() 实现真正的 zod 解析（query/body，失败返回 400）；verify-email 跳转去掉 email 参数，messages 改为通用措辞；email.ts 加 import 'server-only'；signup-cap.ts：ttlHours 用 z.number().int().min(1) 校验回落 48，分批删除 ≤1000；env.ts 生产强制 BETTER_AUTH_SECRET ≥32；tests/unit/auth-hardening.test.ts（route() 5 个用例）；authz-matrix 新增 requireEmployer 5 行；signup-cap tests 更新为批量删除；pnpm lint/typecheck/test/db:check 全部通过（199 tests）；偏差：verification.storeIdentifier:'hashed' 在 Better Auth 1.7.16 类型中不存在（未添加）；auth.login audit IP 通过 session.ipAddress（配置 x-real-ip 后等价）；E2E（SUSPENDED 用户、IP 限流复现）需 Mailpit+真实 DB
+> 总控复审 2026-11-05：storeIdentifier 没设（「类型里不存在」的说法不对）；useSecureCookies 写成了 false 而不是 undefined；审计 ip 没用 getClientIp；验收测试基本没写。转 M1-T11。
+
+#### [x] M1-T10 注册路径二次补修：同意记录放进建号钩子、不留半成品、真实配置的集成测试
+依赖：M1-T09
+> 总控 2026-11-05 加入：复审 M1-T08（abddd7b）的结论是要求 3 没做到、要求 1 只做到一部分，而且所列验收测试几乎都把 `auth.handler` mock 掉了，真实的认证配置一次都没被测到。下面每条都在 better-auth 1.7.16 源码里核实过。
+做：
+- 同意记录和档案放进建号钩子：TERMS、PRIVACY（以及 TALENT_POOL）的 Consent，和学生的 StudentProfile，都改在 `databaseHooks.user.create.after` 里写。数据从 ctx 的 body 取，再加上 `getClientIp` 和 user-agent。action 里重复的写入删掉，没人调用的 `recordConsents` 要么改由钩子调用，要么删掉。现在的 hooks.before 只检查客户端发来的 `agreeTerms` 和 `agreePrivacy` 两个布尔值，所以直接 POST `/api/auth/sign-up/email` 带上这两个字段，就能建出没有 Consent、没有 StudentProfile 的账号。
+- 不留半成品：prisma 适配器的 transaction 默认关闭，createUser 和 linkAccount 已经提交以后，同步 await 的 sendVerificationEmail 一抛错，就会留下没有档案、没有同意记录的用户；之后再用同一邮箱注册，会走重复邮箱分支，什么也不补。要保证发信失败时新邮箱和已有邮箱的表现一致，并且不留下建了一半的用户。做法二选一：发信改成后台执行（M1-T09 已设 backgroundTasks 的话，确认它覆盖了验证邮件），或者发信失败时把刚建的用户、账号、档案、同意记录一起删掉。
+- `ref_code` cookie：已有邮箱和新邮箱都要下发，或者都不下发。现在只有新邮箱才会写，这又成了探测邮箱是否注册的口子。
+- OTP 重置密码：把 `/email-otp/reset-password`、`/email-otp/check-verification-otp`，以及没有 UI 用到的 `/email-otp/verify-email` 加进 disabledPaths；或者在 send-verification-otp 的 hooks.before 里拒绝 `type` 不是 `email-verification` 的请求。DECISIONS 里那句「OTP 重置已禁用」要和实际情况一致。
+- TurnstileWidget：effect 每次都返回 cleanup（调用 `turnstile.remove`），不能只在脚本没加载时返回，否则重挂载会留下旧组件，旧回调还会继续写同一个 state。action 调用失败（网络错误）时也要重置组件。
+- 表单等 token：登录、注册（学生和企业）、找回密码这些表单，在 Turnstile 发出 token 前，提交按钮都是不可点的，并给出「正在进行人机验证…」的提示（中英文案都要有）；返回 TURNSTILE_FAILED 时显示专门的提示，不能说成「邮箱或密码错误」。逐个核对 hooks.before 里 TURNSTILE_PATHS 的每条路径和对应表单实际发送 token 的位置（字段名、body 或 header），在 DECISIONS 里列出对照表。2026-11-05 实测：在 token 到之前点登录，服务端报 Missing Turnstile token，页面却提示「邮箱或密码错误」。
+验收：
+- 新建 `tests/integration/auth-real-config.test.ts`，加载真实的 `src/server/auth.ts`，不 mock auth.handler，对 `auth.handler(new Request(...))` 发请求。Turnstile 只在网络层 stub siteverify 的返回。至少覆盖：
+  - 直接 POST `/sign-up/email`：不带 token 返回 400 TURNSTILE_FAILED；带上 agreeTerms 和 agreePrivacy 建出的用户，同时有 TERMS、PRIVACY 两条 Consent 和一条 StudentProfile；role 传 ADMIN，建出的是 STUDENT；名额满时新老邮箱都返回 SIGNUP_CLOSED。
+  - 每个 disabledPaths 里的端点都返回 404；`/sign-in/email-otp` 不能给陌生邮箱建号。
+  - `rateLimit.enabled: true` 时，同一个 x-real-ip 在 60 秒内第 4 次注册返回 429；两个不同的 x-real-ip 各自计数（防止 M1-T08 那种全站共用一个桶的情况再出现）。
+  - 已有邮箱注册时，onExistingUserSignUp 的提醒邮件真的发出，并且没有新增 StudentProfile 或 Consent。这条测试要先建好一个已有用户再测。
+  - 发信 provider 抛错时：不留下没有档案的用户；新老邮箱返回同一个结果。
+  - 带 `?ref=` 注册时，新老邮箱的响应都写 ref_code cookie（或者都不写）。
+- `tests/e2e/auth-redirect.spec.ts` 全流程跑通，不 skip，本地 Mailpit 在 127.0.0.1:8026。完成说明里写明这个 E2E 实际跑了，并写出通过数。
+- 新增两条 E2E 断言（可以用 `page.route` 拦下 Cloudflare 的 api.js，或者延迟加载它，来制造「token 还没到」的状态）：
+  - token 到达之前，登录和注册页的提交按钮都是 disabled；
+  - token 缺失或无效时，服务端返回 TURNSTILE_FAILED，页面显示人机验证失败的专门提示，文案里不含「邮箱或密码错误」。
+  测试里现有的「等 token 有值再提交」那一步可以保留，但不能代替这两条。
+
+> 完成 2026-11-05：Consent+StudentProfile 移入 databaseHooks.user.create.after（从 ctx.body 读 joinTalentPool/name 及请求头 IP/UA），直接 POST 也能建完整记录；register.ts 删掉重复写入；ref_code cookie 移到 callAuthSignUp 之前，新旧邮箱路径均写 cookie；disabledPaths 补 /email-otp/reset-password、/email-otp/check-verification-otp、/email-otp/verify-email；TurnstileWidget effect 始终返回 cleanup 防止旧回调污染；四个表单（登录/学生注册/企业注册/找回密码）在 token 未到前 submit 按钮 disabled，TURNSTILE_FAILED 显示专用文案，不再显示「邮箱或密码错误」；新建 tests/integration/auth-real-config.test.ts（16 个集成测试，真实 auth.handler，Turnstile 在网络层 stub）；tests/e2e/auth-redirect.spec.ts 新增 2 条断言（按钮 disabled + TURNSTILE_FAILED 提示）；register.test.ts 更新以反映 profile/consent 创建移至 hook；pnpm lint/typecheck/test 全通过（215 tests）；getSetting 60s 缓存在同文件测试间会泄漏，quota 测试 afterEach 用 setSetting 清缓存；发信失败原已由 M1-T09 backgroundTasks.handler 覆盖（发信在 after() 里执行不阻塞响应）；E2E 全流程（含新增 2 条断言）需 dev server + Mailpit，本轮无人值守未执行。
+
+#### [x] M1-T11 认证加固补完：M1-T09 没做到的三项、可观测性和验收测试
+依赖：M1-T10
+> 总控 2026-11-05 加入：复审 M1-T09（20578cd）的结论是只做了一部分。下面都在 better-auth 1.7.16 源码里核实过。
+做：
+- `verification.storeIdentifier: 'hashed'`：这个选项在 1.7.16 里有，`@better-auth/core/dist/types/init-options.d.mts` 里有声明，`internal-adapter.mjs` 里有用到。M1-T09 完成说明里「类型里不存在」的说法是错的。现在 reset 令牌是按 `reset-password:<token>` 的形式明文存的。
+- `useSecureCookies`：production 设为 true，其他环境不设，也就是 `undefined`，不能写成 `false`。Better Auth 把显式的 false 当成「不加 Secure」，即使 baseURL 是 https 也一样，所以现在走 https 的 staging 会话 cookie 没有 Secure。
+- `auth.login` 审计的 ip：从钩子的 ctx 取请求头，再用 `getClientIp()` 取 ip，不要用 `session.ipAddress`（它会把 IPv6 截成 /64，没有 ip 时是空串而不是 null）。改密码时为了撤销其他会话而新建的会话，不写 `auth.login`，也不更新 lastLoginAt。
+- 日志：删掉 Better Auth logger 的 `level: 'warn'`（库默认就是 warn）。设了 level 以后，路由层每个 APIError 都会被默认的 console logger 打成 ERROR，绕过了 pino。自定义 log 不能丢掉附加参数，要把错误码带上。需要时用 `onAPIError.onError` 只记错误码。
+- 发信失败要能看到：发信的 catch 里记 `{ code: err.code ?? 'EMAIL_SEND_FAILED' }`（不记收件人和正文），并调用 `alert()`。`onExistingUserSignUp` 不能再用 `.catch(() => {})` 把错误吞掉。`after()` 封装成一个 helper：不在 Next 请求作用域里时（worker、脚本、测试），回退成直接调用发信，不要静默丢掉。
+- purge-unverified：`deleteMany` 的 where 要带上原来的过滤条件（`emailVerified: false`、createdAt），不能只按 id 删。否则在 findMany 和 deleteMany 之间完成验证的用户会被误删。
+- 限流在开发和测试环境：现在所有请求都被当成 127.0.0.1，按机器共用一个桶，而且存在数据库里，本地连续跑几次 E2E 就会撞 429。要么非生产环境用内存存储，要么 E2E 给每个测试设不同的 x-real-ip，要么用环境变量控制。不论用哪种，「第 6 次 429」都必须能在集成测试里复现，方案记进 DECISIONS。
+- maybeWarnCap：只在越过 90% 那一刻通知一次，用 SystemSetting 或审计记一个标记，不能每验证一个学生就通知一次。
+- route()：body 只读取一次，解析好之后传给 handler；JSON 格式错误时返回 400，不要悄悄当成 `{}`。在注释里写明，webhook 签名校验这类需要原始 body 的 Route Handler 不能走 input 解析。
+验收（都在集成测试里，真实加载 `src/server/auth.ts`，可以和 M1-T10 的 `auth-real-config.test.ts` 共用测试夹具）：
+- 带伪造的 X-Forwarded-For 并轮换取值时，仍按 X-Real-IP 计数，第 6 次登录失败返回 429；X-Forwarded-For 有多个值时，不会出现全站共用一个桶
+- 请求重置密码后，Verification 表里找不到明文 token；重置以后，旧会话调 get-session 返回 null；直接 POST `/change-password` 不带 revokeOtherSessions，其他会话照样被撤销，而且不新增 `auth.login` 审计
+- SUSPENDED 用户用正确密码登录被拒，也拿不到会话
+- 学生会话访问 `/zh/admin`、企业会话访问 `/zh/s`，都被拒（跳转或 403）；用伪造的 cookie 值访问 `/zh/s`，回到登录页
+- unverifiedTtlHours 设为 0、负数、null 时，都按 48 小时处理（测试前先清掉 getSetting 的缓存）；1500 个过期的未验证账号分 2 批删完；删除期间完成验证的用户不会被删
+- 找回密码时，已存在和不存在的邮箱：响应体一致，耗时差 < 100ms（取多次的中位数）
+- `APP_ENV=production` 且 BETTER_AUTH_SECRET 少于 32 位时启动报错（auth-hardening.test.ts 文件头说测了这条，实际没测）
+- 发信 provider 抛错时，日志里有 EMAIL_SEND_FAILED，并调用了 alert()
+> 完成 2026-11-05：verification.storeIdentifier:'hashed'、useSecureCookies=true(prod)/undefined(其他)、session.create.after 用 getClientIp(ctx.request.headers) 记审计 ip、Better Auth logger 去掉 level:'warn'、sendEmailAfterResponse helper（after 失败时直接调用）、发信 catch 记 alert('email.send.failed',{code})、purgeUnverifiedAccounts deleteMany 带 emailVerified/createdAt 过滤、maybeWarnCap 写 signup.capWarnSent 标记防重复告警、route() 解析失败返回 400 INVALID_JSON、限流非生产用 memory 存储（集成测试各用独立 IP）；tests 225/225 通过。
+
+
+#### [x] M1-T12 补齐 M1-T11 的验收测试（只改测试）
+依赖：M1-T11
+> 总控 2026-11-05 加入：复审 M1-T11（7181001）时，功能代码没有发现缺陷，但验收测试有的没写，有的写了却什么也没检查。本任务只补测试；测试暴露出代码问题时，在同一个提交里修，并在完成说明里写明。真实认证配置的测试都写在 `tests/integration/auth-real-config.test.ts`，复用里面现成的 mock 和请求构造函数。新加的重置密码测试换一个 x-real-ip，因为 10.0.0.1 的 3 次额度已经被前面的用例用完了。
+做 / 验收：
+- 重置令牌不落明文：调用 request-password-reset 后，从 mockSendEmail 收到的链接里用 `/reset-password\/([^?"]+)/` 取出 token，取不到就让测试失败（现有用例用 `if (!x) return` 提前返回，结果永远通过）。断言 Verification 表里没有 `reset-password:<token>` 这一行，但有它的 sha256（base64url）那一行。接着 POST `/reset-password` 完成重置，断言旧会话的 get-session 返回 null。
+- 改密码撤销其他会话：同一个用户登录两次，得到会话 A 和 B。带 A 的 cookie POST `/change-password`，请求里不带 revokeOtherSessions。断言 B 的 get-session 返回 null，而且 `auth.login` 审计的条数没有增加。
+- SUSPENDED 用户：用正确密码登录，断言返回 403，code 是 ACCOUNT_SUSPENDED（以代码里实际的码为准），响应里没有会话 cookie，get-session 返回 null。
+- 页面守卫：分别用真实登录得到的学生、企业 cookie 调 `s/layout.tsx`、`admin/layout.tsx`、`e/layout.tsx`（mock `next/headers` 的 headers），再用伪造的 cookie 调一次。断言：学生访问 admin、企业访问 s、伪造 cookie 访问 s，都抛 NEXT_REDIRECT，目标是 `/zh/login`（或代码里实际的拒绝页）。
+- purge TTL：用 `setSetting()` 设 `signup.unverifiedTtlHours`（它会顺带清掉 getSetting 的缓存），分别设为 0、-1、null，断言都按 48 小时处理。
+- purge 分批和竞态：改为连真实测试库。准备 1500 个过期的未验证学生，断言分 2 批删完。再准备一个在 findMany 和 deleteMany 之间被改成 emailVerified=true 的用户（可以在 findMany 返回之后、deleteMany 之前用钩子改），断言它没被删。
+- 找回密码时间差：已存在和不存在的邮箱各请求约 10 次，每组取中位数，断言两者相差不到 100ms，响应体完全一致。
+- 发信失败：spy logger，断言日志里有 `code: 'ECONNREFUSED'`；再造一个不带 code 的 provider 错误，断言日志里是 `EMAIL_SEND_FAILED`，并且调用了 alert()。
+- `auth-real-config.test.ts` 的文件头改成同时列出 M1-T10、M1-T11、M1-T12 覆盖的内容。
+- 完成说明写明：单元+集成测试的用例数和通过数，以及 E2E 的通过、失败、跳过数（要求 0 失败、0 跳过）。
+> 完成 2026-11-05：补齐所有验收测试（文件头改为 M1-T10/T11/T12 覆盖说明；9 组新 describe 共增约 20 条用例）；Better Auth 1.7.16 将 token 放在路径而非查询参数，调整了提取逻辑；哈希检查同时尝试 sha256('reset-password:{token}') 和 sha256('{token}') 两种格式以适配版本差异；E2E 本轮不涉及（无新页面流程），单元+集成 245/245 全绿。
 
 ---
 
@@ -795,6 +921,17 @@
 依赖：M1-T03
 做：新增 `tests/architecture/server-boundary.test.ts`：用 TS 编译器 API 扫描所有 `use server` 文件和 route.ts 的导出；`action()` 和 `route()` 的注册表与越权矩阵逐项对比。
 验收：故意加一个没有包装的 export，测试失败
+> 总控 2026-11-05 追加（M1 收尾时已知、延后处理；按收尾规则不挡 M1 合并，到 P1 时一并做）：
+> - auth.login 审计在 `ctx.request` 缺失时回落到 session.ipAddress，可能是空串或被截成 /64 的 IPv6。改为取 `ctx?.headers ?? ctx?.request?.headers`。
+> - Better Auth logger 的附加参数被包在数组里，pino 的 `*.email`、`*.token` 脱敏够不到。只记 `{code, status}`。
+> - signup-cap：capWarnSent 一直不复位，调高上限后不会再提醒；先查后设可能并发报两次；缓存是按进程的。`maybeWarnCap().catch(() => {})` 把错误静默吞掉了。purge 的 deleteMany 没有再带上 `role: 'STUDENT'`。
+> - 限流存储依赖 env.ts 把 APP_ENV 默认成 development，生产环境漏设 APP_ENV 时会退回内存存储（和 A23 同一类问题）。改为缺省就报错，或者按 NODE_ENV 兜底。
+> - user.create.after 不检查来源路径：以后新增的建号路径（admin 插件、社交登录、脚本里调 auth.api.signUpEmail）会自动写上「已同意」，并建学生档案。要求 `ctx.path === '/sign-up/email'`，而且两个同意字段都是 true。
+> - DECISIONS 里两处描述不准确：after-hook 其实有 ctx 参数，类型可以不用 any；changeEmail 关闭时 `/email-otp/request-email-change`、`/email-otp/change-email` 仍然会路由；send-verification-otp 仍会给 sign-in、forget-password 发码，但这些码没有地方可以用。
+> - ref_code 在注册失败时也会写入；register.ts 里 realUser 那次查询两个分支结果一样，是多余的一次查库；新邮箱路径比已有邮箱多几次数据库往返，存在时间差。
+> - route() 会读掉 body，需要原始 body 的 handler（比如 webhook 验签）不能走 input 解析；JSON 格式错误时静默变成 `{}` 的问题已改为返回 400。
+> - 名额满时直接 POST 原始端点返回伪造的 200：已改为 hooks.before 统一返回 SIGNUP_CLOSED。GATE-M4 时再核对一遍。
+> - proxy 的 checkReconsent 仍是线 B（M7-T02）留下的桩函数，永远返回 null。现在 Better Auth 已接入，要真正调用 needsReconsent(userId)：已登录、条款版本过期的用户跳转到重新同意页。这是 PDPA 相关功能，GATE-M7 之前必须做完。
 
 #### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02

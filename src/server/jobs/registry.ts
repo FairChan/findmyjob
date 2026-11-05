@@ -4,6 +4,7 @@ import type { PgBoss } from 'pg-boss'
 import type { Job } from 'pg-boss'
 import { db } from '../db'
 import { logger } from '../lib/logger'
+import { runPurgeUnverified } from './purge-unverified'
 import { pingHealthcheck } from '../lib/healthchecks'
 
 export async function registerJobs(boss: PgBoss): Promise<void> {
@@ -36,6 +37,14 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
       Sentry.captureException(err)
       throw err
     }
+  })
+
+  await boss.createQueue('purge-unverified')
+  // Run every hour to remove student accounts that have not verified their email
+  // within signup.unverifiedTtlHours (default 48h)
+  await boss.schedule('purge-unverified', '0 * * * *', {})
+  await boss.work('purge-unverified', async () => {
+    await runPurgeUnverified()
   })
 
   logger.info('jobs registered')

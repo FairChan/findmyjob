@@ -72,8 +72,9 @@ services:
   mailpit:
     image: axllent/mailpit:v1.21.5
     ports:
-      - "127.0.0.1:1025:1025"
-      - "127.0.0.1:8025:8025"
+      # 宿主机端口避开 1025/8025：本机常有别的项目的 Mailpit 占着；SMTP_URL 和 E2E 的 MAILPIT_URL 跟着用 1026/8026
+      - "127.0.0.1:1026:1025"
+      - "127.0.0.1:8026:8025"
 
 volumes:
   postgres_data:

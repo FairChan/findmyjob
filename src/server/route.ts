@@ -3,18 +3,8 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { AppError, ForbiddenError } from './errors'
 import { logger } from './lib/logger'
-
-// Stub for M0; replaced with real Better Auth session validation in M1-T01.
-async function getSessionUserId(): Promise<string | null> {
-  try {
-    const { cookies } = await import('next/headers')
-    const jar = await cookies()
-    void jar
-    return null
-  } catch {
-    return null
-  }
-}
+import type { CompanyMemberRole } from '@prisma/client'
+import type { AuthOption, CompanyAuthOpt } from './action'
 
 function getAllowedOrigin(): string | null {
   if (typeof process === 'undefined') return null
@@ -41,12 +31,56 @@ function isOriginAllowed(origin: string | null): boolean {
   return false
 }
 
-type RouteHandler = (req: Request, ctx: { userId?: string }) => Promise<Response>
+async function resolveRouteAuth(
+  auth: AuthOption,
+  req: Request,
+): Promise<{ userId?: string; companyId?: string; companyRole?: CompanyMemberRole }> {
+  if (auth === 'public') return {}
 
-export function route(opts: {
-  auth: 'public' | 'user'
-  input?: z.ZodType<unknown>
-}, handler: RouteHandler): (req: Request) => Promise<Response> {
+  const h = req.headers as unknown as Headers
+
+  if (auth === 'user') {
+    const { requireUser } = await import('./authz')
+    return await requireUser(h)
+  }
+
+  if (auth === 'student') {
+    const { requireStudent } = await import('./authz')
+    return await requireStudent(h)
+  }
+
+  if (auth === 'admin') {
+    const { requireAdmin } = await import('./authz')
+    return await requireAdmin(h)
+  }
+
+  const opt: CompanyAuthOpt =
+    auth === 'company' ? { type: 'company' } : (auth as CompanyAuthOpt)
+  const minRole: CompanyMemberRole = opt.minRole ?? 'RECRUITER'
+
+  if (opt.verified) {
+    const { requireVerifiedCompany } = await import('./authz')
+    const ctx = await requireVerifiedCompany(minRole, h)
+    return { userId: ctx.userId, companyId: ctx.companyId, companyRole: ctx.role }
+  }
+
+  const { requireCompanyMember } = await import('./authz')
+  const ctx = await requireCompanyMember(minRole, h)
+  return { userId: ctx.userId, companyId: ctx.companyId, companyRole: ctx.role }
+}
+
+type RouteHandler = (
+  req: Request,
+  ctx: { userId?: string; companyId?: string; companyRole?: CompanyMemberRole; input?: unknown },
+) => Promise<Response>
+
+export function route(
+  opts: {
+    auth: AuthOption
+    input?: z.ZodType<unknown>
+  },
+  handler: RouteHandler,
+): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
     const requestId = req.headers.get('x-request-id') ?? randomUUID()
     try {
@@ -64,23 +98,57 @@ export function route(opts: {
         }
       }
 
-      let userId: string | undefined
-
-      if (opts.auth === 'user') {
-        const id = await getSessionUserId()
-        if (!id) {
-          return new Response(JSON.stringify({ ok: false, code: 'FORBIDDEN' }), {
-            status: 403,
+      let authCtx: { userId?: string; companyId?: string; companyRole?: CompanyMemberRole }
+      try {
+        authCtx = await resolveRouteAuth(opts.auth, req)
+      } catch (err) {
+        if (err instanceof AppError) {
+          return new Response(JSON.stringify({ ok: false, code: err.code }), {
+            status: err.httpStatus,
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
             },
           })
         }
-        userId = id
+        throw err
       }
 
-      const response = await handler(req, { userId })
+      // Note: route handlers that need raw body (e.g. webhook signature verification)
+      // should not pass an input schema and read the body themselves.
+      let parsedInput: unknown = undefined
+      if (opts.input) {
+        let raw: unknown
+        if (req.method === 'GET' || req.method === 'HEAD') {
+          const url = new URL(req.url)
+          raw = Object.fromEntries(url.searchParams.entries())
+        } else {
+          try {
+            raw = await req.json()
+          } catch {
+            return new Response(JSON.stringify({ ok: false, code: 'INVALID_JSON' }), {
+              status: 400,
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'private, no-store',
+              },
+            })
+          }
+        }
+        const result = opts.input.safeParse(raw)
+        if (!result.success) {
+          return new Response(JSON.stringify({ ok: false, code: 'VALIDATION_ERROR' }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'private, no-store',
+            },
+          })
+        }
+        parsedInput = result.data
+      }
+
+      const response = await handler(req, { ...authCtx, input: parsedInput })
 
       // Ensure Cache-Control is set on the response
       if (!response.headers.has('Cache-Control')) {
@@ -104,10 +172,13 @@ export function route(opts: {
           },
         })
       }
-      logger.error({
-        requestId,
-        err: err instanceof Error ? err.message : String(err),
-      }, 'Unhandled route error')
+      logger.error(
+        {
+          requestId,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'Unhandled route error',
+      )
       return new Response(JSON.stringify({ ok: false, code: 'INTERNAL_ERROR' }), {
         status: 500,
         headers: {

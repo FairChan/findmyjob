@@ -83,6 +83,15 @@ const schema = z
         });
       }
 
+      // Require a strong auth secret in production
+      if (data.BETTER_AUTH_SECRET.length < 32) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["BETTER_AUTH_SECRET"],
+          message: "BETTER_AUTH_SECRET must be at least 32 characters in production",
+        });
+      }
+
       // Forbid Cloudflare Turnstile test secret keys (always-pass / always-fail prefixes)
       if (data.TURNSTILE_SECRET_KEY.startsWith("1x0000000000000000000000000000000")) {
         ctx.addIssue({

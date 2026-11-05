@@ -55,6 +55,12 @@ export class DecryptError extends AppError {
   }
 }
 
+export class SignupClosedError extends AppError {
+  constructor(message = 'Student registration is currently full') {
+    super(message, 'SIGNUP_CLOSED', 403)
+  }
+}
+
 export class VersionMismatchError extends AppError {
   constructor(message = 'Terms version mismatch') {
     super(message, 'VERSION_MISMATCH', 409)

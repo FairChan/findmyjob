@@ -36,10 +36,8 @@ describe('HEALTHCHECKS_* env vars — empty-string coercion', () => {
       HEALTHCHECKS_PRUNE_RATE_LIMIT: '',
     })
     expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.HEALTHCHECKS_EXAMPLE).toBeUndefined()
-      expect(result.data.HEALTHCHECKS_PRUNE_RATE_LIMIT).toBeUndefined()
-    }
+    expect(result.data?.HEALTHCHECKS_EXAMPLE).toBeUndefined()
+    expect(result.data?.HEALTHCHECKS_PRUNE_RATE_LIMIT).toBeUndefined()
   })
 
   it('invalid URL fails validation', () => {
@@ -51,16 +49,12 @@ describe('HEALTHCHECKS_* env vars — empty-string coercion', () => {
     const url = 'https://hc-ping.com/abc123'
     const result = _envSchema.safeParse({ ...BASE, HEALTHCHECKS_EXAMPLE: url })
     expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.HEALTHCHECKS_EXAMPLE).toBe(url)
-    }
+    expect(result.data?.HEALTHCHECKS_EXAMPLE).toBe(url)
   })
 
   it('undefined passes (variable absent in env)', () => {
     const result = _envSchema.safeParse({ ...BASE })
     expect(result.success).toBe(true)
-    if (result.success) {
-      expect(result.data.HEALTHCHECKS_EXAMPLE).toBeUndefined()
-    }
+    expect(result.data?.HEALTHCHECKS_EXAMPLE).toBeUndefined()
   })
 })

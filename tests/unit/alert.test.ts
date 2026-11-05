@@ -154,9 +154,7 @@ describe('beforeBreadcrumb – console category', () => {
     const result = beforeBreadcrumb(bc)
     expect(result).toBeNull()
     // double-check the sentinel never surfaces
-    if (result !== null) {
-      expect(JSON.stringify(result)).not.toContain('leak-sentinel@example.test')
-    }
+    expect(JSON.stringify(result ?? null)).not.toContain('leak-sentinel@example.test')
   })
 })
 

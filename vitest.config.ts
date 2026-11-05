@@ -13,6 +13,8 @@ export default defineConfig({
     environment: 'node',
     include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
     exclude: ['prototype/**', 'node_modules/**', '.next/**', 'tests/e2e/**'],
+    // 全局要求每条测试至少一个断言（见文件内注释）
+    setupFiles: ['tests/setup/assertions.ts'],
     // Required for integration tests that share DB state; unit tests pay a small speed cost
     fileParallelism: false,
   },
