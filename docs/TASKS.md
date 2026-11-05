@@ -662,7 +662,7 @@
 - 学生页和企业页的响应都带 noindex 和 no-store
 - 越权测试清单全部通过；`pnpm audit` 没有 high 及以上漏洞
 
-#### [ ] M7-T06 镜像、生产 Compose 与 RUNBOOK
+#### [x] M7-T06 镜像、生产 Compose 与 RUNBOOK
 依赖：M7-T04
 做：按 shipping-and-launch 检查清单加上本项目的补充项做。
 - 部署相关文件统一放在 `deploy/` 下。`deploy/Dockerfile` 用精确 tag 的 `node:24.x-bookworm-slim`，builder 和 runtime 两个阶段；用 standalone 输出，COPY 时加 `--chown`；设 `HOSTNAME=0.0.0.0`，最后一行 `USER node`。另外两个 target：migrate 带 prisma CLI；tools 带 tsx、scripts、src、prisma，运行时用 `--conditions=react-server`，这个镜像不对外推送。秘密不进 ARG、ENV、COPY。
@@ -674,6 +674,8 @@
 - 本地用 prod compose 能完整跑起来
 - 用 `docker compose config` 解析后，只有 caddy 有 ports；`docker compose run --rm app id -u` 输出 1000
 - `docker run --rm --entrypoint sh <镜像> -c 'ls -a /app'` 里看不到 .env、docs、tests、.git、prototype
+
+> 完成 2026-11-05：deploy/Dockerfile（node:24.4.0-bookworm-slim，runner + migrate + tools 三个 target，standalone 输出，HOSTNAME=0.0.0.0，USER node=UID 1000）；deploy/docker-compose.prod.yml（只 caddy 发布端口，backend 网络 internal，app+worker cap_drop ALL，内存上限，ops profile）；deploy/Caddyfile（reverse_proxy app:3000，header_up X-Real-IP，request_body max_size 11MB，命名卷）；next.config.ts 加 output:standalone；env.example 加 APP_DOMAIN；docs/RUNBOOK.md GHCR PAT 轮换节填写；docker compose config 验证只有 caddy 有 ports
 
 #### [ ] M7-T07 全流程 E2E 冒烟
 依赖：M7-T01

@@ -49,7 +49,16 @@ PII_ACTIVE_KEY_ID=v1
 
 ### GHCR PAT 轮换
 
-（M7-T06 填写：每 90 天在 GitHub 轮换一次。）
+每 90 天轮换一次（在日历上设置提醒）：
+
+1. 在 GitHub → Settings → Developer settings → Personal access tokens (fine-grained) 为 `fairchan/findmyjob` 仓库生成新 PAT，权限只选 `packages: write`，有效期 90 天。
+2. 在生产主机上更新登录凭据：
+   ```bash
+   echo "<new-token>" | docker login ghcr.io -u <github-username> --password-stdin
+   ```
+3. 验证登录成功（`docker pull ghcr.io/fairchan/findmyjob:latest` 或最新 sha）。
+4. 在密码管理器里更新 PAT 记录，注明到期日。
+5. 在 GitHub 里撤销旧 PAT。
 
 ## 备份
 （M7-T12 填写。）
