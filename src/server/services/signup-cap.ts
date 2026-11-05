@@ -1,4 +1,5 @@
 import 'server-only'
+import { z } from 'zod'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { SignupClosedError } from '../errors'
@@ -38,15 +39,26 @@ export async function maybeWarnCap(): Promise<void> {
 }
 
 export async function purgeUnverifiedAccounts(): Promise<number> {
-  const ttlHours = await getSetting<number>('signup.unverifiedTtlHours', 48)
+  const rawTtl = await getSetting<unknown>('signup.unverifiedTtlHours', 48)
+  const parsed = z.number().int().min(1).safeParse(rawTtl)
+  const ttlHours = parsed.success ? parsed.data : 48
   const cutoff = new Date(Date.now() - ttlHours * 60 * 60 * 1000)
 
-  const result = await db.user.deleteMany({
-    where: {
-      role: 'STUDENT',
-      emailVerified: false,
-      createdAt: { lt: cutoff },
-    },
-  })
-  return result.count
+  const where = {
+    role: 'STUDENT' as const,
+    emailVerified: false,
+    createdAt: { lt: cutoff },
+  }
+
+  let total = 0
+  let batchSize: number
+  do {
+    const ids = await db.user.findMany({ where, select: { id: true }, take: 1000 })
+    if (ids.length === 0) break
+    const result = await db.user.deleteMany({ where: { id: { in: ids.map((u) => u.id) } } })
+    total += result.count
+    batchSize = ids.length
+  } while (batchSize === 1000)
+
+  return total
 }

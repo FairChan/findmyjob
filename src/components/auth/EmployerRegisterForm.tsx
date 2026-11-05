@@ -48,7 +48,7 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
       })
 
       if (result.ok) {
-        router.push(`/register/verify-email?email=${encodeURIComponent(result.data.email)}`)
+        router.push('/register/verify-email')
       } else {
         // Reset Turnstile so the token can be refreshed before the next attempt.
         setTurnstileKey((k) => k + 1)

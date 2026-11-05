@@ -53,7 +53,7 @@
   },
   "verifyEmail": {
     "title": "Verify Your Email",
-    "message": "We sent a verification email to {email}. Please click the link in the email to complete your registration.",
+    "message": "We sent a verification email to your registered address. Please click the link in the email to complete your registration.",
     "hint": "Didn't receive the email? Check your spam folder, or",
     "resendLink": "resend it",
     "backToRegister": "Back to Registration"

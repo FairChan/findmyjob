@@ -1,4 +1,5 @@
 import 'server-only'
+import { after } from 'next/server'
 import { betterAuth } from 'better-auth'
 import { createAuthMiddleware, APIError } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
@@ -9,9 +10,10 @@ import { createEmailProvider } from '@/lib/email'
 import { verifyTurnstile, TurnstileError } from './lib/turnstile'
 import { logAudit } from './services/audit'
 import { getClientIp } from './lib/client-ip'
-import { assertStudentSignupOpen } from './services/signup-cap'
+import { assertStudentSignupOpen, maybeWarnCap } from './services/signup-cap'
 import { isEmployerRegistration } from './lib/employer-registration-context'
 import { SignupClosedError } from './errors'
+import { logger } from './lib/logger'
 
 const emailProvider = createEmailProvider()
 
@@ -61,10 +63,16 @@ const beforeHook = createAuthMiddleware(async (ctx) => {
       throw err
     }
   }
+
+  // --- Force revokeOtherSessions for /change-password regardless of client input ---
+  if (path === '/change-password' && typeof body === 'object' && body !== null) {
+    ;(body as Record<string, unknown>).revokeOtherSessions = true
+  }
 })
 
+// Trusted origins: APP_URL always, plus localhost only in development
 const trustedOrigins = [env.APP_URL]
-if (env.APP_ENV !== 'production') {
+if (env.APP_ENV === 'development') {
   trustedOrigins.push('http://localhost:3000')
 }
 
@@ -83,43 +91,78 @@ export const auth = betterAuth({
     '/forget-password/email-otp',
   ],
 
+  // Connect Better Auth's internal logger to the app logger (suppresses raw messages in prod)
+  logger: {
+    level: 'warn' as const,
+    log: (level: string, message: string) => {
+      if (level === 'error') {
+        logger.error({ code: 'BETTER_AUTH_ERROR' }, `[better-auth] ${message}`)
+      } else if (level === 'warn') {
+        logger.warn({}, `[better-auth] ${message}`)
+      } else {
+        logger.info({}, `[better-auth] ${message}`)
+      }
+    },
+  },
+
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
-    onPasswordReset: async ({ user }) => {
-      await db.session.deleteMany({ where: { userId: user.id } })
-    },
+    // Automatically revoke all sessions when password is reset
+    revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      await emailProvider.sendEmail({
-        to: user.email,
-        subject: 'Reset your FindMYJob password',
-        html: `<p>Click <a href="${url}">here</a> to reset your password. The link expires in 1 hour.</p>`,
-        text: `Reset your password: ${url}`,
+      after(async () => {
+        await emailProvider
+          .sendEmail({
+            to: user.email,
+            subject: 'Reset your FindMYJob password',
+            html: `<p>Click <a href="${url}">here</a> to reset your password. The link expires in 1 hour.</p>`,
+            text: `Reset your password: ${url}`,
+          })
+          .catch((err: unknown) => {
+            // Suppress SMTP error details to avoid leaking recipient email in logs
+            logger.warn({ code: 'EMAIL_SEND_FAILED' }, 'Failed to send reset-password email')
+            void err
+          })
       })
     },
     // Sends a reminder when someone tries to sign up with an already-registered email.
     onExistingUserSignUp: async ({ user }: { user: { email: string } }) => {
-      await emailProvider
-        .sendEmail({
-          to: user.email,
-          subject: 'Someone tried to register with your FindMYJob account',
-          html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${env.APP_URL}/login">log in</a> instead.</p>`,
-          text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
-        })
-        .catch(() => {
-          // Suppress send errors; anti-enum response is already returned
-        })
+      after(async () => {
+        await emailProvider
+          .sendEmail({
+            to: user.email,
+            subject: 'Someone tried to register with your FindMYJob account',
+            html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${env.APP_URL}/login">log in</a> instead.</p>`,
+            text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
+          })
+          .catch(() => {})
+      })
     },
   },
 
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
-      await emailProvider.sendEmail({
-        to: user.email,
-        subject: 'Verify your FindMYJob account',
-        html: `<p>Click <a href="${url}">here</a> to verify your email address.</p>`,
-        text: `Verify your email: ${url}`,
+      after(async () => {
+        await emailProvider
+          .sendEmail({
+            to: user.email,
+            subject: 'Verify your FindMYJob account',
+            html: `<p>Click <a href="${url}">here</a> to verify your email address.</p>`,
+            text: `Verify your email: ${url}`,
+          })
+          .catch((err: unknown) => {
+            logger.warn({ code: 'EMAIL_SEND_FAILED' }, 'Failed to send verification email')
+            void err
+          })
       })
+    },
+    // Call maybeWarnCap after a student verifies their email
+    afterEmailVerification: async (user: { id: string; name: string; email: string; emailVerified: boolean; createdAt: Date; updatedAt: Date; image?: string | null }) => {
+      const u = user as { id: string; role?: string }
+      if (u.role === 'STUDENT') {
+        await maybeWarnCap().catch(() => {})
+      }
     },
   },
 
@@ -157,13 +200,22 @@ export const auth = betterAuth({
   },
 
   advanced: {
-    // useSecureCookies: only in production
+    // useSecureCookies: only in production (staging uses https but APP_ENV=staging, not production)
     useSecureCookies: env.APP_ENV === 'production',
     // disableCSRFCheck is intentionally NOT set (CSRF protection stays enabled)
+    // ipAddress: read only from x-real-ip (set by Caddy); X-Forwarded-For can be spoofed
+    ipAddress: {
+      ipAddressHeaders: ['x-real-ip'],
+    },
+    // backgroundTasks: use next/server after() so email sending doesn't block the response
+    backgroundTasks: {
+      handler: (promise: Promise<unknown>) => { after(() => promise) },
+    },
   },
 
   rateLimit: {
-    // Database storage persists counts across restarts (DECISIONS A24)
+    // Explicitly enabled; database storage persists counts across restarts (DECISIONS A24)
+    enabled: true,
     storage: 'database',
     customRules: {
       '/sign-in/email': { window: 60, max: 5 },
@@ -172,17 +224,23 @@ export const auth = betterAuth({
       '/request-password-reset': { window: 60, max: 3 },
       '/send-verification-email': { window: 60, max: 3 },
     },
-    ipAddressHeaders: ['x-real-ip'],
   },
 
   plugins: [
     emailOTP({
       sendVerificationOTP: async ({ email, otp }) => {
-        await emailProvider.sendEmail({
-          to: email,
-          subject: 'Your FindMYJob verification code',
-          html: `<p>Your verification code is: <strong>${otp}</strong></p><p>It expires in 10 minutes.</p>`,
-          text: `Your verification code is: ${otp}. It expires in 10 minutes.`,
+        after(async () => {
+          await emailProvider
+            .sendEmail({
+              to: email,
+              subject: 'Your FindMYJob verification code',
+              html: `<p>Your verification code is: <strong>${otp}</strong></p><p>It expires in 10 minutes.</p>`,
+              text: `Your verification code is: ${otp}. It expires in 10 minutes.`,
+            })
+            .catch((err: unknown) => {
+              logger.warn({ code: 'EMAIL_SEND_FAILED' }, 'Failed to send OTP email')
+              void err
+            })
         })
       },
       expiresIn: 600,
@@ -211,8 +269,20 @@ export const auth = betterAuth({
     },
     session: {
       create: {
+        // Reject session creation for non-ACTIVE users (suspended/deleted accounts)
+        before: async (data) => {
+          const user = await db.user.findUnique({
+            where: { id: data.userId },
+            select: { status: true },
+          })
+          if (!user || user.status !== 'ACTIVE') {
+            throw new APIError('FORBIDDEN', { message: 'Account suspended', code: 'ACCOUNT_SUSPENDED' })
+          }
+        },
         after: async (session) => {
           if (!session.userId) return
+          // Use session.ipAddress which Better Auth populates from x-real-ip (via advanced.ipAddress)
+          const ip = session.ipAddress ?? undefined
           await Promise.all([
             db.user.update({
               where: { id: session.userId },
@@ -223,6 +293,7 @@ export const auth = betterAuth({
               action: 'auth.login',
               targetType: 'User',
               targetId: session.userId,
+              ip,
             }),
           ])
         },

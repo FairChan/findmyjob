@@ -71,7 +71,7 @@ async function resolveRouteAuth(
 
 type RouteHandler = (
   req: Request,
-  ctx: { userId?: string; companyId?: string; companyRole?: CompanyMemberRole },
+  ctx: { userId?: string; companyId?: string; companyRole?: CompanyMemberRole; input?: unknown },
 ) => Promise<Response>
 
 export function route(
@@ -114,7 +114,29 @@ export function route(
         throw err
       }
 
-      const response = await handler(req, authCtx)
+      let parsedInput: unknown = undefined
+      if (opts.input) {
+        let raw: unknown
+        if (req.method === 'GET' || req.method === 'HEAD') {
+          const url = new URL(req.url)
+          raw = Object.fromEntries(url.searchParams.entries())
+        } else {
+          raw = await req.json().catch(() => ({}))
+        }
+        const result = opts.input.safeParse(raw)
+        if (!result.success) {
+          return new Response(JSON.stringify({ ok: false, code: 'VALIDATION_ERROR' }), {
+            status: 400,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'private, no-store',
+            },
+          })
+        }
+        parsedInput = result.data
+      }
+
+      const response = await handler(req, { ...authCtx, input: parsedInput })
 
       // Ensure Cache-Control is set on the response
       if (!response.headers.has('Cache-Control')) {

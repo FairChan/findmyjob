@@ -21,7 +21,7 @@ vi.mock('@/server/db', async () => {
 
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer } from '../factories'
-import { requireUser, requireStudent, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
+import { requireUser, requireStudent, requireEmployer, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
 import { ForbiddenError } from '@/server/errors'
 import * as authMod from '@/server/auth'
 
@@ -45,7 +45,7 @@ function mockSession(userId: string | null) {
         role: 'STUDENT',
         locale: 'zh',
         status: 'ACTIVE',
-      },
+      } as never,
       session: {
         id: '',
         userId,
@@ -291,5 +291,45 @@ describe('registration role invariants (M1-T08)', () => {
     const { userId } = await createEmployer(testDb)
     mockSession(userId)
     await expect(requireStudent(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// requireEmployer — M1-T09 page guard for /e layout
+// ---------------------------------------------------------------------------
+
+describe('requireEmployer (M1-T09)', () => {
+  it('guest → ForbiddenError', async () => {
+    mockSession(null)
+    await expect(requireEmployer(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('active employer → pass', async () => {
+    const { userId } = await createEmployer(testDb)
+    mockSession(userId)
+    const ctx = await requireEmployer(noHeaders)
+    expect(ctx.userId).toBe(userId)
+  })
+
+  it('student → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    await expect(requireEmployer(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('suspended employer → ForbiddenError', async () => {
+    const { userId } = await createEmployer(testDb)
+    await testDb.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } })
+    mockSession(userId)
+    await expect(requireEmployer(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('employer with no company yet → pass (onboarding accessible)', async () => {
+    const user = await testDb.user.create({
+      data: { name: 'Emp No Co', email: 'emp-noco@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    mockSession(user.id)
+    const ctx = await requireEmployer(noHeaders)
+    expect(ctx.userId).toBe(user.id)
   })
 })

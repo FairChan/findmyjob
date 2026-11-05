@@ -37,6 +37,12 @@ export async function requireStudent(headers: Headers): Promise<UserCtx> {
   return { userId: user.id }
 }
 
+export async function requireEmployer(headers: Headers): Promise<UserCtx> {
+  const user = await loadActiveUser(headers)
+  if (user.role !== 'EMPLOYER') throw new ForbiddenError()
+  return { userId: user.id }
+}
+
 export async function requireCompanyMember(
   minRole: CompanyMemberRole,
   headers: Headers,

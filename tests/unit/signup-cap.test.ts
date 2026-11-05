@@ -6,6 +6,7 @@ vi.mock('@/server/db', () => ({
     user: {
       count: vi.fn(),
       deleteMany: vi.fn(),
+      findMany: vi.fn(),
     },
     systemSetting: {
       findUnique: vi.fn(),
@@ -92,31 +93,55 @@ describe('maybeWarnCap', () => {
 
 describe('purgeUnverifiedAccounts', () => {
   it('calls deleteMany with correct filters and returns count', async () => {
+    vi.mocked(db.user.findMany).mockResolvedValueOnce([{ id: '1' }, { id: '2' }, { id: '3' }, { id: '4' }, { id: '5' }] as never)
     mockDeleteMany.mockResolvedValueOnce({ count: 5 })
     const result = await purgeUnverifiedAccounts()
     expect(result).toBe(5)
     expect(mockDeleteMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({
-          role: 'STUDENT',
-          emailVerified: false,
-        }),
+        where: expect.objectContaining({ id: { in: ['1', '2', '3', '4', '5'] } }),
       }),
     )
   })
 
-  it('uses cutoff date based on unverifiedTtlHours setting', async () => {
-    mockDeleteMany.mockResolvedValueOnce({ count: 0 })
+  it('uses cutoff date based on default 48h TTL when setting is invalid', async () => {
+    // null setting → fallback to 48
+    vi.mocked(db.user.findMany).mockResolvedValueOnce([] as never)
     const before = Date.now()
     await purgeUnverifiedAccounts()
     const after = Date.now()
 
-    const call = mockDeleteMany.mock.calls[0]?.[0]
-    if (!call) throw new Error('deleteMany not called')
+    const call = vi.mocked(db.user.findMany).mock.calls[0]?.[0]
+    if (!call) throw new Error('findMany not called')
     const cutoff = (call.where as { createdAt: { lt: Date } }).createdAt.lt
-    // Default TTL is 48 hours
     const expectedMs = 48 * 60 * 60 * 1000
     expect(before - cutoff.getTime()).toBeGreaterThanOrEqual(expectedMs - 100)
     expect(after - cutoff.getTime()).toBeLessThanOrEqual(expectedMs + 100)
+  })
+
+  it('falls back to 48h when unverifiedTtlHours setting is 0 (invalid min)', async () => {
+    // Setting returns 0 → invalid (min 1), fallback to 48
+    mockFindUnique.mockResolvedValueOnce({ key: 'signup.unverifiedTtlHours', value: 0 } as never)
+    vi.mocked(db.user.findMany).mockResolvedValueOnce([] as never)
+    const before = Date.now()
+    await purgeUnverifiedAccounts()
+    const after = Date.now()
+    const call = vi.mocked(db.user.findMany).mock.calls[0]?.[0]
+    if (!call) throw new Error('findMany not called')
+    const cutoff = (call.where as { createdAt: { lt: Date } }).createdAt.lt
+    const expectedMs = 48 * 60 * 60 * 1000
+    expect(before - cutoff.getTime()).toBeGreaterThanOrEqual(expectedMs - 100)
+    expect(after - cutoff.getTime()).toBeLessThanOrEqual(expectedMs + 100)
+  })
+
+  it('stops batching after a partial batch (< 1000)', async () => {
+    // First batch: 5 results (< 1000), no second batch needed
+    vi.mocked(db.user.findMany).mockResolvedValueOnce(
+      Array.from({ length: 5 }, (_, i) => ({ id: String(i) })) as never,
+    )
+    mockDeleteMany.mockResolvedValueOnce({ count: 5 })
+    const result = await purgeUnverifiedAccounts()
+    expect(result).toBe(5)
+    expect(vi.mocked(db.user.findMany)).toHaveBeenCalledTimes(1)
   })
 })
