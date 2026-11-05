@@ -46,6 +46,7 @@
 - 用新数据卷启动后，pg_roles 里有两个非超级用户和它们的 rolconfig；`docker compose port postgres 5432` 输出 `127.0.0.1:5432`
 - roles.sql 连续执行两次都不报错；`git ls-files --eol docker/postgres` 全部是 `i/lf`
 - `APP_ENV=production` 且用 postgres 用户连库时，应用拒绝启动；`APP_ENV=ci` 加 http 能正常启动
+> 总控补修 2026-11-05：官方 minio/minio、minio/mc 已从 Docker Hub 下架，按用户确认改用 pgsty/minio、pgsty/mc（固定 tag+digest）；宿主机端口改为 9010/9011（本机 9000 被别的 MinIO 占用），env.example 的 S3_ENDPOINT 同步改为 9010。实测 minio healthy、两个桶建好、读写删通过、重复建桶不报错
 
 #### [x] M0-T03 Prisma 与种子数据
 依赖：M0-T02

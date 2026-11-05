@@ -34,7 +34,8 @@ services:
       start_period: 15s
 
   minio:
-    image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+    # 官方 minio/minio、minio/mc 已从 Docker Hub 下架（2026-11），改用 Pigsty 维护的社区分支（https://github.com/pgsty/minio），固定 digest，见 DECISIONS
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio-local}
@@ -42,8 +43,9 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "127.0.0.1:9000:9000"
-      - "127.0.0.1:9001:9001"
+      # 宿主机端口避开 9000/9001：本机常有别的 MinIO 占着；env.example 的 S3_ENDPOINT 跟着用 9010
+      - "127.0.0.1:9010:9000"
+      - "127.0.0.1:9011:9001"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
@@ -52,7 +54,7 @@ services:
       start_period: 10s
 
   minio-init:
-    image: minio/mc:RELEASE.2024-10-02T08-27-28Z
+    image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z@sha256:ce62c9053c69ce12a527a322345b5ad9f44b5f8a7b8189f82e516f2e3f30f1d8
     depends_on:
       minio:
         condition: service_healthy
