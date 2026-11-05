@@ -844,6 +844,34 @@
 做：新增 `load/k6/unlock.js`（10 个 VU 抢余额 3，以及 10 个 VU 解锁同一学生）、`upload.js`、`apply.js`；seed-load 扩到 5000 名学生、100 家企业、500 个职位。
 验收：跑完后用 SQL 核对：成功的解锁数等于 UNLOCK 账本条数，余额 ≥0
 
+#### [ ] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
+依赖：M7-T04、M7-T06、M7-T11、M7-T12、M7-T14
+做：2026-11-05 lane B 合并前的安全审查和修复核对里，评为 Medium 或 Low、按主线收尾规则延后的项（见方案目录 .reports/2026-11-05-lane-b/security-review.md，DECISIONS「lane B 收尾遗留」）。逐条修掉，或者在 DECISIONS 记为已接受风险：
+- M4-T02 serializer：
+  - 拉丁字母名在非 ASCII 字母处的边界（如 José）；
+  - 卡片上的 major 和学校名也做姓名遮蔽；
+  - 防泄漏测试改为断言整份 JSON，并补上 edu.description 哨兵的断言。
+- M7-T04 Sentry：
+  - URL 换成 onRequestError 的 routePath，并能认出含 - 和 _ 的 base64url 令牌；
+  - 浏览器端的 NEXT_PUBLIC_SENTRY_DSN、APP_TAG、ENVIRONMENT 在镜像构建时注入（Dockerfile 的 build-arg 和 CI）；
+  - worker 启动失败时先 `Sentry.close()` 再退出。
+- M7-T11 部署：
+  - rollback 带了不合法的 sha 时直接 die；
+  - 放 owner URL 的临时文件用 trap 清理；
+  - 容器里 psql 命令行中的 URL 改用 PG* 变量传入。
+- M7-T12 备份和恢复：
+  - 用 `s3api get-object --version-id` 取代 `s3 cp --version-id`；
+  - counts.json 缺表时判为失败；
+  - 备份脚本改用 PG* 变量，不再手写解析 URL；
+  - `--keep` 时失败也要删掉半成品库；
+  - restore-drill.test.sh 同时断言错误信息；
+  - 演练命令里的 URL 不放进 argv。
+- M7-T06 Caddy：日志里的 Referer 和 remote_ip 怎么处理。
+- M7-T13 RUNBOOK：去掉「companyId」「单个企业」的旧说法，SQL 模板加上 targetType 过滤。
+- M7-T02 同意：撤回如果记在别的版本号下会被忽略；版本号和正文内容的绑定（例如加内容哈希）。
+- M7-T14 止血开关：等 M4-T07 解锁、M4-T03 人才库搜索、M2-T05 上传实现时接到各自入口（这一项随那几个任务做，在这里核对）。
+验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
+
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
 
 ---
