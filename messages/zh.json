@@ -55,5 +55,71 @@
     "hint": "没有收到邮件？请检查垃圾邮件文件夹，或",
     "resendLink": "重新发送",
     "backToRegister": "返回注册"
+  },
+  "login": {
+    "title": "登录",
+    "emailLabel": "邮箱",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "密码",
+    "passwordPlaceholder": "请输入密码",
+    "forgotPassword": "忘记密码？",
+    "submit": "登录",
+    "registerHint": "还没有账号？",
+    "registerLink": "立即注册",
+    "errorInvalidCredentials": "邮箱或密码错误",
+    "errorEmailNotVerified": "邮箱尚未验证，请查收验证邮件",
+    "errorRateLimited": "登录失败次数过多，请稍后再试"
+  },
+  "forgotPassword": {
+    "title": "找回密码",
+    "description": "输入您注册时使用的邮箱，我们将发送密码重置链接。",
+    "emailLabel": "邮箱",
+    "emailPlaceholder": "you@example.com",
+    "submit": "发送重置链接",
+    "successMessage": "如果该邮箱已注册，您将收到一封密码重置邮件，请查收（包括垃圾邮件文件夹）。",
+    "backToLogin": "返回登录",
+    "errorRateLimited": "请求过于频繁，请稍后再试"
+  },
+  "resetPassword": {
+    "title": "重置密码",
+    "newPasswordLabel": "新密码",
+    "confirmPasswordLabel": "确认新密码",
+    "passwordPlaceholder": "至少 8 位",
+    "submit": "重置密码",
+    "backToLogin": "返回登录",
+    "errorPasswordMismatch": "两次输入的密码不一致",
+    "errorInvalidToken": "重置链接已失效，请重新申请",
+    "errorFailed": "重置失败，请重试",
+    "errorMissingToken": "无效的重置链接",
+    "requestNewLink": "重新申请重置链接"
+  },
+  "settings": {
+    "title": "账号设置",
+    "changePasswordTitle": "修改密码",
+    "currentPasswordLabel": "当前密码",
+    "newPasswordLabel": "新密码",
+    "confirmPasswordLabel": "确认新密码",
+    "changePasswordSubmit": "修改密码",
+    "passwordChangeSuccess": "密码已修改，其他设备上的登录已退出",
+    "errorPasswordMismatch": "两次输入的密码不一致",
+    "errorCurrentPasswordWrong": "当前密码不正确",
+    "errorChangeFailed": "修改失败，请重试",
+    "languageTitle": "语言偏好",
+    "localeChinese": "中文",
+    "localeEnglish": "English",
+    "localeSubmit": "保存",
+    "localeUpdateSuccess": "语言偏好已更新"
+  },
+  "studentDashboard": {
+    "title": "学生工作台"
+  },
+  "employerDashboard": {
+    "title": "企业工作台"
+  },
+  "adminDashboard": {
+    "title": "运营后台"
+  },
+  "onboarding": {
+    "title": "完善档案"
   }
 }

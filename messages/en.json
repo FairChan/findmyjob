@@ -55,5 +55,71 @@
     "hint": "Didn't receive the email? Check your spam folder, or",
     "resendLink": "resend it",
     "backToRegister": "Back to Registration"
+  },
+  "login": {
+    "title": "Log In",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "Enter your password",
+    "forgotPassword": "Forgot password?",
+    "submit": "Log In",
+    "registerHint": "Don't have an account?",
+    "registerLink": "Sign up",
+    "errorInvalidCredentials": "Invalid email or password",
+    "errorEmailNotVerified": "Email not verified. Please check your inbox.",
+    "errorRateLimited": "Too many failed attempts. Please try again later."
+  },
+  "forgotPassword": {
+    "title": "Forgot Password",
+    "description": "Enter the email address you registered with and we'll send you a reset link.",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "submit": "Send Reset Link",
+    "successMessage": "If that email is registered, you'll receive a password reset link shortly. Check your spam folder too.",
+    "backToLogin": "Back to Login",
+    "errorRateLimited": "Too many requests. Please try again later."
+  },
+  "resetPassword": {
+    "title": "Reset Password",
+    "newPasswordLabel": "New Password",
+    "confirmPasswordLabel": "Confirm New Password",
+    "passwordPlaceholder": "At least 8 characters",
+    "submit": "Reset Password",
+    "backToLogin": "Back to Login",
+    "errorPasswordMismatch": "Passwords do not match",
+    "errorInvalidToken": "Reset link has expired. Please request a new one.",
+    "errorFailed": "Reset failed. Please try again.",
+    "errorMissingToken": "Invalid reset link",
+    "requestNewLink": "Request a new reset link"
+  },
+  "settings": {
+    "title": "Account Settings",
+    "changePasswordTitle": "Change Password",
+    "currentPasswordLabel": "Current Password",
+    "newPasswordLabel": "New Password",
+    "confirmPasswordLabel": "Confirm New Password",
+    "changePasswordSubmit": "Change Password",
+    "passwordChangeSuccess": "Password changed. Other sessions have been signed out.",
+    "errorPasswordMismatch": "Passwords do not match",
+    "errorCurrentPasswordWrong": "Current password is incorrect",
+    "errorChangeFailed": "Failed to change password. Please try again.",
+    "languageTitle": "Language Preference",
+    "localeChinese": "中文",
+    "localeEnglish": "English",
+    "localeSubmit": "Save",
+    "localeUpdateSuccess": "Language preference updated"
+  },
+  "studentDashboard": {
+    "title": "Student Dashboard"
+  },
+  "employerDashboard": {
+    "title": "Employer Dashboard"
+  },
+  "adminDashboard": {
+    "title": "Admin Dashboard"
+  },
+  "onboarding": {
+    "title": "Complete Your Profile"
   }
 }
