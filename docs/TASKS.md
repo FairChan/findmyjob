@@ -174,7 +174,7 @@
 > 完成 2026-11-05：pg-boss@12.38.0；src/worker.ts（max=4，优雅退出 SIGINT/SIGTERM）；src/server/jobs/registry.ts（registerJobs，注册 example 任务）；src/server/jobs/boss.ts（Next.js send-only，max=2，supervise=false，schedule=false）；pnpm lint/typecheck/test 全部通过；偏差：tsx --conditions=react-server 实测可用（server-only 解析为 empty.js）；pg-boss 使用命名导出 { PgBoss }（v12 无默认导出）
 > 总控补修 2026-11-05：本机实测 `pnpm worker` 起不来，改了三处：脚本加 `--env-file-if-exists=.env`（tsx 不会自己读 .env）；两个 PgBoss 实例加 `createSchema:false`（findmyjob_app 没有库级 CREATE，CREATE SCHEMA IF NOT EXISTS 也会 42501，schema 已由 db-setup.sql 预建）；registry 先 `createQueue` 再 `work`（v12 要求）。连续启动两次都无报错；Ctrl+C 优雅退出没在 Windows 上实测
 
-#### [ ] M0-H01 D1.5 auto-build 演练（人工）
+#### [x] M0-H01 D1.5 auto-build 演练（人工）
 依赖：无（D1 建仓并完成首次提交后、M0 正式开跑前做；做完由人勾选）
 做：
 - `git switch -c milestone/M0`，然后 `AUTO_BUILD_DRY_RUN=1 ./scripts/auto-build.sh M0`。
@@ -185,6 +185,7 @@
 - 用每轮成本乘以剩余任务数，写进 DECISIONS D23：单轮 X 美元、预计总共 Y 元、上限 Z 元、谁付。超出上限就改用方式 A，或者设置 AUTO_BUILD_MODEL。
 验收：
 - 以上检查全部成立；D23 已填写
+> 完成 2026-11-05：演练由 autopilot 跑完（探针 4 项都生效；M0-T01、T02 两轮 TASK_DONE；ENABLE_STOP_REVIEW=1 被 headless-settings 压住；AskUserQuestion、brainstorming 0 次，没有 claude-mem 记忆块），记录在方案目录 .reports/2026-11-05-autopilot/summary.md。D23 由用户在对话里拍板（不设上限），总控按用户「完全接管」的指示代为勾选
 
 > M0 合并前（人工）：见文末「M0 合并前」清单。
 
