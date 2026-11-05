@@ -1,0 +1,80 @@
+services:
+  postgres:
+    image: postgres:16.6-bookworm
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - timezone=UTC
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_lock_waits=on
+    environment:
+      POSTGRES_DB: findmyjob
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres_dev}
+      POSTGRES_OWNER_PASSWORD: ${POSTGRES_OWNER_PASSWORD:-findmyjob_owner_dev}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-findmyjob_app_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/postgres/initdb.d/10-init.sh:/docker-entrypoint-initdb.d/10-init.sh:ro
+      - ./docker/postgres/roles.sql:/docker/postgres/roles.sql:ro
+      - ./docker/postgres/db-setup.sql:/docker/postgres/db-setup.sql:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "findmyjob"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  minio:
+    # 官方 minio/minio、minio/mc 已从 Docker Hub 下架（2026-11），改用 Pigsty 维护的社区分支（https://github.com/pgsty/minio），固定 digest，见 DECISIONS
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio-local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio-local-secret}
+    volumes:
+      - minio_data:/data
+    ports:
+      # 宿主机端口避开 9000/9001：本机常有别的 MinIO 占着；env.example 的 S3_ENDPOINT 跟着用 9010
+      - "127.0.0.1:9010:9000"
+      - "127.0.0.1:9011:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z@sha256:ce62c9053c69ce12a527a322345b5ad9f44b5f8a7b8189f82e516f2e3f30f1d8
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio-local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio-local-secret}
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+        mc mb --ignore-existing local/findmyjob-files &&
+        mc mb --ignore-existing local/findmyjob-backups &&
+        echo 'Buckets ready'
+      "
+
+  mailpit:
+    image: axllent/mailpit:v1.21.5
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  postgres_data:
+  minio_data:

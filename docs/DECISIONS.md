@@ -31,7 +31,7 @@
 | D20 | 收费前 RPO ≤ 1 小时的方案 | 按 E7：每小时备份（或 WAL 归档），服务器上的备份凭据没有删除权限；GATE-M8 前完成 | PITR（托管数据库） | 你 | 默认 |
 | D21 | 恢复演练在哪台机器上做 | 同区域开一台按小时计费的临时 VM（费用待查），做完就销毁，私钥只进这台临时机 | 成本不划算时在生产 VM 上做，私钥经 ssh stdin 传入，trap 结束时删除 | 你 | 默认 |
 | D22 | 账号清除时 AuditLog 里的 IP 是否匿名化 | 应用不改 AuditLog（首个迁移收回 findmyjob_app 的 UPDATE） | 律师要求时，改成列级授权 GRANT UPDATE (ip) 给 findmyjob_app | 律师 | 默认 |
-| D23 | AI 用量上限和由谁付费 | 每轮 3 美元、每次运行 30 美元（auto-build 默认值）；总上限等 M0-H01 实测后再定；试点前闸门的 LLM 扫描不超过 300 元。实测记录：单轮 X 美元（待填）、预计总共 Y 元（待填）、上限 Z 元（待定）；付款人待定 | 超上限时改用方式 A，或设 AUTO_BUILD_MODEL | 双方 | 待 M0-H01 |
+| D23 | AI 用量上限和由谁付费 | 每轮 3 美元、每次运行 30 美元（auto-build 默认值）；总上限等 M0-H01 实测后再定；试点前闸门的 LLM 扫描不超过 300 元。实测记录（2026-11-05 autopilot，claude-sonnet-4-6，订阅登录，按牌价折算）：M0 的 11 个开发任务每个平均 2.39 美元（1.03–4.56；把 T01 超预算那一轮也算上是 2.66），M0 共 29.48 美元（含探针）；M0–M7 还剩 73 个开发任务，预计约 175–195 美元。**用户 2026-11-05 在对话里拍板：不设总上限**，autopilot 用 BUDGET_USD 设成极大值、每轮上限 10 美元（防单轮失控）；付款：子进程走用户本机 claude.ai 订阅登录，上面的美元数是按牌价折算的用量，不另付 API 费 | 订阅额度用完时 autopilot 会因认证/限额失败停下，等额度恢复后重跑 | 用户 | 已定 2026-11-05 |
 | D24 | 云服务器 43.134.49.247 能否用作正式版主机 | 先只部署原型（mock 数据，noindex）。S2 查到区域和规格后由用户决定：在马来西亚区域且不低于 2 vCPU / 4GB 才作为正式版候选；否则只做演示或 staging，正式版另开马来西亚区域主机（A6、PDPA） | 复用这台主机（要先处理 root 部署和 apt 版 Caddy 占 80 端口两个冲突） | 你 | 待 S2 |
 
 ## 已定
@@ -99,6 +99,7 @@
 | 待 B8 | 不扫描上传文件里的恶意代码（A26） | 类型白名单、文件头检查、PDF 页数和加密检查、copyPages 重建、下载带 attachment | 技术负责人 | E4 之后 |
 | 待 B8 | 少于 3 个字的关键词走全表扫描 | 试点规模小；人才库翻页上限和每日上限限制总量 | 技术负责人 | 档案超过 5000 条时 |
 | 待 B8 | 开发期源码和 diff 会经过第三方 AI 中转（D12） | 只用合成数据；真实名单不进会话；LLM 扫描限定路径；全库扫描放到 E6 | 你 | GATE-M7 |
+| 待 B8 | 开发依赖里有 3 条已知公告：deepmerge-ts <8（high，经 prisma>@prisma/config）、minimatch <11.0.1（moderate，经 eslint）、deepmerge 4.3.1（low，经 shadcn CLI）。生产依赖 `pnpm audit --prod` 为 0 | 三者只处理仓库自己的配置和 lint 规则，输入可信；deepmerge-ts 的修复版是大版本，prisma 按规定锁 6.19.3；Dependabot 跟进上游修复 | 技术负责人 | GATE-M7 或 prisma 6.x 下个补丁版 |
 
 ## 备选方案清单（E8，暂不采用）
 
@@ -129,3 +130,13 @@
 
 | 日期 | 任务 | 决策 | 理由 |
 |---|---|---|---|
+| 2026-11-05 | M0-T02 | MIGRATE_DATABASE_URL 对 app/worker 进程必须设置，且应使用 findmyjob_app 凭据（与 DATABASE_URL 相同）；仅迁移进程使用 findmyjob_owner 凭据 | Prisma schema 中 directUrl = env("MIGRATE_DATABASE_URL") 在客户端初始化时就会读取，若未设置则抛错。生产环境 app.env 和 migrate.env 分开，各自配置不同用户 |
+| 2026-11-05 | M0-T04 | 新增 @faker-js/faker@10.6.0（devDep）：测试数据生成；备选：chance.js（功能较弱）。新增 @axe-core/playwright@4.10.1（devDep）：E2E 可访问性断言；备选：playwright-axe（wrapper，包裹层过深）。两者均无 install script，无需加入 allowBuilds | 确定性种子生成测试数据；axe 是业界标准 a11y 检测库 |
+| 2026-11-05 | M0-T07 | 新增 server-only（dep）：在 src/server 模块首行标记只能在 Next.js 服务端使用；备选：手写运行时检查（不如编译期保证）。无 install script，无需加入 allowBuilds | ARCHITECTURE §4 要求 src/server 只在服务端运行；vitest.config.ts 已有 shim |
+| 2026-11-05 | M0-T08 | 新增 pino@9（dep）：结构化 JSON 日志输出到 stdout，内置 redact 路径机制脱敏 PII；备选：winston（更重，配置复杂）、bunyan（维护低）。加进 serverExternalPackages 避免 Next.js webpack 打包报错。无 install script，无需加入 allowBuilds | ARCHITECTURE §5.6 要求 JSON 日志和 PII 脱敏；pino 是 Node.js 生态最快的结构化日志库 |
+| 2026-11-05 | M0-T11 | 新增 pg-boss@12.38.0（dep）：基于 PostgreSQL 的队列和定时任务；备选：BullMQ（依赖 Redis，不符合架构只用 PostgreSQL 的原则）、node-cron（无持久化）。无 install script，无需加入 allowBuilds。worker 实例 max=4；Next.js send-only 实例 max=2、supervise=false、schedule=false（pg-boss v12 ConstructorOptions 选项名） | ARCHITECTURE §2 指定使用 pg-boss；无 Redis 依赖；M0-T11 要求 M0 就启动 worker |
+| 2026-11-05 | M0-T02 | 本地对象存储镜像改为 Pigsty 维护的社区分支 `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` 和 `pgsty/mc:RELEASE.2026-10-26T00-00-00Z`，compose 里同时固定 sha256 digest；宿主机端口改为 127.0.0.1:9010（API）/9011（控制台），S3_ENDPOINT 跟着改。备选：bitnamilegacy/minio（已停更）、RustFS、SeaweedFS（S3 兼容度和建桶脚本都要重写）。用户 2026-11-05 在对话里确认用 pgsty | 官方镜像 2026-11 已从 Docker Hub 下架、quay.io 需登录；pgsty 镜像基于 UBI9 micro，自带 sh 和 curl，现有 healthcheck 和建桶脚本不用改；本机 9000 端口被其他项目的 MinIO 占用。生产对象存储按 ARCHITECTURE §7 用云厂商 S3，不受影响 |
+| 2026-11-05 | M0 合并前 | 补登记 M0 随脚手架带进来、此前没单独登记的直接依赖（都是 ARCHITECTURE §2 已选技术栈的标准配套，没有 install 脚本）：shadcn/ui 组件依赖 @radix-ui/react-dialog、@radix-ui/react-slot、class-variance-authority、clsx、tailwind-merge；React 配套 react-dom、@types/react-dom；Tailwind 4 的 tailwindcss、@tailwindcss/postcss；Next 的 ESLint 配置 eslint-config-next、@eslint/eslintrc（flat config 兼容层）；Vitest 配套 @vitejs/plugin-react、@vitest/coverage-v8、jsdom。备选：不用 shadcn 就得自己写 Dialog/Sheet（CLAUDE.md 要求弹窗只用 shadcn）；jsdom 可换 happy-dom（兼容性差一些） | 合并前清单要求新增直接依赖都在 DECISIONS 登记；版本由 pnpm-lock.yaml 锁定，minimumReleaseAge=1440 |
+| 2026-11-05 | M0 合并前 | 从本仓库删掉 `prototype/package-lock.json`，并在 .gitignore 里忽略 | M0-T01 验收要求仓库里没有 package-lock.json；本仓库的 prototype/ 只是界面参考副本（tsconfig、eslint、vitest 都排除了它），原型自己的仓库仍保留锁文件 |
+| 2026-11-05 | M0 合并前 | supply-chain-risk-auditor 结论：35 个直接依赖都没有已知公告、没有安装脚本、没有弃用或归档；clsx、class-variance-authority、server-only 只有一个发布者（周下载量都在 3300 万以上），靠锁文件 + minimumReleaseAge=1440 + 人工审 Dependabot 兜底，不换包。采集器不读 pnpm-lock.yaml，补跑 `pnpm audit`：生产 0 条，开发依赖 3 条，记进「已接受风险」。报告在方案目录 .reports/2026-11-05-supply-chain/report.md | M0 合并前清单第 2 项 |
+| 2026-11-05 | M0 合并前 | 根路径 `/` 的语言选择保持 next-intl 默认顺序：cookie（用户切换过的语言）→ 浏览器 Accept-Language → 默认 zh。E2E 改为固定浏览器语言：马来文浏览器进 /zh，英文浏览器进 /en | 规格只写「zh 默认」；关掉自动识别会连 cookie 一起失效，用户切到英文后再访问 `/` 又回中文；之后要扩展到其他国际生。原测试没固定浏览器语言，结果随机器的系统语言变化 |

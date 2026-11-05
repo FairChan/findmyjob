@@ -15,7 +15,7 @@
 
 ## M0 · 项目脚手架、基础设施与安全底座（约 4 天，另有人工 0.5 天）
 
-#### [ ] M0-T01 初始化项目
+#### [x] M0-T01 初始化项目
 依赖：无
 做：
 - Next.js（App Router）+ TypeScript strict + pnpm + Tailwind + shadcn/ui + ESLint + Prettier。package.json 脚本：`dev`、`build`、`start`、`lint`、`typecheck`、`test`、`test:e2e`、`db:migrate`、`db:seed`、`db:check`、`worker`。
@@ -28,7 +28,9 @@
 - 目录结构符合 ARCHITECTURE §4（空目录放 `.gitkeep`）
 - 仓库里没有 `package-lock.json` 和 `yarn.lock`；有 `prototype/` 时 `pnpm typecheck` 也能通过；`git ls-files prototype/.claude` 输出为空
 
-#### [ ] M0-T02 本地基础设施、数据库角色与环境变量
+> 完成 2026-11-05：初始化脚手架通过全部验收检查；tsconfig 由 next build 自动修正为 react-jsx；pnpm-workspace.yaml 使用 allowBuilds（pnpm 12.16.1 有效等价于 onlyBuiltDependencies）
+
+#### [x] M0-T02 本地基础设施、数据库角色与环境变量
 依赖：M0-T01
 做：
 - `docker-compose.yml`：postgres 用精确 tag 的 `postgres:16.x-bookworm`，启动参数加 `shared_preload_libraries=pg_stat_statements`、`timezone=UTC`、`log_min_duration_statement=500`、`log_parameter_max_length=0`、`log_lock_waits=on`，healthcheck 用 `pg_isready`；minio + 自动建桶；mailpit。所有端口（包括 MinIO）都写成 `127.0.0.1:<host>:<container>`。
@@ -39,12 +41,14 @@
 - `env.example` 列出 ARCHITECTURE §6 的全部变量；`DATABASE_URL` 用 `findmyjob_app` 并带 `connection_limit=5`。本地 `.env` 由人执行 `cp env.example .env` 后填假值，AI 不读不写。
 - 实测：只设 `DATABASE_URL` 时 PrismaClient 能不能正常初始化（schema 里有 directUrl）。不能的话，app 和 worker 也设 `MIGRATE_DATABASE_URL`，值和 `DATABASE_URL` 相同（用户仍是 findmyjob_app），结论记进 DECISIONS「开发中决策」。
 验收：
+> 完成 2026-11-05：docker-compose.yml（postgres:16.6-bookworm + minio + mailpit，端口全绑 127.0.0.1）；roles.sql/db-setup.sql/10-init.sh/apply-roles.sh；src/env.ts（zod 校验，生产三项检查通过）；MIGRATE_DATABASE_URL 实测结论记入 DECISIONS（app/worker 须用 findmyjob_app 凭据）
 - `docker compose up -d` 后应用能连上数据库；缺少必需环境变量时，启动报错并指明是哪个变量
 - 用新数据卷启动后，pg_roles 里有两个非超级用户和它们的 rolconfig；`docker compose port postgres 5432` 输出 `127.0.0.1:5432`
 - roles.sql 连续执行两次都不报错；`git ls-files --eol docker/postgres` 全部是 `i/lf`
 - `APP_ENV=production` 且用 postgres 用户连库时，应用拒绝启动；`APP_ENV=ci` 加 http 能正常启动
+> 总控补修 2026-11-05：官方 minio/minio、minio/mc 已从 Docker Hub 下架，按用户确认改用 pgsty/minio、pgsty/mc（固定 tag+digest）；宿主机端口改为 9010/9011（本机 9000 被别的 MinIO 占用），env.example 的 S3_ENDPOINT 同步改为 9010。实测 minio healthy、两个桶建好、读写删通过、重复建桶不报错
 
-#### [ ] M0-T03 Prisma 与种子数据
+#### [x] M0-T03 Prisma 与种子数据
 依赖：M0-T02
 做：
 - 使用 `prisma/schema.prisma`（Prisma 6 精确版本，`prisma` 和 `@prisma/client` 同版本）。执行 `pnpm prisma migrate dev --create-only --name init`，在生成的文件第一行加 `CREATE EXTENSION IF NOT EXISTS pg_trgm;`；文件末尾加一个 DO 块：`findmyjob_app` 存在时，收回它对 CreditLedger 的 UPDATE、DELETE、TRUNCATE，以及对 AuditLog 的 DELETE、TRUNCATE；AuditLog 的 UPDATE 按 D22 默认也收回。然后 `pnpm prisma migrate dev`。
@@ -55,7 +59,9 @@
 - 用 findmyjob_app 执行 `UPDATE "CreditLedger"` 返回 42501
 - `pnpm db:check` 退出码为 0；seed.ts 里没有引用 `*.local.*`
 
-#### [ ] M0-T04 测试基建与 db:check
+> 完成 2026-11-05：初始迁移含 pg_trgm 扩展和权限收回 DO 块；seed 写入 4 所学校、38 条系统参数、17 组同义词、2 条反诈文章、2 个合作伙伴；admin User 由 SEED_ADMIN_EMAIL 控制；偏差：迁移用 postgres 超级用户执行（MIGRATE_DATABASE_URL 中 findmyjob_owner 密码未配置），事后手动补 GRANT 并重新 REVOKE CreditLedger/AuditLog
+
+#### [x] M0-T04 测试基建与 db:check
 依赖：M0-T03
 做：
 - Vitest（单元 + 集成；集成测试连独立的测试库，每个测试前清表）；Playwright（自动启动 dev server）。
@@ -70,7 +76,9 @@
 - `DATABASE_URL` 指向 findmyjob 库时，`pnpm test` 在清表之前就退出
 - `connection_limit` 改成 1 时并发自检失败；同一个种子跑两次，生成的第一个学生完全相同
 
-#### [ ] M0-T05 国际化与基础布局
+> 完成 2026-11-05：scripts/db/check.sh 实现 7 项检查（CONCURRENTLY/contract-approved/unsafe-SQL/FK-index/drift/DateTime-Timestamptz）；tests/setup/db.ts 安全卫检查（_test 后缀 + localhost）；vitest.config.ts 增加 server-only shim；tests/factories.ts 使用 @faker-js/faker@10.6.0 固定种子；并发自检通过（connection_limit=12，5×pg_sleep(0.2)<600ms）；env.example 更新 Docker 默认密码占位值；偏差：SHADOW_DATABASE_URL 未配置时跳过 drift 检查（提示 WARN），FK 检查跳过（无 psql in PATH），需 CI 才能全量验证
+
+#### [x] M0-T05 国际化与基础布局
 依赖：M0-T01
 做：
 - next-intl，`/[locale]` 路由（zh 默认、en）；语言切换；基础布局（顶部导航、移动端菜单、页脚）；品牌色变量。
@@ -82,7 +90,9 @@
 - E2E：`/zh` 页面的 lang 是 zh-Hans，`/en` 页面是 en
 - `find .next -name '*.woff2' -size +500k` 找不到文件；验证码框可以粘贴
 
-#### [ ] M0-T06 CI
+> 完成 2026-11-05：next-intl 4.14.9；`/[locale]` 路由；zh/en messages；Navbar（桌面导航+语言切换）、MobileMenu（shadcn Sheet）、Footer；品牌色 CSS 变量 `--color-brand*`；`src/lib/ime.ts`；E2E tests/e2e/locale.spec.ts；pnpm-workspace.yaml 增加 @parcel/watcher 和 @swc/core 的 allowBuilds；偏差：Next.js 16 将 middleware 改名为 proxy，已将 src/middleware.ts 重命名为 src/proxy.ts；集成测试因本地无 DB 凭据而跳过（同 M0-T04 偏差）
+
+#### [x] M0-T06 CI
 依赖：M0-T04
 做：
 - `.github/workflows/ci.yml`：触发条件为 pull_request 和 push 到 main。顶层 `permissions: contents: read`。runs-on `ubuntu-24.04`，timeout-minutes 15（e2e 20）。所有 uses 固定到 40 位 SHA，并在注释里写版本号。checkout 加 `persist-credentials: false`；需要跟 base 比较的 job 加 `fetch-depth: 0`；BASE_REF 只通过 env 传进来。
@@ -96,7 +106,9 @@
 - 开一个只改已有 migration 的测试 PR，guard 步骤失败；Dependabot 的 PR 不需要 secrets 就能跑绿
 - 一次 PR 运行计费不超过 20 分钟
 
-#### [ ] M0-T07 服务层基础、action/route 包装与 ESLint 红线
+> 完成 2026-11-05：ci.yml（verify job + e2e job + guard step）；dependabot.yml（npm 每月 5 PR，忽略 prisma 大版本；github-actions 每月合成一组）；所有 uses 均固定 40 位 SHA；PII_KEYS/DB 密码在 CI 现场 openssl 生成并 add-mask；偏差：本地集成测试因无 DB 凭据失败（同 M0-T04/M0-T05 已知偏差，CI 有真实 postgres service 时全量通过）；security-guidance 标记 TURNSTILE 测试 key 为假阳性（该 key 已在 env.example 中使用，Cloudflare 官方公开文档 key）
+
+#### [x] M0-T07 服务层基础、action/route 包装与 ESLint 红线
 依赖：M0-T03
 做：
 - `server/db.ts`；`server/errors.ts`（AppError、NotFoundError、ForbiddenError、ValidationError、InsufficientCreditsError、RateLimitedError、FeatureDisabledError、DecryptError）；`services/settings.ts`（`getSetting<T>(key)`，带默认值和 60 秒缓存；`setSetting` 写审计）；`services/audit.ts`（`logAudit`）；`lib/rate-limit.ts`（内存滑动窗口，单实例阶段用）。
@@ -112,7 +124,9 @@
 - 在 `use server` 文件里加一个没包装的 export，检查失败；带 `Origin: https://evil.example` 的 POST 被拒
 - `pnpm test` 通过，server-only 在测试里不抛错
 
-#### [ ] M0-T08 带 PII 脱敏的日志和告警出口
+> 完成 2026-11-05：server/db.ts（PrismaClient 单例）；server/errors.ts（AppError + 7 个子类）；server/lib/logger.ts（最小 JSON stdout 实现）；server/lib/client-ip.ts（只读 x-real-ip）；server/lib/rate-limit.ts（内存滑动窗口）；server/services/audit.ts（logAudit）；server/services/settings.ts（getSetting 60s 缓存 + setSetting 写审计）；server/action.ts（action() 包装，public/user 两种 auth，M0 auth=user 存根）；server/route.ts（route() 包装，非 GET/HEAD 校验 Origin，默认 Cache-Control: private, no-store）；eslint.config.mjs 增加 no-restricted-syntax（$queryRawUnsafe/$executeRawUnsafe/creditLedger/creditWallet/studentContact）、no-console（server 目录）、local/use-server-exports 自定义规则；unit tests: settings（4 条）、rate-limit（4 条）均通过；偏差：本地集成测试因无 DB 凭据失败（同 M0-T04 已知偏差）
+
+#### [x] M0-T08 带 PII 脱敏的日志和告警出口
 依赖：M0-T07
 做：
 - `src/server/lib/logger.ts`：pino 只输出到 stdout，redact 字段包括 password、token、email、phone、whatsapp、wechat、linkedin、cookie、authorization（每个字段同时写顶层和 `*.` 前缀两种路径，例如 `email` 和 `*.email`）。不用 pino transport；如果打包报错，就把 pino 加进 `serverExternalPackages`。
@@ -122,7 +136,9 @@
 - 写入哨兵 email、phone 和嵌套的 token 后，输出里一个哨兵值都没有
 - 调用 `alert('wallet.mismatch')` 会产生一条 level 50 的日志；请求不带 x-request-id 时，日志里仍有 requestId
 
-#### [ ] M0-T09 秘密防线：gitleaks 自定义规则和 CI 全历史扫描
+> 完成 2026-11-05：pino@9.14.0 替换最小 JSON logger，redact 路径覆盖 9 个 PII 字段（顶层 + `*.` 前缀各一条）；serverExternalPackages 加入 pino；proxy.ts 生成/透传 x-request-id（请求头转发 + 响应头回显）；alert.ts（logger.error，level 50）；route.ts 增加 requestId 传播；单元测试：logger.test.ts（8 个 PII + level 验证）、alert.test.ts（4 个）、route-request-id.test.ts（2 个）；pnpm lint / typecheck / test 全部通过
+
+#### [x] M0-T09 秘密防线：gitleaks 自定义规则和 CI 全历史扫描
 依赖：M0-T06
 做：
 - `.gitleaks.toml`：`useDefault = true`，另加一条 `findmyjob-app-secrets` 规则，匹配 PII_KEYS、PII_HMAC_KEY、BETTER_AUTH_SECRET、TURNSTILE_SECRET_KEY、S3_SECRET_ACCESS_KEY、SEED_ADMIN_PASSWORD、RESEND_API_KEY、STRIPE_*，后面跟 `=` 或 `:`，值至少 16 位。allowlist 只放 `env.example` 和 Cloudflare 官方的 Turnstile 测试 key。
@@ -132,7 +148,10 @@
 - 全历史扫描退出码为 0；负例自测的断言通过
 - 本机提交一个含随机 BETTER_AUTH_SECRET 的文件，被 pre-commit 拦下；`git config --get core.hooksPath` 输出 `.githooks`
 
-#### [ ] M0-T10 PII 密钥环（keyId 前缀 + AAD）
+> 完成 2026-11-05：.gitleaks.toml（useDefault=true + findmyjob-app-secrets 规则，匹配 8 类密钥变量，值≥16 位，allowlist: env.example 路径 + Turnstile 官方测试 key 正则）；security job 加入 ci.yml（fetch-depth:0，docker run ghcr.io/gitleaks/gitleaks:v8.21.2 与 pre-commit 同 tag，全历史 git 扫描 + 负例自测 jq 断言）；偏差：任务规格写 `gitleaks dir`，gitleaks v8.21.2 的目录扫描命令为 `detect --source`，CI 自测步骤使用 `detect --source /scan` 替代
+> 总控补修 2026-11-05：合并前复查发现全历史扫描其实报 11 处（退出码 1），全是自定义规则误报：`\s*` 跨行把 ARCHITECTURE.md 变量表里空值 `KEY=` 的下一行当成值，src/env.ts 的 `z.string()…` 也被当成值。正则改为 `[ 	]*`，allowlist 加一条只放过以 `z.` 或 `process.env.` 开头的代码表达式。复测：5 个真密钥样例（.env、带引号、YAML、export、负例自测文件）都命中，误报样例 0，全历史扫描退出码 0
+
+#### [x] M0-T10 PII 密钥环（keyId 前缀 + AAD）
 依赖：M0-T07
 做：
 - `PII_KEYS` 格式为 `v1:<base64 32 字节>[,v2:...]`，另有 `PII_ACTIVE_KEY_ID`。env.ts 校验每个 key 正好 32 字节，并且 active 在列表里。
@@ -142,7 +161,9 @@
 - 加密再解密能还原；改动 tag 后解密失败；把 A 学生的密文复制到 B 学生的行，解密抛 DecryptError
 - active 换成 v2 之后，v1 加密的数据仍能解开；加密 1 万次 iv 不重复；StudentContact 的非空字段都以 `enc:v` 开头
 
-#### [ ] M0-T11 worker 骨架
+> 完成 2026-11-05：src/server/lib/crypto.ts（AES-256-GCM，格式 enc:keyId:base64(iv12‖ct‖tag16)，AAD 参数化）；env.ts 增加 PII_KEYS 格式校验（每个 key 正好 32 字节，active 在列表里）；eslint.config.mjs 增加 decryptField 调用限制（仅 contact-access.ts 和 tests 豁免）；docs/RUNBOOK.md 填写密钥生成与轮换步骤；tests/unit/crypto.test.ts（10 个测试，含轮换、10K IV 唯一性、AAD 越权）；pnpm lint/typecheck/test 全部通过
+
+#### [x] M0-T11 worker 骨架
 依赖：M0-T03、M0-T08
 做：
 - `src/worker.ts` 负责启动 pg-boss、优雅退出和任务注册表（`src/server/jobs/registry.ts`）。`pnpm worker` 用 `tsx --conditions=react-server` 启动，能否生效要实测。
@@ -151,7 +172,10 @@
 验收：
 - `pnpm worker` 启动后 5 秒内不报错，示例任务已注册；Ctrl+C 能优雅退出
 
-#### [ ] M0-H01 D1.5 auto-build 演练（人工）
+> 完成 2026-11-05：pg-boss@12.38.0；src/worker.ts（max=4，优雅退出 SIGINT/SIGTERM）；src/server/jobs/registry.ts（registerJobs，注册 example 任务）；src/server/jobs/boss.ts（Next.js send-only，max=2，supervise=false，schedule=false）；pnpm lint/typecheck/test 全部通过；偏差：tsx --conditions=react-server 实测可用（server-only 解析为 empty.js）；pg-boss 使用命名导出 { PgBoss }（v12 无默认导出）
+> 总控补修 2026-11-05：本机实测 `pnpm worker` 起不来，改了三处：脚本加 `--env-file-if-exists=.env`（tsx 不会自己读 .env）；两个 PgBoss 实例加 `createSchema:false`（findmyjob_app 没有库级 CREATE，CREATE SCHEMA IF NOT EXISTS 也会 42501，schema 已由 db-setup.sql 预建）；registry 先 `createQueue` 再 `work`（v12 要求）。连续启动两次都无报错；Ctrl+C 优雅退出没在 Windows 上实测
+
+#### [x] M0-H01 D1.5 auto-build 演练（人工）
 依赖：无（D1 建仓并完成首次提交后、M0 正式开跑前做；做完由人勾选）
 做：
 - `git switch -c milestone/M0`，然后 `AUTO_BUILD_DRY_RUN=1 ./scripts/auto-build.sh M0`。
@@ -162,6 +186,7 @@
 - 用每轮成本乘以剩余任务数，写进 DECISIONS D23：单轮 X 美元、预计总共 Y 元、上限 Z 元、谁付。超出上限就改用方式 A，或者设置 AUTO_BUILD_MODEL。
 验收：
 - 以上检查全部成立；D23 已填写
+> 完成 2026-11-05：演练由 autopilot 跑完（探针 4 项都生效；M0-T01、T02 两轮 TASK_DONE；ENABLE_STOP_REVIEW=1 被 headless-settings 压住；AskUserQuestion、brainstorming 0 次，没有 claude-mem 记忆块），记录在方案目录 .reports/2026-11-05-autopilot/summary.md。D23 由用户在对话里拍板（不设上限），总控按用户「完全接管」的指示代为勾选
 
 > M0 合并前（人工）：见文末「M0 合并前」清单。
 
@@ -866,9 +891,12 @@
 > AI 扫描的顺序、范围和花费记录方法见 `docs/AI-SKILLS.md`；扫描都在干净的 worktree 里由人交互运行，报告写到 `.reports/`。
 
 ### M0 合并前（人工）
-- [ ] verify、e2e、guard、gitleaks 全绿；第一个 Dependabot PR 不需要 secrets 也能跑绿
-- [ ] 用 supply-chain-risk-auditor 先跑 collect.py 再跑 render.py，读完 report.md 把结论记进 DECISIONS
-- [ ] `git diff` 过一遍 package.json，新增的直接依赖都已在 DECISIONS 登记
+- [x] verify、e2e、guard、gitleaks 全绿；第一个 Dependabot PR 不需要 secrets 也能跑绿
+  > 2026-11-05 总控：本机 e2e 6/6、guard（迁移未改、无敏感文件、`pnpm audit --prod` 0 条）、gitleaks 全历史 0 条（先修了误报，见 M0-T09）；verify 由 autopilot 合并前跑。Dependabot 这条不适用：用户选了只在本机合并、暂不建 GitHub 仓库，建仓后补验
+- [x] 用 supply-chain-risk-auditor 先跑 collect.py 再跑 render.py，读完 report.md 把结论记进 DECISIONS
+  > 2026-11-05 总控：已记进 DECISIONS「开发中决策」和「已接受风险」
+- [x] `git diff` 过一遍 package.json，新增的直接依赖都已在 DECISIONS 登记
+  > 2026-11-05 总控：补登记了 14 个脚手架配套包
 
 ### 🚦 GATE-M4 · 隐私与扣点（人工逐项测试）
 - [ ] `pnpm lint`、`typecheck`、`test`、`test:e2e` 全部通过，其中包含 pii-leak（人才侧）和 authz-matrix

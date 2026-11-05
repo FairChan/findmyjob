@@ -1,0 +1,27 @@
+{
+  "nav": {
+    "skipToMain": "Skip to main content",
+    "home": "Home",
+    "jobs": "Jobs",
+    "companies": "Companies",
+    "login": "Login",
+    "register": "Sign Up",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu"
+  },
+  "localeSwitcher": {
+    "label": "Switch language",
+    "zh": "中文",
+    "en": "English"
+  },
+  "footer": {
+    "copyright": "© {year} FindMYJob. All rights reserved.",
+    "tagline": "Helping international students in Malaysia find their ideal internships and jobs"
+  },
+  "home": {
+    "title": "FindMYJob",
+    "subtitle": "Helping international students in Malaysia find their ideal internships and jobs",
+    "ctaJobs": "Browse Jobs",
+    "ctaRegister": "Register Free"
+  }
+}

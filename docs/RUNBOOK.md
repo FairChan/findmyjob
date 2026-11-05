@@ -20,7 +20,36 @@
 （M7-T11 填写：P3009、INVALID 索引的处理步骤。）
 
 ## 密钥生成与轮换
-（M0-T10、M7-T06 填写：PII_KEYS 生成命令；轮换时旧密钥保留到含旧密文的备份全部过期（30 天）；GHCR PAT 90 天轮换。）
+
+### 生成新 PII 密钥
+
+```bash
+# 生成 32 字节随机密钥并输出 base64（作为 PII_KEYS 的值部分）
+openssl rand -base64 32
+```
+
+初始配置示例（单密钥）：
+```
+PII_KEYS=v1:<openssl rand -base64 32 的输出>
+PII_ACTIVE_KEY_ID=v1
+```
+
+### 密钥轮换步骤
+
+1. 生成新密钥：`openssl rand -base64 32`
+2. 将新密钥作为 v2（或下一个 ID）加入 PII_KEYS（用实际 base64 值替换 KEY1/KEY2）：
+   ```
+   PII_KEYS=v1:KEY1,v2:KEY2
+   PII_ACTIVE_KEY_ID=v2
+   ```
+3. 重启 app 和 worker 使新配置生效；新写入的 StudentContact 字段将以 `enc:v2:` 开头。
+4. 运行回填脚本 `scripts/backfill/reencrypt-contacts.ts` 将现有字段重新加密为 v2。
+5. **旧密钥（v1）必须保留在 PII_KEYS 中，直到所有含 v1 密文的备份全部过期（30 天）。**
+6. 30 天后，从 PII_KEYS 中删除 v1 条目，重启服务。
+
+### GHCR PAT 轮换
+
+（M7-T06 填写：每 90 天在 GitHub 轮换一次。）
 
 ## 备份
 （M7-T12 填写。）

@@ -30,7 +30,11 @@ security_best_practices_report*.md
 /*-threat-model.md
 *.sarif
 
+# TypeScript 增量构建缓存
+tsconfig.tsbuildinfo
+
 # Claude Code 本地设置
 .claude/settings.local.json
 .claude/*.local.*
 prototype/.claude/
+prototype/package-lock.json

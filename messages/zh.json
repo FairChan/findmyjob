@@ -1,0 +1,27 @@
+{
+  "nav": {
+    "skipToMain": "跳到主要内容",
+    "home": "首页",
+    "jobs": "职位",
+    "companies": "企业",
+    "login": "登录",
+    "register": "注册",
+    "openMenu": "打开菜单",
+    "closeMenu": "关闭菜单"
+  },
+  "localeSwitcher": {
+    "label": "切换语言",
+    "zh": "中文",
+    "en": "English"
+  },
+  "footer": {
+    "copyright": "© {year} FindMYJob. 保留所有权利。",
+    "tagline": "助力在马来西亚的留学生找到理想实习和工作"
+  },
+  "home": {
+    "title": "FindMYJob",
+    "subtitle": "助力在马来西亚的留学生找到理想实习和工作",
+    "ctaJobs": "浏览职位",
+    "ctaRegister": "免费注册"
+  }
+}
