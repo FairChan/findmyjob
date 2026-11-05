@@ -35,6 +35,7 @@
     "reconsentSubmit": "Confirm and Continue",
     "reconsentRequired": "Please check the box to continue",
     "reconsentSuccess": "Thank you for confirming",
+    "reconsentVersionMismatch": "The terms have been updated. Please refresh the page and read again.",
     "lastUpdated": "Last updated: {version}",
     "backToHome": "Back to Home"
   }

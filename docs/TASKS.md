@@ -630,6 +630,7 @@
 做：`/legal/privacy`、`/legal/terms`（中 / 英模板，页首标注「草案，待律师审阅」；隐私政策披露 SUBPROCESSORS 里的子处理者和跨境传输）；`legal.currentVersion` 变化后，用户下次登录须重新同意。
 验收：版本升级后，旧用户登录被引导到重新同意页
 > 完成 2026-11-05：/legal/privacy 和 /legal/terms 页（中英各一，服务端读 src/content/legal/*.md，react-markdown+remark-gfm 渲染）；/legal/reconsent 重同意页（Server Action + 客户端表单）；services/legal-consent.ts（needsReconsent、recordLegalConsent）；proxy.ts 加 checkReconsent 钩子（M1-T04 接入真实 session 后激活）；unit tests 7 个；lint/typecheck/test 全部通过。偏差：页首草案横幅来自内容文件自带的 blockquote，无需额外渲染；重同意重定向需 M1-T04 完成后才可端到端验证
+> 修复 2026-11-05：needsReconsent 移除 granted:true 过滤，取最新记录后判断 granted===true（修复撤回后仍返回不需重同意的 bug）；page 读取 currentVersion 传入表单，action schema 增加 version 字段，recordLegalConsent 比较 submittedVersion 与当前版本不符时抛 VersionMismatchError；版本号与正文绑定留 GATE-M7 前人工决定
 
 #### [ ] M7-T03 数据权利
 依赖：M6-T01

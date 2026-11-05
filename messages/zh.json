@@ -35,6 +35,7 @@
     "reconsentSubmit": "确认同意，继续使用",
     "reconsentRequired": "请勾选同意后继续",
     "reconsentSuccess": "感谢您的确认",
+    "reconsentVersionMismatch": "条款已更新，请刷新页面后重新阅读",
     "lastUpdated": "最后更新：{version}",
     "backToHome": "返回首页"
   }

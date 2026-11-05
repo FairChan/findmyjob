@@ -5,6 +5,7 @@ import { submitReconsentAction } from './actions'
 
 interface ReconsentFormProps {
   locale: string
+  version: string
   messages: {
     reconsentAgree: string
     reconsentSubmit: string
@@ -12,10 +13,11 @@ interface ReconsentFormProps {
     reconsentViewPrivacy: string
     reconsentViewTerms: string
     reconsentSuccess: string
+    reconsentVersionMismatch: string
   }
 }
 
-export default function ReconsentForm({ locale, messages }: ReconsentFormProps) {
+export default function ReconsentForm({ locale, version, messages }: ReconsentFormProps) {
   const router = useRouter()
   const [agreed, setAgreed] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -30,7 +32,7 @@ export default function ReconsentForm({ locale, messages }: ReconsentFormProps) 
     }
     setError(null)
     startTransition(async () => {
-      const result = await submitReconsentAction({ agreed: true })
+      const result = await submitReconsentAction({ agreed: true, version })
       if (result.ok) {
         setDone(true)
         // M1-T04 will replace this with a redirect to the original destination.
@@ -38,7 +40,11 @@ export default function ReconsentForm({ locale, messages }: ReconsentFormProps) 
           router.push(`/${locale}`)
         }, 1500)
       } else {
-        setError(result.code)
+        setError(
+          result.code === 'VERSION_MISMATCH'
+            ? messages.reconsentVersionMismatch
+            : result.code,
+        )
       }
     })
   }
