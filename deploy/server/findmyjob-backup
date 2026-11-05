@@ -16,6 +16,22 @@ set -euo pipefail
 BACKUP_S3_REGION="${BACKUP_S3_REGION:-ap-southeast-5}"
 BACKUP_MODE="${BACKUP_MODE:-daily}"   # daily | pre-migrate
 
+# Split BACKUP_DATABASE_URL into individual PG env vars so credentials are not
+# visible on the pg_dump / psql command line (exposed via `ps` or `docker inspect`).
+# The password must not contain '@'; use %40 if needed.
+_pg="${BACKUP_DATABASE_URL#postgresql://}"
+_pg="${_pg#postgres://}"
+export PGUSER="${_pg%%:*}"
+_pg="${_pg#*:}"
+export PGPASSWORD="${_pg%%@*}"
+_pg="${_pg#*@}"
+export PGHOST="${_pg%%:*}"
+_pg="${_pg#*:}"
+export PGPORT="${_pg%%/*}"
+export PGDATABASE="${_pg#*/}"
+export PGDATABASE="${PGDATABASE%%\?*}"
+unset _pg BACKUP_DATABASE_URL
+
 TIMESTAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 TMP_DUMP="/backup-tmp/${TIMESTAMP}.dump.age"
 TMP_COUNTS="/backup-tmp/${TIMESTAMP}.counts.json"
@@ -27,15 +43,18 @@ trap cleanup EXIT
 
 if [ "$BACKUP_MODE" = "pre-migrate" ]; then
   S3_DUMP_KEY="db/pre-migrate/${TIMESTAMP}.dump.age"
+  S3_COUNTS_KEY="db/pre-migrate/${TIMESTAMP}.counts.json"
 else
   S3_DUMP_KEY="db/daily/${TIMESTAMP}.dump.age"
+  S3_COUNTS_KEY="db/daily/${TIMESTAMP}.counts.json"
 fi
 
 echo "[backup] $(date -u +%Y-%m-%dT%H:%M:%SZ) starting backup (mode: ${BACKUP_MODE})"
 
 # ── 1. pg_dump piped to age encryption ────────────────────────────────────────
+# PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE are now set above; no URL on argv.
 # pipefail (already on) means the whole pipeline fails if either command fails.
-pg_dump -Fc --exclude-schema=pgboss "$BACKUP_DATABASE_URL" \
+pg_dump -Fc --exclude-schema=pgboss \
   | age -r "$AGE_PUBLIC_KEY" \
   > "$TMP_DUMP"
 
@@ -49,7 +68,8 @@ fi
 echo "[backup] encrypted dump: $(du -sh "$TMP_DUMP" | cut -f1)"
 
 # ── 2. counts.json — key-table row counts (not sensitive, plain JSON) ─────────
-psql "$BACKUP_DATABASE_URL" -t -A -c "
+# PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE already in env; no URL on argv.
+psql -t -A -c "
 SELECT json_build_object(
   'timestamp',      to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'),
   'User',           (SELECT count(*)::int FROM \"User\"),
@@ -77,9 +97,9 @@ export AWS_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY"
 aws s3 cp "${S3_ARGS[@]}" "$TMP_DUMP" "s3://${BACKUP_S3_BUCKET}/${S3_DUMP_KEY}"
 echo "[backup] uploaded: s3://${BACKUP_S3_BUCKET}/${S3_DUMP_KEY}"
 
-# Overwrite the shared counts.json
-aws s3 cp "${S3_ARGS[@]}" "$TMP_COUNTS" "s3://${BACKUP_S3_BUCKET}/db/counts.json"
-echo "[backup] uploaded: s3://${BACKUP_S3_BUCKET}/db/counts.json"
+# Per-dump counts.json (same prefix as dump key; no shared file to overwrite)
+aws s3 cp "${S3_ARGS[@]}" "$TMP_COUNTS" "s3://${BACKUP_S3_BUCKET}/${S3_COUNTS_KEY}"
+echo "[backup] uploaded: s3://${BACKUP_S3_BUCKET}/${S3_COUNTS_KEY}"
 
 # ── 4. healthchecks dead-man's ping ───────────────────────────────────────────
 curl -fsS --max-time 10 --retry 3 "${HEALTHCHECKS_BACKUP_URL}" > /dev/null

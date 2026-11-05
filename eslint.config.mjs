@@ -123,8 +123,8 @@ const eslintConfig = [
       'prisma/seed-load.ts',
       'tests/**/*.ts',
       'tests/**/*.spec.ts',
-      // Maintenance scripts may read encrypted fields directly for drill/verification purposes
-      'scripts/db/**/*.ts',
+      // restore-drill verification reads encrypted fields directly
+      'scripts/db/verify-decrypt.ts',
     ],
     rules: {
       // Keep unsafe SQL ban, but lift PII model restrictions

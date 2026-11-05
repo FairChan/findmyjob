@@ -726,6 +726,7 @@
 - 把口令故意改错再跑：脚本以非 0 退出，healthchecks 收不到 ping，也没有生成新对象；restore-drill.sh 对名为 findmyjob 的库直接拒绝
 
 > 完成 2026-11-05：deploy/server/findmyjob-backup（set -euo pipefail，pg_dump|age→/backup-tmp，pipefail 检查，S3 PutObject，healthchecks curl，trap 清理）；deploy/server/findmyjob-cron（19:15 UTC，/etc/cron.d/findmyjob）；deploy/Dockerfile 新增 backup stage（postgres:16.6-bookworm + age + awscli）；docker-compose.prod.yml backup 服务改用 findmyjob-backup 镜像；scripts/db/restore-drill.sh（_drill 校验、stdin 私钥 shred 清除、pg_restore、6 项检查、Session 清空、RTO 输出）；scripts/db/verify-decrypt.ts（自包含解密验证，掩码输出）；RUNBOOK 备份/恢复演练/真实恢复三节；env.example 新增备份和恢复演练相关变量；DECISIONS 记录镜像选型偏差
+> 修复 2026-11-05：cron 行补 `-f /opt/findmyjob/docker-compose.prod.yml --env-file`；backup 脚本把 DATABASE_URL 拆成 PG 单项 env var（凭据不再出现在 pg_dump/psql 命令行）；counts.json 改为每个 dump 同名文件，不再共用；restore-drill 完全流式（私钥读进变量+process substitution，dump 不落盘）；--key 必填（操作人自选，不自动取最新）；--skip-rpo/--keep 参数；RPO 从 key 名取时间戳（先 regex 校验）；times.json 路径经 argv 传 python（无字符串插值）；tools 容器改 `-e PII_KEYS`（透传）；eslint 豁免收窄到 verify-decrypt.ts；RUNBOOK 7 处修订（桶生命周期/真实恢复步骤/postgres 服务名/read -rs/日志路径/restore-reader 验证/healthchecks URL）；DECISIONS 追加 findmyjob_app 已接受风险。真机验证需人工执行（无法本机 docker build/run）。
 
 #### [x] M7-T11 部署流水线：人工 SSH 执行 findmyjob-deploy
 依赖：M7-T06、M7-T12

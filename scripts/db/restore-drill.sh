@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# restore-drill.sh <db_name>
-# Disaster-recovery drill: download the latest backup from S3, decrypt it,
-# restore into a temporary drill database, run verification checks, print RTO.
+# restore-drill.sh --key <object-key> [--version-id <vid>] [--skip-rpo] [--keep] <db_name>
+# Disaster-recovery drill: download a specific backup from S3, decrypt it
+# (never writing plaintext to disk), restore into a drill database, run checks.
 #
 # Usage:
-#   cat age-private.key | ssh admin@host \
-#     "cd /opt/findmyjob && bash scripts/db/restore-drill.sh findmyjob_drill"
+#   cat age-private.key | bash scripts/db/restore-drill.sh \
+#     --key db/daily/2026-11-05T19-15-00Z.dump.age findmyjob_restore_drill
 #
 # Required env vars:
 #   RESTORE_ADMIN_DATABASE_URL   — owner-level URL ending in /postgres
-#                                  e.g. postgresql://findmyjob_owner:pass@127.0.0.1:5432/postgres
+#                                  e.g. postgresql://findmyjob_owner:pass@postgres:5432/postgres
 #   BACKUP_S3_BUCKET             — backup bucket name
 #   RESTORE_S3_ACCESS_KEY_ID     — restore-reader credentials (kept offline; inject for drill)
 #   RESTORE_S3_SECRET_ACCESS_KEY — restore-reader credentials
@@ -21,13 +21,59 @@
 #   APP_TAG                      — Docker image tag for the tools container
 set -euo pipefail
 
-DB_NAME="${1:?Usage: restore-drill.sh <db_name>}"
+# ── argument parsing ──────────────────────────────────────────────────────────
+OBJECT_KEY=""
+VERSION_ID=""
+SKIP_RPO=0
+KEEP_DRILL_DB=0
+DB_NAME=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --key)       OBJECT_KEY="$2"; shift 2 ;;
+    --version-id) VERSION_ID="$2"; shift 2 ;;
+    --skip-rpo)  SKIP_RPO=1; shift ;;
+    --keep)      KEEP_DRILL_DB=1; shift ;;
+    -*)          echo "ERROR: unknown option: $1" >&2; exit 1 ;;
+    *)           DB_NAME="$1"; shift ;;
+  esac
+done
+
+if [ -z "$DB_NAME" ]; then
+  echo "ERROR: Usage: restore-drill.sh --key <object-key> [--version-id <vid>] [--skip-rpo] [--keep] <db_name>" >&2
+  exit 1
+fi
+if [ -z "$OBJECT_KEY" ]; then
+  echo "ERROR: --key <object-key> is required (e.g. db/daily/2026-11-05T19-15-00Z.dump.age)" >&2
+  exit 1
+fi
 
 # Safety: refuse any database name that does not end with _drill
 if [[ "$DB_NAME" != *_drill ]]; then
   echo "ERROR: database name must end with _drill (refusing to restore into: ${DB_NAME})" >&2
   exit 1
 fi
+
+# Validate key format: db/(daily|pre-migrate)/YYYY-MM-DDTHH-MM-SSZ.dump.age
+if ! [[ "$OBJECT_KEY" =~ ^db/(daily|pre-migrate)/[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}Z\.dump\.age$ ]]; then
+  echo "ERROR: --key must match db/(daily|pre-migrate)/YYYY-MM-DDTHH-MM-SSZ.dump.age" >&2
+  exit 1
+fi
+
+# Derive counts.json key (same prefix, different extension)
+COUNTS_KEY="${OBJECT_KEY%.dump.age}.counts.json"
+
+# Extract ISO 8601 timestamp from key name (hyphens in time → colons)
+_key_base="$(basename "$OBJECT_KEY" .dump.age)"
+BACKUP_TIMESTAMP_ISO="${_key_base/T/-}"; BACKUP_TIMESTAMP_ISO="${_key_base}"
+# Key basename is e.g. 2026-11-05T19-15-00Z; convert HH-MM-SS → HH:MM:SS
+BACKUP_TIMESTAMP_ISO="$(echo "$_key_base" | sed 's/T\([0-9]\{2\}\)-\([0-9]\{2\}\)-\([0-9]\{2\}\)Z$/T\1:\2:\3Z/')"
+# Validate the resulting timestamp format
+if ! [[ "$BACKUP_TIMESTAMP_ISO" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$ ]]; then
+  echo "ERROR: could not derive ISO timestamp from key name: ${_key_base}" >&2
+  exit 1
+fi
+unset _key_base
 
 # Required env
 : "${RESTORE_ADMIN_DATABASE_URL:?RESTORE_ADMIN_DATABASE_URL is required}"
@@ -39,6 +85,9 @@ BACKUP_S3_REGION="${BACKUP_S3_REGION:-ap-southeast-5}"
 S3_ARGS=(--no-progress --region "$BACKUP_S3_REGION")
 if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
   S3_ARGS+=(--endpoint-url "$BACKUP_S3_ENDPOINT")
+fi
+if [ -n "$VERSION_ID" ]; then
+  S3_ARGS+=(--version-id "$VERSION_ID")
 fi
 
 export AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID"
@@ -54,79 +103,74 @@ for cmd in age aws psql pg_restore python3; do
   fi
 done
 
-# ── temp files & cleanup ──────────────────────────────────────────────────────
+# ── temp file for counts.json only; private key and dump never touch disk ─────
 TMPDIR_LOCAL=$(mktemp -d -t restore-drill.XXXXXXXX)
-TMPKEY="${TMPDIR_LOCAL}/age.key"
-ENCRYPTED_DUMP="${TMPDIR_LOCAL}/backup.dump.age"
-DECRYPTED_DUMP="${TMPDIR_LOCAL}/backup.dump"
 COUNTS_LOCAL="${TMPDIR_LOCAL}/counts.json"
 
+# age private key lives only in this variable; unset on exit
+AGE_PRIVATE_KEY=""
+DRILL_DB_CREATED=0
+
 cleanup() {
-  # Securely remove plaintext dump and private key
+  unset AGE_PRIVATE_KEY
   rm -rf "$TMPDIR_LOCAL"
+  # Drop drill database unless --keep was passed and restore succeeded
+  if [ "$DRILL_DB_CREATED" -eq 1 ] && [ "$KEEP_DRILL_DB" -eq 0 ]; then
+    psql "$RESTORE_ADMIN_DATABASE_URL" -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";" 2>/dev/null || true
+    echo "[drill] drill database dropped"
+  fi
 }
 trap cleanup EXIT
 
-# Read age private key from stdin (piped in by operator)
-cat > "$TMPKEY"
-if [ ! -s "$TMPKEY" ]; then
+# Read age private key from stdin (piped in by operator); never write to disk
+IFS= read -r -d '' AGE_PRIVATE_KEY || true
+if [ -z "$AGE_PRIVATE_KEY" ]; then
   echo "ERROR: no age private key received on stdin" >&2
   exit 1
 fi
 
 DRILL_START=$(date +%s)
 echo "[drill] $(date -u +%Y-%m-%dT%H:%M:%SZ) starting restore drill into ${DB_NAME}"
+echo "[drill] backup key: s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}"
 
-# ── 1. find the latest daily backup ──────────────────────────────────────────
-LATEST_KEY=$(aws s3 ls "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/db/daily/" \
-  | sort | tail -n1 | awk '{print $4}')
-
-if [ -z "$LATEST_KEY" ]; then
-  echo "ERROR: no backup found in s3://${BACKUP_S3_BUCKET}/db/daily/" >&2
+# ── 1. verify age magic header (streaming, no disk) ──────────────────────────
+MAGIC="$(aws s3 cp "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}" - 2>/dev/null \
+  | head -c 21 | tr -d '\n')"
+if [ "$MAGIC" != "age-encryption.org/v1" ]; then
+  echo "ERROR: S3 object does not look like an age-encrypted file (magic: '${MAGIC}')" >&2
   exit 1
 fi
-echo "[drill] latest backup: db/daily/${LATEST_KEY}"
+echo "[drill] age magic header verified"
 
-# ── 2. download encrypted dump and counts.json ───────────────────────────────
-aws s3 cp "${S3_ARGS[@]}" \
-  "s3://${BACKUP_S3_BUCKET}/db/daily/${LATEST_KEY}" "$ENCRYPTED_DUMP"
-
-aws s3 cp "${S3_ARGS[@]}" \
-  "s3://${BACKUP_S3_BUCKET}/db/counts.json" "$COUNTS_LOCAL"
-
-echo "[drill] download complete"
-
-# ── 3. decrypt the backup ─────────────────────────────────────────────────────
-age -d -i "$TMPKEY" "$ENCRYPTED_DUMP" > "$DECRYPTED_DUMP"
-# Wipe the age key from disk immediately after use
-shred -u "$TMPKEY" 2>/dev/null || rm -f "$TMPKEY"
-echo "[drill] decryption complete"
-
-# ── 4. create drill database ──────────────────────────────────────────────────
-# Strip last path component from RESTORE_ADMIN_DATABASE_URL to get base URL
+# ── 2. create drill database ──────────────────────────────────────────────────
 ADMIN_BASE="${RESTORE_ADMIN_DATABASE_URL%/*}"
 DRILL_DATABASE_URL="${ADMIN_BASE}/${DB_NAME}"
 
 psql "$RESTORE_ADMIN_DATABASE_URL" -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";"
 psql "$RESTORE_ADMIN_DATABASE_URL" -c "CREATE DATABASE \"${DB_NAME}\" OWNER findmyjob_owner;"
+DRILL_DB_CREATED=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 psql "$DRILL_DATABASE_URL" -f "${REPO_ROOT}/docker/postgres/db-setup.sql"
 
 echo "[drill] drill database created"
 
-# ── 5. restore ───────────────────────────────────────────────────────────────
-pg_restore -d "$DRILL_DATABASE_URL" \
-  --no-acl \
-  --role=findmyjob_owner \
-  --single-transaction \
-  "$DECRYPTED_DUMP"
+# ── 3. decrypt stream → pg_restore (no plaintext on disk) ────────────────────
+# S3 object is streamed through age decryption directly into pg_restore.
+# Private key is passed via process substitution (no temp file on disk).
+aws s3 cp "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}" - \
+  | age -d -i <(printf '%s\n' "$AGE_PRIVATE_KEY") \
+  | pg_restore -d "$DRILL_DATABASE_URL" \
+      --no-acl \
+      --role=findmyjob_owner \
+      --single-transaction \
+      -
 
-# Remove plaintext dump immediately after restore
-shred -u "$DECRYPTED_DUMP" 2>/dev/null || rm -f "$DECRYPTED_DUMP"
-echo "[drill] pg_restore complete"
+# Private key no longer needed after restore
+unset AGE_PRIVATE_KEY
+echo "[drill] decrypt + pg_restore complete"
 
-# ── 6. check: migration count ─────────────────────────────────────────────────
+# ── 4. check: migration count ─────────────────────────────────────────────────
 MIGRATIONS_IN_DB=$(psql "$DRILL_DATABASE_URL" -t -A -c \
   "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;")
 MIGRATIONS_ON_DISK=$(ls "${REPO_ROOT}/prisma/migrations"/*/migration.sql 2>/dev/null | wc -l)
@@ -137,26 +181,32 @@ if [ "$MIGRATIONS_IN_DB" -ne "$MIGRATIONS_ON_DISK" ]; then
 fi
 echo "[check] migrations: ${MIGRATIONS_IN_DB} ✓"
 
-# ── 7. check: key tables not empty ───────────────────────────────────────────
+# ── 5. check: key tables not empty ───────────────────────────────────────────
 for TABLE in User StudentProfile Company Job Application; do
   COUNT=$(psql "$DRILL_DATABASE_URL" -t -A -c "SELECT count(*) FROM \"${TABLE}\";")
   echo "[check] ${TABLE}: ${COUNT} rows"
 done
 
-# ── 8. check: RPO <= 26 hours ────────────────────────────────────────────────
-BACKUP_TIMESTAMP=$(python3 -c "import json,sys; print(json.load(open('${COUNTS_LOCAL}'))['timestamp'])")
-BACKUP_EPOCH=$(date -d "$BACKUP_TIMESTAMP" +%s 2>/dev/null \
-  || python3 -c "from datetime import datetime; print(int(datetime.fromisoformat('${BACKUP_TIMESTAMP}'.replace('Z','+00:00')).timestamp()))")
+# ── 6. check: RPO <= 26 hours (from key name timestamp) ──────────────────────
+# BACKUP_TIMESTAMP_ISO was derived from the key name and already regex-validated.
+BACKUP_EPOCH=$(date -u -d "$BACKUP_TIMESTAMP_ISO" +%s 2>/dev/null \
+  || python3 -c "import sys; from datetime import datetime, timezone; \
+     print(int(datetime.fromisoformat(sys.argv[1].replace('Z','+00:00')).timestamp()))" \
+     "$BACKUP_TIMESTAMP_ISO")
 NOW_EPOCH=$(date +%s)
 AGE_HOURS=$(( (NOW_EPOCH - BACKUP_EPOCH) / 3600 ))
 
-if [ "$AGE_HOURS" -gt 26 ]; then
+if [ "$SKIP_RPO" -eq 0 ] && [ "$AGE_HOURS" -gt 26 ]; then
   echo "FAIL: RPO exceeded — backup is ${AGE_HOURS}h old (limit: 26h)" >&2
   exit 1
 fi
-echo "[check] RPO: ${AGE_HOURS}h ✓"
+if [ "$SKIP_RPO" -eq 1 ]; then
+  echo "[check] RPO: ${AGE_HOURS}h (check skipped via --skip-rpo)"
+else
+  echo "[check] RPO: ${AGE_HOURS}h ✓"
+fi
 
-# ── 9. check: reconciliation SQL returns 0 rows ───────────────────────────────
+# ── 7. check: reconciliation SQL returns 0 rows ───────────────────────────────
 RECON=$(psql "$DRILL_DATABASE_URL" -t -A -c "
   SELECT w.\"id\"
   FROM \"CreditWallet\" w
@@ -172,7 +222,12 @@ if [ -n "$RECON" ]; then
 fi
 echo "[check] reconciliation: 0 discrepancies ✓"
 
-# ── 10. check: counts.json match ─────────────────────────────────────────────
+# ── 8. check: per-dump counts.json match ─────────────────────────────────────
+# Download per-dump counts.json (sibling of the dump object)
+aws s3 cp "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/${COUNTS_KEY}" "$COUNTS_LOCAL"
+echo "[drill] counts.json downloaded: s3://${BACKUP_S3_BUCKET}/${COUNTS_KEY}"
+
+# Pass counts.json path via argv — never interpolate S3 content into code
 python3 - "${DRILL_DATABASE_URL}" "${COUNTS_LOCAL}" <<'PYEOF'
 import sys, json, subprocess
 
@@ -200,13 +255,13 @@ if failures:
 print(f"[check] counts.json: all {len(tables)} tables match ✓")
 PYEOF
 
-# ── 11. check: verify-decrypt ────────────────────────────────────────────────
+# ── 9. check: verify-decrypt ─────────────────────────────────────────────────
 if [ -n "${PII_KEYS:-}" ] && [ -n "${APP_TAG:-}" ]; then
   docker compose -f "${REPO_ROOT}/deploy/docker-compose.prod.yml" \
     --profile ops run --rm \
     --no-deps \
     -e "DATABASE_URL=${DRILL_DATABASE_URL}" \
-    -e "PII_KEYS=${PII_KEYS}" \
+    -e PII_KEYS \
     -e "PII_ACTIVE_KEY_ID=${PII_ACTIVE_KEY_ID:-v1}" \
     tools \
     scripts/db/verify-decrypt.ts
@@ -215,17 +270,23 @@ else
   echo "[check] verify-decrypt SKIPPED (set PII_KEYS and APP_TAG to enable)"
 fi
 
-# ── 12. clear sessions ────────────────────────────────────────────────────────
+# ── 10. clear sessions ────────────────────────────────────────────────────────
 psql "$DRILL_DATABASE_URL" -c 'DELETE FROM "Session";'
 echo "[check] sessions cleared"
 
 # ── RTO ───────────────────────────────────────────────────────────────────────
 DRILL_END=$(date +%s)
 RTO_SECONDS=$(( DRILL_END - DRILL_START ))
+
 echo ""
 echo "[drill] ======================================="
 echo "[drill] RESTORE DRILL COMPLETE"
 echo "[drill] RTO: ${RTO_SECONDS}s ($(( RTO_SECONDS / 60 ))m $(( RTO_SECONDS % 60 ))s)"
-echo "[drill] Backup age: ${AGE_HOURS}h (RPO ok)"
-echo "[drill] Drill database: ${DB_NAME} (drop when done)"
+echo "[drill] Backup age: ${AGE_HOURS}h (RPO: $([ "$SKIP_RPO" -eq 0 ] && echo ok || echo skipped))"
+echo "[drill] Backup key: ${OBJECT_KEY}"
+if [ "$KEEP_DRILL_DB" -eq 1 ]; then
+  echo "[drill] Drill database retained (--keep): ${DB_NAME}"
+else
+  echo "[drill] Drill database will be dropped on exit"
+fi
 echo "[drill] ======================================="

@@ -7,4 +7,4 @@ PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
 # Daily encrypted backup at 19:15 UTC (03:15 Kuala Lumpur / Asia/Kuala_Lumpur).
 # Runs the backup service defined in docker-compose.prod.yml (profile: ops).
-15 19 * * *  root  cd /opt/findmyjob && docker compose --profile ops run --rm --no-deps backup >> /var/log/findmyjob-backup.log 2>&1
+15 19 * * *  root  docker compose -f /opt/findmyjob/docker-compose.prod.yml --env-file /opt/findmyjob/.env --profile ops run --rm --no-deps backup >> /var/log/findmyjob-backup.log 2>&1

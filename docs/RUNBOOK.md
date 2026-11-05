@@ -143,18 +143,20 @@ pg_dump -Fc --exclude-schema=pgboss <DB> | age -r <公钥> → /backup-tmp/<时�
 
 - 明文**全程不落磁盘**：管道直接从 pg_dump 经 age 加密写入 `/backup-tmp`（Docker 卷）中的临时文件；上传完成后 `trap` 删除。
 - S3 路径：`db/daily/<YYYY-MM-DDTHH-MM-SSZ>.dump.age`，预迁移备份写 `db/pre-migrate/`。
-- 同时上传 `db/counts.json`，记录关键表行数（用于恢复演练的对账）。
+- 每个 dump 同时上传同名 `.counts.json`（如 `db/daily/2026-11-05T19-15-00Z.counts.json`），记录关键表行数（用于恢复演练的对账）；部署前备份（`db/pre-migrate/`）不会覆盖日常备份的计数。
 - 上传完成后 curl 通知 healthchecks.io（若未收到 ping，healthchecks 会告警）。
 
 ### 备份桶配置
 
 | 桶 | 用途 | 区域 | 版本控制 | 生命周期 |
 |---|---|---|---|---|
-| `findmyjob-backups` | 加密数据库备份 | ap-southeast-5（马来西亚） | 开启 | 当前版本 30 天后过期 |
+| `findmyjob-backups` | 加密数据库备份 | ap-southeast-5（马来西亚） | 开启 + **S3 Object Lock（Governance，30 天保留期）** | NoncurrentVersionExpiration 30 天 + 清理过期的删除标记 |
 | `findmyjob-files`（应用桶） | 用户上传文件 | ap-southeast-5 | 开启 | 非当前版本 30 天后过期 |
 
+**备份桶生命周期说明**：Object Lock 防止写入凭据（`backup-writer`）删除或覆盖已上传的对象（满足 ARCHITECTURE A20「写入凭据删不了历史」）。Object Lock 下版本控制的"当前版本 30 天后过期"只会加删除标记，旧版本会永久保留，与隐私政策的 30 天保留要求矛盾；正确做法是用 NoncurrentVersionExpiration 清理旧版本 + 清理过期删除标记，让 Object Lock 的保留期（30 天）自然到期后对象可被正常删除。
+
 IAM 权限见 M7-H01 配置表：
-- `backup-writer`：对 `db/*` 仅 PutObject
+- `backup-writer`：对 `db/*` 仅 PutObject（Object Lock 下无法删除）
 - `restore-reader`：只读；平时**离线保存**，演练时临时注入
 
 ### age 密钥管理
@@ -166,14 +168,17 @@ IAM 权限见 M7-H01 配置表：
 ### 检查备份是否正常运行
 
 1. 登录 healthchecks.io，确认 `findmyjob-backup` 显示绿色。
-2. 或者列出 S3 对象：
+2. 或者列出 S3 对象（需要 List/Get 权限；**使用 restore-reader 凭据，在离线机器上执行**）：
    ```bash
-   aws s3 ls s3://findmyjob-backups/db/daily/ | tail -n 5
+   export AWS_ACCESS_KEY_ID=<restore-reader-key-id>
+   export AWS_SECRET_ACCESS_KEY=<restore-reader-secret>
+   aws s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 5
    ```
-3. 验证文件头（前 21 字节应为 `age-encryption.org/v1`）：
+3. 验证文件头（前 21 字节应为 `age-encryption.org/v1`；同样使用 restore-reader 凭据）：
    ```bash
-   aws s3 cp s3://findmyjob-backups/db/daily/<最新文件> - | head -c 21
+   aws s3 cp s3://findmyjob-backups/db/daily/<最新文件> - --region ap-southeast-5 | head -c 21
    ```
+   > VM 上的 `backup-writer` 凭据只有 PutObject 权限，无法用于 List/Get。
 
 ### 安装 cron
 
@@ -181,9 +186,13 @@ IAM 权限见 M7-H01 配置表：
 sudo install -m 644 deploy/server/findmyjob-cron /etc/cron.d/findmyjob
 # 重新加载（Debian/Ubuntu 会自动拾取 /etc/cron.d/）
 sudo systemctl reload cron
-# 查看日志
-sudo tail -f /var/log/findmyjob-backup.log
 ```
+
+> **查看备份日志**：cron 以 `--rm` 运行容器，容器退出后日志不保留，所有输出重定向到了主机日志文件：
+> ```bash
+> sudo tail -f /var/log/findmyjob-backup.log
+> ```
+> 服务器初始化时，`findmyjob_app` 角色同时用于备份和应用（可读写）；M7-H01 建好只读 `findmyjob_backup` 角色后，将 `BACKUP_DATABASE_URL` 换成该角色的凭据（见 DECISIONS「开发中决策」）。
 
 ## 恢复演练
 
@@ -200,20 +209,28 @@ sudo tail -f /var/log/findmyjob-backup.log
 ### 步骤
 
 ```bash
-# 1. 设置恢复凭据（演练时临时设置，不要写入 .env）
-export RESTORE_S3_ACCESS_KEY_ID=<restore-reader key>
-export RESTORE_S3_SECRET_ACCESS_KEY=<restore-reader secret>
-export RESTORE_ADMIN_DATABASE_URL=postgresql://findmyjob_owner:<pass>@127.0.0.1:5432/postgres
+# 1. 设置恢复凭据（演练时临时设置，不要写入 .env；用 read -rs 避免进 shell 历史）
+read -rs RESTORE_S3_ACCESS_KEY_ID && export RESTORE_S3_ACCESS_KEY_ID
+read -rs RESTORE_S3_SECRET_ACCESS_KEY && export RESTORE_S3_SECRET_ACCESS_KEY
+read -rs RESTORE_ADMIN_DATABASE_URL && export RESTORE_ADMIN_DATABASE_URL
+# RESTORE_ADMIN_DATABASE_URL 格式：postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
+# （postgres 是 compose 网络里的服务名；在 tools 容器或服务器上执行，不是本机 127.0.0.1）
 export BACKUP_S3_BUCKET=findmyjob-backups
-export PII_KEYS=<离线 PII 密钥>
+read -rs PII_KEYS && export PII_KEYS
 export APP_TAG=<当前镜像 tag>
 
-# 2. 执行演练（私钥从 USB 通过 stdin 传入）
-cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh findmyjob_drill
+# 2. 先列出可用备份，由操作人选择目标 key
+export AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$RESTORE_S3_SECRET_ACCESS_KEY"
+aws s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 10
 
-# 3. 检查输出：所有 ✓，最后打印 RTO
-# 4. 演练完成后删除钻演数据库
-psql "$RESTORE_ADMIN_DATABASE_URL" -c 'DROP DATABASE IF EXISTS findmyjob_drill;'
+# 3. 执行演练（私钥从 USB 通过 stdin 传入；--key 由操作人从上面列表中选）
+cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
+  --key db/daily/2026-11-05T19-15-00Z.dump.age \
+  findmyjob_restore_drill
+
+# 4. 检查输出：所有 ✓，最后打印 RTO
+# 5. 演练完成后脚本默认自动删除演练库（除非传了 --keep）
 ```
 
 ### 脚本检查项
@@ -252,13 +269,31 @@ psql "$RESTORE_ADMIN_DATABASE_URL" -c 'DROP DATABASE IF EXISTS findmyjob_drill;'
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml stop app worker
    ```
-4. **执行恢复**：按恢复演练步骤执行，目标库改为 `findmyjob_restore`（仍以 `_drill` 结尾是为了演练安全检查）。实际恢复时需将最终数据库改名为 `findmyjob`，或修改 DATABASE_URL。
-5. **补跑账号清除**（`tools` 服务使用 `ghcr.io/fairchan/findmyjob-tools` 镜像，entrypoint 为 `node --conditions=react-server -r tsx/cjs`）：
+4. **执行恢复**：用 `--key` 选取已知完好的 `db/pre-migrate/` 或 `db/daily/` 对象，加 `--skip-rpo`（真实恢复时 RPO 超限属已知情况）和 `--keep`（保留恢复库用于切换）。目标库用 `findmyjob_restore_drill`（以 `_drill` 结尾是安全检查的前提）：
+   ```bash
+   cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
+     --key db/daily/2026-11-05T19-15-00Z.dump.age \
+     --skip-rpo --keep \
+     findmyjob_restore_drill
+   ```
+   恢复完成后切换步骤（在服务器上执行）：
+   ```bash
+   # 停止服务
+   docker compose -f /opt/findmyjob/docker-compose.prod.yml stop app worker
+   # 把恢复库重命名为生产库
+   psql "$RESTORE_ADMIN_DATABASE_URL" \
+     -c 'ALTER DATABASE findmyjob RENAME TO findmyjob_old;' \
+     -c 'ALTER DATABASE findmyjob_restore_drill RENAME TO findmyjob;'
+   # 修改 /opt/findmyjob/env/*.env 里的 DATABASE_URL（如需要），然后重启服务
+   docker compose -f /opt/findmyjob/docker-compose.prod.yml up -d app worker
+   ```
+5. **补跑账号清除**（在服务器上，`tools` 容器通过 compose 网络连 `postgres` 服务；生产 postgres 不对外发布端口，不能用 127.0.0.1）：
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml \
      --profile ops run --rm tools scripts/backfill/purge-deleted-accounts.ts
    ```
-6. **重启服务**：
+   > `tools` 服务使用 `ghcr.io/fairchan/findmyjob-tools` 镜像，entrypoint 为 `node --conditions=react-server -r tsx/cjs`。
+6. **重启服务**（如果第 4 步没有做 RENAME，这里先起服务再看日志）：
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml up -d app worker
    ```
