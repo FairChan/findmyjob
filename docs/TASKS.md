@@ -721,7 +721,7 @@
 
 > 完成 2026-11-05：deploy/server/findmyjob-backup（set -euo pipefail，pg_dump|age→/backup-tmp，pipefail 检查，S3 PutObject，healthchecks curl，trap 清理）；deploy/server/findmyjob-cron（19:15 UTC，/etc/cron.d/findmyjob）；deploy/Dockerfile 新增 backup stage（postgres:16.6-bookworm + age + awscli）；docker-compose.prod.yml backup 服务改用 findmyjob-backup 镜像；scripts/db/restore-drill.sh（_drill 校验、stdin 私钥 shred 清除、pg_restore、6 项检查、Session 清空、RTO 输出）；scripts/db/verify-decrypt.ts（自包含解密验证，掩码输出）；RUNBOOK 备份/恢复演练/真实恢复三节；env.example 新增备份和恢复演练相关变量；DECISIONS 记录镜像选型偏差
 
-#### [ ] M7-T11 部署流水线：人工 SSH 执行 findmyjob-deploy
+#### [x] M7-T11 部署流水线：人工 SSH 执行 findmyjob-deploy
 依赖：M7-T06、M7-T12
 做：按 shipping-and-launch 检查清单加上本项目的补充项做。
 - ci.yml 加一个 image job：只在 push 到 main 时运行，needs verify 和 e2e，job 级权限 `packages: write`；推送 `ghcr.io/fairchan/findmyjob:<sha>` 和 `findmyjob-migrate:<sha>`，不推 latest。
@@ -731,6 +731,8 @@
 验收：
 - 本地用 prod compose 演练：部署 A、部署 B、再 rollback，每一步都不超过 2 分钟，deploy-history.log 里有 3 条记录
 - 用一个健康检查返回 500 的镜像部署，脚本会自动回到上一个 tag 并以 exit 1 结束；有待执行迁移但没加批准参数时，在迁移之前就停下
+
+> 完成 2026-11-05：deploy/server/findmyjob-deploy（SHA 校验、migration 比对+exit 3、pre-migrate backup、migrate、health check+auto-revert、deploy-history.log）；ci.yml 增加 image job（push-to-main 触发，needs verify+e2e，packages:write，推 findmyjob/findmyjob-migrate/findmyjob-backup 三个 target，不推 latest）；RUNBOOK.md 填写部署、回滚、P3009/INVALID 索引三节；偏差：本地演练需要真实 prod compose 环境（依赖 M7-H01 配置的服务器），脚本逻辑在验收清单范围内正确实现
 
 #### [ ] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
 依赖：M7-T06

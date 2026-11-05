@@ -11,13 +11,79 @@
 | 运维备份人 | 待指定（B15） | GATE-M7 前独立完成一次回滚和一次恢复演练；离线密钥的第二位保管人 |
 
 ## 部署
-（M7-T11 填写：findmyjob-deploy 的用法、批准迁移、健康检查失败时的自动回退。）
+
+技术负责人通过 SSH 执行：
+
+```bash
+ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy deploy <40位sha>
+```
+
+脚本自动完成：拉取镜像 → 比对迁移 → 预迁移备份 → 执行迁移 → 重启 app/worker → 60 秒健康检查。
+成功后 sha 和 digest 写入 `/opt/findmyjob/deploy-history.log`。
+
+**有待执行迁移时**（exit 3）：脚本打印 SQL 后停止。审阅 SQL 无破坏性操作后，加 `--approve-migrations` 重新执行：
+
+```bash
+ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy deploy <sha> --approve-migrations
+```
+
+**健康检查失败时**：脚本自动将 app/worker 切回上一个镜像 tag 并以 exit 1 结束。**迁移不回滚**，需要时写前滚迁移后重新 deploy。
+
+GitHub 不持有部署私钥。镜像由 CI `image` job 在 push 到 main 时自动推送到 GHCR：
+- `ghcr.io/fairchan/findmyjob:<sha>`
+- `ghcr.io/fairchan/findmyjob-migrate:<sha>`
+- `ghcr.io/fairchan/findmyjob-backup:<sha>`
 
 ## 回滚
-（M7-T11 填写：回滚 = 重新部署上一个镜像 tag；迁移不回滚，需要时写前滚迁移。）
+
+```bash
+ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy rollback
+```
+
+回滚 = 将 app/worker 切换回 `deploy-history.log` 倒数第二条记录的镜像 tag。**迁移不回滚**：已执行的迁移保持不变。如果回滚后旧镜像与当前 schema 不兼容，需要写一个前滚迁移并重新 deploy。
 
 ## 迁移失败
-（M7-T11 填写：P3009、INVALID 索引的处理步骤。）
+
+### P3009（迁移标记为失败）
+
+Prisma 在迁移失败时会将 `_prisma_migrations` 中该行的 `finished_at` 置为 null、`applied_steps_count` 记为 0。
+
+1. 确认迁移是否有部分执行（例如建表成功但索引失败）：
+
+   ```bash
+   docker compose -f /opt/findmyjob/docker-compose.prod.yml \
+     exec postgres psql -U postgres -d findmyjob -c "\d+ <表名>"
+   ```
+
+2. **迁移完全未执行**（可安全重试）：删除失败记录，然后重新 deploy。
+
+   ```sql
+   -- 以 findmyjob_owner 身份执行
+   DELETE FROM _prisma_migrations WHERE migration_name = '<失败迁移名>';
+   ```
+
+3. **迁移已部分执行**：手动完成剩余操作，或写一个新迁移完成它，然后重新 deploy。
+
+### INVALID 索引（`CREATE INDEX CONCURRENTLY` 失败）
+
+CONCURRENTLY 索引在事务外运行，失败后留下 INVALID 状态的索引，会阻止后续同名迁移。
+
+1. 确认 INVALID 索引：
+
+   ```sql
+   SELECT schemaname, tablename, indexname
+   FROM pg_indexes
+   JOIN pg_class ON pg_class.relname = pg_indexes.indexname
+   WHERE pg_class.relisvalid = false;
+   ```
+
+2. 删除 INVALID 索引：
+
+   ```sql
+   DROP INDEX CONCURRENTLY IF EXISTS "<索引名>";
+   ```
+
+3. 在 `_prisma_migrations` 中删除对应的失败记录（同 P3009 步骤 2），然后重新 deploy。
 
 ## 密钥生成与轮换
 

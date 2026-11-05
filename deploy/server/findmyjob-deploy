@@ -1,0 +1,266 @@
+#!/usr/bin/env bash
+# findmyjob-deploy — human-SSH deployment script for FindMYJob
+# Install: sudo install -m 755 deploy/server/findmyjob-deploy /opt/findmyjob/bin/findmyjob-deploy
+#
+# Usage:
+#   findmyjob-deploy deploy <40-char-sha> [--approve-migrations]
+#   findmyjob-deploy rollback
+#
+# Execution order (deploy):
+#   pull → compare migrations → [exit 3 if pending & not approved]
+#   → pre-migrate backup → migrate → up -d app worker
+#   → 60s health check → record to deploy-history.log
+#   → on failure: restore previous tag and exit 1
+set -euo pipefail
+
+WORKDIR="/opt/findmyjob"
+COMPOSE_FILE="${WORKDIR}/docker-compose.prod.yml"
+ENV_FILE="${WORKDIR}/.env"
+HISTORY_LOG="${WORKDIR}/deploy-history.log"
+MIGRATE_ENV="${WORKDIR}/env/migrate.env"
+IMAGE_APP="ghcr.io/fairchan/findmyjob"
+IMAGE_MIGRATE="ghcr.io/fairchan/findmyjob-migrate"
+IMAGE_BACKUP="ghcr.io/fairchan/findmyjob-backup"
+# Network name: compose project name (findmyjob-prod) + "_" + network name (backend)
+NETWORK="findmyjob-prod_backend"
+HEALTH_TIMEOUT=60
+
+log() { echo "[deploy] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
+err() { echo "[deploy] ERROR: $*" >&2; }
+die() { err "$*"; exit 1; }
+
+cd "$WORKDIR"
+
+dc() {
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+}
+
+# Read the current APP_TAG from ENV_FILE
+current_tag() {
+  grep -m1 '^APP_TAG=' "$ENV_FILE" 2>/dev/null | cut -d= -f2- || echo ""
+}
+
+# Update APP_TAG in ENV_FILE, preserving any other variables (e.g. APP_DOMAIN)
+update_app_tag() {
+  local new_tag="$1"
+  local tmp
+  tmp=$(mktemp "${WORKDIR}/.env.XXXXXX")
+  grep -v '^APP_TAG=' "$ENV_FILE" > "$tmp" 2>/dev/null || true
+  printf 'APP_TAG=%s\n' "$new_tag" >> "$tmp"
+  mv "$tmp" "$ENV_FILE"
+}
+
+# Poll docker healthcheck status until healthy, unhealthy, or timeout
+wait_healthy() {
+  local deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
+  log "Waiting up to ${HEALTH_TIMEOUT}s for app health check..."
+  local container_id
+  container_id=$(dc ps -q app 2>/dev/null | head -1 || echo "")
+  while true; do
+    local status="unknown"
+    if [ -n "$container_id" ]; then
+      status=$(docker inspect --format='{{.State.Health.Status}}' \
+        "$container_id" 2>/dev/null || echo "unknown")
+    fi
+    case "$status" in
+      healthy)
+        log "App is healthy."
+        return 0
+        ;;
+      unhealthy)
+        err "App health check reported unhealthy."
+        return 1
+        ;;
+    esac
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      err "Health check timed out after ${HEALTH_TIMEOUT}s (last status: ${status})."
+      return 1
+    fi
+    sleep 5
+  done
+}
+
+# Compare migrations in the new image against applied migrations in the DB.
+# If pending migrations exist and approve="false", prints SQL and exits 3.
+check_pending_migrations() {
+  local sha="$1" approve="$2"
+  log "Checking pending migrations in ${IMAGE_MIGRATE}:${sha}..."
+
+  # List migration directories inside the new migrate image
+  local image_migs
+  image_migs=$(docker run --rm --entrypoint /bin/sh \
+    "${IMAGE_MIGRATE}:${sha}" \
+    -c 'ls /app/prisma/migrations/ 2>/dev/null | grep -v "^migration_lock"' \
+    2>/dev/null | sort || true)
+
+  if [ -z "$image_migs" ]; then
+    log "No migrations found in image — skipping migration check."
+    return 0
+  fi
+
+  # Read the database URL from migrate.env (uses MIGRATE_DATABASE_URL or DATABASE_URL)
+  local db_url
+  db_url=$(grep -m1 '^MIGRATE_DATABASE_URL=' "$MIGRATE_ENV" 2>/dev/null | cut -d= -f2- || true)
+  [ -z "$db_url" ] && \
+    db_url=$(grep -m1 '^DATABASE_URL=' "$MIGRATE_ENV" 2>/dev/null | cut -d= -f2- || true)
+  [ -z "$db_url" ] && die "Cannot read MIGRATE_DATABASE_URL from ${MIGRATE_ENV}."
+
+  # Query the DB for applied migrations via a temporary postgres container
+  local db_migs
+  db_migs=$(docker run --rm \
+    --network "$NETWORK" \
+    "postgres:16.6-bookworm" \
+    psql "$db_url" -t -A \
+    -c "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL" \
+    2>/dev/null | sort || true)
+
+  # Find migrations in image but not yet applied in DB
+  local pending=()
+  while IFS= read -r mig; do
+    [ -z "$mig" ] && continue
+    if ! echo "$db_migs" | grep -qxF "$mig"; then
+      pending+=("$mig")
+    fi
+  done <<< "$image_migs"
+
+  if [ ${#pending[@]} -eq 0 ]; then
+    log "No pending migrations."
+    return 0
+  fi
+
+  log "Found ${#pending[@]} pending migration(s): ${pending[*]}"
+
+  if [ "$approve" != "true" ]; then
+    echo ""
+    log "--- PENDING MIGRATION SQL (review carefully before approving) ---"
+    for m in "${pending[@]}"; do
+      log "=== ${m} ==="
+      docker run --rm --entrypoint /bin/sh "${IMAGE_MIGRATE}:${sha}" \
+        -c "cat /app/prisma/migrations/${m}/migration.sql" 2>/dev/null || true
+      echo ""
+    done
+    log "--- END SQL ---"
+    echo ""
+    err "Pending migrations require approval."
+    err "Re-run with: findmyjob-deploy deploy ${sha} --approve-migrations"
+    exit 3
+  fi
+
+  log "Migration approval granted via --approve-migrations."
+}
+
+# ── deploy command ─────────────────────────────────────────────────────────────
+cmd_deploy() {
+  local sha="$1" approve="$2"
+
+  # Validate SHA: exactly 40 lowercase hex characters
+  if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+    die "Invalid SHA '${sha}': must be exactly 40 lowercase hex characters."
+  fi
+
+  local prev_tag
+  prev_tag=$(current_tag)
+
+  log "=== Deploy ${sha} (previous: ${prev_tag:-none}) ==="
+
+  # 1. Pull images
+  log "Pulling images..."
+  docker pull "${IMAGE_APP}:${sha}"
+  docker pull "${IMAGE_MIGRATE}:${sha}"
+  docker pull "${IMAGE_BACKUP}:${sha}"
+
+  # 2. Check pending migrations (may exit 3 if unapproved)
+  check_pending_migrations "$sha" "$approve"
+
+  # 3. Update APP_TAG — point of no return for the deploy
+  update_app_tag "$sha"
+
+  # 4. Pre-migrate backup
+  log "Running pre-migrate backup (BACKUP_MODE=pre-migrate)..."
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
+    --profile ops run --rm --no-deps \
+    -e BACKUP_MODE=pre-migrate backup
+
+  # 5. Run migrations
+  log "Running migrations..."
+  dc --profile ops run --rm --no-deps migrate
+
+  # 6. Restart app + worker with the new image
+  log "Restarting app and worker with ${sha}..."
+  dc up -d app worker
+
+  # 7. Health check; on failure revert to previous tag
+  if wait_healthy; then
+    local digest
+    digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
+      "${IMAGE_APP}:${sha}" 2>/dev/null | head -1 || echo "unknown")
+    printf '%s %s %s\n' "$sha" "$digest" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$HISTORY_LOG"
+    log "=== Deploy ${sha} SUCCEEDED ==="
+  else
+    err "Health check failed after deploy."
+    if [ -n "$prev_tag" ] && [ "$prev_tag" != "$sha" ]; then
+      log "Auto-reverting app + worker to previous tag ${prev_tag}..."
+      update_app_tag "$prev_tag"
+      dc up -d app worker
+      log "Reverted app + worker to ${prev_tag}. NOTE: migrations have NOT been rolled back."
+    else
+      err "No previous tag available; manual intervention required."
+    fi
+    exit 1
+  fi
+}
+
+# ── rollback command ──────────────────────────────────────────────────────────
+cmd_rollback() {
+  if [ ! -f "$HISTORY_LOG" ]; then
+    die "Cannot rollback: ${HISTORY_LOG} does not exist."
+  fi
+
+  local line_count
+  line_count=$(wc -l < "$HISTORY_LOG")
+  if [ "$line_count" -lt 2 ]; then
+    die "Cannot rollback: deploy-history.log has only ${line_count} entry (need ≥ 2)."
+  fi
+
+  local current_sha prev_sha
+  current_sha=$(tail -1 "$HISTORY_LOG" | awk '{print $1}')
+  prev_sha=$(tail -2 "$HISTORY_LOG" | head -1 | awk '{print $1}')
+
+  log "=== Rollback: ${current_sha} → ${prev_sha} ==="
+  update_app_tag "$prev_sha"
+  dc up -d app worker
+
+  if wait_healthy; then
+    printf '%s rollback %s\n' "$prev_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$HISTORY_LOG"
+    log "=== Rollback to ${prev_sha} SUCCEEDED ==="
+    log "NOTE: migrations have NOT been rolled back."
+  else
+    err "Health check failed after rollback; manual intervention required."
+    exit 1
+  fi
+}
+
+# ── entry point ───────────────────────────────────────────────────────────────
+COMMAND="${1:-}"
+shift 2>/dev/null || true
+
+case "$COMMAND" in
+  deploy)
+    SHA="${1:-}"
+    [ -z "$SHA" ] && die "Missing SHA. Usage: findmyjob-deploy deploy <40-char-sha> [--approve-migrations]"
+    APPROVE=false
+    for arg in "$@"; do
+      [ "$arg" = "--approve-migrations" ] && APPROVE=true
+    done
+    cmd_deploy "$SHA" "$APPROVE"
+    ;;
+  rollback)
+    cmd_rollback
+    ;;
+  *)
+    echo "Usage:" >&2
+    echo "  findmyjob-deploy deploy <40-char-sha> [--approve-migrations]" >&2
+    echo "  findmyjob-deploy rollback" >&2
+    exit 1
+    ;;
+esac
