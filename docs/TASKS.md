@@ -620,10 +620,11 @@
 做：首页（中 / 英）：面向在马留学生的价值主张（学生免费，查看详情有额度，邀请可解锁）、企业价值主张、合作伙伴墙、最新职位、数据亮点；`/for-employers`（含公益期说明）；`/partners`。产品名只写 FindMYJob。
 验收：Lighthouse 移动端性能 ≥ 85、可访问性 ≥ 90
 
-#### [ ] M7-T02 法律页面
+#### [x] M7-T02 法律页面
 依赖：M0-T05
 做：`/legal/privacy`、`/legal/terms`（中 / 英模板，页首标注「草案，待律师审阅」；隐私政策披露 SUBPROCESSORS 里的子处理者和跨境传输）；`legal.currentVersion` 变化后，用户下次登录须重新同意。
 验收：版本升级后，旧用户登录被引导到重新同意页
+> 完成 2026-11-05：/legal/privacy 和 /legal/terms 页（中英各一，服务端读 src/content/legal/*.md，react-markdown+remark-gfm 渲染）；/legal/reconsent 重同意页（Server Action + 客户端表单）；services/legal-consent.ts（needsReconsent、recordLegalConsent）；proxy.ts 加 checkReconsent 钩子（M1-T04 接入真实 session 后激活）；unit tests 7 个；lint/typecheck/test 全部通过。偏差：页首草案横幅来自内容文件自带的 blockquote，无需额外渲染；重同意重定向需 M1-T04 完成后才可端到端验证
 
 #### [ ] M7-T03 数据权利
 依赖：M6-T01
