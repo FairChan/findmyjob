@@ -2,6 +2,9 @@
 用法：
   python -X utf8 scripts/auto_build_status.py next M2 [--skip-p1]
       -> TASK <id> | GATE <id> | MANUAL <id> | DEPS <id> <缺的依赖,逗号分隔> | DONE - | NOSECTION -
+      设了 AUTO_BUILD_TASKS="M4-T01,M4-T02,..." 时进入任务清单模式：不看里程碑顺序，按清单顺序返回第一个
+      未勾选、依赖都已 [x] 的任务；清单里的闸门或人工任务照常返回 GATE / MANUAL；都还卡在依赖上时返回
+      清单里第一个未勾选任务的 DEPS；清单全部勾选返回 DONE -；清单里有 TASKS.md 找不到的 ID 返回 UNKNOWN <id>
   python -X utf8 scripts/auto_build_status.py checklist GATE-M4
   python -X utf8 scripts/auto_build_status.py parse <round.json>
       -> <STATUS|NONE> <session_id> <total_cost_usd> <num_turns> <subtype>
@@ -49,6 +52,13 @@ def done_ids():
     return ids
 
 
+def missing_deps(block, k, done):
+    for nxt in block[k + 1:k + 4]:
+        if nxt.startswith("依赖："):
+            return [d for d in ID.findall(nxt) if d not in done]
+    return []
+
+
 def next_item(ms, skip_p1):
     sec, done = section(ms), done_ids()
     if not sec:
@@ -67,13 +77,42 @@ def next_item(ms, skip_p1):
             return f"GATE {ids[0]}"
         if "（人工）" in title:
             return f"MANUAL {ids[0]}"
-        missing = []
-        for nxt in sec[k + 1:k + 4]:
-            if nxt.startswith("依赖："):
-                missing = [d for d in ID.findall(nxt) if d not in done]
-                break
+        missing = missing_deps(sec, k, done)
         return f"DEPS {ids[0]} {','.join(missing)}" if missing else f"TASK {ids[0]}"
     return "DONE -"
+
+
+def next_from_list(wanted, skip_p1):
+    # 并行车道用：清单之外的任务一概不碰，所以依赖没满足的跳过、继续看清单里的下一个
+    all_lines, done = lines(), done_ids()
+    heads = {}
+    for k, line in enumerate(all_lines):
+        m = HEAD.match(line)
+        if m:
+            ids = ID.findall(m.group(2))
+            if ids and ids[0] not in heads:
+                heads[ids[0]] = (k, m.group(1) == "x", m.group(2))
+    first_blocked = None
+    for tid in wanted:
+        if tid not in heads:
+            return f"UNKNOWN {tid}"
+        k, checked, title = heads[tid]
+        if checked or (skip_p1 and "（P1" in title):
+            continue
+        if "🚦" in title:
+            return f"GATE {tid}"
+        if "（人工）" in title:
+            return f"MANUAL {tid}"
+        missing = missing_deps(all_lines, k, done)
+        if not missing:
+            return f"TASK {tid}"
+        first_blocked = first_blocked or f"DEPS {tid} {','.join(missing)}"
+    return first_blocked or "DONE -"
+
+
+def task_list():
+    raw = os.environ.get("AUTO_BUILD_TASKS", "")
+    return [t for t in re.split(r"[\s,，]+", raw) if t]
 
 
 def checklist(gid):
@@ -123,7 +162,9 @@ if __name__ == "__main__":
         sys.exit(__doc__)
     cmd, arg = sys.argv[1], sys.argv[2]
     if cmd == "next":
-        print(next_item(arg, "--skip-p1" in sys.argv[3:]))
+        skip = "--skip-p1" in sys.argv[3:]
+        wanted = task_list()
+        print(next_from_list(wanted, skip) if wanted else next_item(arg, skip))
     elif cmd == "checklist":
         checklist(arg)
     elif cmd == "parse":

@@ -10,6 +10,11 @@
 #   AUTO_BUILD_TIMEOUT            每轮超时（默认 90m）
 #   AUTO_BUILD_MODEL              可选，固定模型 ID（中转支持哪些 ID 待核实）
 #   AUTO_BUILD_SETTINGS           可选，替换 --settings 的文件（相对仓库根）；工作区没被信任时用它带上允许列表
+#   AUTO_BUILD_TASKS              可选，任务清单模式（并行车道用），如 "M4-T01,M4-T02"：不看里程碑顺序，每轮做清单里
+#                                 第一个未勾选、依赖都已 [x] 的任务；这时允许在 lane/* 分支上运行，<里程碑> 只用来命名运行目录
+#   AUTO_BUILD_COMPOSE_PROJECT    可选，检查 postgres 是否在跑时用的 compose 项目名（git worktree 里目录名和项目名对不上）；
+#                                 只用于这一处检查，不传给 claude -p
+#   AUTO_BUILD_PROMPT_NOTE        可选，追加到每轮提示词末尾的环境说明（如车道用的数据库和端口）
 # 退出码：0 正常停止（完成/闸门/人工/dry-run/轮数/预算），1 环境或校验失败，2 BLOCKED/依赖/超时，3 触碰红线文件
 # 钩子降级：--settings scripts/headless-settings.json 为主，下面的 export 兜底（哪个生效以 M0-H01 实测为准）。
 set -uo pipefail
@@ -57,10 +62,18 @@ for f in scripts/unattended.md scripts/mcp-none.json scripts/headless-settings.j
   [[ -f "$f" ]] || stop 1 "缺少 $f"
 done
 branch="$(git rev-parse --abbrev-ref HEAD)"
-[[ "$branch" == "milestone/${MILESTONE}" ]] || stop 1 "当前分支是 $branch：先 git switch -c milestone/${MILESTONE}（不能在 main 或 master 上跑）"
+if [[ -n "${AUTO_BUILD_TASKS:-}" ]]; then
+  [[ "$branch" == "milestone/${MILESTONE}" || "$branch" == lane/?* ]] \
+    || stop 1 "任务清单模式只在 milestone/${MILESTONE} 或 lane/* 分支上运行，当前是 $branch"
+  log "任务清单模式：$AUTO_BUILD_TASKS（分支 $branch）"
+else
+  [[ "$branch" == "milestone/${MILESTONE}" ]] || stop 1 "当前分支是 $branch：先 git switch -c milestone/${MILESTONE}（不能在 main 或 master 上跑）"
+fi
 [[ -z "$(git status --porcelain)" ]] || stop 1 "工作区不干净，先提交或清理"
 if [[ -f docker-compose.yml ]]; then
-  docker compose ps --services --status running 2>/dev/null | grep -qx postgres || stop 1 "postgres 未运行：docker compose up -d"
+  compose=(docker compose)
+  [[ -n "${AUTO_BUILD_COMPOSE_PROJECT:-}" ]] && compose+=(-p "$AUTO_BUILD_COMPOSE_PROJECT")
+  "${compose[@]}" ps --services --status running 2>/dev/null | grep -qx postgres || stop 1 "postgres 未运行：docker compose up -d"
 fi
 
 DENY=(AskUserQuestion
@@ -85,7 +98,9 @@ for ((i = 1; i <= MAX_ROUNDS; i++)); do
   next="$(py next "$MILESTONE" ${AUTO_BUILD_SKIP_P1:+--skip-p1})" || stop 1 "解析 docs/TASKS.md 失败"
   read -r kind id rest <<<"$next"
   case "$kind" in
-    DONE) stop 0 "STATUS: MILESTONE_DONE ${MILESTONE}" ;;
+    DONE) [[ -n "${AUTO_BUILD_TASKS:-}" ]] && stop 0 "STATUS: TASK_LIST_DONE ${AUTO_BUILD_TASKS}"
+      stop 0 "STATUS: MILESTONE_DONE ${MILESTONE}" ;;
+    UNKNOWN) stop 1 "AUTO_BUILD_TASKS 里的 $id 在 docs/TASKS.md 里找不到" ;;
     GATE) py checklist "$id" | tee -a "$RUN_DIR/summary.txt"; stop 0 "STATUS: GATE_REACHED $id（扫描顺序见 docs/AI-SKILLS.md）" ;;
     MANUAL) stop 0 "$id 标记为（人工），请在交互会话里做，完成后由人勾选" ;;
     DEPS) stop 2 "STATUS: BLOCKED $id 依赖未完成：$rest" ;;
@@ -103,6 +118,7 @@ for ((i = 1; i <= MAX_ROUNDS; i++)); do
 docs/TASKS.md 就是已批准的设计，不走 brainstorming。
 最后一行只输出一行：STATUS: TASK_DONE ${id}
 做不完、依赖不满足或检查修不好时，最后一行输出：STATUS: BLOCKED ${id} <一句话原因>"
+  [[ -n "${AUTO_BUILD_PROMPT_NOTE:-}" ]] && PROMPT+=$'\n'"${AUTO_BUILD_PROMPT_NOTE}"
 
   timeout "$ROUND_TIMEOUT" claude -p "$PROMPT" \
     --settings "$SETTINGS" \

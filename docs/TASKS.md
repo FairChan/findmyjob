@@ -390,12 +390,13 @@
 
 ## M4 · 人才库与解锁（核心，约 3.4 天）
 
-#### [ ] M4-T01 自由文本脱敏
+#### [x] M4-T01 自由文本脱敏
 依赖：M0-T07
 做：`lib/redact.ts`：把邮箱、电话（+60 / 01x-xxxxxxx、+86 1xxxxxxxxxx、通用国际格式）、URL、微信号模式（"微信"、"WeChat"、"wx" 后跟账号）替换为「[已隐藏]」。
 验收：至少 15 个单元测试用例（含中英混排、全角字符、带空格或横线的号码），且不误伤普通数字（年份、GPA、百分比）
+> 完成 2026-11-05：src/lib/redact.ts（全角归一化 + 7 条正则：URL、邮箱、+60、01x、+86、通用国际、微信/WeChat/wx）；tests/unit/redact.test.ts（24 组、60 个断言，含全角、中英混排、哨兵电话、false-positive 安全验证）；pnpm lint / typecheck / test 全部通过
 
-#### [ ] M4-T02 脱敏序列化器 + 防泄漏测试
+#### [x] M4-T02 脱敏序列化器 + 防泄漏测试
 依赖：M4-T01
 做：
 - `lib/mask-name.ts`（中文名取姓 + "同学"，支持复姓：欧阳、司马、诸葛、上官、东方、皇甫、尉迟、公孙、慕容、长孙、令狐、夏侯；非中文名取首字母 + "."）。
@@ -406,6 +407,8 @@
 - 在测试学生的自由文本里写入手机号、邮箱、微信号，卡片和详情页都显示「[已隐藏]」
 - 未解锁时，企业侧 Notification.payload 里没有学生的全名
 - 卡片和详情页显示的专业、学校名也经过 redact（TM-002）
+
+> 完成 2026-11-05：src/lib/mask-name.ts（12 种复姓 + 单姓 + 非中文首字母）；src/server/serializers/talent-card.ts（toTalentCard / toTalentDetail，TM-002 school/major 始终经 redact，contact 仅 unlocked=true 时输出，storageKey 不出现在输出）；src/server/services/notifications.ts（buildEmployerStudentPayload，仅 isUnlocked||hasApplied 时传 unlocked=true）；tests/unit/mask-name.test.ts（22 个断言，含 12 种复姓、单姓、非中文、边界）；tests/unit/talent-card.test.ts（防泄漏测试 + TM-002 + notifications，30 个断言）；pnpm lint / typecheck / test / db:check 全部通过
 
 #### [ ] M4-T03 人才库搜索 service
 依赖：M4-T02、M2-T07
