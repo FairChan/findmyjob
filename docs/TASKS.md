@@ -684,6 +684,7 @@
 
 > 完成 2026-11-05：deploy/Dockerfile（node:24.4.0-bookworm-slim，runner + migrate + tools 三个 target，standalone 输出，HOSTNAME=0.0.0.0，USER node=UID 1000）；deploy/docker-compose.prod.yml（只 caddy 发布端口，backend 网络 internal，app+worker cap_drop ALL，内存上限，ops profile）；deploy/Caddyfile（reverse_proxy app:3000，header_up X-Real-IP，request_body max_size 11MB，命名卷）；next.config.ts 加 output:standalone；env.example 加 APP_DOMAIN；docs/RUNBOOK.md GHCR PAT 轮换节填写；docker compose config 验证只有 caddy 有 ports
 > 修复 2026-11-05：deps 阶段加 prisma generate（修 Prisma client 缺失）；runner 阶段调整 COPY 顺序使全量 node_modules 覆盖 standalone minimal；base 阶段加 openssl/ca-certificates；backup 移至 runner 前使 runner 成为最后阶段（USER node）；backup 加 /backup-tmp 目录创建（postgres 属主可写）；tools target 改为推送镜像 findmyjob-tools；migrate/tools 加 cap_drop+no-new-privileges；compose 所有 ${APP_TAG} 改为 ${APP_TAG:?}；app/worker 加 APP_TAG 环境变量；Caddy 日志改为 stdout+format filter 去除查询串和敏感 header；RUNBOOK GHCR PAT 改为 read:packages、验证命令用 sha；真机 docker build 验证待部署后核实
+> 修复 2026-11-05（二）：runner 阶段改 `FROM base AS runner`（原 `FROM ${NODE_IMAGE} AS runner`），确保继承 openssl/ca-certificates/WORKDIR；Prisma library engine 可正常加载，健康检查不再失败回滚；bash -n 语法验证通过，真机 docker build 仍需部署时核实；pnpm lint/typecheck/test 全绿（526 个测试）
 
 #### [ ] M7-T07 全流程 E2E 冒烟
 依赖：M7-T01
