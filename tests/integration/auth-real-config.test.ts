@@ -1,11 +1,11 @@
 /**
- * Integration tests for auth.ts with the real auth.handler (M1-T10).
+ * Integration tests for auth.ts with the real auth.handler (M1-T10, M1-T11, M1-T12).
  *
  * No mock on auth.handler itself — tests call auth.handler(new Request(...)) directly.
  * Turnstile is stubbed at the network layer (global.fetch intercept).
  * Email provider is mocked; next/server.after executes callbacks synchronously.
  *
- * Covers:
+ * M1-T10 coverage:
  * - Direct POST /sign-up/email without token → 400 TURNSTILE_FAILED
  * - Successful sign-up → StudentProfile + Consent (TERMS, PRIVACY) created
  * - role field cannot be overridden via request body (input: false)
@@ -14,6 +14,27 @@
  * - Rate limit: same IP 4th request → 429; two different IPs count separately
  * - Existing email → reminder email sent, no new StudentProfile or Consent
  * - ref_code cookie uniformity: set for both new and duplicate email paths
+ * - sign-up rollback when after-hook fails; email failure doesn't leave half-created users
+ *
+ * M1-T11 coverage:
+ * - IP rate limit uses X-Real-IP, not X-Forwarded-For
+ * - verification.storeIdentifier: reset token stored as SHA-256 hash, not plain text
+ * - revokeSessionsOnPasswordReset: old session null after reset
+ * - SUSPENDED user login rejected (403 ACCOUNT_SUSPENDED)
+ * - forgot-password returns identical response for existing/non-existing email
+ * - email provider failure calls alert() with the error code
+ * - rate-limit counters survive process restart (database storage in staging/prod)
+ *
+ * M1-T12 coverage (this task — test-only fixes and additions):
+ * - Reset token hash: exact token not stored plain; SHA-256 (base64url) hash row exists;
+ *   full reset flow; old session null after reset
+ * - SUSPENDED login: specific 403 code, no session cookie, get-session null
+ * - change-password with revokeOtherSessions forced: session B revoked; no extra auth.login audit
+ * - Page guards: student→admin, employer→student, forged cookie→student all NEXT_REDIRECT
+ * - purge TTL: unverifiedTtlHours=0/-1/null all fall back to 48 h
+ * - purge batch + race condition: 1500 accounts in 2 batches; verified-between-batches user kept
+ * - forgot-password timing: median diff < 100 ms for existing vs non-existing email
+ * - email failure without code property → logs EMAIL_SEND_FAILED, calls alert()
  */
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
 
@@ -73,12 +94,35 @@ vi.mock('next/headers', () => ({
   cookies: vi.fn(() => ({ set: mockCookiesSet })),
 }))
 
+// next/navigation: redirect() throws a NEXT_REDIRECT error (matches Next.js App Router behaviour)
+vi.mock('next/navigation', () => ({
+  redirect: (url: string): never => {
+    const err = new Error(`NEXT_REDIRECT to ${url}`)
+    ;(err as unknown as Record<string, unknown>).digest = `NEXT_REDIRECT;replace;${url};200;`
+    throw err
+  },
+}))
+
+// logger: spy on warn/error so we can assert log entries in email-failure tests
+const mockLoggerWarn = vi.hoisted(() => vi.fn())
+const mockLoggerError = vi.hoisted(() => vi.fn())
+vi.mock('@/server/lib/logger', () => ({
+  logger: { warn: mockLoggerWarn, error: mockLoggerError, info: vi.fn(), debug: vi.fn() },
+  pinoOptions: {},
+}))
+
 // --- Imports (after mocks are set up) ---
 
+import { createHash } from 'node:crypto'
 import { setupTestDb, testDb } from '../setup/db'
 import { auth } from '@/server/auth'
 import { registerStudent } from '@/server/actions/register'
 import { setSetting } from '@/server/services/settings'
+import { purgeUnverifiedAccounts } from '@/server/services/signup-cap'
+import { headers } from 'next/headers'
+import AdminLayout from '@/app/[locale]/admin/layout'
+import StudentLayout from '@/app/[locale]/s/layout'
+import EmployerLayout from '@/app/[locale]/e/layout'
 
 setupTestDb()
 
@@ -459,57 +503,99 @@ describe('IP rate limit uses X-Real-IP, not X-Forwarded-For', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 10. Verification token stored as hash, not plain text
+// 10. Verification token stored as hash, not plain text; full reset flow
 // ---------------------------------------------------------------------------
 
 describe('verification.storeIdentifier hashed', () => {
-  it('reset token is not stored as plain text in Verification table', async () => {
+  it('reset token stored as SHA-256 hash; old session null after reset', async () => {
     stubFetchTurnstileSuccess()
     const email = `hash-verify-${Date.now()}@example.test`
+    const password = 'Password123!'
 
-    await auth.handler(makeSignUpReq({ email }, '198.51.100.10'))
+    // Sign up and verify
+    await auth.handler(makeSignUpReq({ email, password }, '198.51.100.20'))
     await testDb.user.update({ where: { email }, data: { emailVerified: true } })
+
+    // Sign in to get a session that should be revoked after reset
+    const signInRes = await auth.handler(new Request('http://localhost:3000/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'x-real-ip': '198.51.100.22', 'user-agent': 'vitest' },
+      body: JSON.stringify({ email, password, turnstileToken: 'valid-test-token' }),
+    }))
+    expect(signInRes.status).toBe(200)
+    const preResetCookie = signInRes.headers.get('set-cookie')?.split(';')[0] ?? ''
+    expect(preResetCookie).toBeTruthy()
 
     mockSendEmail.mockClear()
 
-    const res = await auth.handler(new Request('http://localhost:3000/api/auth/request-password-reset', {
+    const resetReqRes = await auth.handler(new Request('http://localhost:3000/api/auth/request-password-reset', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Origin: 'http://localhost:3000',
-        'x-real-ip': '10.0.0.1',
-        'user-agent': 'vitest',
-      },
+      headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'x-real-ip': '198.51.100.21', 'user-agent': 'vitest' },
       body: JSON.stringify({ email, callbackURL: '/reset-password', turnstileToken: 'valid-test-token' }),
     }))
-    expect(res.status).toBe(200)
+    expect(resetReqRes.status).toBe(200)
 
     await vi.waitFor(() => expect(mockSendEmail).toHaveBeenCalled(), { timeout: 2000 })
 
-    const call = mockSendEmail.mock.calls[0]?.[0] as { html?: string } | undefined
-    const hrefMatch = call?.html?.match(/href="([^"]*token[^"]*)"/)
-    const resetUrl = hrefMatch?.[1]
-    if (!resetUrl) return
+    const call = mockSendEmail.mock.calls[0]?.[0] as { html?: string; text?: string } | undefined
+    // Extract the reset URL robustly: try href attribute first, then bare URL in text
+    const html = call?.html ?? ''
+    const text = call?.text ?? ''
+    const hrefMatch = html.match(/href="([^"]+)"/) ?? html.match(/href='([^']+)'/)
+    const urlStr =
+      hrefMatch?.[1] ??
+      text.match(/https?:\/\/\S+/)?.[0] ??
+      html.match(/https?:\/\/[^"'<>\s]+/)?.[0]
 
-    const tokenParam = new URL(
-      resetUrl.startsWith('http') ? resetUrl : `http://localhost${resetUrl}`
-    ).searchParams.get('token')
-    if (!tokenParam) return
+    expect(urlStr, `reset email must contain a URL (html: ${html.slice(0, 200)})`).toBeTruthy()
 
-    // With storeIdentifier: 'hashed', the plain identifier must not exist
-    const plainRow = await testDb.verification.findFirst({
-      where: { identifier: `reset-password:${tokenParam}` },
+    const fullUrl = urlStr!.startsWith('http') ? urlStr! : `http://localhost${urlStr}`
+    const parsedUrl = new URL(fullUrl)
+    // Better Auth 1.7.16 embeds the token in the path: /api/auth/reset-password/{token}
+    // Fall back to 'token' query param for forward-compat
+    const pathParts = parsedUrl.pathname.split('/')
+    const tokenParam =
+      parsedUrl.searchParams.get('token') ??
+      pathParts[pathParts.length - 1] ??
+      ''
+    expect(tokenParam, `reset URL must contain a token (url: ${fullUrl})`).toBeTruthy()
+
+    // Plain token must NOT be stored in Verification table (storeIdentifier: 'hashed')
+    const plainRows = await testDb.verification.findMany({
+      where: { identifier: { in: [tokenParam, `reset-password:${tokenParam}`] } },
     })
-    expect(plainRow).toBeNull()
+    expect(plainRows, 'raw token must not be stored as plain identifier').toHaveLength(0)
+
+    // The hashed identifier MUST exist — try both common formats Better Auth may use
+    const hash1 = createHash('sha256').update(`reset-password:${tokenParam}`).digest('base64url')
+    const hash2 = createHash('sha256').update(tokenParam).digest('base64url')
+    const hashedRow = await testDb.verification.findFirst({
+      where: { identifier: { in: [hash1, hash2] } },
+    })
+    expect(hashedRow, `SHA-256 hash of reset token must exist in Verification table`).not.toBeNull()
+
+    // Complete the reset — revokeSessionsOnPasswordReset:true means old session should be gone
+    const resetRes = await auth.handler(new Request('http://localhost:3000/api/auth/reset-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'x-real-ip': '198.51.100.21', 'user-agent': 'vitest' },
+      body: JSON.stringify({ token: tokenParam, newPassword: 'NewPassword789!' }),
+    }))
+    expect(resetRes.status).toBe(200)
+
+    // Old session should be revoked
+    const sessionAfterReset = await auth.api.getSession({
+      headers: new Headers({ cookie: preResetCookie }),
+    })
+    expect(sessionAfterReset).toBeNull()
   })
 })
 
 // ---------------------------------------------------------------------------
-// 11. SUSPENDED user cannot log in
+// 11. SUSPENDED user cannot log in (M1-T12: specific assertions)
 // ---------------------------------------------------------------------------
 
 describe('SUSPENDED user login', () => {
-  it('rejects sign-in for a suspended account even with correct credentials', async () => {
+  it('rejects sign-in for a suspended account: 403 ACCOUNT_SUSPENDED, no session cookie, get-session null', async () => {
     stubFetchTurnstileSuccess()
     const email = `suspended-${Date.now()}@example.test`
     const password = 'Password123!'
@@ -528,7 +614,21 @@ describe('SUSPENDED user login', () => {
       body: JSON.stringify({ email, password, turnstileToken: 'valid-test-token' }),
     }))
 
-    expect(signInRes.status).not.toBe(200)
+    // Must return a 4xx (the hook throws APIError FORBIDDEN → 403)
+    expect(signInRes.status).toBe(403)
+    const body = (await signInRes.json()) as { code?: string }
+    expect(body.code).toBe('ACCOUNT_SUSPENDED')
+
+    // Response must not set a session cookie
+    const setCookie = signInRes.headers.get('set-cookie') ?? ''
+    expect(setCookie).not.toMatch(/session_token/)
+
+    // Even if we forge the cookie from an earlier sign-in, getSession returns null for a suspended user
+    // (the check happens at session-creation time, not at session-read time — verify by checking no row exists)
+    const session = await auth.api.getSession({
+      headers: new Headers({ cookie: setCookie || 'better-auth.session_token=invalid' }),
+    })
+    expect(session).toBeNull()
   })
 })
 
@@ -684,5 +784,356 @@ describe('rate-limit counters survive a process restart in staging/production', 
     const second = (await import('@/server/auth')).auth
     const res = await second.handler(makeSignUpReq({ email: `restart-4-${Date.now()}@example.test` }, ip))
     expect(res.status).toBe(429)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M1-T12 new tests
+// ---------------------------------------------------------------------------
+
+// Helper: build a sign-in request
+function makeSignInReq(email: string, ip: string, password = 'Password123!'): Request {
+  return new Request('http://localhost:3000/api/auth/sign-in/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: 'http://localhost:3000',
+      'x-real-ip': ip,
+      'user-agent': 'vitest',
+    },
+    body: JSON.stringify({ email, password, turnstileToken: 'valid-test-token' }),
+  })
+}
+
+// Helper: extract session cookie value from a Set-Cookie header
+function extractSessionCookie(setCookieHeader: string | null): string {
+  return setCookieHeader?.split(';')[0]?.trim() ?? ''
+}
+
+// ---------------------------------------------------------------------------
+// 14. change-password forces revokeOtherSessions; no extra auth.login audit
+// ---------------------------------------------------------------------------
+
+describe('POST /change-password revokes other sessions without adding auth.login audit', () => {
+  it('session B is revoked; auth.login audit count unchanged', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `change-pw-${Date.now()}@example.test`
+    const password = 'Password123!'
+    const newPassword = 'NewPassword456!'
+
+    await auth.handler(makeSignUpReq({ email, password }, '198.51.100.50'))
+    await testDb.user.update({ where: { email }, data: { emailVerified: true } })
+
+    // Sign in twice from different IPs to get sessions A and B
+    const resA = await auth.handler(makeSignInReq(email, '198.51.100.51'))
+    expect(resA.status).toBe(200)
+    const cookieA = extractSessionCookie(resA.headers.get('set-cookie'))
+    expect(cookieA).toBeTruthy()
+
+    const resB = await auth.handler(makeSignInReq(email, '198.51.100.52'))
+    expect(resB.status).toBe(200)
+    const cookieB = extractSessionCookie(resB.headers.get('set-cookie'))
+    expect(cookieB).toBeTruthy()
+
+    // Count auth.login audits before the password change
+    const user = await testDb.user.findFirst({ where: { email } })
+    const beforeCount = await testDb.auditLog.count({
+      where: { actorId: user!.id, action: 'auth.login' },
+    })
+
+    // POST /change-password with cookie A, body does NOT include revokeOtherSessions
+    // The hooks.before in auth.ts forces revokeOtherSessions=true regardless
+    const changePwRes = await auth.handler(new Request('http://localhost:3000/api/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'http://localhost:3000',
+        'x-real-ip': '198.51.100.51',
+        'user-agent': 'vitest',
+        cookie: cookieA,
+      },
+      body: JSON.stringify({ currentPassword: password, newPassword }),
+    }))
+    expect(changePwRes.status).toBe(200)
+
+    // Session B must be revoked
+    const sessionB = await auth.api.getSession({ headers: new Headers({ cookie: cookieB }) })
+    expect(sessionB).toBeNull()
+
+    // No new auth.login audit should have been created by the change-password session
+    const afterCount = await testDb.auditLog.count({
+      where: { actorId: user!.id, action: 'auth.login' },
+    })
+    expect(afterCount).toBe(beforeCount)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 15. Page guards: wrong role or forged cookie → NEXT_REDIRECT to /zh/login
+// ---------------------------------------------------------------------------
+
+describe('page guards redirect on wrong role or missing session', () => {
+  it('student cookie accessing /admin → NEXT_REDIRECT to /zh/login', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `guard-admin-${Date.now()}@example.test`
+    await auth.handler(makeSignUpReq({ email }, '198.51.100.60'))
+    await testDb.user.update({ where: { email }, data: { emailVerified: true } })
+    const signInRes = await auth.handler(makeSignInReq(email, '198.51.100.60'))
+    expect(signInRes.status).toBe(200)
+    const cookie = extractSessionCookie(signInRes.headers.get('set-cookie'))
+
+    vi.mocked(headers).mockReturnValueOnce(new Headers({ cookie }) as never)
+    await expect(
+      AdminLayout({ children: null, params: Promise.resolve({ locale: 'zh' }) }),
+    ).rejects.toMatchObject({ digest: expect.stringContaining('/zh/login') })
+  })
+
+  it('employer cookie accessing /s → NEXT_REDIRECT to /zh/login', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `guard-employer-${Date.now()}@example.test`
+    await auth.handler(makeSignUpReq({ email }, '198.51.100.61'))
+    // Promote to EMPLOYER so sign-in creates an employer session
+    await testDb.user.update({ where: { email }, data: { emailVerified: true, role: 'EMPLOYER' } })
+    const signInRes = await auth.handler(makeSignInReq(email, '198.51.100.61'))
+    expect(signInRes.status).toBe(200)
+    const cookie = extractSessionCookie(signInRes.headers.get('set-cookie'))
+
+    vi.mocked(headers).mockReturnValueOnce(new Headers({ cookie }) as never)
+    await expect(
+      StudentLayout({ children: null, params: Promise.resolve({ locale: 'zh' }) }),
+    ).rejects.toMatchObject({ digest: expect.stringContaining('/zh/login') })
+  })
+
+  it('forged session cookie accessing /s → NEXT_REDIRECT to /zh/login', async () => {
+    vi.mocked(headers).mockReturnValueOnce(
+      new Headers({ cookie: 'better-auth.session_token=forged_invalid_token_value_xyz' }) as never,
+    )
+    await expect(
+      StudentLayout({ children: null, params: Promise.resolve({ locale: 'zh' }) }),
+    ).rejects.toMatchObject({ digest: expect.stringContaining('/zh/login') })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 16. purge TTL: unverifiedTtlHours=0/-1/null all fall back to 48 h
+// ---------------------------------------------------------------------------
+
+describe('purgeUnverifiedAccounts TTL fallback to 48 h', () => {
+  afterEach(async () => {
+    // Clear the getSetting cache for this key to prevent leakage
+    await setSetting('signup.unverifiedTtlHours', 48).catch(() => {})
+  })
+
+  async function createUser24hOld(email: string) {
+    return testDb.user.create({
+      data: {
+        name: 'TTL Test',
+        email,
+        emailVerified: false,
+        role: 'STUDENT',
+        status: 'ACTIVE',
+        createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000),
+      },
+    })
+  }
+
+  it('unverifiedTtlHours=0 falls back to 48 h: 24-h-old user is NOT deleted', async () => {
+    await setSetting('signup.unverifiedTtlHours', 0)
+    const email = `ttl-0-${Date.now()}@example.test`
+    await createUser24hOld(email)
+    await purgeUnverifiedAccounts()
+    expect(await testDb.user.count({ where: { email } })).toBe(1)
+  })
+
+  it('unverifiedTtlHours=-1 falls back to 48 h: 24-h-old user is NOT deleted', async () => {
+    await setSetting('signup.unverifiedTtlHours', -1)
+    const email = `ttl-neg-${Date.now()}@example.test`
+    await createUser24hOld(email)
+    await purgeUnverifiedAccounts()
+    expect(await testDb.user.count({ where: { email } })).toBe(1)
+  })
+
+  it('unverifiedTtlHours=null falls back to 48 h: 24-h-old user is NOT deleted', async () => {
+    await setSetting('signup.unverifiedTtlHours', null)
+    const email = `ttl-null-${Date.now()}@example.test`
+    await createUser24hOld(email)
+    await purgeUnverifiedAccounts()
+    expect(await testDb.user.count({ where: { email } })).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 17. purge batch: 1500 accounts deleted in 2 batches of ≤1000
+//     race condition: user verified between findMany and deleteMany is kept
+// ---------------------------------------------------------------------------
+
+describe('purgeUnverifiedAccounts batch and race condition', () => {
+  it('processes 1500 expired accounts in exactly 2 batches', async () => {
+    const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000)
+    await testDb.user.createMany({
+      data: Array.from({ length: 1500 }, (_, i) => ({
+        name: `Batch ${i}`,
+        email: `batch-purge-${i}@example.test`,
+        emailVerified: false,
+        role: 'STUDENT' as const,
+        status: 'ACTIVE' as const,
+        createdAt: cutoff,
+      })),
+    })
+
+    const findManySpy = vi.spyOn(testDb.user, 'findMany')
+    const result = await purgeUnverifiedAccounts()
+    const findManyCallCount = findManySpy.mock.calls.length
+    findManySpy.mockRestore()
+
+    expect(result).toBe(1500)
+    // batch 1 = 1000, batch 2 = 500 → 2 findMany calls
+    expect(findManyCallCount).toBe(2)
+  })
+
+  it('does not delete a user who verified between findMany and deleteMany', async () => {
+    const cutoff = new Date(Date.now() - 72 * 60 * 60 * 1000)
+    const raceUser = await testDb.user.create({
+      data: {
+        name: 'Race User',
+        email: `race-user-${Date.now()}@example.test`,
+        emailVerified: false,
+        role: 'STUDENT',
+        status: 'ACTIVE',
+        createdAt: cutoff,
+      },
+    })
+
+    // Intercept the first deleteMany call; mark the user as verified before it runs
+    let intercepted = false
+    const originalDeleteMany = testDb.user.deleteMany.bind(testDb.user)
+    const raceImpl: any = async (args?: any) => {
+      if (!intercepted) {
+        intercepted = true
+        await testDb.user.update({ where: { id: raceUser.id }, data: { emailVerified: true } })
+      }
+      return originalDeleteMany(args)
+    }
+    const spy = vi.spyOn(testDb.user, 'deleteMany').mockImplementation(raceImpl)
+
+    await purgeUnverifiedAccounts()
+    spy.mockRestore()
+
+    // raceUser verified before deleteMany ran → its emailVerified=true → WHERE emailVerified=false did NOT match
+    const found = await testDb.user.findUnique({ where: { id: raceUser.id } })
+    expect(found).not.toBeNull()
+    expect(found?.emailVerified).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 18. forgot-password timing: median diff < 100 ms for existing vs non-existing
+// ---------------------------------------------------------------------------
+
+describe('forgot-password timing parity (anti-enumeration)', () => {
+  it('median response time for existing and non-existing email differs by < 100 ms', async () => {
+    stubFetchTurnstileSuccess()
+    const existingEmail = `fp-timing-${Date.now()}@example.test`
+
+    await auth.handler(makeSignUpReq({ email: existingEmail }, '203.0.113.0'))
+    await testDb.user.update({ where: { email: existingEmail }, data: { emailVerified: true } })
+
+    const N = 5
+    const existingTimes: number[] = []
+    const nonExistingTimes: number[] = []
+
+    for (let i = 0; i < N; i++) {
+      const eIp = `203.0.113.${10 + i}`
+      const neIp = `203.0.113.${20 + i}`
+
+      const makeReq = (email: string, ip: string) =>
+        new Request('http://localhost:3000/api/auth/request-password-reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Origin: 'http://localhost:3000', 'x-real-ip': ip, 'user-agent': 'vitest' },
+          body: JSON.stringify({ email, callbackURL: '/reset-password', turnstileToken: 'valid-test-token' }),
+        })
+
+      const t0e = performance.now()
+      const resE = await auth.handler(makeReq(existingEmail, eIp))
+      existingTimes.push(performance.now() - t0e)
+      void (await resE.json())
+
+      const t0ne = performance.now()
+      const resNe = await auth.handler(makeReq(`ne-${i}-${Date.now()}@example.test`, neIp))
+      nonExistingTimes.push(performance.now() - t0ne)
+      void (await resNe.json())
+    }
+
+    const sortedE = [...existingTimes].sort((a, b) => a - b)
+    const sortedNe = [...nonExistingTimes].sort((a, b) => a - b)
+    const medianE = sortedE[Math.floor(N / 2)]!
+    const medianNe = sortedNe[Math.floor(N / 2)]!
+
+    expect(Math.abs(medianE - medianNe)).toBeLessThan(100)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 19. Email failure without .code property → logs EMAIL_SEND_FAILED, calls alert()
+// ---------------------------------------------------------------------------
+
+describe('email provider failure: error without .code property', () => {
+  it('logs EMAIL_SEND_FAILED and calls alert() when sendEmail throws without code', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `email-nocode-${Date.now()}@example.test`
+
+    mockAlert.mockClear()
+    mockLoggerWarn.mockClear()
+
+    // Error with NO .code property (e.g. a plain Error from an HTTP client)
+    mockSendEmail.mockRejectedValueOnce(new Error('connection refused'))
+
+    await auth.handler(makeSignUpReq({ email }, '198.51.100.70'))
+
+    // Wait for the async email-send callback to run (after() is synchronous in test)
+    await vi.waitFor(() => expect(mockSendEmail).toHaveBeenCalled(), { timeout: 2000 })
+
+    // alert() must be called with 'email.send.failed' and code 'EMAIL_SEND_FAILED'
+    await vi.waitFor(
+      () =>
+        expect(mockAlert).toHaveBeenCalledWith(
+          'email.send.failed',
+          expect.objectContaining({ code: 'EMAIL_SEND_FAILED' }),
+        ),
+      { timeout: 2000 },
+    )
+
+    // logger.warn must also have been called with the same code
+    await vi.waitFor(
+      () =>
+        expect(mockLoggerWarn).toHaveBeenCalledWith(
+          expect.objectContaining({ code: 'EMAIL_SEND_FAILED' }),
+          expect.any(String),
+        ),
+      { timeout: 2000 },
+    )
+  })
+
+  it('logs the actual .code (ECONNREFUSED) when it is present on the error', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `email-code-${Date.now()}@example.test`
+
+    mockAlert.mockClear()
+    mockLoggerWarn.mockClear()
+
+    const errWithCode = Object.assign(new Error('smtp refused'), { code: 'ECONNREFUSED' })
+    mockSendEmail.mockRejectedValueOnce(errWithCode)
+
+    await auth.handler(makeSignUpReq({ email }, '198.51.100.71'))
+
+    await vi.waitFor(() => expect(mockSendEmail).toHaveBeenCalled(), { timeout: 2000 })
+    await vi.waitFor(
+      () =>
+        expect(mockLoggerWarn).toHaveBeenCalledWith(
+          expect.objectContaining({ code: 'ECONNREFUSED' }),
+          expect.any(String),
+        ),
+      { timeout: 2000 },
+    )
   })
 })

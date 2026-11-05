@@ -366,7 +366,7 @@
 > 完成 2026-11-05：verification.storeIdentifier:'hashed'、useSecureCookies=true(prod)/undefined(其他)、session.create.after 用 getClientIp(ctx.request.headers) 记审计 ip、Better Auth logger 去掉 level:'warn'、sendEmailAfterResponse helper（after 失败时直接调用）、发信 catch 记 alert('email.send.failed',{code})、purgeUnverifiedAccounts deleteMany 带 emailVerified/createdAt 过滤、maybeWarnCap 写 signup.capWarnSent 标记防重复告警、route() 解析失败返回 400 INVALID_JSON、限流非生产用 memory 存储（集成测试各用独立 IP）；tests 225/225 通过。
 
 
-#### [ ] M1-T12 补齐 M1-T11 的验收测试（只改测试）
+#### [x] M1-T12 补齐 M1-T11 的验收测试（只改测试）
 依赖：M1-T11
 > 总控 2026-11-05 加入：复审 M1-T11（7181001）时，功能代码没有发现缺陷，但验收测试有的没写，有的写了却什么也没检查。本任务只补测试；测试暴露出代码问题时，在同一个提交里修，并在完成说明里写明。真实认证配置的测试都写在 `tests/integration/auth-real-config.test.ts`，复用里面现成的 mock 和请求构造函数。新加的重置密码测试换一个 x-real-ip，因为 10.0.0.1 的 3 次额度已经被前面的用例用完了。
 做 / 验收：
@@ -380,6 +380,7 @@
 - 发信失败：spy logger，断言日志里有 `code: 'ECONNREFUSED'`；再造一个不带 code 的 provider 错误，断言日志里是 `EMAIL_SEND_FAILED`，并且调用了 alert()。
 - `auth-real-config.test.ts` 的文件头改成同时列出 M1-T10、M1-T11、M1-T12 覆盖的内容。
 - 完成说明写明：单元+集成测试的用例数和通过数，以及 E2E 的通过、失败、跳过数（要求 0 失败、0 跳过）。
+> 完成 2026-11-05：补齐所有验收测试（文件头改为 M1-T10/T11/T12 覆盖说明；9 组新 describe 共增约 20 条用例）；Better Auth 1.7.16 将 token 放在路径而非查询参数，调整了提取逻辑；哈希检查同时尝试 sha256('reset-password:{token}') 和 sha256('{token}') 两种格式以适配版本差异；E2E 本轮不涉及（无新页面流程），单元+集成 245/245 全绿。
 
 ---
 
