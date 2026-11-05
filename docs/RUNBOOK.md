@@ -429,50 +429,56 @@ cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
 
 ### 只读 SQL 模板
 
-> 以 `findmyjob_app` 只读身份运行，只输出 ID 和数量，**不输出完整 AuditLog 行**。
+> `findmyjob_app` 拥有 DML 权限，必须在 `BEGIN READ ONLY` 事务里执行以下模板，防止意外写入；只输出 ID 和数量，**不输出完整 AuditLog 行**。
 
 #### 按时间窗统计 talent.view
 
 ```sql
-SELECT "subjectId"  AS "studentId",
-       COUNT(*)     AS "viewCount"
+BEGIN READ ONLY;
+SELECT "targetId"  AS "studentId",
+       COUNT(*)    AS "viewCount"
 FROM   "AuditLog"
 WHERE  action       = 'talent.view'
   AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
   AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
-GROUP  BY "subjectId"
+GROUP  BY "targetId"
 ORDER  BY "viewCount" DESC
 LIMIT  100;
+COMMIT;
 ```
 
 #### 按时间窗统计 talent.unlock
 
 ```sql
-SELECT "subjectId"  AS "studentId",
-       "actorId"    AS "companyId",
-       COUNT(*)     AS "unlockCount"
+BEGIN READ ONLY;
+SELECT "targetId"    AS "studentId",
+       "actorId"     AS "actorUserId",
+       COUNT(*)      AS "unlockCount"
 FROM   "AuditLog"
 WHERE  action       = 'talent.unlock'
   AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
   AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
-GROUP  BY "subjectId", "actorId"
+GROUP  BY "targetId", "actorId"
 ORDER  BY "unlockCount" DESC
 LIMIT  100;
+COMMIT;
 ```
 
 #### 按时间窗统计 resume.download
 
 ```sql
-SELECT "subjectId"  AS "studentId",
-       "actorId"    AS "memberId",
-       COUNT(*)     AS "downloadCount"
+BEGIN READ ONLY;
+SELECT "targetId"    AS "studentId",
+       "actorId"     AS "actorUserId",
+       COUNT(*)      AS "downloadCount"
 FROM   "AuditLog"
 WHERE  action       = 'resume.download'
   AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
   AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
-GROUP  BY "subjectId", "actorId"
+GROUP  BY "targetId", "actorId"
 ORDER  BY "downloadCount" DESC
 LIMIT  100;
+COMMIT;
 ```
 
 ### PDPA 通报
