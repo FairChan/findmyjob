@@ -49,7 +49,7 @@
 | A9 | 人机验证用 Cloudflare Turnstile | 免费、成熟方案（会议共识） |
 | A10 | 用注册上限控制放量节奏（`signup.studentCap`） | 每个阶段先压测再放量 |
 | A11 | 代管企业：运营先替企业建号、代发职位，之后移交 | 冷启动时企业不愿自己注册 |
-| A12 | 工具链和 security-guidance 分阶段配置：B/C 阶段用户级关闭 Stop 审查（ENABLE_STOP_REVIEW=0），保留提交审查；auto-build 经 `scripts/headless-settings.json` 降级；交互会话需要深度审查时手动 /security-review。待填：Z0-4 的 python3 / pnpm / gitleaks 版本；Z0-6 的 env 优先级结论；若出现 API error，记录 ENABLE_CODE_SECURITY_REVIEW=0 的降级方案；`npx skills update` 后要重新给 4 个技能加 disable-model-invocation | -p 模式下 Stop 审查会强制多跑一轮；钩子经中转是否可用尚未实测 |
+| A12 | 工具链和 security-guidance 分阶段配置：B/C 阶段用户级关闭 Stop 审查（ENABLE_STOP_REVIEW=0），保留提交审查；auto-build 经 `scripts/headless-settings.json` 降级；交互会话需要深度审查时手动 /security-review。待填：Z0-4 的 python3 / pnpm / gitleaks 版本；Z0-6 的 env 优先级结论；若出现 API error，记录 ENABLE_CODE_SECURITY_REVIEW=0 的降级方案；`npx skills update` 后要重新给 4 个技能加 disable-model-invocation | -p 模式下 Stop 审查会强制多跑一轮；钩子经中转是否可用尚未实测。**2026-11-05 实测**：auto-build 子进程改用订阅登录后，提交审查钩子调不通（日志：`LLM code review: call raised ValueError: unknown url type: '/v1/messages'`，Commit review: got no verdict），无人值守轮次实际上没有提交审查。替代做法：autopilot 默认 `REVIEW_BEFORE_MERGE=1`，每个里程碑 verify 通过后停下，由总控起只读子代理审该里程碑 diff，问题写成补修任务，审完用 `REVIEWED="Mx"` 才合并 |
 | A13 | 生产仓库用 pnpm（corepack，packageManager 精确版本）；原型仍用 npm | 原型已有 package-lock，迁移不划算；生产要 frozen-lockfile 和 install 脚本白名单 |
 | A14 | 环境变量模板叫 `env.example`（不以 .env 开头） | deny 规则 `Read(**/.env*)` 优先于 allow，没法单独放行模板；改名后 .gitignore 不需要例外 |
 | A15 | 命名、主键和令牌：表和列不做名称映射；主键用 cuid()；本项目自己发的令牌只存 sha256 哈希，比较用 timingSafeEqual | 第一个迁移之前定下来不花成本；数据库泄露时令牌不能直接用 |
