@@ -413,6 +413,7 @@
 - 卡片和详情页显示的专业、学校名也经过 redact（TM-002）
 
 > 完成 2026-11-05：src/lib/mask-name.ts（12 种复姓 + 单姓 + 非中文首字母）；src/server/serializers/talent-card.ts（toTalentCard / toTalentDetail，TM-002 school/major 始终经 redact，contact 仅 unlocked=true 时输出，storageKey 不出现在输出）；src/server/services/notifications.ts（buildEmployerStudentPayload，仅 isUnlocked||hasApplied 时传 unlocked=true）；tests/unit/mask-name.test.ts（22 个断言，含 12 种复姓、单姓、非中文、边界）；tests/unit/talent-card.test.ts（防泄漏测试 + TM-002 + notifications，30 个断言）；pnpm lint / typecheck / test / db:check 全部通过
+> 修复 2026-11-05：mask-name 复姓改为至少 3 字才按复姓处理、首字符改码点安全取法；serializer 未解锁时对全部自由文本字段追加姓名遮蔽；notifications 签名改为 canSeeName，payload 始终 unlocked=false；补全 experience.description / resumePreview parsedJson / education.major / school.nameEn / WhatsApp 和 LinkedIn 链接的防泄漏测试；pnpm lint / typecheck / test 全部通过（466 个断言）
 
 #### [ ] M4-T03 人才库搜索 service
 依赖：M4-T02、M2-T07

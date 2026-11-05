@@ -181,20 +181,225 @@ describe('TM-002 – school name and major always go through redact()', () => {
 
 // ---- notifications.ts payload -------------------------------------------
 
-describe('buildEmployerStudentPayload – 全名只在已解锁或已投递时出现', () => {
-  it('未解锁且未投递 → 名字脱敏', () => {
-    const p = buildEmployerStudentPayload(piiProfile, { isUnlocked: false, hasApplied: false })
+describe('buildEmployerStudentPayload – canSeeName 控制姓名可见性', () => {
+  it('canSeeName:false → 名字脱敏', () => {
+    const p = buildEmployerStudentPayload(piiProfile, { canSeeName: false })
     expect(p.name).not.toBe(S_NAME)
     expect(p.name).toContain('同学')
   })
 
-  it('已解锁 → 全名', () => {
-    const p = buildEmployerStudentPayload(piiProfile, { isUnlocked: true, hasApplied: false })
+  it('canSeeName:true → 全名', () => {
+    const p = buildEmployerStudentPayload(piiProfile, { canSeeName: true })
     expect(p.name).toBe(S_NAME)
   })
 
-  it('已投递 → 全名', () => {
-    const p = buildEmployerStudentPayload(piiProfile, { isUnlocked: false, hasApplied: true })
+  it('canSeeName:true 时 headline 里的手机号仍被遮（payload 始终 unlocked=false）', () => {
+    const p = buildEmployerStudentPayload(piiProfile, { canSeeName: true })
+    const json = JSON.stringify(p)
+    expect(json).not.toContain(S_PHONE)
     expect(p.name).toBe(S_NAME)
+  })
+
+  it('canSeeName:false 时 payload JSON 里不含手机号', () => {
+    const p = buildEmployerStudentPayload(piiProfile, { canSeeName: false })
+    expect(JSON.stringify(p)).not.toContain(S_PHONE)
+  })
+})
+
+// ---- issue #1: 自由文本里的姓名遮蔽 ----------------------------------------
+
+const S_GIVEN = '明明' // given name from S_NAME '王明明'
+
+describe('toTalentCard – 未解锁时自由文本里不出现姓名', () => {
+  const nameInHeadlineProfile = {
+    ...piiProfile,
+    headline: `我是马来亚大学的${S_NAME}`,
+    skills: [`${S_NAME}的技能`, 'TypeScript'],
+  }
+
+  it('headline 里的全名被遮', () => {
+    const r = toTalentCard(nameInHeadlineProfile, { unlocked: false })
+    expect(r.headline).not.toContain(S_NAME)
+    expect(r.headline).not.toContain(S_GIVEN)
+  })
+
+  it('skill 里的全名被遮', () => {
+    const r = toTalentCard(nameInHeadlineProfile, { unlocked: false })
+    expect(r.skills[0]).not.toContain(S_NAME)
+    expect(r.skills[0]).not.toContain(S_GIVEN)
+  })
+
+  it('已解锁时 headline 保留原文', () => {
+    const r = toTalentCard(nameInHeadlineProfile, { unlocked: true })
+    expect(r.headline).toContain(S_NAME)
+  })
+})
+
+describe('toTalentDetail – 未解锁时自由文本里不出现姓名 (中文)', () => {
+  const p: ProfileDetailInput = {
+    ...piiProfile,
+    summary: `我是${S_NAME}同学，请联系我`,
+    educations: [
+      {
+        ...piiProfile.educations[0]!,
+        major: `${S_NAME}专业方向`,
+        description: `指导老师是${S_GIVEN}`,
+      },
+    ],
+    experiences: [
+      {
+        ...piiProfile.experiences[0]!,
+        title: `${S_NAME}的实习`,
+        organization: `${S_GIVEN}公司`,
+        description: `描述：${S_NAME}负责前端`,
+      },
+    ],
+  }
+
+  it('summary 里的全名和名被遮', () => {
+    const r = toTalentDetail(p, { unlocked: false })
+    expect(r.summary).not.toContain(S_NAME)
+    expect(r.summary).not.toContain(S_GIVEN)
+  })
+
+  it('education.major 里的名被遮', () => {
+    const r = toTalentDetail(p, { unlocked: false })
+    expect(r.educations[0]?.major).not.toContain(S_NAME)
+  })
+
+  it('education.description 里的名被遮', () => {
+    const r = toTalentDetail(p, { unlocked: false })
+    expect(r.educations[0]?.description).not.toContain(S_GIVEN)
+  })
+
+  it('experience.title 里的全名被遮', () => {
+    const r = toTalentDetail(p, { unlocked: false })
+    expect(r.experiences[0]?.title).not.toContain(S_NAME)
+  })
+
+  it('experience.organization 里的名被遮', () => {
+    const r = toTalentDetail(p, { unlocked: false })
+    expect(r.experiences[0]?.organization).not.toContain(S_GIVEN)
+  })
+
+  it('experience.description 里的全名被遮', () => {
+    const r = toTalentDetail(p, { unlocked: false })
+    expect(r.experiences[0]?.description).not.toContain(S_NAME)
+  })
+})
+
+describe('toTalentDetail – 未解锁时自由文本里不出现姓名 (拉丁字母)', () => {
+  const S_LAT = 'Tan Wei Ming'
+  const latProfile: ProfileDetailInput = {
+    ...piiProfile,
+    fullName: S_LAT,
+    headline: `Hi, I am ${S_LAT}`,
+    summary: `Contact Tan Wei for details`,
+    experiences: [
+      {
+        ...piiProfile.experiences[0]!,
+        title: `Intern, ${S_LAT}`,
+        description: `Wei Ming leads this project`,
+      },
+    ],
+  }
+
+  it('headline 里的拉丁名各段被遮（unlocked=false）', () => {
+    const r = toTalentDetail(latProfile, { unlocked: false })
+    expect(r.headline).not.toContain('Tan')
+    expect(r.headline).not.toContain('Wei')
+    expect(r.headline).not.toContain('Ming')
+  })
+
+  it('summary 里的拉丁名段被遮', () => {
+    const r = toTalentDetail(latProfile, { unlocked: false })
+    expect(r.summary).not.toContain('Tan')
+    expect(r.summary).not.toContain('Wei')
+  })
+
+  it('experience.title 里的拉丁全名被遮', () => {
+    const r = toTalentDetail(latProfile, { unlocked: false })
+    expect(r.experiences[0]?.title).not.toContain('Tan')
+  })
+
+  it('experience.description 里的拉丁名段被遮', () => {
+    const r = toTalentDetail(latProfile, { unlocked: false })
+    expect(r.experiences[0]?.description).not.toContain('Wei')
+    expect(r.experiences[0]?.description).not.toContain('Ming')
+  })
+
+  it('已解锁时 headline 保留拉丁全名', () => {
+    const r = toTalentDetail(latProfile, { unlocked: true })
+    expect(r.headline).toContain(S_LAT)
+  })
+})
+
+// ---- issue #3: 防泄漏 – 补充路径覆盖 --------------------------------------
+
+const S_EXP_DESC_PHONE = '+60 11-5678 9012'
+const S_EDU_MAJOR_EMAIL = 'major-sentinel@example.test'
+const S_SCHOOL_EN_EMAIL = 'school-en-sentinel@example.test'
+const S_RESUME_PHONE = '+60 13-9988 7766'
+const S_RESUME_EMAIL = 'resume-sentinel@example.test'
+const S_RESUME_KEY = 'resumes/sentinel-resume/leak.pdf'
+const S_WA_LINK = 'wa.me/60129000001'
+const S_LI_LINK = 'https://linkedin.com/in/sentinel-li-test'
+
+describe('防泄漏 – 补充路径覆盖 (issue #3)', () => {
+  const extraProfile: ProfileDetailInput = {
+    ...piiProfile,
+    headline: `WhatsApp ${S_WA_LINK} LinkedIn ${S_LI_LINK}`,
+    school: { id: 's1', nameZh: '马来亚大学', nameEn: `UM ${S_SCHOOL_EN_EMAIL}` },
+    educations: [
+      {
+        ...piiProfile.educations[0]!,
+        major: `CS ${S_EDU_MAJOR_EMAIL}`,
+        description: `描述 ${S_EDU_MAJOR_EMAIL}`,
+      },
+    ],
+    experiences: [
+      {
+        ...piiProfile.experiences[0]!,
+        description: `经历 ${S_EXP_DESC_PHONE}`,
+      },
+    ],
+    resumes: [
+      {
+        id: 'res-2',
+        storageKey: S_RESUME_KEY,
+        isPrimary: true,
+        parsedJson: { phone: S_RESUME_PHONE, email: S_RESUME_EMAIL, key: S_RESUME_KEY },
+      },
+    ],
+  }
+
+  const result = toTalentDetail(extraProfile, { unlocked: false, contact })
+  const json = JSON.stringify(result)
+
+  it('experience.description 经过 redact（电话被遮）', () => {
+    expect(result.experiences[0]?.description).not.toContain(S_EXP_DESC_PHONE)
+  })
+
+  it('education.major 经过 redact（邮箱被遮）', () => {
+    expect(result.educations[0]?.major).not.toContain(S_EDU_MAJOR_EMAIL)
+  })
+
+  it('school.nameEn 经过 redact（邮箱被遮）', () => {
+    expect(result.school?.nameEn).not.toContain(S_SCHOOL_EN_EMAIL)
+  })
+
+  it('resumePreview 为 null（parsedJson 里的 PII 不出现）', () => {
+    expect(result.resumePreview).toBeNull()
+    expect(json).not.toContain(S_RESUME_PHONE)
+    expect(json).not.toContain(S_RESUME_EMAIL)
+    expect(json).not.toContain(S_RESUME_KEY)
+  })
+
+  it('headline 里的 WhatsApp 链接被遮', () => {
+    expect(result.headline).not.toContain(S_WA_LINK)
+  })
+
+  it('headline 里的 LinkedIn URL 被遮', () => {
+    expect(result.headline).not.toContain(S_LI_LINK)
   })
 })
