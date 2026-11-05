@@ -18,7 +18,10 @@
 # deploy-history.log line format (one entry per line):
 #   deploy   <sha>  <digest|unknown>  <timestamp>
 #   rollback <sha>  <digest|unknown>  <timestamp>
-set -euo pipefail
+# -E: propagate ERR trap into functions so the restore-on-failure trap in
+# cmd_deploy fires even when update_app_tag or 'dc up -d' fail inside a
+# function call. Without -E, bash exits via set -e but skips the trap.
+set -Eeuo pipefail
 
 WORKDIR="/opt/findmyjob"
 COMPOSE_FILE="${WORKDIR}/docker-compose.prod.yml"
@@ -94,11 +97,17 @@ check_pending_migrations() {
   log "Checking pending migrations in ${IMAGE_MIGRATE}:${sha}..."
 
   # Check whether a prisma/migrations directory exists in the image.
-  # Only suppress the test's own stderr; a container-launch failure is fatal.
-  if ! docker run --rm --entrypoint /bin/sh \
-      "${IMAGE_MIGRATE}:${sha}" -c 'test -d /app/prisma/migrations' 2>/dev/null; then
+  # Exit 1 = directory absent (safe to skip). Exit 125/126/127 = docker/exec
+  # failure — treat as fatal so we never silently skip the approval gate.
+  local dir_check_exit=0
+  docker run --rm --entrypoint /bin/sh \
+      "${IMAGE_MIGRATE}:${sha}" -c 'test -d /app/prisma/migrations' 2>/dev/null \
+      || dir_check_exit=$?
+  if [ "$dir_check_exit" -eq 1 ]; then
     log "No prisma/migrations directory in image — skipping migration check."
     return 0
+  elif [ "$dir_check_exit" -ne 0 ]; then
+    die "docker run failed (exit ${dir_check_exit}) checking /app/prisma/migrations in ${IMAGE_MIGRATE}:${sha}."
   fi
 
   # List migration directories. Errors are fatal (no 2>/dev/null, no || true).
@@ -206,10 +215,13 @@ cmd_deploy() {
   docker pull "${IMAGE_MIGRATE}:${sha}"
   docker pull "${IMAGE_BACKUP}:${sha}"
 
-  # 2. Capture app image digest; optionally verify against --expect-digest
+  # 2. Capture app image digest; optionally verify against --expect-digest.
+  # docker inspect returns "repo@sha256:..." — strip the "repo@" prefix so we
+  # store and compare a bare sha256:... value that matches --expect-digest format.
   local actual_digest
   actual_digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
     "${IMAGE_APP}:${sha}" 2>/dev/null | head -1 || echo "unknown")
+  actual_digest="${actual_digest#*@}"   # strip "registry/repo@" prefix; no-op if already bare
 
   if [ -n "$expect_digest" ]; then
     if [ "$actual_digest" != "$expect_digest" ]; then
@@ -312,13 +324,20 @@ cmd_rollback() {
 
   log "=== Rollback: ${running_tag:-?} → ${target_sha} ==="
 
-  # Pull app image, then verify digest if we have a recorded or expected value.
+  # Pull app image by digest when available (guarantees exact content), else by tag.
+  # history records bare sha256:... so regex check is reliable after the fix.
   log "Pulling app image..."
-  docker pull "${IMAGE_APP}:${target_sha}"
+  if [[ "${target_digest:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    docker pull "${IMAGE_APP}@${target_digest}"
+    docker tag  "${IMAGE_APP}@${target_digest}" "${IMAGE_APP}:${target_sha}"
+  else
+    docker pull "${IMAGE_APP}:${target_sha}"
+  fi
 
   local actual_digest
   actual_digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
     "${IMAGE_APP}:${target_sha}" 2>/dev/null | head -1 || echo "unknown")
+  actual_digest="${actual_digest#*@}"   # strip "registry/repo@" prefix; no-op if already bare
 
   local check_digest="${expect_digest:-}"
   if [ -z "$check_digest" ] && [[ "${target_digest:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
