@@ -16,6 +16,8 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string>('')
+  // Incrementing key causes TurnstileWidget to remount and issue a fresh token.
+  const [turnstileKey, setTurnstileKey] = useState(0)
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
 
@@ -48,6 +50,10 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
       if (result.ok) {
         router.push(`/register/verify-email?email=${encodeURIComponent(result.data.email)}`)
       } else {
+        // Reset Turnstile so the token can be refreshed before the next attempt.
+        setTurnstileKey((k) => k + 1)
+        setTurnstileToken('')
+
         if (result.code === 'VALIDATION_ERROR') {
           setError(t('errorRequired'))
         } else if (result.code === 'REGISTER_FAILED') {
@@ -132,7 +138,7 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
         </label>
       </div>
 
-      <TurnstileWidget siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} />
+      <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

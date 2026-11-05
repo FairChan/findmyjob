@@ -261,3 +261,35 @@ describe('requireAdmin', () => {
     await expect(requireAdmin(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Registration authz invariants (M1-T08)
+// These rows verify that registration creates users with the correct role
+// and that employer registration context does not bleed into student checks.
+// ---------------------------------------------------------------------------
+
+describe('registration role invariants (M1-T08)', () => {
+  it('student created via factory has role STUDENT', async () => {
+    const { userId } = await createStudent(testDb)
+    const user = await testDb.user.findUnique({ where: { id: userId } })
+    expect(user?.role).toBe('STUDENT')
+  })
+
+  it('employer created via factory has role EMPLOYER', async () => {
+    const { userId } = await createEmployer(testDb)
+    const user = await testDb.user.findUnique({ where: { id: userId } })
+    expect(user?.role).toBe('EMPLOYER')
+  })
+
+  it('student cannot access employer guard (requireCompanyMember)', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    await expect(requireCompanyMember('RECRUITER', noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('employer cannot access student guard (requireStudent)', async () => {
+    const { userId } = await createEmployer(testDb)
+    mockSession(userId)
+    await expect(requireStudent(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})

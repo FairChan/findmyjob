@@ -20,22 +20,46 @@ const TURNSTILE_PATHS: Record<string, string> = {
   '/sign-up/email': 'register',
   '/email-otp/send-verification-otp': 'send-otp',
   '/request-password-reset': 'forgot-password',
+  '/send-verification-email': 'send-verification',
 }
 
-const turnstileHook = createAuthMiddleware(async (ctx) => {
-  const action = TURNSTILE_PATHS[ctx.path ?? '']
-  if (!action) return
+// Combined before-hook: Turnstile verification, consent validation, and signup cap check.
+const beforeHook = createAuthMiddleware(async (ctx) => {
+  const path = ctx.path ?? ''
+  const body = ctx.body as Record<string, unknown> | undefined
 
-  const token = (ctx.body as Record<string, unknown> | undefined)?.turnstileToken
-  const ip = ctx.request ? getClientIp(ctx.request.headers) : null
-
-  try {
-    await verifyTurnstile(typeof token === 'string' ? token : '', { action, ip })
-  } catch (err) {
-    if (err instanceof TurnstileError) {
-      throw new APIError('BAD_REQUEST', { message: err.message, code: 'TURNSTILE_FAILED' })
+  // --- Turnstile verification ---
+  const turnstileAction = TURNSTILE_PATHS[path]
+  if (turnstileAction) {
+    const token = body?.turnstileToken
+    const ip = ctx.request ? getClientIp(ctx.request.headers) : null
+    try {
+      await verifyTurnstile(typeof token === 'string' ? token : '', { action: turnstileAction, ip })
+    } catch (err) {
+      if (err instanceof TurnstileError) {
+        throw new APIError('BAD_REQUEST', { message: err.message, code: 'TURNSTILE_FAILED' })
+      }
+      throw err
     }
-    throw err
+  }
+
+  // --- Consent check for /sign-up/email ---
+  if (path === '/sign-up/email') {
+    if (body?.agreeTerms !== true || body?.agreePrivacy !== true) {
+      throw new APIError('BAD_REQUEST', { message: 'Missing required consent', code: 'CONSENT_REQUIRED' })
+    }
+  }
+
+  // --- Signup cap check for /sign-up/email (applies to both new and duplicate emails, employers skipped) ---
+  if (path === '/sign-up/email' && !isEmployerRegistration()) {
+    try {
+      await assertStudentSignupOpen()
+    } catch (err) {
+      if (err instanceof SignupClosedError) {
+        throw new APIError('FORBIDDEN', { message: err.message, code: err.code })
+      }
+      throw err
+    }
   }
 })
 
@@ -51,14 +75,20 @@ export const auth = betterAuth({
 
   database: prismaAdapter(db, { provider: 'postgresql' }),
 
+  // Endpoints with no UI caller are disabled so they return 404.
+  // See DECISIONS for the rationale on each path.
+  disabledPaths: [
+    '/sign-in/email-otp',
+    '/email-otp/request-password-reset',
+    '/forget-password/email-otp',
+  ],
+
   emailAndPassword: {
     enabled: true,
     requireEmailVerification: true,
-    // Revoke all sessions on password reset (server-side enforced, ARCHITECTURE §5.11)
     onPasswordReset: async ({ user }) => {
       await db.session.deleteMany({ where: { userId: user.id } })
     },
-    // Send password-reset email link
     sendResetPassword: async ({ user, url }) => {
       await emailProvider.sendEmail({
         to: user.email,
@@ -66,6 +96,19 @@ export const auth = betterAuth({
         html: `<p>Click <a href="${url}">here</a> to reset your password. The link expires in 1 hour.</p>`,
         text: `Reset your password: ${url}`,
       })
+    },
+    // Sends a reminder when someone tries to sign up with an already-registered email.
+    onExistingUserSignUp: async ({ user }: { user: { email: string } }) => {
+      await emailProvider
+        .sendEmail({
+          to: user.email,
+          subject: 'Someone tried to register with your FindMYJob account',
+          html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${env.APP_URL}/login">log in</a> instead.</p>`,
+          text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
+        })
+        .catch(() => {
+          // Suppress send errors; anti-enum response is already returned
+        })
     },
   },
 
@@ -127,6 +170,7 @@ export const auth = betterAuth({
       '/sign-up/email': { window: 60, max: 3 },
       '/email-otp/send-verification-otp': { window: 60, max: 3 },
       '/request-password-reset': { window: 60, max: 3 },
+      '/send-verification-email': { window: 60, max: 3 },
     },
     ipAddressHeaders: ['x-real-ip'],
   },
@@ -144,28 +188,23 @@ export const auth = betterAuth({
       expiresIn: 600,
       allowedAttempts: 5,
       otpLength: 6,
-      disableSignUp: false,
+      // disableSignUp prevents /sign-in/email-otp from creating users without consent
+      disableSignUp: true,
       storeOTP: 'hashed',
     }),
   ],
 
   hooks: {
-    before: turnstileHook,
+    before: beforeHook,
   },
 
   databaseHooks: {
     user: {
       create: {
-        before: async () => {
-          // Skip cap check for employer registrations (role is set to EMPLOYER after user creation)
-          if (isEmployerRegistration()) return
-          try {
-            await assertStudentSignupOpen()
-          } catch (err) {
-            if (err instanceof SignupClosedError) {
-              throw new APIError('FORBIDDEN', { message: err.message, code: err.code })
-            }
-            throw err
+        // Set employer role directly in the INSERT; avoids a separate UPDATE after user creation.
+        before: async (data) => {
+          if (isEmployerRegistration()) {
+            return { data: { ...data, role: 'EMPLOYER' } }
           }
         },
       },

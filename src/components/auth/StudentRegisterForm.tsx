@@ -18,6 +18,8 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string>('')
+  // Incrementing key causes TurnstileWidget to remount and issue a fresh token.
+  const [turnstileKey, setTurnstileKey] = useState(0)
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
 
@@ -53,8 +55,14 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
       if (result.ok) {
         router.push(`/register/verify-email?email=${encodeURIComponent(result.data.email)}`)
       } else {
+        // Reset Turnstile so the token can be refreshed before the next attempt.
+        setTurnstileKey((k) => k + 1)
+        setTurnstileToken('')
+
         if (result.code === 'VALIDATION_ERROR') {
           setError(t('errorRequired'))
+        } else if (result.code === 'SIGNUP_CLOSED') {
+          setError(t('errorSignupClosed'))
         } else if (result.code === 'REGISTER_FAILED') {
           setError(t('errorRegisterFailed'))
         } else {
@@ -147,7 +155,7 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
         </label>
       </div>
 
-      <TurnstileWidget siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} />
+      <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

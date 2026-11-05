@@ -269,7 +269,7 @@
 > 完成 2026-11-05：`services/signup-cap.ts`（assertStudentSignupOpen/maybeWarnCap/purgeUnverifiedAccounts）；`SignupClosedError` 加入 errors.ts；`auth.ts` 增加 databaseHooks.user.create.before（调用 assertStudentSignupOpen，企业注册通过 employerRegistrationContext 跳过检查）；`register.ts` registerStudent 在 signUpEmail 前调 assertStudentSignupOpen，registerEmployer 在 employerRegistrationContext 中运行 signUpEmail；`purge-unverified` 任务每小时 cron 注册至 registry.ts；学生注册页满额时显示名额已满横幅；zh/en i18n 新增 signupClosed 和 errorSignupClosed；单元测试 11 个（81 total）全部通过；偏差：employer 通过 AsyncLocalStorage 跳过 cap hook（context 在 Node.js 进程内有效，不跨请求）
 
 
-#### [ ] M1-T08 注册路径补修：单一 Turnstile 校验点、限流不被绕过、防枚举真正生效
+#### [x] M1-T08 注册路径补修：单一 Turnstile 校验点、限流不被绕过、防枚举真正生效
 依赖：M1-T06
 > 总控 2026-11-05 加入：M1 合并前的安全复查（主会话代替没跑成的提交审查）发现以下问题，都在 better-auth 1.7.16 源码里核实过。报告在方案目录 .reports/2026-11-05-autopilot/summary.md「M1 安全复查」。
 做：
@@ -287,6 +287,8 @@
 - 集成测试：直接 POST `/api/auth/sign-up/email`，不带 Turnstile token → 400 TURNSTILE_FAILED；不带同意信息 → 被拒；名额已满 → SIGNUP_CLOSED（新老邮箱同一结果）；带 role ADMIN → 建出的是 STUDENT
 - disabledPaths 里的每个端点返回 404；`/sign-in/email-otp` 不能为陌生邮箱建号
 - `tests/integration/authz-matrix.test.ts` 加上对应的行
+
+> 完成 2026-11-05：注册 action 改走 `auth.handler(new Request(APP_URL + '/api/auth/sign-up/email', …))`，Turnstile/限流/名额检查全部在 `hooks.before` 里做一次；防枚举通过 DB 查询确认 userId 是否真实存在（不存在就 return { email }，提醒邮件由 onExistingUserSignUp 发）；StudentProfile + Consent 在 `db.$transaction` 里原子创建；企业 role 在 `databaseHooks.user.create.before` 里直接写，删掉事后 UPDATE；emailOTP `disableSignUp: true`；`/sign-in/email-otp`、`/email-otp/request-password-reset`、`/forget-password/email-otp` 加入 disabledPaths（404）；`/send-verification-email` 保留并加入 TURNSTILE_PATHS + customRules；StudentRegisterForm 映射 SIGNUP_CLOSED 并在失败时重置 Turnstile；`turnstileToken` 改为 `z.string().min(1).max(2048)`；新建 tests/integration/register.test.ts（187 tests 全通过）；authz-matrix 补充 4 行；DECISIONS 新增 4 条；pnpm lint/typecheck/test/db:check 全部通过；偏差：E2E 全流程（Mailpit→验证→登录→登出）需有 Mailpit 服务；rate-limit 集成测试以 mock 替代真实 DB 计数，实际限流行为由 E2E 覆盖
 
 #### [ ] M1-T09 认证加固：真实 IP、发信时序、令牌哈希、停用账号、页面守卫等
 依赖：M1-T08

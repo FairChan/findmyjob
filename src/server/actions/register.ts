@@ -4,16 +4,14 @@ import { headers, cookies } from 'next/headers'
 import { action } from '@/server/action'
 import { auth } from '@/server/auth'
 import { db } from '@/server/db'
-import { recordConsents } from '@/server/services/consent'
+import { getSetting } from '@/server/services/settings'
 import { getClientIp } from '@/server/lib/client-ip'
-import { AppError } from '@/server/errors'
+import { AppError, SignupClosedError, RateLimitedError, ValidationError } from '@/server/errors'
 import { logger } from '@/server/lib/logger'
-import { createEmailProvider } from '@/lib/email'
-import { verifyTurnstile, TurnstileError } from '@/server/lib/turnstile'
-import { assertStudentSignupOpen } from '@/server/services/signup-cap'
+import { env } from '@/env'
 import { employerRegistrationContext } from '@/server/lib/employer-registration-context'
 
-const emailProvider = createEmailProvider()
+const signUpUrl = new URL('/api/auth/sign-up/email', env.APP_URL).toString()
 
 const studentInput = z.object({
   name: z.string().min(1).max(100),
@@ -23,7 +21,7 @@ const studentInput = z.object({
   agreePrivacy: z.literal(true),
   joinTalentPool: z.boolean().default(false),
   ref: z.string().max(255).optional(),
-  turnstileToken: z.string(),
+  turnstileToken: z.string().min(1).max(2048),
 })
 
 const employerInput = z.object({
@@ -32,8 +30,51 @@ const employerInput = z.object({
   password: z.string().min(8).max(128),
   agreeTerms: z.literal(true),
   agreePrivacy: z.literal(true),
-  turnstileToken: z.string(),
+  turnstileToken: z.string().min(1).max(2048),
 })
+
+/**
+ * Calls auth.handler for /sign-up/email, which runs the full Better Auth
+ * middleware stack: Turnstile hook → rate limit → user creation.
+ * Returns the parsed response body or throws an AppError.
+ */
+async function callAuthSignUp(
+  body: Record<string, unknown>,
+  ip: string | null,
+  userAgent: string | null,
+): Promise<{ user: { id: string; email: string } }> {
+  const request = new Request(signUpUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      origin: env.APP_URL,
+      ...(ip ? { 'x-real-ip': ip } : {}),
+      ...(userAgent ? { 'user-agent': userAgent } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+
+  const response = await auth.handler(request)
+
+  if (!response.ok) {
+    const errBody = await response.json().catch(() => null) as Record<string, unknown> | null
+    const code = errBody?.code as string | undefined
+
+    if (response.status === 429) throw new RateLimitedError()
+    if (code === 'TURNSTILE_FAILED') throw new AppError('Turnstile verification failed', 'TURNSTILE_FAILED')
+    if (code === 'SIGNUP_CLOSED') throw new SignupClosedError()
+    if (code === 'CONSENT_REQUIRED') throw new ValidationError('Consent required')
+
+    logger.warn({ status: response.status, code }, 'Sign-up failed')
+    throw new AppError('Registration failed', 'REGISTER_FAILED')
+  }
+
+  const data = await response.json() as { user?: { id?: string; email?: string } }
+  const userId = data?.user?.id
+  const email = data?.user?.email
+  if (!userId || !email) throw new AppError('Registration failed', 'REGISTER_FAILED')
+  return { user: { id: userId, email } }
+}
 
 export const registerStudent = action(
   { auth: 'public', input: studentInput },
@@ -42,66 +83,45 @@ export const registerStudent = action(
     const ip = getClientIp(h)
     const userAgent = h.get('user-agent')
 
-    try {
-      await verifyTurnstile(input.turnstileToken, { action: 'register', ip })
-    } catch (err) {
-      if (err instanceof TurnstileError) throw new AppError(err.message, 'TURNSTILE_FAILED')
-      throw err
-    }
-
-    await assertStudentSignupOpen()
-
-    let userId: string
-    try {
-      const result = await auth.api.signUpEmail({
-        body: { name: input.name, email: input.email, password: input.password },
-        headers: h,
-      })
-      const user = (result as unknown as { user: { id: string } } | null)?.user
-      if (!user?.id) {
-        throw new AppError('Sign-up returned no user', 'REGISTER_FAILED')
-      }
-      userId = user.id
-    } catch (err) {
-      if (err instanceof AppError) throw err
-      // Anti-enumeration: detect duplicate email, send reminder, return same response
-      const errBody = (err as { body?: { code?: string } } | null)?.body
-      if (errBody?.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
-        emailProvider
-          .sendEmail({
-            to: input.email,
-            subject: 'Someone tried to register with your FindMYJob account',
-            html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${process.env.APP_URL ?? ''}/login">log in</a> instead.</p>`,
-            text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
-          })
-          .catch((emailErr: unknown) =>
-            logger.error({ err: emailErr }, 'Failed to send duplicate email reminder'),
-          )
-        return { email: input.email }
-      }
-      logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Student signup failed')
-      throw new AppError('Registration failed', 'REGISTER_FAILED')
-    }
-
-    // Create minimal StudentProfile with visibility based on TALENT_POOL consent.
-    // M2-T01 onboarding wizard will fill remaining fields (upsert-safe: userId is unique).
-    await db.studentProfile.create({
-      data: {
-        userId,
-        fullName: input.name,
-        visibility: input.joinTalentPool ? 'PUBLIC' : 'HIDDEN',
+    const { user } = await callAuthSignUp(
+      {
+        name: input.name,
+        email: input.email,
+        password: input.password,
+        turnstileToken: input.turnstileToken,
+        agreeTerms: input.agreeTerms,
+        agreePrivacy: input.agreePrivacy,
       },
-    })
-
-    await recordConsents(
-      userId,
-      [
-        { type: 'TERMS', granted: true },
-        { type: 'PRIVACY', granted: true },
-        { type: 'TALENT_POOL', granted: input.joinTalentPool },
-      ],
-      { ip, userAgent },
+      ip,
+      userAgent,
     )
+
+    // Anti-enum: Better Auth returns a fake user when requireEmailVerification=true
+    // and the email is already registered. The fake user won't be in the DB.
+    const realUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true } })
+    if (!realUser) {
+      // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts
+      return { email: input.email }
+    }
+
+    // Create StudentProfile and Consent atomically to avoid partial state.
+    const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
+    await db.$transaction([
+      db.studentProfile.create({
+        data: {
+          userId: user.id,
+          fullName: input.name,
+          visibility: input.joinTalentPool ? 'PUBLIC' : 'HIDDEN',
+        },
+      }),
+      db.consent.createMany({
+        data: [
+          { userId: user.id, type: 'TERMS', granted: true, version: legalVersion, ip, userAgent },
+          { userId: user.id, type: 'PRIVACY', granted: true, version: legalVersion, ip, userAgent },
+          { userId: user.id, type: 'TALENT_POOL', granted: input.joinTalentPool, version: legalVersion, ip, userAgent },
+        ],
+      }),
+    ])
 
     // Persist referral code in a cookie so M2-T09 can call attachReferral
     // once the student's profile completeness is calculated.
@@ -126,60 +146,40 @@ export const registerEmployer = action(
     const ip = getClientIp(h)
     const userAgent = h.get('user-agent')
 
-    try {
-      await verifyTurnstile(input.turnstileToken, { action: 'register', ip })
-    } catch (err) {
-      if (err instanceof TurnstileError) throw new AppError(err.message, 'TURNSTILE_FAILED')
-      throw err
-    }
-
-    let userId: string
-    try {
-      const result = await employerRegistrationContext.run(true, () =>
-        auth.api.signUpEmail({
-          body: { name: input.name, email: input.email, password: input.password },
-          headers: h,
-        }),
-      )
-      const user = (result as unknown as { user: { id: string } } | null)?.user
-      if (!user?.id) {
-        throw new AppError('Sign-up returned no user', 'REGISTER_FAILED')
-      }
-      userId = user.id
-    } catch (err) {
-      if (err instanceof AppError) throw err
-      // Anti-enumeration: detect duplicate email, send reminder, return same response
-      const errBody = (err as { body?: { code?: string } } | null)?.body
-      if (errBody?.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
-        emailProvider
-          .sendEmail({
-            to: input.email,
-            subject: 'Someone tried to register with your FindMYJob account',
-            html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${process.env.APP_URL ?? ''}/login">log in</a> instead.</p>`,
-            text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
-          })
-          .catch((emailErr: unknown) =>
-            logger.error({ err: emailErr }, 'Failed to send duplicate email reminder'),
-          )
-        return { email: input.email }
-      }
-      logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Employer signup failed')
-      throw new AppError('Registration failed', 'REGISTER_FAILED')
-    }
-
-    await db.user.update({
-      where: { id: userId },
-      data: { role: 'EMPLOYER' },
-    })
-
-    await recordConsents(
-      userId,
-      [
-        { type: 'TERMS', granted: true },
-        { type: 'PRIVACY', granted: true },
-      ],
-      { ip, userAgent },
+    // Run inside employer context so the before-hook and databaseHook skip the
+    // student cap check and set role=EMPLOYER in the INSERT.
+    const { user } = await employerRegistrationContext.run(true, () =>
+      callAuthSignUp(
+        {
+          name: input.name,
+          email: input.email,
+          password: input.password,
+          turnstileToken: input.turnstileToken,
+          agreeTerms: input.agreeTerms,
+          agreePrivacy: input.agreePrivacy,
+        },
+        ip,
+        userAgent,
+      ),
     )
+
+    // Anti-enum: check whether the returned user actually exists.
+    const realUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true } })
+    if (!realUser) {
+      // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts
+      return { email: input.email }
+    }
+
+    // Record consent atomically.
+    const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
+    await db.$transaction([
+      db.consent.createMany({
+        data: [
+          { userId: user.id, type: 'TERMS', granted: true, version: legalVersion, ip, userAgent },
+          { userId: user.id, type: 'PRIVACY', granted: true, version: legalVersion, ip, userAgent },
+        ],
+      }),
+    ])
 
     return { email: input.email }
   },
