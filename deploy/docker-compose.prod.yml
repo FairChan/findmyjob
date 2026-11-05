@@ -178,6 +178,29 @@ services:
     profiles:
       - ops
 
+  # Restore service: runs restore-drill.sh inside the backend network so it can
+  # reach postgres by service name. Credentials and age private key are injected
+  # at run-time only — never stored in env files.
+  # Usage (演练/真实恢复，在服务器上执行):
+  #   cat /media/usb/age.key | docker compose --profile ops run -T --rm \
+  #     -e RESTORE_ADMIN_DATABASE_URL \
+  #     -e RESTORE_S3_ACCESS_KEY_ID \
+  #     -e RESTORE_S3_SECRET_ACCESS_KEY \
+  #     -e BACKUP_S3_BUCKET \
+  #     restore --key db/daily/YYYY-MM-DDTHH-MM-SSZ.dump.age findmyjob_restore_drill
+  restore:
+    image: ghcr.io/fairchan/findmyjob-backup:${APP_TAG:?}
+    entrypoint: ["/opt/findmyjob/scripts/db/restore-drill.sh"]
+    networks:
+      - backend
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ops
+
 networks:
   backend:
     internal: true

@@ -17,8 +17,6 @@
 # Optional env vars:
 #   BACKUP_S3_REGION             — default: ap-southeast-5
 #   BACKUP_S3_ENDPOINT           — S3-compatible endpoint (MinIO etc.)
-#   PII_KEYS                     — PII encryption keys for verify-decrypt step
-#   APP_TAG                      — Docker image tag for the tools container
 set -euo pipefail
 
 # ── argument parsing ──────────────────────────────────────────────────────────
@@ -114,10 +112,16 @@ DRILL_DB_CREATED=0
 cleanup() {
   unset AGE_PRIVATE_KEY
   rm -rf "$TMPDIR_LOCAL"
-  # Drop drill database unless --keep was passed and restore succeeded
-  if [ "$DRILL_DB_CREATED" -eq 1 ] && [ "$KEEP_DRILL_DB" -eq 0 ]; then
-    psql "$RESTORE_ADMIN_DATABASE_URL" -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";" 2>/dev/null || true
-    echo "[drill] drill database dropped"
+  if [ "$DRILL_DB_CREATED" -eq 1 ]; then
+    local _drill_url="${RESTORE_ADMIN_DATABASE_URL%/*}/${DB_NAME}"
+    # Always clear sessions to prevent session fixation, even when a check fails
+    # or when --keep is passed for a real recovery.
+    psql "$_drill_url" -c 'DELETE FROM "Session";' 2>/dev/null || true
+    echo "[drill] sessions cleared"
+    if [ "$KEEP_DRILL_DB" -eq 0 ]; then
+      psql "$RESTORE_ADMIN_DATABASE_URL" -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";" 2>/dev/null || true
+      echo "[drill] drill database dropped"
+    fi
   fi
 }
 trap cleanup EXIT
@@ -272,24 +276,15 @@ if failures:
 print(f"[check] counts.json: all {len(tables)} tables match ✓")
 PYEOF
 
-# ── 9. check: verify-decrypt ─────────────────────────────────────────────────
-if [ -n "${PII_KEYS:-}" ] && [ -n "${APP_TAG:-}" ]; then
-  docker compose -f "${REPO_ROOT}/deploy/docker-compose.prod.yml" \
-    --profile ops run --rm \
-    --no-deps \
-    -e "DATABASE_URL=${DRILL_DATABASE_URL}" \
-    -e PII_KEYS \
-    -e "PII_ACTIVE_KEY_ID=${PII_ACTIVE_KEY_ID:-v1}" \
-    tools \
-    scripts/db/verify-decrypt.ts
-  echo "[check] verify-decrypt ✓"
-else
-  echo "[check] verify-decrypt SKIPPED (set PII_KEYS and APP_TAG to enable)"
-fi
-
-# ── 10. clear sessions ────────────────────────────────────────────────────────
-psql "$DRILL_DATABASE_URL" -c 'DELETE FROM "Session";'
-echo "[check] sessions cleared"
+# ── 9. verify-decrypt (run separately on the server via tools container) ──────
+# This step is intentionally not run here because the tools image (which has tsx
+# and app code) is a separate container that connects via the backend network.
+# After this script completes, run verify-decrypt as an independent step:
+#   docker compose --profile ops run --rm -T \
+#     -e DATABASE_URL=postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill \
+#     -e PII_KEYS -e PII_ACTIVE_KEY_ID \
+#     tools scripts/db/verify-decrypt.ts
+echo "[check] verify-decrypt: run separately via tools container (see RUNBOOK)"
 
 # ── RTO ───────────────────────────────────────────────────────────────────────
 DRILL_END=$(date +%s)

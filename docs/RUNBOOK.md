@@ -220,59 +220,72 @@ sudo systemctl reload cron
 
 ### 前提条件
 
-- 有 age 私钥的离线介质。
-- `restore-reader` IAM 凭据（临时注入）。
-- **管理机**（操作员的离线机或演练机）上已安装 `age`、`awscli`、`postgresql-client-16`、`python3`。
-  `tools` 镜像**不含** psql/age/awscli，不可在 tools 容器里执行本脚本。
-- 已 `clone` 仓库并位于仓库根目录（在管理机上，非服务器）。
+- 有 age 私钥的离线介质（USB）。
+- `restore-reader` IAM 凭据（平时离线保存，演练时临时注入操作人 shell，不写入任何文件）。
+- **能 SSH 登录生产服务器**（`ssh <admin>@43.134.49.247`）。所有恢复操作在服务器上的
+  `restore` 容器里执行；`restore` 容器接 `backend` 网络，可以用服务名 `postgres` 直接连数据库。
+  管理机不需要安装 age/awscli/psql 等工具。
 
 ### 步骤
 
-> **执行位置**：所有步骤在**管理机**上执行。数据库连接经 SSH 隧道转发：
->
-> ```bash
-> ssh -L 15432:127.0.0.1:5432 <admin>@43.134.49.247 -N -f
-> ```
->
-> 然后 `RESTORE_ADMIN_DATABASE_URL` 写 `postgresql://findmyjob_owner:<pass>@127.0.0.1:15432/postgres`。
-> `postgres` 主机名只在 compose 网络内可解析，管理机无法直接使用。
+> **执行位置**：所有步骤均在**生产服务器上**执行（先 SSH 登录，再 `cd /opt/findmyjob`）。
+> `restore` 服务用 `findmyjob-backup` 镜像，内含 pg 工具、age、awscli、python3，
+> 通过 `backend` 网络直连 `postgres` 服务——不需要 SSH 隧道。
 
 ```bash
-# 1. 设置恢复凭据（演练时临时设置，不要写入 .env；用 read -rs 避免进 shell 历史）
-read -rs RESTORE_S3_ACCESS_KEY_ID && export RESTORE_S3_ACCESS_KEY_ID
+# 在服务器上，cd /opt/findmyjob 后操作
+
+# 0. 确认当前 APP_TAG
+export APP_TAG=$(grep APP_TAG env/app.env | cut -d= -f2)
+
+# 1. 设置 restore-reader 凭据（临时注入，不写入文件；用 read -rs 避免进 shell 历史）
+read -rs RESTORE_S3_ACCESS_KEY_ID     && export RESTORE_S3_ACCESS_KEY_ID
 read -rs RESTORE_S3_SECRET_ACCESS_KEY && export RESTORE_S3_SECRET_ACCESS_KEY
-read -rs RESTORE_ADMIN_DATABASE_URL && export RESTORE_ADMIN_DATABASE_URL
-# 格式（SSH 隧道）：postgresql://findmyjob_owner:<pass>@127.0.0.1:15432/postgres
-# （先开隧道：ssh -L 15432:127.0.0.1:5432 <admin>@43.134.49.247 -N -f）
+# owner 密码在 /opt/findmyjob/env/db.env 里，不要在 shell 里明文出现；用 read -rs 读入
+read -rs RESTORE_ADMIN_DATABASE_URL   && export RESTORE_ADMIN_DATABASE_URL
+# 格式：postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
 export BACKUP_S3_BUCKET=findmyjob-backups
+
+# 2. 列出可用备份，由操作人选择目标 key
+docker compose --profile ops run --rm -T \
+  -e AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID" \
+  -e AWS_SECRET_ACCESS_KEY="$RESTORE_S3_SECRET_ACCESS_KEY" \
+  restore \
+  bash -c 'aws s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 10'
+
+# 3. 执行演练（私钥从 USB 经 stdin 传入 restore 容器；--key 由操作人从上面列表中选）
+cat /media/usb/age-private.key | \
+  docker compose --profile ops run -T --rm \
+    -e RESTORE_ADMIN_DATABASE_URL \
+    -e RESTORE_S3_ACCESS_KEY_ID \
+    -e RESTORE_S3_SECRET_ACCESS_KEY \
+    -e BACKUP_S3_BUCKET \
+    restore \
+    --key db/daily/2026-11-05T19-15-00Z.dump.age \
+    findmyjob_restore_drill
+
+# 4. verify-decrypt（独立一步，使用 tools 容器；DATABASE_URL 指向演练库）
 read -rs PII_KEYS && export PII_KEYS
-export APP_TAG=<当前镜像 tag>
+docker compose --profile ops run --rm -T \
+  -e DATABASE_URL="postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill" \
+  -e PII_KEYS \
+  -e PII_ACTIVE_KEY_ID=v1 \
+  tools scripts/db/verify-decrypt.ts
 
-# 2. 先列出可用备份，由操作人选择目标 key
-export AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID"
-export AWS_SECRET_ACCESS_KEY="$RESTORE_S3_SECRET_ACCESS_KEY"
-aws s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 10
-
-# 3. 执行演练（私钥从 USB 通过 stdin 传入；--key 由操作人从上面列表中选）
-cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
-  --key db/daily/2026-11-05T19-15-00Z.dump.age \
-  findmyjob_restore_drill
-
-# 4. 检查输出：所有 ✓，最后打印 RTO
-# 5. 演练完成后脚本默认自动删除演练库（除非传了 --keep）
+# 5. 检查输出：所有 ✓，最后打印 RTO；演练库已由脚本自动清空 Session 并删除
 ```
 
 ### 脚本检查项
 
-| 检查 | 通过条件 |
-|---|---|
-| 迁移数一致 | DB 中已完成迁移数 = 磁盘上 `prisma/migrations/*/migration.sql` 数量 |
-| 关键表不为空 | User / StudentProfile / Company / Job / Application 有行 |
-| RPO | 最新备份不超过 26 小时前 |
-| 对账 SQL | CreditWallet.balance = SUM(CreditLedger.delta)，0 行不一致 |
-| counts.json | 恢复后各表行数与备份时 counts.json 完全一致 |
-| verify-decrypt | 用离线 PII_KEYS 解密 1 条 StudentContact.phone，输出已掩码 |
-| Session | 恢复后清空，防止会话固定 |
+| 检查 | 执行方式 | 通过条件 |
+|---|---|---|
+| 迁移数一致 | restore 容器（脚本内） | DB 中已完成迁移数 = 镜像里 `prisma/migrations/*/migration.sql` 数量 |
+| 关键表不为空 | restore 容器（脚本内） | User / StudentProfile / Company / Job / Application 有行 |
+| RPO | restore 容器（脚本内） | 最新备份不超过 26 小时前 |
+| 对账 SQL | restore 容器（脚本内） | CreditWallet.balance = SUM(CreditLedger.delta)，0 行不一致 |
+| counts.json | restore 容器（脚本内） | 恢复后各表行数与备份时 counts.json 完全一致 |
+| verify-decrypt | tools 容器（独立步骤 4） | 用离线 PII_KEYS 解密 1 条 StudentContact.phone，输出已掩码 |
+| Session 清空 | restore 容器（脚本 cleanup trap） | 无论检查成功还是失败都执行；`--keep` 时也执行 |
 
 ### 记录结果
 
@@ -292,44 +305,65 @@ cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
 
 ### 步骤
 
+> **执行位置**：所有步骤均在**生产服务器上**执行（SSH 登录后 `cd /opt/findmyjob`）。
+> 与演练用同一条路径：`restore` 容器经 `backend` 网络连 `postgres`，不需要 SSH 隧道。
+
 1. **评估**：确认无法通过其他手段恢复（如数据库 PITR），恢复会造成 RPO 时间段内数据丢失，向受影响用户沟通。
 2. **通知**：告知相关人员，启动 PDPA 通报流程评估（见「事故响应」节）。
 3. **停机**：临时停止 app 和 worker，避免新数据写入。
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml stop app worker
    ```
-4. **执行恢复**：用 `--key` 选取已知完好的 `db/pre-migrate/` 或 `db/daily/` 对象，加 `--skip-rpo`（真实恢复时 RPO 超限属已知情况）和 `--keep`（保留恢复库用于切换）。目标库用 `findmyjob_restore_drill`（以 `_drill` 结尾是安全检查的前提）。
-   **在管理机上执行**（需已安装 age、awscli、postgresql-client-16、python3，并开好 SSH 隧道）：
+4. **执行恢复**：加 `--skip-rpo`（真实恢复时 RPO 超限属已知情况）和 `--keep`（保留恢复库用于切换）。
+   目标库 `findmyjob_restore_drill` 以 `_drill` 结尾是脚本安全检查的前提。
+   Session 由 cleanup trap 在脚本退出时自动清空（`--keep` 时也执行）。
    ```bash
-   cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
-     --key db/daily/2026-11-05T19-15-00Z.dump.age \
-     --skip-rpo --keep \
-     findmyjob_restore_drill
+   # 在服务器上，cd /opt/findmyjob 后操作
+   export APP_TAG=$(grep APP_TAG env/app.env | cut -d= -f2)
+   read -rs RESTORE_S3_ACCESS_KEY_ID     && export RESTORE_S3_ACCESS_KEY_ID
+   read -rs RESTORE_S3_SECRET_ACCESS_KEY && export RESTORE_S3_SECRET_ACCESS_KEY
+   read -rs RESTORE_ADMIN_DATABASE_URL   && export RESTORE_ADMIN_DATABASE_URL
+   # 格式：postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
+   export BACKUP_S3_BUCKET=findmyjob-backups
+
+   cat /media/usb/age-private.key | \
+     docker compose --profile ops run -T --rm \
+       -e RESTORE_ADMIN_DATABASE_URL \
+       -e RESTORE_S3_ACCESS_KEY_ID \
+       -e RESTORE_S3_SECRET_ACCESS_KEY \
+       -e BACKUP_S3_BUCKET \
+       restore \
+       --key db/daily/2026-11-05T19-15-00Z.dump.age \
+       --skip-rpo --keep \
+       findmyjob_restore_drill
    ```
-   恢复完成后切换步骤（**在服务器上**通过 `docker compose exec postgres psql` 执行；服务器上 `postgres` 主机名在 compose 网络内可解析）：
+5. **verify-decrypt**（恢复库就绪后，使用 tools 容器）：
    ```bash
-   # 停止服务（在服务器上）
-   docker compose -f /opt/findmyjob/docker-compose.prod.yml stop app worker
-   # 把恢复库重命名为生产库（在服务器上，经 compose exec 进入 postgres 容器）
+   read -rs PII_KEYS && export PII_KEYS
+   docker compose --profile ops run --rm -T \
+     -e DATABASE_URL="postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill" \
+     -e PII_KEYS \
+     -e PII_ACTIVE_KEY_ID=v1 \
+     tools scripts/db/verify-decrypt.ts
+   ```
+6. **切换数据库**（在服务器上，经 `compose exec postgres` 进入 postgres 容器执行 RENAME）：
+   ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml exec postgres \
      psql -U postgres \
      -c 'ALTER DATABASE findmyjob RENAME TO findmyjob_old;' \
      -c 'ALTER DATABASE findmyjob_restore_drill RENAME TO findmyjob;'
-   # 修改 /opt/findmyjob/env/*.env 里的 DATABASE_URL（如需要），然后重启服务
-   docker compose -f /opt/findmyjob/docker-compose.prod.yml up -d app worker
    ```
-5. **补跑账号清除**（在服务器上，`tools` 容器通过 compose 网络连 `postgres` 服务；生产 postgres 不对外发布端口，不能用 127.0.0.1）：
+7. **补跑账号清除**（`tools` 容器经 compose 网络连 `postgres`）：
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml \
      --profile ops run --rm tools scripts/backfill/purge-deleted-accounts.ts
    ```
-   > `tools` 服务使用 `ghcr.io/fairchan/findmyjob-tools` 镜像，entrypoint 为 `node --conditions=react-server -r tsx/cjs`。
-6. **重启服务**（如果第 4 步没有做 RENAME，这里先起服务再看日志）：
+8. **重启服务**：
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml up -d app worker
    ```
-7. **验证**：登录、发职位、搜人各一遍；确认 Sentry 无新增异常；通知 healthchecks。
-8. **记录**：在 `docs/incidents/` 新建事故记录，注明恢复时间、数据丢失范围、后续行动。
+9. **验证**：登录、发职位、搜人各一遍；确认 Sentry 无新增异常；通知 healthchecks。
+10. **记录**：在 `docs/incidents/` 新建事故记录，注明恢复时间、数据丢失范围、后续行动。
 
 ## 事故响应
 

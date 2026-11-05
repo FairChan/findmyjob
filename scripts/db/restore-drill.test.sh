@@ -92,6 +92,100 @@ fi
 rm -rf "${_MOCK_BIN}"
 unset _MOCK_BIN _cmd _magic_rc _magic_out
 
+# ── session-cleared-on-failure ────────────────────────────────────────────────
+# After DRILL_DB_CREATED is set (psql CREATE DATABASE succeeds), any subsequent
+# failure must still produce "[drill] sessions cleared" via the cleanup trap.
+# This covers the --keep scenario where the DB is kept for a real recovery.
+_MOCK_SC_BIN="$(mktemp -d -t restore-drill-sc.XXXXXXXX)"
+
+# aws: succeed for s3api magic header; fail for all other calls (not needed here)
+cat > "${_MOCK_SC_BIN}/aws" <<SCMOCKEOF
+#!/usr/bin/env bash
+if [[ "\$*" == *"s3api"* ]]; then
+  printf 'age-encryption.org/v1' > "\${@: -1}"
+  exit 0
+fi
+exit 1
+SCMOCKEOF
+chmod +x "${_MOCK_SC_BIN}/aws"
+
+# psql: succeed for CREATE/DROP; fail when -f is passed (db-setup.sql step)
+cat > "${_MOCK_SC_BIN}/psql" <<'SCMOCKEOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "$arg" == "-f" ]]; then
+    exit 1
+  fi
+done
+exit 0
+SCMOCKEOF
+chmod +x "${_MOCK_SC_BIN}/psql"
+
+for _sc_cmd in age pg_restore python3; do
+  printf '#!/usr/bin/env bash\nexit 0\n' > "${_MOCK_SC_BIN}/${_sc_cmd}"
+  chmod +x "${_MOCK_SC_BIN}/${_sc_cmd}"
+done
+
+_sc_rc=0
+_sc_out=$(
+  PATH="${_MOCK_SC_BIN}:${PATH}" \
+  BACKUP_S3_BUCKET=testbucket \
+  RESTORE_S3_ACCESS_KEY_ID=testkey \
+  RESTORE_S3_SECRET_ACCESS_KEY=testsecret \
+  RESTORE_ADMIN_DATABASE_URL="postgresql://u:p@localhost:5432/postgres" \
+  bash "$SCRIPT" \
+    --key db/daily/2026-11-05T19-15-00Z.dump.age \
+    --skip-rpo \
+    findmyjob_restore_drill \
+    <<< "AGE-SECRET-KEY-1TESTKEY000000000000000000000000000000000000000000000000" \
+    2>&1
+) || _sc_rc=$?
+
+if [ "$_sc_rc" -eq 0 ]; then
+  echo "FAIL: session-cleared-on-failure — script should have exited non-zero (db-setup failed)"
+  FAIL=$(( FAIL + 1 ))
+elif echo "$_sc_out" | grep -q "\[drill\] sessions cleared"; then
+  echo "PASS: session-cleared-on-failure — '[drill] sessions cleared' in output even on check failure"
+  PASS=$(( PASS + 1 ))
+else
+  echo "FAIL: session-cleared-on-failure — '[drill] sessions cleared' missing from output"
+  echo "      exit code: ${_sc_rc}"
+  echo "      output: ${_sc_out}"
+  FAIL=$(( FAIL + 1 ))
+fi
+
+# same with --keep: session must still be cleared even when DB is retained
+_sc_keep_rc=0
+_sc_keep_out=$(
+  PATH="${_MOCK_SC_BIN}:${PATH}" \
+  BACKUP_S3_BUCKET=testbucket \
+  RESTORE_S3_ACCESS_KEY_ID=testkey \
+  RESTORE_S3_SECRET_ACCESS_KEY=testsecret \
+  RESTORE_ADMIN_DATABASE_URL="postgresql://u:p@localhost:5432/postgres" \
+  bash "$SCRIPT" \
+    --key db/daily/2026-11-05T19-15-00Z.dump.age \
+    --skip-rpo --keep \
+    findmyjob_restore_drill \
+    <<< "AGE-SECRET-KEY-1TESTKEY000000000000000000000000000000000000000000000000" \
+    2>&1
+) || _sc_keep_rc=$?
+
+if [ "$_sc_keep_rc" -eq 0 ]; then
+  echo "FAIL: session-cleared-on-failure --keep — script should have exited non-zero"
+  FAIL=$(( FAIL + 1 ))
+elif echo "$_sc_keep_out" | grep -q "\[drill\] sessions cleared"; then
+  echo "PASS: session-cleared-on-failure --keep — '[drill] sessions cleared' present"
+  PASS=$(( PASS + 1 ))
+else
+  echo "FAIL: session-cleared-on-failure --keep — '[drill] sessions cleared' missing"
+  echo "      exit code: ${_sc_keep_rc}"
+  echo "      output: ${_sc_keep_out}"
+  FAIL=$(( FAIL + 1 ))
+fi
+
+rm -rf "${_MOCK_SC_BIN}"
+unset _MOCK_SC_BIN _sc_cmd _sc_rc _sc_out _sc_keep_rc _sc_keep_out
+
 # ── summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"
