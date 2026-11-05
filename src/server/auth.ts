@@ -9,6 +9,9 @@ import { createEmailProvider } from '@/lib/email'
 import { verifyTurnstile, TurnstileError } from './lib/turnstile'
 import { logAudit } from './services/audit'
 import { getClientIp } from './lib/client-ip'
+import { assertStudentSignupOpen } from './services/signup-cap'
+import { isEmployerRegistration } from './lib/employer-registration-context'
+import { SignupClosedError } from './errors'
 
 const emailProvider = createEmailProvider()
 
@@ -151,6 +154,22 @@ export const auth = betterAuth({
   },
 
   databaseHooks: {
+    user: {
+      create: {
+        before: async () => {
+          // Skip cap check for employer registrations (role is set to EMPLOYER after user creation)
+          if (isEmployerRegistration()) return
+          try {
+            await assertStudentSignupOpen()
+          } catch (err) {
+            if (err instanceof SignupClosedError) {
+              throw new APIError('FORBIDDEN', { message: err.message, code: err.code })
+            }
+            throw err
+          }
+        },
+      },
+    },
     session: {
       create: {
         after: async (session) => {

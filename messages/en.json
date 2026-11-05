@@ -47,7 +47,9 @@
     "errorInvalidEmail": "Please enter a valid email address",
     "errorPasswordTooShort": "Password must be at least 8 characters",
     "errorRegisterFailed": "Registration failed. Please try again.",
-    "errorUnknown": "An unexpected error occurred. Please try again."
+    "errorUnknown": "An unexpected error occurred. Please try again.",
+    "signupClosed": "Student registration is currently full. Please check official announcements for updates.",
+    "errorSignupClosed": "Student registration is currently full."
   },
   "verifyEmail": {
     "title": "Verify Your Email",

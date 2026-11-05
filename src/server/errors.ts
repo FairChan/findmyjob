@@ -54,3 +54,9 @@ export class DecryptError extends AppError {
     super(message, 'DECRYPT_ERROR', 500)
   }
 }
+
+export class SignupClosedError extends AppError {
+  constructor(message = 'Student registration is currently full') {
+    super(message, 'SIGNUP_CLOSED', 403)
+  }
+}

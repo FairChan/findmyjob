@@ -254,7 +254,7 @@
 
 > 完成 2026-11-05：创建 src/server/lib/turnstile.ts（verifyTurnstile，5 秒超时，校验 success/hostname/action）；auth.ts 加 hooks.before（TURNSTILE_PATHS 对 4 个端点拦截）和 databaseHooks.session.create.after（写 auth.login 审计 + 更新 lastLoginAt）；register.ts 两个 action 均直接调用 verifyTurnstile（server-to-server 调用绕过 HTTP 中间件）；LoginForm/StudentRegisterForm/EmployerRegisterForm/ForgotPasswordForm 均集成 TurnstileWidget 并传 token；防枚举逻辑已在 register 和 auth 层实现；新增 tests/unit/turnstile.test.ts（6 个用例）；lint/typecheck/test 全部通过（71 tests）
 
-#### [ ] M1-T06 学生注册上限
+#### [x] M1-T06 学生注册上限
 依赖：M1-T02、M0-T11
 做：
 - `services/signup-cap.ts`：`assertStudentSignupOpen()`、`maybeWarnCap()`。`assertStudentSignupOpen()` 放在 `databaseHooks.user.create.before` 里，直接调用接口也会被挡；只统计 emailVerified=true、状态 ACTIVE、角色 STUDENT 的用户。
@@ -265,6 +265,8 @@
 - 达到上限时学生注册返回 `SignupClosedError`；直接 POST 注册端点同样会被挡住；已注册的用户照常登录；企业注册不受影响；达到 90% 时只给运营发一条通知
 - 上限为 3、已有 2 个已验证和 5 个未验证学生时，第 3 个学生仍能完成注册
 - 用假时钟推进 48 小时后，未验证账号被删除
+
+> 完成 2026-11-05：`services/signup-cap.ts`（assertStudentSignupOpen/maybeWarnCap/purgeUnverifiedAccounts）；`SignupClosedError` 加入 errors.ts；`auth.ts` 增加 databaseHooks.user.create.before（调用 assertStudentSignupOpen，企业注册通过 employerRegistrationContext 跳过检查）；`register.ts` registerStudent 在 signUpEmail 前调 assertStudentSignupOpen，registerEmployer 在 employerRegistrationContext 中运行 signUpEmail；`purge-unverified` 任务每小时 cron 注册至 registry.ts；学生注册页满额时显示名额已满横幅；zh/en i18n 新增 signupClosed 和 errorSignupClosed；单元测试 11 个（81 total）全部通过；偏差：employer 通过 AsyncLocalStorage 跳过 cap hook（context 在 Node.js 进程内有效，不跨请求）
 
 ---
 

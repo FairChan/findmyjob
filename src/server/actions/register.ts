@@ -10,6 +10,8 @@ import { AppError } from '@/server/errors'
 import { logger } from '@/server/lib/logger'
 import { createEmailProvider } from '@/lib/email'
 import { verifyTurnstile, TurnstileError } from '@/server/lib/turnstile'
+import { assertStudentSignupOpen } from '@/server/services/signup-cap'
+import { employerRegistrationContext } from '@/server/lib/employer-registration-context'
 
 const emailProvider = createEmailProvider()
 
@@ -46,6 +48,8 @@ export const registerStudent = action(
       if (err instanceof TurnstileError) throw new AppError(err.message, 'TURNSTILE_FAILED')
       throw err
     }
+
+    await assertStudentSignupOpen()
 
     let userId: string
     try {
@@ -131,10 +135,12 @@ export const registerEmployer = action(
 
     let userId: string
     try {
-      const result = await auth.api.signUpEmail({
-        body: { name: input.name, email: input.email, password: input.password },
-        headers: h,
-      })
+      const result = await employerRegistrationContext.run(true, () =>
+        auth.api.signUpEmail({
+          body: { name: input.name, email: input.email, password: input.password },
+          headers: h,
+        }),
+      )
       const user = (result as unknown as { user: { id: string } } | null)?.user
       if (!user?.id) {
         throw new AppError('Sign-up returned no user', 'REGISTER_FAILED')

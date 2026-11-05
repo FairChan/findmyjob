@@ -47,7 +47,9 @@
     "errorInvalidEmail": "请输入有效的邮箱地址",
     "errorPasswordTooShort": "密码至少 8 位",
     "errorRegisterFailed": "注册失败，请稍后重试",
-    "errorUnknown": "发生未知错误，请稍后重试"
+    "errorUnknown": "发生未知错误，请稍后重试",
+    "signupClosed": "学生名额已满，暂停开放注册，请关注官方通知。",
+    "errorSignupClosed": "学生名额已满，注册暂停。"
   },
   "verifyEmail": {
     "title": "请验证您的邮箱",
