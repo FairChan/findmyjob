@@ -1,7 +1,7 @@
 import 'server-only'
-
-// In-memory sliding window rate limiter. Resets on process restart — this is
-// acceptable during the single-instance pilot phase (A24).
+import { Prisma } from '@prisma/client'
+import { db } from '../db'
+import { hitBucket } from './db-rate-limit'
 
 export interface RateLimitOptions {
   windowMs: number
@@ -11,36 +11,17 @@ export interface RateLimitOptions {
 export interface RateLimitResult {
   allowed: boolean
   remaining: number
-  /** Unix ms at which the oldest token expires and a new request would be allowed */
+  /** Unix ms at which the window resets */
   resetAt: number
+  /** Raw bucket count returned by the DB */
+  count: number
 }
 
-const store = new Map<string, number[]>()
-
-export function checkRateLimit(key: string, opts: RateLimitOptions): RateLimitResult {
-  const now = Date.now()
-  const cutoff = now - opts.windowMs
-  const timestamps = (store.get(key) ?? []).filter((t) => t > cutoff)
-
-  if (timestamps.length >= opts.limit) {
-    store.set(key, timestamps)
-    return {
-      allowed: false,
-      remaining: 0,
-      resetAt: timestamps[0] + opts.windowMs,
-    }
-  }
-
-  timestamps.push(now)
-  store.set(key, timestamps)
-  return {
-    allowed: true,
-    remaining: opts.limit - timestamps.length,
-    resetAt: now + opts.windowMs,
-  }
+export async function checkRateLimit(key: string, opts: RateLimitOptions): Promise<RateLimitResult> {
+  return hitBucket(key, opts)
 }
 
-/** Remove all entries for a key (useful in tests or on sign-out). */
-export function clearRateLimit(key: string): void {
-  store.delete(key)
+/** Remove all bucket entries for a key (test isolation / sign-out). */
+export async function clearRateLimit(key: string): Promise<void> {
+  await db.$executeRaw(Prisma.sql`DELETE FROM "RateLimitBucket" WHERE "key" = ${key}`)
 }

@@ -54,3 +54,9 @@ export class DecryptError extends AppError {
     super(message, 'DECRYPT_ERROR', 500)
   }
 }
+
+export class VersionMismatchError extends AppError {
+  constructor(message = 'Terms version mismatch') {
+    super(message, 'VERSION_MISMATCH', 409)
+  }
+}

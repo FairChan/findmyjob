@@ -42,6 +42,7 @@ const SETTINGS: Array<[string, unknown]> = [
   ['unlock.enabled', true],
   ['talentPool.searchEnabled', true],
   ['uploads.enabled', true],
+  ['email.dailyCap', 500],
 ]
 
 // Default synonym groups — matches prototype src/data/synonyms.ts

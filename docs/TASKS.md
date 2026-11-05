@@ -395,6 +395,10 @@
 做：`lib/redact.ts`：把邮箱、电话（+60 / 01x-xxxxxxx、+86 1xxxxxxxxxx、通用国际格式）、URL、微信号模式（"微信"、"WeChat"、"wx" 后跟账号）替换为「[已隐藏]」。
 验收：至少 15 个单元测试用例（含中英混排、全角字符、带空格或横线的号码），且不误伤普通数字（年份、GPA、百分比）
 > 完成 2026-11-05：src/lib/redact.ts（全角归一化 + 7 条正则：URL、邮箱、+60、01x、+86、通用国际、微信/WeChat/wx）；tests/unit/redact.test.ts（24 组、60 个断言，含全角、中英混排、哨兵电话、false-positive 安全验证）；pnpm lint / typecheck / test 全部通过
+> 修复 2026-11-05：补充微信号/vx/VX/V信/wechat id、裸大陆手机号（含全角）、www. 和已知域名无协议 URL、QQ、Telegram/TG、Line ID、WhatsApp 共 14 个模式；新增 20KB 性能用例和技术名/版本号/日期防误伤用例，共 62 个断言全部通过
+> 修复 2026-11-05（二，总控手工，轮次两次超出 32k 输出上限）：按安全审查补齐微信连接词和括号、电话分隔符与 60/(+60)/Tel 写法、零宽字符和数学字体数字、中文句号、﹫、(at)、汉字本地部分和常见邮箱的 at/dot 拼写、wa.me 和 whatsapp.com 链接；归一化改为逐码点并记下原文下标；修掉邮箱正则的二次回溯（10 万字符 <50ms）；tests/unit/redact-hardening.test.ts 64 例。偏差：逐位空格分开的号码（1 3 8 …）不遮，见 DECISIONS
+> 修复 2026-11-05（三，总控手工）：按独立复查和 11f05dd 的提交审查补齐：微信双连接词和 ID 后缀、@ 前缀、引号和『』、QQ号码、常见邮箱的混合 at/dot、空域名段、按位数而不是按分组匹配电话（马来西亚和中国手机、固话、0060）、所有格式字符和组合记号、带圈和上标数字、更多社交链接和 handle；减少误伤：英文 WeChat 后面不再把纯字母词当账号，弱连接词（- / is）只认带数字或下划线的账号，网址在中文句子前停下，求职头衔里的「@ 公司」不遮；tests/unit/redact-rereview.test.ts 81 例
+> 修复 2026-11-05（四，总控手工）：按 5452dab 的提交审查修掉微信 ID 类账号前瞻无上限造成的二次回溯（'-wx' 重复 3 万次原来 2.2 秒）；英文 WeChat 后面的小写纯字母账号、WeChat ID 后面的任何纯字母账号照遮；邮箱的 @ 两边带空格时，本地部分是小写或含数字、点、下划线，或前面有邮箱、email 等字样就遮；Line ID 不带冒号；斜杠分隔的手机号；网址路径里的非中文字母
 
 #### [x] M4-T02 脱敏序列化器 + 防泄漏测试
 依赖：M4-T01
@@ -409,6 +413,7 @@
 - 卡片和详情页显示的专业、学校名也经过 redact（TM-002）
 
 > 完成 2026-11-05：src/lib/mask-name.ts（12 种复姓 + 单姓 + 非中文首字母）；src/server/serializers/talent-card.ts（toTalentCard / toTalentDetail，TM-002 school/major 始终经 redact，contact 仅 unlocked=true 时输出，storageKey 不出现在输出）；src/server/services/notifications.ts（buildEmployerStudentPayload，仅 isUnlocked||hasApplied 时传 unlocked=true）；tests/unit/mask-name.test.ts（22 个断言，含 12 种复姓、单姓、非中文、边界）；tests/unit/talent-card.test.ts（防泄漏测试 + TM-002 + notifications，30 个断言）；pnpm lint / typecheck / test / db:check 全部通过
+> 修复 2026-11-05：mask-name 复姓改为至少 3 字才按复姓处理、首字符改码点安全取法；serializer 未解锁时对全部自由文本字段追加姓名遮蔽；notifications 签名改为 canSeeName，payload 始终 unlocked=false；补全 experience.description / resumePreview parsedJson / education.major / school.nameEn / WhatsApp 和 LinkedIn 链接的防泄漏测试；pnpm lint / typecheck / test 全部通过（466 个断言）
 
 #### [ ] M4-T03 人才库搜索 service
 依赖：M4-T02、M2-T07
@@ -620,10 +625,12 @@
 做：首页（中 / 英）：面向在马留学生的价值主张（学生免费，查看详情有额度，邀请可解锁）、企业价值主张、合作伙伴墙、最新职位、数据亮点；`/for-employers`（含公益期说明）；`/partners`。产品名只写 FindMYJob。
 验收：Lighthouse 移动端性能 ≥ 85、可访问性 ≥ 90
 
-#### [ ] M7-T02 法律页面
+#### [x] M7-T02 法律页面
 依赖：M0-T05
 做：`/legal/privacy`、`/legal/terms`（中 / 英模板，页首标注「草案，待律师审阅」；隐私政策披露 SUBPROCESSORS 里的子处理者和跨境传输）；`legal.currentVersion` 变化后，用户下次登录须重新同意。
 验收：版本升级后，旧用户登录被引导到重新同意页
+> 完成 2026-11-05：/legal/privacy 和 /legal/terms 页（中英各一，服务端读 src/content/legal/*.md，react-markdown+remark-gfm 渲染）；/legal/reconsent 重同意页（Server Action + 客户端表单）；services/legal-consent.ts（needsReconsent、recordLegalConsent）；proxy.ts 加 checkReconsent 钩子（M1-T04 接入真实 session 后激活）；unit tests 7 个；lint/typecheck/test 全部通过。偏差：页首草案横幅来自内容文件自带的 blockquote，无需额外渲染；重同意重定向需 M1-T04 完成后才可端到端验证
+> 修复 2026-11-05：needsReconsent 移除 granted:true 过滤，取最新记录后判断 granted===true（修复撤回后仍返回不需重同意的 bug）；page 读取 currentVersion 传入表单，action schema 增加 version 字段，recordLegalConsent 比较 submittedVersion 与当前版本不符时抛 VersionMismatchError；版本号与正文绑定留 GATE-M7 前人工决定
 
 #### [ ] M7-T03 数据权利
 依赖：M6-T01
@@ -636,7 +643,7 @@
 - purge 跑完后，该学生的 StudentContact、ResumeFile 记录和对象的所有版本都被清除；以 findmyjob_app 身份运行不报 42501（集成测试）
 - purge 跑完后，用该学生的哨兵值（`哨兵测试同学甲`、`+60 12-000 0420`、`leak-sentinel@example.test`）查 User（name、email）、StudentProfile、Education、Experience、Application（coverNote、companyNote）、ApplicationEvent.note、TalentFolderItem.note、Invitation.message、Notification.payload，以及对象存储里该用户的 `exports/` 前缀，都查不到；CreditLedger 和 AuditLog 只剩内部 ID（AuditLog.ip 按 D22）（TM-029）
 
-#### [ ] M7-T04 可观测性：Sentry 与健康检查
+#### [x] M7-T04 可观测性：Sentry 与健康检查
 依赖：M0-T08
 做：
 - `@sentry/nextjs` 锁精确版本。在 `instrumentation.ts` 的 register() 和 onRequestError，以及 `instrumentation-client.ts` 里初始化；worker 用 `@sentry/node`。不运行 `npx @sentry/wizard`。
@@ -647,6 +654,11 @@
 - 人为抛错能在 Sentry 里看到（用测试 DSN 或 mock 验证）
 - 单测：scrubEvent 处理后的输出里，cookie、`?token=abc` 和两个哨兵值都不存在
 - 停掉数据库后 /api/health 返回 503；CI 跑完 E2E 后，在应用日志里 grep 不到哨兵值
+> 完成 2026-11-05：@sentry/nextjs@11.10.0 + @sentry/node@11.10.0（精确版本，pnpm add --save-exact）；src/lib/sentry-options.ts（sentryOptions + scrubEvent：删除 cookies/data/query_string，仅保留 user-agent header，URL 去 query string，去 user 字段，message 过 redact()）；src/instrumentation.ts（register() + onRequestError()）；src/instrumentation-client.ts；src/worker.ts 加 @sentry/node init；src/server/lib/alert.ts 加 Sentry.captureMessage；src/app/api/health/route.ts（SELECT 1，2s timeout，503/no-store）；tests/unit/sentry-scrub.test.ts（12 个断言）；next.config.ts 加 serverExternalPackages；pnpm lint/typecheck/test（133）全部通过。偏差：@sentry/core 不在顶层 node_modules，Event/ErrorEvent 类型从 @sentry/node 间接导入；不需要 allowBuilds（@sentry 包没有 postinstall 脚本）
+> 修复 2026-11-05：dataCollection 全关（sendDefaultPii 改由 dataCollection 实现，sendDefaultPii:false 保留）；tracesSampler/beforeSendTransaction 防上游 trace 传播；scrubEvent 增加 contexts.nextjs.request_path 去查询串、exception.values 过 redact、extra 删 PII 键并递归 redact；ID 路径段替换为 [id]；beforeBreadcrumb 去 URL 查询串；worker/registry 加 captureException；health 改用 $transaction+statement_timeout+clearTimeout；NEXT_PUBLIC_APP_TAG/NEXT_PUBLIC_SENTRY_ENVIRONMENT 新增环境变量
+> 修复 2026-11-05（二）：beforeBreadcrumb 对 console 类面包屑直接 return null（防 data.arguments 泄漏）；scrubExtra 增加 scrubValue 递归处理数组元素；exception.value 在 redact 前先 replace(/\?[^"'\s]*/g,'') 去掉查询串；tests/unit/alert.test.ts 改用真实 transport 收集 envelope，断言 alert() 确实发送事件且 extra 中 PII 键被删除；tests/unit/sentry-scrub.test.ts 更新 console breadcrumb 断言为 null
+> 修复 2026-11-05（四）：alert.test.ts 新增 "alert Sentry integration – full production sentryOptions" suite：init 时传入 { ...sentryOptions, dsn: 假 DSN, transport: 收集 envelope 的假 transport }，beforeSend/beforeBreadcrumb/dataCollection/tracesSampler 全来自生产配置；addBreadcrumb 注入 console 类哨兵面包屑，alert() 传含数组和嵌套 token 的 extra，captureException 用带查询串的 Error，flush 后断言：确实有 envelope（防空过）、dump 中无 leak-sentinel@example.test、无 +60 12-000 0420、无 token=abc 和 ?email=；本地验证：临时注释掉 beforeBreadcrumb 中 console return null 后，"no sentinel email" 测试失败，恢复后全套 536 个测试通过。
+> 修复 2026-11-05（五，总控手工）：Sentry transport 测试改为断言至少收到两条 type=event 的条目，并且异常事件保留路径、去掉了查询串；做过变异验证：去掉查询串剥离时有 3 个用例失败
 
 #### [ ] M7-T05 安全响应头与复查
 依赖：M7-T03
@@ -660,7 +672,7 @@
 - 学生页和企业页的响应都带 noindex 和 no-store
 - 越权测试清单全部通过；`pnpm audit` 没有 high 及以上漏洞
 
-#### [ ] M7-T06 镜像、生产 Compose 与 RUNBOOK
+#### [x] M7-T06 镜像、生产 Compose 与 RUNBOOK
 依赖：M7-T04
 做：按 shipping-and-launch 检查清单加上本项目的补充项做。
 - 部署相关文件统一放在 `deploy/` 下。`deploy/Dockerfile` 用精确 tag 的 `node:24.x-bookworm-slim`，builder 和 runtime 两个阶段；用 standalone 输出，COPY 时加 `--chown`；设 `HOSTNAME=0.0.0.0`，最后一行 `USER node`。另外两个 target：migrate 带 prisma CLI；tools 带 tsx、scripts、src、prisma，运行时用 `--conditions=react-server`，这个镜像不对外推送。秘密不进 ARG、ENV、COPY。
@@ -672,6 +684,10 @@
 - 本地用 prod compose 能完整跑起来
 - 用 `docker compose config` 解析后，只有 caddy 有 ports；`docker compose run --rm app id -u` 输出 1000
 - `docker run --rm --entrypoint sh <镜像> -c 'ls -a /app'` 里看不到 .env、docs、tests、.git、prototype
+
+> 完成 2026-11-05：deploy/Dockerfile（node:24.4.0-bookworm-slim，runner + migrate + tools 三个 target，standalone 输出，HOSTNAME=0.0.0.0，USER node=UID 1000）；deploy/docker-compose.prod.yml（只 caddy 发布端口，backend 网络 internal，app+worker cap_drop ALL，内存上限，ops profile）；deploy/Caddyfile（reverse_proxy app:3000，header_up X-Real-IP，request_body max_size 11MB，命名卷）；next.config.ts 加 output:standalone；env.example 加 APP_DOMAIN；docs/RUNBOOK.md GHCR PAT 轮换节填写；docker compose config 验证只有 caddy 有 ports
+> 修复 2026-11-05：deps 阶段加 prisma generate（修 Prisma client 缺失）；runner 阶段调整 COPY 顺序使全量 node_modules 覆盖 standalone minimal；base 阶段加 openssl/ca-certificates；backup 移至 runner 前使 runner 成为最后阶段（USER node）；backup 加 /backup-tmp 目录创建（postgres 属主可写）；tools target 改为推送镜像 findmyjob-tools；migrate/tools 加 cap_drop+no-new-privileges；compose 所有 ${APP_TAG} 改为 ${APP_TAG:?}；app/worker 加 APP_TAG 环境变量；Caddy 日志改为 stdout+format filter 去除查询串和敏感 header；RUNBOOK GHCR PAT 改为 read:packages、验证命令用 sha；真机 docker build 验证待部署后核实
+> 修复 2026-11-05（二）：runner 阶段改 `FROM base AS runner`（原 `FROM ${NODE_IMAGE} AS runner`），确保继承 openssl/ca-certificates/WORKDIR；Prisma library engine 可正常加载，健康检查不再失败回滚；bash -n 语法验证通过，真机 docker build 仍需部署时核实；pnpm lint/typecheck/test 全绿（526 个测试）
 
 #### [ ] M7-T07 全流程 E2E 冒烟
 依赖：M7-T01
@@ -688,7 +704,7 @@
 做：`/safety` 反诈专区页（内容来自 Article）；职位详情页「举报」按钮，按用户限流每天 `limits.jobReportsPerDay` 次；`services/reports.ts`、`services/articles.ts`。
 验收：举报出现在运营队列里；处理时写审计 `job.report.resolve`；第 11 次举报被拒
 
-#### [ ] M7-T10 k6 压测脚本（browse+search 和 smoke）
+#### [x] M7-T10 k6 压测脚本（browse+search 和 smoke）
 依赖：M7-T06
 做：
 - `load/k6/browse-search.js`：ramping-vus 爬到 E2 人数的 1.2 倍，场景包括职位列表、EXACT 和 RELATED 两种搜索、人才库搜索（用 seed-load 预先生成的会话 cookie，不走登录）。
@@ -699,9 +715,11 @@
 - seed-load.ts 在非 staging 环境下退出码不为 0
 - 阈值写在脚本里：p(95) 小于 800ms，http_req_failed 小于 1%
 
+> 完成 2026-11-05：load/k6/browse-search.js（ramping-vus 240=200×1.2，jobBrowse+talentSearch 两个场景，阈值 p95<800ms+错误率<1%）；load/k6/smoke.js（1VU/1min，5条公开路径+/api/health）；prisma/seed-load.ts（非staging exit 1，20条合成企业账号+会话，写 load/accounts.local.json）；eslint.config.mjs 增加 seed-load.ts 豁免；pnpm lint/typecheck/test 全部通过
+
 > M7-T12 排在 M7-T11 前面：部署脚本在迁移前要调用备份脚本。
 
-#### [ ] M7-T12 age 加密的异地备份、死信监控与恢复演练脚本
+#### [x] M7-T12 age 加密的异地备份、死信监控与恢复演练脚本
 依赖：M7-T06
 做：
 - 新增 `deploy/server/findmyjob-backup`，开头 `set -euo pipefail`。流程：`pg_dump -Fc --exclude-schema=pgboss`，管道给 `age -r <公钥>`，输出到容器里挂载的普通磁盘目录（例如 /backup-tmp）中的临时密文；不用 /dev/shm（Docker 默认只给 64MB）；检查退出码后，只做一次 PutObject，上传到 `db/daily/<UTC时间>.dump.age` 或 `db/pre-migrate/`；成功后 curl healthchecks 的 ping 地址。全程不在磁盘上留明文。
@@ -713,7 +731,13 @@
 - 手动跑一次备份：db/daily/ 下出现新对象，文件前 21 个字节是 `age-encryption.org/v1`，healthchecks 显示绿色
 - 把口令故意改错再跑：脚本以非 0 退出，healthchecks 收不到 ping，也没有生成新对象；restore-drill.sh 对名为 findmyjob 的库直接拒绝
 
-#### [ ] M7-T11 部署流水线：人工 SSH 执行 findmyjob-deploy
+> 完成 2026-11-05：deploy/server/findmyjob-backup（set -euo pipefail，pg_dump|age→/backup-tmp，pipefail 检查，S3 PutObject，healthchecks curl，trap 清理）；deploy/server/findmyjob-cron（19:15 UTC，/etc/cron.d/findmyjob）；deploy/Dockerfile 新增 backup stage（postgres:16.6-bookworm + age + awscli）；docker-compose.prod.yml backup 服务改用 findmyjob-backup 镜像；scripts/db/restore-drill.sh（_drill 校验、stdin 私钥 shred 清除、pg_restore、6 项检查、Session 清空、RTO 输出）；scripts/db/verify-decrypt.ts（自包含解密验证，掩码输出）；RUNBOOK 备份/恢复演练/真实恢复三节；env.example 新增备份和恢复演练相关变量；DECISIONS 记录镜像选型偏差
+> 修复 2026-11-05：cron 行补 `-f /opt/findmyjob/docker-compose.prod.yml --env-file`；backup 脚本把 DATABASE_URL 拆成 PG 单项 env var（凭据不再出现在 pg_dump/psql 命令行）；counts.json 改为每个 dump 同名文件，不再共用；restore-drill 完全流式（私钥读进变量+process substitution，dump 不落盘）；--key 必填（操作人自选，不自动取最新）；--skip-rpo/--keep 参数；RPO 从 key 名取时间戳（先 regex 校验）；times.json 路径经 argv 传 python（无字符串插值）；tools 容器改 `-e PII_KEYS`（透传）；eslint 豁免收窄到 verify-decrypt.ts；RUNBOOK 7 处修订（桶生命周期/真实恢复步骤/postgres 服务名/read -rs/日志路径/restore-reader 验证/healthchecks URL）；DECISIONS 追加 findmyjob_app 已接受风险。真机验证需人工执行（无法本机 docker build/run）。
+> 修复 2026-11-05（二）：restore-drill.sh 用 aws s3api get-object --range bytes=0-20+临时文件替换 aws s3 cp … | head -c 21，消除 SIGPIPE 导致 set -euo pipefail 静默退出；RUNBOOK 备份桶补充当前版本 Expiration 30 天（原 NoncurrentVersionExpiration 对唯一 key 无效），实际保留约 31 天，与隐私政策"30 天"出入已在说明中注明；RUNBOOK 恢复演练/真实恢复说明执行位置改为管理机（tools 镜像无 psql）+SSH 隧道，RENAME 步骤改用 docker compose exec postgres psql，export AWS_SECRET_ACCESS_KEY=… 改 read -rs；新增 mock-aws 失败测试（11 passed）。bash -n 验证语法通过。
+> 修复 2026-11-05（三）：(1) docker-compose.prod.yml 新增 ops profile 下的 restore 服务（复用 findmyjob-backup 镜像，接 backend+outbound 网络，cap_drop ALL，no-new-privileges，不发布端口，entrypoint 指向镜像内 restore-drill.sh）；(2) Dockerfile backup stage 补装 python3，并将 restore-drill.sh、db-setup.sql、prisma/migrations COPY 进镜像，使 restore 服务在生产服务器上免安装直连 postgres:5432；(3) restore-drill.sh：去掉 step 9 的 docker compose tools 调用（verify-decrypt 提取为 RUNBOOK 独立步骤），Session 清空移入 cleanup trap（任何检查失败或 --keep 时都执行），cleanup 里用 ${RESTORE_ADMIN_DATABASE_URL%/*}/${DB_NAME} 组装目标 URL；(4) restore-drill.test.sh 新增 session-cleared-on-failure 和 session-cleared-on-failure --keep 两个 mock 测试（13 passed）；(5) RUNBOOK 恢复演练/真实恢复两节全部改为在生产服务器上通过 docker compose run restore 执行，凭据 -e 透传 + stdin 私钥，去掉 SSH 隧道和管理机要求，verify-decrypt 改为独立步骤。bash -n 通过，pnpm lint+typecheck+test 532 passed 全绿。真机演练仍需在 M7-H01 配置好的服务器上验证。
+> 修复 2026-11-05（四，总控手工）：按最后一轮只读核对，改正 RUNBOOK 恢复演练和真实恢复的命令：统一用 `$DC`（`-f docker-compose.prod.yml --env-file /opt/findmyjob/.env`），不再 export APP_TAG；列备份时用 `--entrypoint aws`；演练加 `--keep`，verify-decrypt 跑完再 DROP 演练库；所有秘密都用 `read -rs` 读入、`-e VAR` 透传，不进命令行参数
+
+#### [x] M7-T11 部署流水线：人工 SSH 执行 findmyjob-deploy
 依赖：M7-T06、M7-T12
 做：按 shipping-and-launch 检查清单加上本项目的补充项做。
 - ci.yml 加一个 image job：只在 push 到 main 时运行，needs verify 和 e2e，job 级权限 `packages: write`；推送 `ghcr.io/fairchan/findmyjob:<sha>` 和 `findmyjob-migrate:<sha>`，不推 latest。
@@ -724,7 +748,12 @@
 - 本地用 prod compose 演练：部署 A、部署 B、再 rollback，每一步都不超过 2 分钟，deploy-history.log 里有 3 条记录
 - 用一个健康检查返回 500 的镜像部署，脚本会自动回到上一个 tag 并以 exit 1 结束；有待执行迁移但没加批准参数时，在迁移之前就停下
 
-#### [ ] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
+> 完成 2026-11-05：deploy/server/findmyjob-deploy（SHA 校验、migration 比对+exit 3、pre-migrate backup、migrate、health check+auto-revert、deploy-history.log）；ci.yml 增加 image job（push-to-main 触发，needs verify+e2e，packages:write，推 findmyjob/findmyjob-migrate/findmyjob-backup 三个 target，不推 latest）；RUNBOOK.md 填写部署、回滚、P3009/INVALID 索引三节；偏差：本地演练需要真实 prod compose 环境（依赖 M7-H01 配置的服务器），脚本逻辑在验收清单范围内正确实现
+> 修复 2026-11-05：(1) backup+migrate 改用 APP_TAG env-prefix，update_app_tag 推迟到迁移成功后，ERR trap 在 tag 写入后失败时恢复 .env；(2) 回滚目标改为「当前 sha 最近一次 deploy 之前的那条 deploy 记录」（awk 逐行跟踪 prev），避免 rollback-after-rollback 再次回到坏版本；(3) 迁移检查先 test -d 判断目录存在，移除 2>/dev/null 和 || true 让 docker run 失败可见，校验迁移名格式 ^[0-9]{14}_[a-z0-9_]+$；(4) DB URL 改走 --env-file 临时文件，不出现在命令行参数；(5) 部署和回滚均记录 digest 并支持 --expect-digest sha256:… 核对；RUNBOOK 部署/回滚两节同步更新；bash -n 语法通过，pnpm lint+typecheck+test 全绿。真机演练（部署 A、部署 B、回滚）仍需在 M7-H01 配置好的服务器上执行。
+> 修复 2026-11-05：(a) wallet 余额保持 0（credits.ts 未实现，M4-T06 未完成）；(b) session token 改用 crypto.randomBytes(32).toString('base64url')，不再可预测；(c) k6 setup() 在 accounts 为空时 fail()；(d) 人才库请求改为 redirects:0、只认 200 为成功；ESLint 豁免保留（seed-load.ts 仍访问 User.email PII）。
+> 修复 2026-11-05（二）：(1) set -Eeuo pipefail（加 -E），ERR trap 现可在 update_app_tag/dc up 函数内触发，注释说明原因；(2) actual_digest 用 ${var#*@} 剥离 registry/repo@ 前缀，存入 history 和比对的值均为裸 sha256:…，--expect-digest 和 rollback 自动核对均已可用；rollback 在有记录 digest 时改用 ${IMAGE_APP}@${digest} 拉取再 tag；(3) 迁移检查区分 docker run 退出码：exit 1 = 目录不存在（跳过），其他非零 = docker/exec 失败（die），防止 125/126/127 被误判为目录缺失而静默跳过审批；bash -n 通过，pnpm lint+typecheck+test 526 passed 全绿。真机走查（部署 A→B→回滚→回滚）仍需在 M7-H01 配置的服务器上执行。
+
+#### [x] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
 依赖：M7-T06
 做：按 shipping-and-launch 检查清单加上本项目的补充项做。
 - RUNBOOK 增加「事故响应」：SEV 分级、角色、联系表（核实后再填，不编造号码）；五个止血场景：企业看到了不该看的数据、凭据泄露、账本不一致、整站不可用、备份失败。
@@ -733,6 +762,9 @@
 - 隐私守则：事故处理时不把真实数据、完整的 AuditLog 行、.env 贴进 Claude 会话。
 - 完善 RUNBOOK 里已预留的「每周一 30 分钟例行检查」清单。
 验收：RUNBOOK 里包含以上各节；`docs/incidents/TEMPLATE.md` 已存在
+
+> 完成 2026-11-05：RUNBOOK 新增「事故响应」节（SEV 1/2/3 分级、联系表占位、五个止血场景、三条只读 SQL 模板、PDPA 通报流程）；每周检查清单扩充为 12 项（含 AuditLog 异常扫描、INVALID 索引检查、pg-boss 死信队列、GHCR PAT 到期日）；新建 docs/incidents/TEMPLATE.md、docs/templates/breach-notice-zh.md、docs/templates/breach-notice-en.md（均为占位内容，联系方式不编造）
+> 修复 2026-11-05：SQL 模板按真实 AuditLog 列改写：subjectId → targetId、actorId AS companyId → actorId AS actorUserId、三条模板均加 BEGIN READ ONLY/COMMIT；注释说明 findmyjob_app 有 DML 权限须用 READ ONLY 事务。
 
 #### [ ] M7-H01 云主机初始化、IAM、发信域、uptime 和 healthchecks（人工）
 依赖：M7-T06
@@ -771,7 +803,7 @@
 - 查看联系方式、调整点数、确认订单这些操作，要求 10 分钟内的新鲜会话；ADMIN 会话最长 12 小时（实现方式待核实）。
 验收：没开 2FA 的 ADMIN 访问 /admin，被引导去设置 2FA；连续输错 TOTP 5 次后被限流
 
-#### [ ] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）
+#### [x] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）
 依赖：M7-T04、M0-T11
 做：
 - 新增 `unlock.enabled`、`talentPool.searchEnabled`、`uploads.enabled` 三个开关，用 getSetting 读取，关闭时抛 FeatureDisabledError。
@@ -781,6 +813,10 @@
 验收：
 - `unlock.enabled=false` 时，解锁抛出 FeatureDisabledError，CreditLedger 没有新增记录
 - 用新的 Prisma client 发起第 6 次 hit，仍然被拒
+
+> 完成 2026-11-05：RateLimitBucket 表（migration 20261105025544）+ hitBucket()（INSERT ON CONFLICT，db-rate-limit.ts）；services/feature-flags.ts（assertUnlockEnabled/assertTalentSearchEnabled/assertUploadsEnabled，依赖 getSetting）；lib/email-cap.ts（checkEmailCap，critical 直通，超限调 alert）；lib/healthchecks.ts（pingHealthcheck，从 HEALTHCHECKS_<JOB> env 读 URL，fire-and-forget）；registry.ts 新增 prune-rate-limit 任务（每小时 cron）+ healthcheck ping；seed 增加 email.dailyCap=500；单元测试 7+5+4=16 个全通过；lint/typecheck/test/db:check 全部通过。偏差：healthcheck URL 通过 process.env 命名约定读取，未加入 env.ts（属可选运维 URL，非密钥）；unlock 实体服务（M4-T07）暂未实现，feature-flag 断言待接入
+> 修复 2026-11-05：assertFeatureEnabled 改 enabled !== true 防字符串 "false" 放行；checkEmailCap critical 参数改为 template 白名单（CRITICAL_TEMPLATES），alert 只在 count===cap+1 时触发一次；db-rate-limit 列名加双引号；rate-limit.ts 改为 async 基于 hitBucket，clearRateLimit 改写为 DELETE；HEALTHCHECKS_* 加入 env.ts；开关已就绪，待各入口实现时调用（见 DECISIONS 开发中决策）
+> 修复 2026-11-05（二）：env.ts 的 HEALTHCHECKS_* 改用 z.preprocess 将空字符串转 undefined 再做 URL 校验（防 env.example 直接用时报错）；email-cap 的 template 参数改为 EMAIL_TEMPLATES 常量派生的封闭联合类型 EmailTemplate（CRITICAL_TEMPLATES 通过 satisfies 从常量派生）；集成限流测试改为直接调用 hitBucket/checkRateLimit（不再复制 SQL），新增真实计数、第 6 次拒绝、新 PrismaClient 验证、key 隔离、resetAt 在未来、clearRateLimit 六个场景；新增 tests/unit/env.test.ts 验证空字符串→undefined 和非法 URL 报错；全部 526 个测试通过
 
 #### [ ] M7-T15 CSP 改为 nonce 强制模式，HSTS 改为一年（P1，E3 之前）
 依赖：M7-T05
@@ -811,6 +847,39 @@
 依赖：M7-T10
 做：新增 `load/k6/unlock.js`（10 个 VU 抢余额 3，以及 10 个 VU 解锁同一学生）、`upload.js`、`apply.js`；seed-load 扩到 5000 名学生、100 家企业、500 个职位。
 验收：跑完后用 SQL 核对：成功的解锁数等于 UNLOCK 账本条数，余额 ≥0
+
+#### [ ] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
+依赖：M7-T04、M7-T06、M7-T11、M7-T12、M7-T14
+做：2026-11-05 lane B 合并前的安全审查和修复核对里，评为 Medium 或 Low、按主线收尾规则延后的项（见方案目录 .reports/2026-11-05-lane-b/security-review.md，DECISIONS「lane B 收尾遗留」）。逐条修掉，或者在 DECISIONS 记为已接受风险：
+- M4-T02 serializer：
+  - 拉丁字母名在非 ASCII 字母处的边界（如 José）；
+  - 卡片上的 major 和学校名也做姓名遮蔽；
+  - 防泄漏测试改为断言整份 JSON，并补上 edu.description 哨兵的断言。
+- M7-T04 Sentry：
+  - URL 换成 onRequestError 的 routePath，并能认出含 - 和 _ 的 base64url 令牌；
+  - 浏览器端的 NEXT_PUBLIC_SENTRY_DSN、APP_TAG、ENVIRONMENT 在镜像构建时注入（Dockerfile 的 build-arg 和 CI）；
+  - worker 启动失败时先 `Sentry.close()` 再退出。
+- M7-T11 部署：
+  - rollback 带了不合法的 sha 时直接 die；
+  - 放 owner URL 的临时文件用 trap 清理；
+  - 容器里 psql 命令行中的 URL 改用 PG* 变量传入。
+- M7-T12 备份和恢复：
+  - 用 `s3api get-object --version-id` 取代 `s3 cp --version-id`；
+  - counts.json 缺表时判为失败；
+  - 备份脚本改用 PG* 变量，不再手写解析 URL；
+  - `--keep` 时失败也要删掉半成品库；
+  - restore-drill.test.sh 同时断言错误信息；
+  - 演练命令里的 URL 不放进 argv。
+- M7-T06 Caddy：日志里的 Referer 和 remote_ip 怎么处理。
+- M7-T12 RUNBOOK：「在离线机器上列出 S3 对象」自相矛盾（离线机器连不上 S3）；改写这一步的执行位置。
+- M7-T12 RUNBOOK 和脚本（5f6b775 核对时发现）：
+  - 演练第 3 步写着「失败时库会被删掉」，但带了 `--keep` 时脚本不会删；改正文字，或者让脚本失败时总是删库；
+  - 真实恢复缺「列出备份、选 key」这一步，也缺 AWS_* 的 export；
+  - restore-drill.sh 第 9 步的用法注释、compose 里 restore 服务的注释还没带 `-f`，脚本注释里还把带 `<pass>` 的 URL 放在命令参数里。
+- M7-T13 RUNBOOK：去掉「companyId」「单个企业」的旧说法，SQL 模板加上 targetType 过滤。
+- M7-T02 同意：撤回如果记在别的版本号下会被忽略；版本号和正文内容的绑定（例如加内容哈希）。
+- M7-T14 止血开关：等 M4-T07 解锁、M4-T03 人才库搜索、M2-T05 上传实现时接到各自入口（这一项随那几个任务做，在这里核对）。
+验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
 

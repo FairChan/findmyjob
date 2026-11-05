@@ -1,59 +1,69 @@
-import { describe, it, expect, beforeEach } from 'vitest'
-import { checkRateLimit, clearRateLimit } from '@/server/lib/rate-limit'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
+
+vi.mock('@/server/lib/db-rate-limit', () => ({
+  hitBucket: vi.fn(),
+}))
+
+vi.mock('@/server/db', () => ({
+  db: {
+    $executeRaw: vi.fn().mockResolvedValue(1),
+  },
+}))
+
+const { hitBucket } = await import('@/server/lib/db-rate-limit')
+const { db } = await import('@/server/db')
+const { checkRateLimit, clearRateLimit } = await import('@/server/lib/rate-limit')
+
+const mockHitBucket = vi.mocked(hitBucket)
+const mockExecuteRaw = vi.mocked(db.$executeRaw)
 
 const KEY = 'test:rate-limit'
-const OPTS = { windowMs: 1000, limit: 3 }
+const OPTS = { windowMs: 1_000, limit: 3 }
+
+function makeResult(count: number, limit: number) {
+  return {
+    allowed: count <= limit,
+    remaining: Math.max(0, limit - count),
+    resetAt: Date.now() + 1_000,
+    count,
+  }
+}
 
 beforeEach(() => {
-  clearRateLimit(KEY)
+  vi.clearAllMocks()
 })
 
 describe('checkRateLimit', () => {
-  it('allows requests within the limit', () => {
-    const r1 = checkRateLimit(KEY, OPTS)
-    expect(r1.allowed).toBe(true)
-    expect(r1.remaining).toBe(2)
-
-    const r2 = checkRateLimit(KEY, OPTS)
-    expect(r2.allowed).toBe(true)
-    expect(r2.remaining).toBe(1)
-
-    const r3 = checkRateLimit(KEY, OPTS)
-    expect(r3.allowed).toBe(true)
-    expect(r3.remaining).toBe(0)
+  it('delegates to hitBucket and returns its result', async () => {
+    mockHitBucket.mockResolvedValueOnce(makeResult(1, 3))
+    const result = await checkRateLimit(KEY, OPTS)
+    expect(mockHitBucket).toHaveBeenCalledWith(KEY, OPTS)
+    expect(result.allowed).toBe(true)
+    expect(result.remaining).toBe(2)
+    expect(result.count).toBe(1)
   })
 
-  it('blocks requests that exceed the limit', () => {
-    checkRateLimit(KEY, OPTS)
-    checkRateLimit(KEY, OPTS)
-    checkRateLimit(KEY, OPTS)
-
-    const blocked = checkRateLimit(KEY, OPTS)
-    expect(blocked.allowed).toBe(false)
-    expect(blocked.remaining).toBe(0)
+  it('returns blocked result when count exceeds limit', async () => {
+    mockHitBucket.mockResolvedValueOnce(makeResult(4, 3))
+    const result = await checkRateLimit(KEY, OPTS)
+    expect(result.allowed).toBe(false)
+    expect(result.remaining).toBe(0)
   })
 
-  it('provides a resetAt timestamp in the future when blocked', () => {
-    checkRateLimit(KEY, OPTS)
-    checkRateLimit(KEY, OPTS)
-    checkRateLimit(KEY, OPTS)
-
-    const blocked = checkRateLimit(KEY, OPTS)
-    expect(blocked.resetAt).toBeGreaterThan(Date.now())
+  it('provides resetAt in the result', async () => {
+    const future = Date.now() + 1_000
+    mockHitBucket.mockResolvedValueOnce({ allowed: true, remaining: 2, resetAt: future, count: 1 })
+    const result = await checkRateLimit(KEY, OPTS)
+    expect(result.resetAt).toBe(future)
   })
+})
 
-  it('uses separate buckets for different keys', () => {
-    clearRateLimit('key-a')
-    clearRateLimit('key-b')
-
-    checkRateLimit('key-a', OPTS)
-    checkRateLimit('key-a', OPTS)
-    checkRateLimit('key-a', OPTS)
-
-    const r = checkRateLimit('key-b', OPTS)
-    expect(r.allowed).toBe(true)
-
-    clearRateLimit('key-a')
-    clearRateLimit('key-b')
+describe('clearRateLimit', () => {
+  it('calls db.$executeRaw to delete the key', async () => {
+    await clearRateLimit(KEY)
+    expect(mockExecuteRaw).toHaveBeenCalledOnce()
+    // The first arg is a Prisma.Sql template
+    const [sql] = mockExecuteRaw.mock.calls[0]
+    expect((sql as { strings: string[] }).strings.join('')).toContain('DELETE FROM "RateLimitBucket"')
   })
 })

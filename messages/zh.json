@@ -23,5 +23,20 @@
     "subtitle": "助力在马来西亚的留学生找到理想实习和工作",
     "ctaJobs": "浏览职位",
     "ctaRegister": "免费注册"
+  },
+  "legal": {
+    "privacyTitle": "隐私政策",
+    "termsTitle": "用户协议",
+    "reconsentTitle": "服务条款已更新",
+    "reconsentDescription": "我们更新了隐私政策和用户协议，请阅读后重新确认同意。",
+    "reconsentViewPrivacy": "查看隐私政策",
+    "reconsentViewTerms": "查看用户协议",
+    "reconsentAgree": "我已阅读并同意最新版隐私政策和用户协议",
+    "reconsentSubmit": "确认同意，继续使用",
+    "reconsentRequired": "请勾选同意后继续",
+    "reconsentSuccess": "感谢您的确认",
+    "reconsentVersionMismatch": "条款已更新，请刷新页面后重新阅读",
+    "lastUpdated": "最后更新：{version}",
+    "backToHome": "返回首页"
   }
 }

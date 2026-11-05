@@ -120,8 +120,11 @@ const eslintConfig = [
       'src/server/services/contact-access.ts',
       'src/server/services/credits.ts',
       'prisma/seed.ts',
+      'prisma/seed-load.ts',
       'tests/**/*.ts',
       'tests/**/*.spec.ts',
+      // restore-drill verification reads encrypted fields directly
+      'scripts/db/verify-decrypt.ts',
     ],
     rules: {
       // Keep unsafe SQL ban, but lift PII model restrictions
