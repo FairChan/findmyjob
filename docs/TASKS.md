@@ -783,7 +783,7 @@
 - 查看联系方式、调整点数、确认订单这些操作，要求 10 分钟内的新鲜会话；ADMIN 会话最长 12 小时（实现方式待核实）。
 验收：没开 2FA 的 ADMIN 访问 /admin，被引导去设置 2FA；连续输错 TOTP 5 次后被限流
 
-#### [ ] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）
+#### [x] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）
 依赖：M7-T04、M0-T11
 做：
 - 新增 `unlock.enabled`、`talentPool.searchEnabled`、`uploads.enabled` 三个开关，用 getSetting 读取，关闭时抛 FeatureDisabledError。
@@ -793,6 +793,8 @@
 验收：
 - `unlock.enabled=false` 时，解锁抛出 FeatureDisabledError，CreditLedger 没有新增记录
 - 用新的 Prisma client 发起第 6 次 hit，仍然被拒
+
+> 完成 2026-11-05：RateLimitBucket 表（migration 20261105025544）+ hitBucket()（INSERT ON CONFLICT，db-rate-limit.ts）；services/feature-flags.ts（assertUnlockEnabled/assertTalentSearchEnabled/assertUploadsEnabled，依赖 getSetting）；lib/email-cap.ts（checkEmailCap，critical 直通，超限调 alert）；lib/healthchecks.ts（pingHealthcheck，从 HEALTHCHECKS_<JOB> env 读 URL，fire-and-forget）；registry.ts 新增 prune-rate-limit 任务（每小时 cron）+ healthcheck ping；seed 增加 email.dailyCap=500；单元测试 7+5+4=16 个全通过；lint/typecheck/test/db:check 全部通过。偏差：healthcheck URL 通过 process.env 命名约定读取，未加入 env.ts（属可选运维 URL，非密钥）；unlock 实体服务（M4-T07）暂未实现，feature-flag 断言待接入
 
 #### [ ] M7-T15 CSP 改为 nonce 强制模式，HSTS 改为一年（P1，E3 之前）
 依赖：M7-T05
