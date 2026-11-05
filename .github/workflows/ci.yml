@@ -330,6 +330,15 @@ jobs:
             .
           docker push "ghcr.io/fairchan/findmyjob-backup:${{ github.sha }}"
 
+      - name: Build and push tools image
+        run: |
+          docker build \
+            --target tools \
+            --tag "ghcr.io/fairchan/findmyjob-tools:${{ github.sha }}" \
+            --file deploy/Dockerfile \
+            .
+          docker push "ghcr.io/fairchan/findmyjob-tools:${{ github.sha }}"
+
   security:
     name: Security Scan
     runs-on: ubuntu-24.04

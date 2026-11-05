@@ -38,8 +38,10 @@ services:
     restart: unless-stopped
 
   app:
-    image: ghcr.io/fairchan/findmyjob:${APP_TAG}
+    image: ghcr.io/fairchan/findmyjob:${APP_TAG:?}
     env_file: /opt/findmyjob/env/app.env
+    environment:
+      APP_TAG: ${APP_TAG:?}
     networks:
       - backend
       - outbound
@@ -75,7 +77,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/fairchan/findmyjob:${APP_TAG}
+    image: ghcr.io/fairchan/findmyjob:${APP_TAG:?}
     command:
       - node
       - --conditions=react-server
@@ -83,6 +85,8 @@ services:
       - tsx/cjs
       - src/worker.ts
     env_file: /opt/findmyjob/env/app.env
+    environment:
+      APP_TAG: ${APP_TAG:?}
     networks:
       - backend
       - outbound
@@ -133,25 +137,34 @@ services:
 
   # ops profile: run-once services (migration, tools, backup)
   migrate:
-    image: ghcr.io/fairchan/findmyjob-migrate:${APP_TAG}
+    image: ghcr.io/fairchan/findmyjob-migrate:${APP_TAG:?}
     env_file: /opt/findmyjob/env/migrate.env
     networks:
       - backend
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     profiles:
       - ops
 
   tools:
-    image: ghcr.io/fairchan/findmyjob:${APP_TAG}
+    image: ghcr.io/fairchan/findmyjob-tools:${APP_TAG:?}
     env_file: /opt/findmyjob/env/app.env
     networks:
       - backend
       - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     profiles:
       - ops
-    # override entrypoint per use: docker compose run --rm tools scripts/backfill/xxx.ts
+    # usage: docker compose run --rm tools scripts/backfill/xxx.ts
+    # entrypoint: node --conditions=react-server -r tsx/cjs <script>
 
   backup:
-    image: ghcr.io/fairchan/findmyjob-backup:${APP_TAG}
+    image: ghcr.io/fairchan/findmyjob-backup:${APP_TAG:?}
     env_file: /opt/findmyjob/env/backup.env
     volumes:
       - backup_tmp:/backup-tmp

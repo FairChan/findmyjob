@@ -33,6 +33,7 @@ GitHub 不持有部署私钥。镜像由 CI `image` job 在 push 到 main 时自
 - `ghcr.io/fairchan/findmyjob:<sha>`
 - `ghcr.io/fairchan/findmyjob-migrate:<sha>`
 - `ghcr.io/fairchan/findmyjob-backup:<sha>`
+- `ghcr.io/fairchan/findmyjob-tools:<sha>`
 
 ## 回滚
 
@@ -117,12 +118,16 @@ PII_ACTIVE_KEY_ID=v1
 
 每 90 天轮换一次（在日历上设置提醒）：
 
-1. 在 GitHub → Settings → Developer settings → Personal access tokens (fine-grained) 为 `fairchan/findmyjob` 仓库生成新 PAT，权限只选 `packages: write`，有效期 90 天。
+1. 在 GitHub → Settings → Developer settings → Personal access tokens (fine-grained) 为 `fairchan/findmyjob` 仓库生成新 PAT，权限只选 `Packages: Read`（fine-grained 对应 `read:packages`），有效期 90 天。
+   推送镜像用的是 CI `image` job 的 GITHUB_TOKEN（job 级 `packages: write`），VM 上只放有读权限的凭据，不放有写权限的凭据。
 2. 在生产主机上更新登录凭据：
    ```bash
    echo "<new-token>" | docker login ghcr.io -u <github-username> --password-stdin
    ```
-3. 验证登录成功（`docker pull ghcr.io/fairchan/findmyjob:latest` 或最新 sha）。
+3. 验证登录成功（使用 `deploy-history.log` 里的最新 sha）：
+   ```bash
+   docker pull ghcr.io/fairchan/findmyjob:<sha>
+   ```
 4. 在密码管理器里更新 PAT 记录，注明到期日。
 5. 在 GitHub 里撤销旧 PAT。
 
@@ -248,7 +253,7 @@ psql "$RESTORE_ADMIN_DATABASE_URL" -c 'DROP DATABASE IF EXISTS findmyjob_drill;'
    docker compose -f /opt/findmyjob/docker-compose.prod.yml stop app worker
    ```
 4. **执行恢复**：按恢复演练步骤执行，目标库改为 `findmyjob_restore`（仍以 `_drill` 结尾是为了演练安全检查）。实际恢复时需将最终数据库改名为 `findmyjob`，或修改 DATABASE_URL。
-5. **补跑账号清除**：
+5. **补跑账号清除**（`tools` 服务使用 `ghcr.io/fairchan/findmyjob-tools` 镜像，entrypoint 为 `node --conditions=react-server -r tsx/cjs`）：
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml \
      --profile ops run --rm tools scripts/backfill/purge-deleted-accounts.ts
