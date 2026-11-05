@@ -23,5 +23,37 @@
     "subtitle": "助力在马来西亚的留学生找到理想实习和工作",
     "ctaJobs": "浏览职位",
     "ctaRegister": "免费注册"
+  },
+  "register": {
+    "studentTitle": "学生注册",
+    "employerTitle": "企业用户注册",
+    "namePlaceholder": "姓名",
+    "nameLabel": "姓名",
+    "emailLabel": "邮箱",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "密码",
+    "passwordPlaceholder": "至少 8 位",
+    "agreeTerms": "我已阅读并同意《用户协议》",
+    "agreePrivacy": "我已阅读并同意《隐私政策》",
+    "joinTalentPool": "加入人才库：允许认证企业查看我的匿名档案，并在付费解锁后查看我的联系方式",
+    "submitStudent": "注册",
+    "submitEmployer": "注册",
+    "loginHint": "已有账号？",
+    "loginLink": "立即登录",
+    "orRegisterAs": "或",
+    "switchToEmployer": "企业注册",
+    "switchToStudent": "学生注册",
+    "errorRequired": "此项为必填",
+    "errorInvalidEmail": "请输入有效的邮箱地址",
+    "errorPasswordTooShort": "密码至少 8 位",
+    "errorRegisterFailed": "注册失败，请稍后重试",
+    "errorUnknown": "发生未知错误，请稍后重试"
+  },
+  "verifyEmail": {
+    "title": "请验证您的邮箱",
+    "message": "我们已向 {email} 发送了一封验证邮件。请点击邮件中的链接完成注册。",
+    "hint": "没有收到邮件？请检查垃圾邮件文件夹，或",
+    "resendLink": "重新发送",
+    "backToRegister": "返回注册"
   }
 }

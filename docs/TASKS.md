@@ -209,12 +209,14 @@
 
 > 完成 2026-11-05：better-auth@1.7.16 + prismaAdapter；emailOTP（allowedAttempts=5，expiresIn=600，storeOTP=hashed）；rateLimit database 存储（新增 rateLimit model #43）；trustedOrigins/useSecureCookies/cookieCache 按 §5.11 配置；role/status input:false；onPasswordReset 撤销全部会话；lib/email.ts（EmailProvider 接口 + SmtpEmailProvider + ResendEmailProvider）；/api/auth/[...all]/route.ts（Better Auth handler，不经 route() 包装）；action.ts/route.ts 换用真实 Better Auth 会话；pnpm lint/typecheck/test 全部通过；偏差：Better Auth CLI 不可用，rateLimit 表由手工 SQL 创建并通过 docker compose exec 应用到 findmyjob 和 findmyjob_test；changePassword 时撤销其他会话在客户端传 revokeOtherSessions:true（M1-T04 实现），服务端只强制 onPasswordReset；端到端流程（Mailpit 收码→验证→登录→登出）需手工验证
 
-#### [ ] M1-T02 注册分流与同意记录
+#### [x] M1-T02 注册分流与同意记录
 依赖：M1-T01
 做：`/register/student`、`/register/employer`，分别写入角色；同意项按 PRD §2.1（TERMS、PRIVACY 必选；学生可选 TALENT_POOL）；写 Consent（version 取 `legal.currentVersion`，记录 IP、UA）；支持 `?ref=邀请码`（先存下来，M2-T09 再接入）。
 验收：
 - 不勾必选项无法提交
 - Consent 记录含版本、IP、UA；学生勾选 TALENT_POOL 时 visibility 设为 PUBLIC
+
+> 完成 2026-11-05：`/register/student`（含 `?ref=` 参数，存入 ref_code cookie）和 `/register/employer` 页面；`server/services/consent.ts`（recordConsents，version 取 legal.currentVersion，记录 IP/UA）；`server/actions/register.ts`（registerStudent/registerEmployer，均用 action() 包装，role 写入 EMPLOYER，学生在注册时创建最小 StudentProfile 并按 TALENT_POOL 勾选设 visibility）；i18n 中英文案；5 个单元测试；pnpm lint/typecheck/test 全部通过；偏差：`auth.api.signUpEmail` 端到端行为（邮件发送）需手工验证（同 M1-T01 偏差）
 
 #### [ ] M1-T03 权限守卫与越权矩阵
 依赖：M1-T01

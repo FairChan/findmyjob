@@ -23,5 +23,37 @@
     "subtitle": "Helping international students in Malaysia find their ideal internships and jobs",
     "ctaJobs": "Browse Jobs",
     "ctaRegister": "Register Free"
+  },
+  "register": {
+    "studentTitle": "Student Registration",
+    "employerTitle": "Employer Registration",
+    "namePlaceholder": "Full Name",
+    "nameLabel": "Full Name",
+    "emailLabel": "Email",
+    "emailPlaceholder": "you@example.com",
+    "passwordLabel": "Password",
+    "passwordPlaceholder": "At least 8 characters",
+    "agreeTerms": "I have read and agree to the Terms of Service",
+    "agreePrivacy": "I have read and agree to the Privacy Policy",
+    "joinTalentPool": "Join Talent Pool: Allow verified companies to view my anonymized profile, and my contact details after paid unlock",
+    "submitStudent": "Register",
+    "submitEmployer": "Register",
+    "loginHint": "Already have an account?",
+    "loginLink": "Log in",
+    "orRegisterAs": "or",
+    "switchToEmployer": "Register as Employer",
+    "switchToStudent": "Register as Student",
+    "errorRequired": "This field is required",
+    "errorInvalidEmail": "Please enter a valid email address",
+    "errorPasswordTooShort": "Password must be at least 8 characters",
+    "errorRegisterFailed": "Registration failed. Please try again.",
+    "errorUnknown": "An unexpected error occurred. Please try again."
+  },
+  "verifyEmail": {
+    "title": "Verify Your Email",
+    "message": "We sent a verification email to {email}. Please click the link in the email to complete your registration.",
+    "hint": "Didn't receive the email? Check your spam folder, or",
+    "resendLink": "resend it",
+    "backToRegister": "Back to Registration"
   }
 }
