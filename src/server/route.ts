@@ -4,13 +4,11 @@ import { z } from 'zod'
 import { AppError, ForbiddenError } from './errors'
 import { logger } from './lib/logger'
 
-// Stub for M0; replaced with real Better Auth session validation in M1-T01.
-async function getSessionUserId(): Promise<string | null> {
+async function getSessionUserId(req: Request): Promise<string | null> {
   try {
-    const { cookies } = await import('next/headers')
-    const jar = await cookies()
-    void jar
-    return null
+    const { getSession } = await import('./auth')
+    const session = await getSession(req.headers as unknown as Headers)
+    return session?.user?.id ?? null
   } catch {
     return null
   }
@@ -67,7 +65,7 @@ export function route(opts: {
       let userId: string | undefined
 
       if (opts.auth === 'user') {
-        const id = await getSessionUserId()
+        const id = await getSessionUserId(req)
         if (!id) {
           return new Response(JSON.stringify({ ok: false, code: 'FORBIDDEN' }), {
             status: 403,

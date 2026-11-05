@@ -1009,3 +1009,13 @@ model JobReport {
   @@index([jobId])
   @@index([reporterId, createdAt])
 }
+
+// ==================== 认证限流（Better Auth rateLimit） ====================
+
+/// Better Auth database rate-limit storage（key = IP + path, lastRequest 为 Unix ms 时间戳）
+model rateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}

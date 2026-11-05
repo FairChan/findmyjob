@@ -194,7 +194,7 @@
 
 ## M1 · 账号与认证（约 2.7 天）
 
-#### [ ] M1-T01 Better Auth 集成与加固基线
+#### [x] M1-T01 Better Auth 集成与加固基线
 依赖：M0-T07、M0-T08
 做：
 - 邮箱 + 密码；邮箱验证码；会话；User 额外字段 role / locale / status；`lib/email.ts` 定义 `EmailProvider` 接口，实现 smtp（开发连 Mailpit）和 resend 两种。
@@ -206,6 +206,8 @@
 - 注册 → Mailpit 里收到验证码 → 验证 → 登录 → 登出，全流程可走通
 - POST /api/auth/update-user 时带 role 字段，role 不会改变；带 Origin evil 的 sign-out 返回 403
 - 第 6 次登录失败返回 429，重启进程后计数仍然保留
+
+> 完成 2026-11-05：better-auth@1.7.16 + prismaAdapter；emailOTP（allowedAttempts=5，expiresIn=600，storeOTP=hashed）；rateLimit database 存储（新增 rateLimit model #43）；trustedOrigins/useSecureCookies/cookieCache 按 §5.11 配置；role/status input:false；onPasswordReset 撤销全部会话；lib/email.ts（EmailProvider 接口 + SmtpEmailProvider + ResendEmailProvider）；/api/auth/[...all]/route.ts（Better Auth handler，不经 route() 包装）；action.ts/route.ts 换用真实 Better Auth 会话；pnpm lint/typecheck/test 全部通过；偏差：Better Auth CLI 不可用，rateLimit 表由手工 SQL 创建并通过 docker compose exec 应用到 findmyjob 和 findmyjob_test；changePassword 时撤销其他会话在客户端传 revokeOtherSessions:true（M1-T04 实现），服务端只强制 onPasswordReset；端到端流程（Mailpit 收码→验证→登录→登出）需手工验证
 
 #### [ ] M1-T02 注册分流与同意记录
 依赖：M1-T01

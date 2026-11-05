@@ -3,15 +3,13 @@ import { z } from 'zod'
 import { AppError, ForbiddenError } from './errors'
 import { logger } from './lib/logger'
 
-// Stub for M0; replaced with real Better Auth session validation in M1-T01.
 async function getSessionUserId(): Promise<string | null> {
   try {
-    const { cookies } = await import('next/headers')
-    const jar = await cookies()
-    // No real session validation until Better Auth is wired in M1-T01.
-    // The cookie presence is a placeholder; always returns null for now.
-    void jar
-    return null
+    const { headers } = await import('next/headers')
+    const { getSession } = await import('./auth')
+    const h = await headers()
+    const session = await getSession(h)
+    return session?.user?.id ?? null
   } catch {
     return null
   }
