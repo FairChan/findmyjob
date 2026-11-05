@@ -26,17 +26,18 @@ function sanitizePath(path: string): string {
     .join('/')
 }
 
+function scrubValue(v: unknown): unknown {
+  if (typeof v === 'string') return redact(v)
+  if (Array.isArray(v)) return v.map(scrubValue)
+  if (v !== null && typeof v === 'object') return scrubExtra(v as Record<string, unknown>)
+  return v
+}
+
 function scrubExtra(obj: Record<string, unknown>): Record<string, unknown> {
   const result: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(obj)) {
     if (PII_KEYS.has(k)) continue
-    if (typeof v === 'string') {
-      result[k] = redact(v)
-    } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
-      result[k] = scrubExtra(v as Record<string, unknown>)
-    } else {
-      result[k] = v
-    }
+    result[k] = scrubValue(v)
   }
   return result
 }
@@ -68,7 +69,7 @@ export function scrubEvent(event: ErrorEvent, _hint?: EventHint): ErrorEvent | n
     event = { ...event, contexts: { ...event.contexts, nextjs } }
   }
 
-  // Redact PII from exception message text
+  // Redact PII from exception message text; also strip ?key=value query params that may carry tokens
   if (event.exception?.values) {
     event = {
       ...event,
@@ -76,7 +77,7 @@ export function scrubEvent(event: ErrorEvent, _hint?: EventHint): ErrorEvent | n
         ...event.exception,
         values: event.exception.values.map((ex) => ({
           ...ex,
-          value: ex.value !== undefined ? redact(ex.value) : ex.value,
+          value: ex.value !== undefined ? redact(ex.value.replace(/\?[^"'\s]*/g, '')) : ex.value,
         })),
       },
     }
@@ -116,10 +117,10 @@ export function beforeBreadcrumb(breadcrumb: Breadcrumb, _hint?: BreadcrumbHint)
     breadcrumb = { ...breadcrumb, data }
   }
 
+  // Drop console breadcrumbs entirely: the SDK stores raw args in data.arguments which
+  // cannot be reliably scrubbed without enumerating every possible shape.
   if (breadcrumb.category === 'console') {
-    if (typeof breadcrumb.message === 'string') {
-      breadcrumb = { ...breadcrumb, message: redact(breadcrumb.message) }
-    }
+    return null
   }
 
   return breadcrumb

@@ -249,14 +249,12 @@ describe('beforeBreadcrumb', () => {
     expect(JSON.stringify(result?.data ?? {})).not.toContain('?')
   })
 
-  it('redacts PII from console breadcrumb message', () => {
+  it('drops console breadcrumbs entirely (returns null) to prevent data.arguments leaking', () => {
     const bc = makeBreadcrumb({
       category: 'console',
       message: 'Error for leak-sentinel@example.test phone +60 12-000 0420',
     })
-    const result = beforeBreadcrumb(bc)
-    expect(result?.message).not.toContain('leak-sentinel@example.test')
-    expect(result?.message).not.toContain('+60 12-000 0420')
+    expect(beforeBreadcrumb(bc)).toBeNull()
   })
 
   it('passes through unrelated breadcrumbs unchanged', () => {
