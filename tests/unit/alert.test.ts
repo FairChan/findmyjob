@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach, beforeAll } from 'vitest'
+import { vi, describe, it, expect, beforeEach, beforeAll, afterAll } from 'vitest'
 import type { ErrorEvent, Breadcrumb } from '@sentry/node'
 import { scrubEvent, beforeBreadcrumb } from '@/lib/sentry-options'
 
@@ -157,5 +157,75 @@ describe('beforeBreadcrumb – console category', () => {
     if (result !== null) {
       expect(JSON.stringify(result)).not.toContain('leak-sentinel@example.test')
     }
+  })
+})
+
+// End-to-end envelope test: uses the FULL production sentryOptions (beforeSend, beforeBreadcrumb,
+// dataCollection, tracesSampler all from production config) so any regression in those hooks
+// causes this suite to fail.
+describe('alert Sentry integration – full production sentryOptions', () => {
+  const collected: unknown[] = []
+
+  beforeAll(async () => {
+    const sentry = await import('@sentry/node')
+    const { sentryOptions } = await import('@/lib/sentry-options')
+
+    sentry.init({
+      ...sentryOptions,
+      dsn: 'https://examplePublicKey@o0.ingest.sentry.io/0',
+      transport: (() => ({
+        send: async (envelope: unknown) => {
+          collected.push(envelope)
+          return {}
+        },
+        flush: async () => true,
+      })) as any,
+    })
+
+    // Console breadcrumb carrying the sentinel – beforeBreadcrumb from sentryOptions must drop it
+    sentry.addBreadcrumb({
+      type: 'default',
+      category: 'console',
+      message: 'leak-sentinel@example.test',
+      data: { arguments: ['leak-sentinel@example.test'] },
+    })
+
+    // alert() with PII in array and nested object – scrubEvent from sentryOptions must remove them
+    alert('x', {
+      list: ['leak-sentinel@example.test', '+60 12-000 0420'],
+      nested: { token: 'abc' },
+    })
+
+    // exception value with PII in query string – scrubEvent must strip the query string
+    sentry.captureException(
+      new Error('failed for /api/x?token=abc&email=leak-sentinel@example.test'),
+    )
+
+    await sentry.flush(3000)
+  })
+
+  afterAll(async () => {
+    const { close } = await import('@sentry/node')
+    await close(2000).catch(() => {})
+  })
+
+  it('receives at least one event (transport is wired via sentryOptions)', () => {
+    expect(collected.length).toBeGreaterThan(0)
+  })
+
+  it('no sentinel email in any envelope – console breadcrumb dropped + extra scrubbed', () => {
+    const dump = JSON.stringify(collected)
+    expect(dump).not.toContain('leak-sentinel@example.test')
+  })
+
+  it('no phone PII in any envelope – array element inside extra scrubbed', () => {
+    const dump = JSON.stringify(collected)
+    expect(dump).not.toContain('+60 12-000 0420')
+  })
+
+  it('no raw query-string params in any envelope – exception.value stripped', () => {
+    const dump = JSON.stringify(collected)
+    expect(dump).not.toContain('token=abc')
+    expect(dump).not.toContain('?email=')
   })
 })
