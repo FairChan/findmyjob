@@ -808,6 +808,7 @@
 
 > 完成 2026-11-05：RateLimitBucket 表（migration 20261105025544）+ hitBucket()（INSERT ON CONFLICT，db-rate-limit.ts）；services/feature-flags.ts（assertUnlockEnabled/assertTalentSearchEnabled/assertUploadsEnabled，依赖 getSetting）；lib/email-cap.ts（checkEmailCap，critical 直通，超限调 alert）；lib/healthchecks.ts（pingHealthcheck，从 HEALTHCHECKS_<JOB> env 读 URL，fire-and-forget）；registry.ts 新增 prune-rate-limit 任务（每小时 cron）+ healthcheck ping；seed 增加 email.dailyCap=500；单元测试 7+5+4=16 个全通过；lint/typecheck/test/db:check 全部通过。偏差：healthcheck URL 通过 process.env 命名约定读取，未加入 env.ts（属可选运维 URL，非密钥）；unlock 实体服务（M4-T07）暂未实现，feature-flag 断言待接入
 > 修复 2026-11-05：assertFeatureEnabled 改 enabled !== true 防字符串 "false" 放行；checkEmailCap critical 参数改为 template 白名单（CRITICAL_TEMPLATES），alert 只在 count===cap+1 时触发一次；db-rate-limit 列名加双引号；rate-limit.ts 改为 async 基于 hitBucket，clearRateLimit 改写为 DELETE；HEALTHCHECKS_* 加入 env.ts；开关已就绪，待各入口实现时调用（见 DECISIONS 开发中决策）
+> 修复 2026-11-05（二）：env.ts 的 HEALTHCHECKS_* 改用 z.preprocess 将空字符串转 undefined 再做 URL 校验（防 env.example 直接用时报错）；email-cap 的 template 参数改为 EMAIL_TEMPLATES 常量派生的封闭联合类型 EmailTemplate（CRITICAL_TEMPLATES 通过 satisfies 从常量派生）；集成限流测试改为直接调用 hitBucket/checkRateLimit（不再复制 SQL），新增真实计数、第 6 次拒绝、新 PrismaClient 验证、key 隔离、resetAt 在未来、clearRateLimit 六个场景；新增 tests/unit/env.test.ts 验证空字符串→undefined 和非法 URL 报错；全部 526 个测试通过
 
 #### [ ] M7-T15 CSP 改为 nonce 强制模式，HSTS 改为一年（P1，E3 之前）
 依赖：M7-T05

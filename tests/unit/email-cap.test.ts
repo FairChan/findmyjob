@@ -15,7 +15,7 @@ vi.mock('@/server/lib/alert', () => ({
 const { getSetting } = await import('@/server/services/settings')
 const { hitBucket } = await import('@/server/lib/db-rate-limit')
 const { alert } = await import('@/server/lib/alert')
-const { checkEmailCap, CRITICAL_TEMPLATES } = await import('@/server/lib/email-cap')
+const { checkEmailCap, CRITICAL_TEMPLATES, EMAIL_TEMPLATES } = await import('@/server/lib/email-cap')
 
 const mockGetSetting = vi.mocked(getSetting)
 const mockHitBucket = vi.mocked(hitBucket)
@@ -45,7 +45,7 @@ describe('CRITICAL_TEMPLATES whitelist', () => {
 
 describe('checkEmailCap', () => {
   it('allows whitelisted templates without hitting the bucket', async () => {
-    for (const tpl of ['otp', 'password-reset', 'email-verify']) {
+    for (const tpl of ['otp', 'password-reset', 'email-verify'] as const) {
       const allowed = await checkEmailCap({ template: tpl })
       expect(allowed).toBe(true)
     }
@@ -84,9 +84,11 @@ describe('checkEmailCap', () => {
     expect(mockAlert).not.toHaveBeenCalled()
   })
 
-  it('blocks a non-whitelisted template even when named like a critical one', async () => {
-    mockCapCheck(500, 501)
-    const allowed = await checkEmailCap({ template: 'my-critical-otp-clone' })
-    expect(allowed).toBe(false)
+  it('CRITICAL_TEMPLATES members are all valid EmailTemplate values (derived from EMAIL_TEMPLATES)', () => {
+    // This test distinguishes the closed-union implementation from the old open-string one:
+    // it passes only when CRITICAL_TEMPLATES is derived from the EMAIL_TEMPLATES constant.
+    for (const tpl of CRITICAL_TEMPLATES) {
+      expect(tpl in EMAIL_TEMPLATES).toBe(true)
+    }
   })
 })

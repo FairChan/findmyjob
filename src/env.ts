@@ -68,8 +68,9 @@ const schema = z
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
 
     // Worker job healthcheck ping URLs (M7-T14); one per scheduled job
-    HEALTHCHECKS_EXAMPLE: z.string().url().optional(),
-    HEALTHCHECKS_PRUNE_RATE_LIMIT: z.string().url().optional(),
+    // env.example stores these as empty strings; coerce '' → undefined before URL validation
+    HEALTHCHECKS_EXAMPLE: z.preprocess(v => (v === '' ? undefined : v), z.string().url().optional()),
+    HEALTHCHECKS_PRUNE_RATE_LIMIT: z.preprocess(v => (v === '' ? undefined : v), z.string().url().optional()),
   })
   .superRefine((data, ctx) => {
     if (data.APP_ENV === "production") {
@@ -155,6 +156,9 @@ const schema = z
       });
     }
   });
+
+/** Exported for unit testing only — use `env` for runtime access. */
+export const _envSchema = schema
 
 function parseEnv() {
   if (process.env.SKIP_ENV_VALIDATION) {
