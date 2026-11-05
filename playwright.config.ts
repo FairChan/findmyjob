@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// 并行车道（git worktree）设 PORT 换端口：reuseExistingServer 否则会连上另一条车道已经起着的 dev server
+const port = Number(process.env.PORT) || 3000
+const baseURL = `http://localhost:${port}`
+
 export default defineConfig({
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -8,7 +12,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -18,8 +22,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'pnpm dev',
-    url: 'http://localhost:3000',
+    command: `pnpm dev --port ${port}`,
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
   },
 })
