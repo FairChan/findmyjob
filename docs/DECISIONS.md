@@ -99,6 +99,7 @@
 | 待 B8 | 不扫描上传文件里的恶意代码（A26） | 类型白名单、文件头检查、PDF 页数和加密检查、copyPages 重建、下载带 attachment | 技术负责人 | E4 之后 |
 | 待 B8 | 少于 3 个字的关键词走全表扫描 | 试点规模小；人才库翻页上限和每日上限限制总量 | 技术负责人 | 档案超过 5000 条时 |
 | 待 B8 | 开发期源码和 diff 会经过第三方 AI 中转（D12） | 只用合成数据；真实名单不进会话；LLM 扫描限定路径；全库扫描放到 E6 | 你 | GATE-M7 |
+| 待 B8 | 开发依赖里有 3 条已知公告：deepmerge-ts <8（high，经 prisma>@prisma/config）、minimatch <11.0.1（moderate，经 eslint）、deepmerge 4.3.1（low，经 shadcn CLI）。生产依赖 `pnpm audit --prod` 为 0 | 三者只处理仓库自己的配置和 lint 规则，输入可信；deepmerge-ts 的修复版是大版本，prisma 按规定锁 6.19.3；Dependabot 跟进上游修复 | 技术负责人 | GATE-M7 或 prisma 6.x 下个补丁版 |
 
 ## 备选方案清单（E8，暂不采用）
 
@@ -137,3 +138,5 @@
 | 2026-11-05 | M0-T02 | 本地对象存储镜像改为 Pigsty 维护的社区分支 `pgsty/minio:RELEASE.2026-08-04T00-00-00Z` 和 `pgsty/mc:RELEASE.2026-10-26T00-00-00Z`，compose 里同时固定 sha256 digest；宿主机端口改为 127.0.0.1:9010（API）/9011（控制台），S3_ENDPOINT 跟着改。备选：bitnamilegacy/minio（已停更）、RustFS、SeaweedFS（S3 兼容度和建桶脚本都要重写）。用户 2026-11-05 在对话里确认用 pgsty | 官方镜像 2026-11 已从 Docker Hub 下架、quay.io 需登录；pgsty 镜像基于 UBI9 micro，自带 sh 和 curl，现有 healthcheck 和建桶脚本不用改；本机 9000 端口被其他项目的 MinIO 占用。生产对象存储按 ARCHITECTURE §7 用云厂商 S3，不受影响 |
 | 2026-11-05 | M0 合并前 | 补登记 M0 随脚手架带进来、此前没单独登记的直接依赖（都是 ARCHITECTURE §2 已选技术栈的标准配套，没有 install 脚本）：shadcn/ui 组件依赖 @radix-ui/react-dialog、@radix-ui/react-slot、class-variance-authority、clsx、tailwind-merge；React 配套 react-dom、@types/react-dom；Tailwind 4 的 tailwindcss、@tailwindcss/postcss；Next 的 ESLint 配置 eslint-config-next、@eslint/eslintrc（flat config 兼容层）；Vitest 配套 @vitejs/plugin-react、@vitest/coverage-v8、jsdom。备选：不用 shadcn 就得自己写 Dialog/Sheet（CLAUDE.md 要求弹窗只用 shadcn）；jsdom 可换 happy-dom（兼容性差一些） | 合并前清单要求新增直接依赖都在 DECISIONS 登记；版本由 pnpm-lock.yaml 锁定，minimumReleaseAge=1440 |
 | 2026-11-05 | M0 合并前 | 从本仓库删掉 `prototype/package-lock.json`，并在 .gitignore 里忽略 | M0-T01 验收要求仓库里没有 package-lock.json；本仓库的 prototype/ 只是界面参考副本（tsconfig、eslint、vitest 都排除了它），原型自己的仓库仍保留锁文件 |
+| 2026-11-05 | M0 合并前 | supply-chain-risk-auditor 结论：35 个直接依赖都没有已知公告、没有安装脚本、没有弃用或归档；clsx、class-variance-authority、server-only 只有一个发布者（周下载量都在 3300 万以上），靠锁文件 + minimumReleaseAge=1440 + 人工审 Dependabot 兜底，不换包。采集器不读 pnpm-lock.yaml，补跑 `pnpm audit`：生产 0 条，开发依赖 3 条，记进「已接受风险」。报告在方案目录 .reports/2026-11-05-supply-chain/report.md | M0 合并前清单第 2 项 |
+| 2026-11-05 | M0 合并前 | 根路径 `/` 的语言选择保持 next-intl 默认顺序：cookie（用户切换过的语言）→ 浏览器 Accept-Language → 默认 zh。E2E 改为固定浏览器语言：马来文浏览器进 /zh，英文浏览器进 /en | 规格只写「zh 默认」；关掉自动识别会连 cookie 一起失效，用户切到英文后再访问 `/` 又回中文；之后要扩展到其他国际生。原测试没固定浏览器语言，结果随机器的系统语言变化 |
