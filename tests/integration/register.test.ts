@@ -102,7 +102,7 @@ describe('registerStudent anti-enumeration', () => {
 
     const result = await registerStudent(BASE_STUDENT)
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.data.email).toBe(BASE_STUDENT.email)
+    expect(result).toMatchObject({ ok: true, data: { email: BASE_STUDENT.email } })
   })
 
   it('returns identical { email } for a duplicate address (fake user not in DB)', async () => {
@@ -111,7 +111,7 @@ describe('registerStudent anti-enumeration', () => {
 
     const result = await registerStudent(BASE_STUDENT)
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.data.email).toBe(BASE_STUDENT.email)
+    expect(result).toMatchObject({ ok: true, data: { email: BASE_STUDENT.email } })
   })
 
   it('new email and duplicate email return the same shape', async () => {
@@ -151,7 +151,7 @@ describe('rate limiting propagation', () => {
     mockRateLimit()
     const result = await registerStudent(BASE_STUDENT)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.code).toBe('RATE_LIMITED')
+    expect(result).toMatchObject({ ok: false, code: 'RATE_LIMITED' })
   })
 })
 
@@ -164,21 +164,21 @@ describe('auth.handler error code propagation', () => {
     mockAuthError('TURNSTILE_FAILED', 400)
     const result = await registerStudent(BASE_STUDENT)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.code).toBe('TURNSTILE_FAILED')
+    expect(result).toMatchObject({ ok: false, code: 'TURNSTILE_FAILED' })
   })
 
   it('propagates SIGNUP_CLOSED (403)', async () => {
     mockAuthError('SIGNUP_CLOSED', 403)
     const result = await registerStudent(BASE_STUDENT)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.code).toBe('SIGNUP_CLOSED')
+    expect(result).toMatchObject({ ok: false, code: 'SIGNUP_CLOSED' })
   })
 
   it('propagates CONSENT_REQUIRED (400)', async () => {
     mockAuthError('CONSENT_REQUIRED', 400)
     const result = await registerStudent(BASE_STUDENT)
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.code).toBe('VALIDATION_ERROR')
+    expect(result).toMatchObject({ ok: false, code: 'VALIDATION_ERROR' })
   })
 })
 
@@ -238,6 +238,6 @@ describe('registerEmployer', () => {
       turnstileToken: 'valid',
     })
     expect(result.ok).toBe(true)
-    if (result.ok) expect(result.data.email).toBe('emp-dup@example.test')
+    expect(result).toMatchObject({ ok: true, data: { email: 'emp-dup@example.test' } })
   })
 })
