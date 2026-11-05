@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import { db } from '../db'
-import { getSetting } from './settings'
+import { getSetting, setSetting } from './settings'
 import { SignupClosedError } from '../errors'
 import { alert } from '../lib/alert'
 
@@ -26,6 +26,7 @@ export async function assertStudentSignupOpen(): Promise<void> {
 }
 
 // Call after a new student verifies their email to check if warn threshold is crossed.
+// Notifies only once — subsequent calls are no-ops until the flag is reset.
 export async function maybeWarnCap(): Promise<void> {
   const [cap, warnRatio, count] = await Promise.all([
     getSetting<number>('signup.studentCap', 3000),
@@ -33,9 +34,13 @@ export async function maybeWarnCap(): Promise<void> {
     countVerifiedStudents(),
   ])
   const threshold = Math.floor(cap * warnRatio)
-  if (count >= threshold) {
-    alert('signup.cap.warn', { count, cap, threshold })
-  }
+  if (count < threshold) return
+
+  const alreadySent = await getSetting<boolean>('signup.capWarnSent', false)
+  if (alreadySent) return
+
+  alert('signup.cap.warn', { count, cap, threshold })
+  await setSetting('signup.capWarnSent', true)
 }
 
 export async function purgeUnverifiedAccounts(): Promise<number> {
@@ -55,7 +60,14 @@ export async function purgeUnverifiedAccounts(): Promise<number> {
   do {
     const ids = await db.user.findMany({ where, select: { id: true }, take: 1000 })
     if (ids.length === 0) break
-    const result = await db.user.deleteMany({ where: { id: { in: ids.map((u) => u.id) } } })
+    // Re-apply the original filters to avoid deleting users who verified between findMany and deleteMany.
+    const result = await db.user.deleteMany({
+      where: {
+        id: { in: ids.map((u) => u.id) },
+        emailVerified: false,
+        createdAt: { lt: cutoff },
+      },
+    })
     total += result.count
     batchSize = ids.length
   } while (batchSize === 1000)

@@ -10,10 +10,10 @@ vi.mock('@/server/db', () => ({
     },
     systemSetting: {
       findUnique: vi.fn(),
-      upsert: vi.fn(),
+      upsert: vi.fn().mockResolvedValue(undefined),
     },
     auditLog: {
-      create: vi.fn(),
+      create: vi.fn().mockResolvedValue(undefined),
     },
   },
 }))
@@ -78,16 +78,32 @@ describe('maybeWarnCap', () => {
     expect(mockAlert).not.toHaveBeenCalled()
   })
 
-  it('calls alert when count is at or above warn threshold', async () => {
+  it('calls alert when count is at or above warn threshold (first time)', async () => {
     mockCount.mockResolvedValueOnce(2700) // 2700 / 3000 = 90%
+    // getSetting('signup.capWarnSent') → null (not yet sent)
     await maybeWarnCap()
     expect(mockAlert).toHaveBeenCalledWith('signup.cap.warn', expect.objectContaining({ count: 2700 }))
   })
 
-  it('calls alert when cap is fully reached', async () => {
+  it('calls alert when cap is fully reached (first time)', async () => {
     mockCount.mockResolvedValueOnce(3000)
     await maybeWarnCap()
     expect(mockAlert).toHaveBeenCalledWith('signup.cap.warn', expect.objectContaining({ count: 3000 }))
+  })
+
+  it('does not alert a second time if capWarnSent flag is set', async () => {
+    mockCount.mockResolvedValueOnce(2700)
+    // Return true for the signup.capWarnSent key specifically; cast needed to satisfy Prisma mock type
+    const impl = (args: unknown) => {
+      const key = (args as { where: { key: string } }).where.key
+      if (key === 'signup.capWarnSent') {
+        return Promise.resolve({ key: 'signup.capWarnSent', value: true, updatedById: null, updatedAt: new Date() })
+      }
+      return Promise.resolve(null)
+    }
+    mockFindUnique.mockImplementation(impl as never)
+    await maybeWarnCap()
+    expect(mockAlert).not.toHaveBeenCalled()
   })
 })
 
@@ -143,5 +159,33 @@ describe('purgeUnverifiedAccounts', () => {
     const result = await purgeUnverifiedAccounts()
     expect(result).toBe(5)
     expect(vi.mocked(db.user.findMany)).toHaveBeenCalledTimes(1)
+  })
+
+  it('processes 1500 accounts in 2 batches of 1000 and 500', async () => {
+    vi.mocked(db.user.findMany)
+      .mockResolvedValueOnce(Array.from({ length: 1000 }, (_, i) => ({ id: String(i) })) as never)
+      .mockResolvedValueOnce(Array.from({ length: 500 }, (_, i) => ({ id: String(1000 + i) })) as never)
+    mockDeleteMany
+      .mockResolvedValueOnce({ count: 1000 })
+      .mockResolvedValueOnce({ count: 500 })
+    const result = await purgeUnverifiedAccounts()
+    expect(result).toBe(1500)
+    expect(vi.mocked(db.user.findMany)).toHaveBeenCalledTimes(2)
+    expect(mockDeleteMany).toHaveBeenCalledTimes(2)
+  })
+
+  it('deleteMany includes emailVerified and createdAt filters (race condition guard)', async () => {
+    vi.mocked(db.user.findMany).mockResolvedValueOnce([{ id: '1' }, { id: '2' }] as never)
+    mockDeleteMany.mockResolvedValueOnce({ count: 2 })
+    await purgeUnverifiedAccounts()
+    expect(mockDeleteMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          id: { in: ['1', '2'] },
+          emailVerified: false,
+          createdAt: expect.objectContaining({ lt: expect.any(Date) }),
+        }),
+      }),
+    )
   })
 })

@@ -114,6 +114,8 @@ export function route(
         throw err
       }
 
+      // Note: route handlers that need raw body (e.g. webhook signature verification)
+      // should not pass an input schema and read the body themselves.
       let parsedInput: unknown = undefined
       if (opts.input) {
         let raw: unknown
@@ -121,7 +123,17 @@ export function route(
           const url = new URL(req.url)
           raw = Object.fromEntries(url.searchParams.entries())
         } else {
-          raw = await req.json().catch(() => ({}))
+          try {
+            raw = await req.json()
+          } catch {
+            return new Response(JSON.stringify({ ok: false, code: 'INVALID_JSON' }), {
+              status: 400,
+              headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'private, no-store',
+              },
+            })
+          }
         }
         const result = opts.input.safeParse(raw)
         if (!result.success) {

@@ -16,8 +16,18 @@ import { recordConsents } from './services/consent'
 import { getSetting } from './services/settings'
 import { SignupClosedError } from './errors'
 import { logger } from './lib/logger'
+import { alert } from './lib/alert'
 
 const emailProvider = createEmailProvider()
+
+// Wraps after() with a fallback for non-request contexts (worker, scripts, tests that don't mock next/server).
+function sendEmailAfterResponse(fn: () => Promise<void>): void {
+  try {
+    after(fn)
+  } catch {
+    void fn()
+  }
+}
 
 const TURNSTILE_PATHS: Record<string, string> = {
   '/sign-in/email': 'login',
@@ -85,6 +95,11 @@ export const auth = betterAuth({
 
   database: prismaAdapter(db, { provider: 'postgresql' }),
 
+  // Store verification identifiers (reset tokens, OTPs) as SHA-256 hashes; never plain text.
+  verification: {
+    storeIdentifier: 'hashed' as const,
+  },
+
   // Endpoints with no UI caller are disabled so they return 404.
   // See DECISIONS for the rationale on each path.
   disabledPaths: [
@@ -96,16 +111,18 @@ export const auth = betterAuth({
     '/email-otp/verify-email',
   ],
 
-  // Connect Better Auth's internal logger to the app logger (suppresses raw messages in prod)
+  // Connect Better Auth's internal logger to the app logger (suppresses raw messages in prod).
+  // No `level` override — library default is warn, setting it explicitly causes APIErrors
+  // to be double-logged via the default console logger.
   logger: {
-    level: 'warn' as const,
-    log: (level: string, message: string) => {
+    log: (level: string, message: string, ...args: unknown[]) => {
+      const extra = args.length ? { extra: args } : undefined
       if (level === 'error') {
-        logger.error({ code: 'BETTER_AUTH_ERROR' }, `[better-auth] ${message}`)
+        logger.error({ code: 'BETTER_AUTH_ERROR', ...extra }, `[better-auth] ${message}`)
       } else if (level === 'warn') {
-        logger.warn({}, `[better-auth] ${message}`)
+        logger.warn({ ...extra }, `[better-auth] ${message}`)
       } else {
-        logger.info({}, `[better-auth] ${message}`)
+        logger.info({ ...extra }, `[better-auth] ${message}`)
       }
     },
   },
@@ -116,7 +133,7 @@ export const auth = betterAuth({
     // Automatically revoke all sessions when password is reset
     revokeSessionsOnPasswordReset: true,
     sendResetPassword: async ({ user, url }) => {
-      after(async () => {
+      sendEmailAfterResponse(async () => {
         await emailProvider
           .sendEmail({
             to: user.email,
@@ -125,15 +142,15 @@ export const auth = betterAuth({
             text: `Reset your password: ${url}`,
           })
           .catch((err: unknown) => {
-            // Suppress SMTP error details to avoid leaking recipient email in logs
-            logger.warn({ code: 'EMAIL_SEND_FAILED' }, 'Failed to send reset-password email')
-            void err
+            const code = (err as NodeJS.ErrnoException)?.code ?? 'EMAIL_SEND_FAILED'
+            logger.warn({ code }, 'Failed to send reset-password email')
+            alert('email.send.failed', { code })
           })
       })
     },
     // Sends a reminder when someone tries to sign up with an already-registered email.
     onExistingUserSignUp: async ({ user }: { user: { email: string } }) => {
-      after(async () => {
+      sendEmailAfterResponse(async () => {
         await emailProvider
           .sendEmail({
             to: user.email,
@@ -141,14 +158,18 @@ export const auth = betterAuth({
             html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${env.APP_URL}/login">log in</a> instead.</p>`,
             text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
           })
-          .catch(() => {})
+          .catch((err: unknown) => {
+            const code = (err as NodeJS.ErrnoException)?.code ?? 'EMAIL_SEND_FAILED'
+            logger.warn({ code }, 'Failed to send existing-user reminder email')
+            alert('email.send.failed', { code })
+          })
       })
     },
   },
 
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
-      after(async () => {
+      sendEmailAfterResponse(async () => {
         await emailProvider
           .sendEmail({
             to: user.email,
@@ -157,8 +178,9 @@ export const auth = betterAuth({
             text: `Verify your email: ${url}`,
           })
           .catch((err: unknown) => {
-            logger.warn({ code: 'EMAIL_SEND_FAILED' }, 'Failed to send verification email')
-            void err
+            const code = (err as NodeJS.ErrnoException)?.code ?? 'EMAIL_SEND_FAILED'
+            logger.warn({ code }, 'Failed to send verification email')
+            alert('email.send.failed', { code })
           })
       })
     },
@@ -205,23 +227,31 @@ export const auth = betterAuth({
   },
 
   advanced: {
-    // useSecureCookies: only in production (staging uses https but APP_ENV=staging, not production)
-    useSecureCookies: env.APP_ENV === 'production',
+    // useSecureCookies: true in production only; undefined (not false) elsewhere so that
+    // staging (https but APP_ENV=staging) still gets Secure cookies from the browser/server defaults.
+    useSecureCookies: env.APP_ENV === 'production' ? true : undefined,
     // disableCSRFCheck is intentionally NOT set (CSRF protection stays enabled)
     // ipAddress: read only from x-real-ip (set by Caddy); X-Forwarded-For can be spoofed
     ipAddress: {
       ipAddressHeaders: ['x-real-ip'],
     },
-    // backgroundTasks: use next/server after() so email sending doesn't block the response
+    // backgroundTasks: use next/server after() so internal BA tasks don't block the response
     backgroundTasks: {
-      handler: (promise: Promise<unknown>) => { after(() => promise) },
+      handler: (promise: Promise<unknown>) => {
+        try {
+          after(() => promise)
+        } catch {
+          void promise
+        }
+      },
     },
   },
 
   rateLimit: {
-    // Explicitly enabled; database storage persists counts across restarts (DECISIONS A24)
+    // Explicitly enabled; production/staging use database storage (persists across restarts, DECISIONS A24).
+    // Development/CI/test use memory storage so E2E runs don't share rate-limit buckets between runs (DECISIONS A30).
     enabled: true,
-    storage: 'database',
+    storage: (env.APP_ENV === 'production' || env.APP_ENV === 'staging') ? 'database' : 'memory',
     customRules: {
       '/sign-in/email': { window: 60, max: 5 },
       '/sign-up/email': { window: 60, max: 3 },
@@ -234,7 +264,7 @@ export const auth = betterAuth({
   plugins: [
     emailOTP({
       sendVerificationOTP: async ({ email, otp }) => {
-        after(async () => {
+        sendEmailAfterResponse(async () => {
           await emailProvider
             .sendEmail({
               to: email,
@@ -243,8 +273,9 @@ export const auth = betterAuth({
               text: `Your verification code is: ${otp}. It expires in 10 minutes.`,
             })
             .catch((err: unknown) => {
-              logger.warn({ code: 'EMAIL_SEND_FAILED' }, 'Failed to send OTP email')
-              void err
+              const code = (err as NodeJS.ErrnoException)?.code ?? 'EMAIL_SEND_FAILED'
+              logger.warn({ code }, 'Failed to send OTP email')
+              alert('email.send.failed', { code })
             })
         })
       },
@@ -327,10 +358,15 @@ export const auth = betterAuth({
             throw new APIError('FORBIDDEN', { message: 'Account suspended', code: 'ACCOUNT_SUSPENDED' })
           }
         },
-        after: async (session) => {
+        after: async (session, ctx?: any) => {
           if (!session.userId) return
-          // Use session.ipAddress which Better Auth populates from x-real-ip (via advanced.ipAddress)
-          const ip = session.ipAddress ?? undefined
+          // Sessions created during /change-password are not new logins.
+          const path: string = ctx?.path ?? ''
+          if (path === '/change-password') return
+          const reqHeaders: Headers | undefined = ctx?.request?.headers
+          const ip = reqHeaders
+            ? (getClientIp(reqHeaders as Headers) ?? undefined)
+            : (session.ipAddress ?? undefined)
           await Promise.all([
             db.user.update({
               where: { id: session.userId },

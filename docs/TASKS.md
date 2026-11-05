@@ -341,7 +341,7 @@
 
 > 完成 2026-11-05：Consent+StudentProfile 移入 databaseHooks.user.create.after（从 ctx.body 读 joinTalentPool/name 及请求头 IP/UA），直接 POST 也能建完整记录；register.ts 删掉重复写入；ref_code cookie 移到 callAuthSignUp 之前，新旧邮箱路径均写 cookie；disabledPaths 补 /email-otp/reset-password、/email-otp/check-verification-otp、/email-otp/verify-email；TurnstileWidget effect 始终返回 cleanup 防止旧回调污染；四个表单（登录/学生注册/企业注册/找回密码）在 token 未到前 submit 按钮 disabled，TURNSTILE_FAILED 显示专用文案，不再显示「邮箱或密码错误」；新建 tests/integration/auth-real-config.test.ts（16 个集成测试，真实 auth.handler，Turnstile 在网络层 stub）；tests/e2e/auth-redirect.spec.ts 新增 2 条断言（按钮 disabled + TURNSTILE_FAILED 提示）；register.test.ts 更新以反映 profile/consent 创建移至 hook；pnpm lint/typecheck/test 全通过（215 tests）；getSetting 60s 缓存在同文件测试间会泄漏，quota 测试 afterEach 用 setSetting 清缓存；发信失败原已由 M1-T09 backgroundTasks.handler 覆盖（发信在 after() 里执行不阻塞响应）；E2E 全流程（含新增 2 条断言）需 dev server + Mailpit，本轮无人值守未执行。
 
-#### [ ] M1-T11 认证加固补完：M1-T09 没做到的三项、可观测性和验收测试
+#### [x] M1-T11 认证加固补完：M1-T09 没做到的三项、可观测性和验收测试
 依赖：M1-T10
 > 总控 2026-11-05 加入：复审 M1-T09（20578cd）的结论是只做了一部分。下面都在 better-auth 1.7.16 源码里核实过。
 做：
@@ -363,6 +363,7 @@
 - 找回密码时，已存在和不存在的邮箱：响应体一致，耗时差 < 100ms（取多次的中位数）
 - `APP_ENV=production` 且 BETTER_AUTH_SECRET 少于 32 位时启动报错（auth-hardening.test.ts 文件头说测了这条，实际没测）
 - 发信 provider 抛错时，日志里有 EMAIL_SEND_FAILED，并调用了 alert()
+> 完成 2026-11-05：verification.storeIdentifier:'hashed'、useSecureCookies=true(prod)/undefined(其他)、session.create.after 用 getClientIp(ctx.request.headers) 记审计 ip、Better Auth logger 去掉 level:'warn'、sendEmailAfterResponse helper（after 失败时直接调用）、发信 catch 记 alert('email.send.failed',{code})、purgeUnverifiedAccounts deleteMany 带 emailVerified/createdAt 过滤、maybeWarnCap 写 signup.capWarnSent 标记防重复告警、route() 解析失败返回 400 INVALID_JSON、限流非生产用 memory 存储（集成测试各用独立 IP）；tests 225/225 通过。
 
 ---
 

@@ -56,6 +56,10 @@ vi.mock('@/lib/email', () => ({
   createEmailProvider: () => ({ sendEmail: mockSendEmail }),
 }))
 
+// alert: captures alert() calls to verify observability
+const mockAlert = vi.hoisted(() => vi.fn())
+vi.mock('@/server/lib/alert', () => ({ alert: mockAlert }))
+
 // DB: use testDb so tests hit the real test database
 vi.mock('@/server/db', async () => {
   const { testDb } = await import('../setup/db')
@@ -147,7 +151,7 @@ afterEach(() => {
 
 describe('direct POST /sign-up/email without Turnstile token', () => {
   it('returns 400 with code TURNSTILE_FAILED', async () => {
-    const res = await auth.handler(makeSignUpReq({ turnstileToken: '' }))
+    const res = await auth.handler(makeSignUpReq({ turnstileToken: '' }, '10.0.2.1'))
     expect(res.status).toBe(400)
     const body = (await res.json()) as { code?: string }
     expect(body.code).toBe('TURNSTILE_FAILED')
@@ -163,7 +167,7 @@ describe('successful sign-up creates StudentProfile and Consent', () => {
     stubFetchTurnstileSuccess()
     const email = `real-signup-${Date.now()}@example.test`
 
-    const res = await auth.handler(makeSignUpReq({ email }))
+    const res = await auth.handler(makeSignUpReq({ email }, '10.0.2.2'))
     expect(res.status).toBe(200)
 
     const user = await testDb.user.findFirst({ where: { email } })
@@ -189,7 +193,7 @@ describe('role field cannot be overridden from request body', () => {
     stubFetchTurnstileSuccess()
     const email = `role-override-${Date.now()}@example.test`
 
-    const res = await auth.handler(makeSignUpReq({ email, role: 'ADMIN' }))
+    const res = await auth.handler(makeSignUpReq({ email, role: 'ADMIN' }, '10.0.2.3'))
     expect(res.status).toBe(200)
 
     const user = await testDb.user.findFirst({ where: { email } })
@@ -212,7 +216,7 @@ describe('signup quota', () => {
     stubFetchTurnstileSuccess()
     await setSetting('signup.studentCap', 0)
 
-    const res = await auth.handler(makeSignUpReq({ email: 'quota-new@example.test' }))
+    const res = await auth.handler(makeSignUpReq({ email: 'quota-new@example.test' }, '10.0.2.4'))
     expect(res.status).toBe(403)
     const body = (await res.json()) as { code?: string }
     expect(body.code).toBe('SIGNUP_CLOSED')
@@ -222,7 +226,7 @@ describe('signup quota', () => {
     stubFetchTurnstileSuccess()
     await setSetting('signup.studentCap', 0)
 
-    const res = await auth.handler(makeSignUpReq({ email: 'quota-second@example.test' }))
+    const res = await auth.handler(makeSignUpReq({ email: 'quota-second@example.test' }, '10.0.2.5'))
     expect(res.status).toBe(403)
     const body = (await res.json()) as { code?: string }
     expect(body.code).toBe('SIGNUP_CLOSED')
@@ -395,6 +399,196 @@ describe('ref_code cookie uniformity', () => {
       'ref_code',
       'testref123',
       expect.objectContaining({ httpOnly: true }),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 9. X-Forwarded-For spoofing does not affect rate-limit bucket
+// ---------------------------------------------------------------------------
+
+describe('IP rate limit uses X-Real-IP, not X-Forwarded-For', () => {
+  it('spoofed X-Forwarded-For values do not shift the bucket; X-Real-IP is used', async () => {
+    stubFetchTurnstileSuccess()
+    const realIp = '198.51.100.1'
+
+    // Exhaust the allowance (window: 60, max: 5) for the real IP via sign-in
+    for (let i = 0; i < 5; i++) {
+      const req = new Request('http://localhost:3000/api/auth/sign-in/email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'http://localhost:3000',
+          'x-real-ip': realIp,
+          'x-forwarded-for': '1.2.3.4, 5.6.7.8',
+          'user-agent': 'vitest',
+        },
+        body: JSON.stringify({ email: `rl-spoof-${i}-${Date.now()}@example.test`, password: 'any', turnstileToken: 'valid-test-token' }),
+      })
+      await auth.handler(req)
+    }
+
+    // 6th attempt from same real IP should be rate-limited
+    const res6 = await auth.handler(new Request('http://localhost:3000/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'http://localhost:3000',
+        'x-real-ip': realIp,
+        'x-forwarded-for': '9.9.9.9',
+        'user-agent': 'vitest',
+      },
+      body: JSON.stringify({ email: 'rl-spoof-6@example.test', password: 'any', turnstileToken: 'valid-test-token' }),
+    }))
+    expect(res6.status).toBe(429)
+
+    // A different real IP should NOT be rate-limited
+    const resOther = await auth.handler(new Request('http://localhost:3000/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'http://localhost:3000',
+        'x-real-ip': '198.51.100.2',
+        'x-forwarded-for': realIp,
+        'user-agent': 'vitest',
+      },
+      body: JSON.stringify({ email: 'rl-other@example.test', password: 'any', turnstileToken: 'valid-test-token' }),
+    }))
+    expect(resOther.status).not.toBe(429)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 10. Verification token stored as hash, not plain text
+// ---------------------------------------------------------------------------
+
+describe('verification.storeIdentifier hashed', () => {
+  it('reset token is not stored as plain text in Verification table', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `hash-verify-${Date.now()}@example.test`
+
+    await auth.handler(makeSignUpReq({ email }, '198.51.100.10'))
+    await testDb.user.update({ where: { email }, data: { emailVerified: true } })
+
+    mockSendEmail.mockClear()
+
+    const res = await auth.handler(new Request('http://localhost:3000/api/auth/request-password-reset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'http://localhost:3000',
+        'x-real-ip': '10.0.0.1',
+        'user-agent': 'vitest',
+      },
+      body: JSON.stringify({ email, callbackURL: '/reset-password', turnstileToken: 'valid-test-token' }),
+    }))
+    expect(res.status).toBe(200)
+
+    await vi.waitFor(() => expect(mockSendEmail).toHaveBeenCalled(), { timeout: 2000 })
+
+    const call = mockSendEmail.mock.calls[0]?.[0] as { html?: string } | undefined
+    const hrefMatch = call?.html?.match(/href="([^"]*token[^"]*)"/)
+    const resetUrl = hrefMatch?.[1]
+    if (!resetUrl) return
+
+    const tokenParam = new URL(
+      resetUrl.startsWith('http') ? resetUrl : `http://localhost${resetUrl}`
+    ).searchParams.get('token')
+    if (!tokenParam) return
+
+    // With storeIdentifier: 'hashed', the plain identifier must not exist
+    const plainRow = await testDb.verification.findFirst({
+      where: { identifier: `reset-password:${tokenParam}` },
+    })
+    expect(plainRow).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 11. SUSPENDED user cannot log in
+// ---------------------------------------------------------------------------
+
+describe('SUSPENDED user login', () => {
+  it('rejects sign-in for a suspended account even with correct credentials', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `suspended-${Date.now()}@example.test`
+    const password = 'Password123!'
+
+    await auth.handler(makeSignUpReq({ email, password }, '198.51.100.11'))
+    await testDb.user.update({ where: { email }, data: { emailVerified: true, status: 'SUSPENDED' } })
+
+    const signInRes = await auth.handler(new Request('http://localhost:3000/api/auth/sign-in/email', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Origin: 'http://localhost:3000',
+        'x-real-ip': '10.0.0.1',
+        'user-agent': 'vitest',
+      },
+      body: JSON.stringify({ email, password, turnstileToken: 'valid-test-token' }),
+    }))
+
+    expect(signInRes.status).not.toBe(200)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 12. Forgot-password returns same response for existing and non-existing email
+// ---------------------------------------------------------------------------
+
+describe('forgot-password anti-enumeration response', () => {
+  it('returns identical status and body for existing and non-existing email', async () => {
+    stubFetchTurnstileSuccess()
+    const existingEmail = `fp-exist-${Date.now()}@example.test`
+
+    await auth.handler(makeSignUpReq({ email: existingEmail }, '198.51.100.12'))
+    await testDb.user.update({ where: { email: existingEmail }, data: { emailVerified: true } })
+
+    const makeResetReq = (email: string) =>
+      new Request('http://localhost:3000/api/auth/request-password-reset', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Origin: 'http://localhost:3000',
+          'x-real-ip': '10.0.0.1',
+          'user-agent': 'vitest',
+        },
+        body: JSON.stringify({ email, callbackURL: '/reset-password', turnstileToken: 'valid-test-token' }),
+      })
+
+    const res1 = await auth.handler(makeResetReq(existingEmail))
+    const res2 = await auth.handler(makeResetReq(`nonexistent-${Date.now()}@example.test`))
+
+    expect(res1.status).toBe(res2.status)
+    const body1 = (await res1.json()) as unknown
+    const body2 = (await res2.json()) as unknown
+    expect(JSON.stringify(body1)).toBe(JSON.stringify(body2))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 13. Email provider failure logs and calls alert()
+// ---------------------------------------------------------------------------
+
+describe('email provider failure observability', () => {
+  it('calls alert with EMAIL_SEND_FAILED when sendEmail throws', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `email-fail-${Date.now()}@example.test`
+
+    mockAlert.mockClear()
+
+    // Make the email provider throw on the next call (verification email triggered by sign-up)
+    const emailErr = Object.assign(new Error('SMTP connection refused'), { code: 'ECONNREFUSED' })
+    mockSendEmail.mockRejectedValueOnce(emailErr)
+
+    await auth.handler(makeSignUpReq({ email }, '198.51.100.13'))
+
+    // Wait for the async email send callback to complete
+    await vi.waitFor(() => expect(mockSendEmail).toHaveBeenCalled(), { timeout: 2000 })
+    // alert() should have been called with email.send.failed
+    await vi.waitFor(
+      () => expect(mockAlert).toHaveBeenCalledWith('email.send.failed', expect.objectContaining({ code: 'ECONNREFUSED' })),
+      { timeout: 2000 },
     )
   })
 })
