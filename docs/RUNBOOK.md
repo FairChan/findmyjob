@@ -170,10 +170,10 @@ pg_dump -Fc --exclude-schema=pgboss <DB> | age -r <公钥> → /backup-tmp/<时�
 
 | 桶 | 用途 | 区域 | 版本控制 | 生命周期 |
 |---|---|---|---|---|
-| `findmyjob-backups` | 加密数据库备份 | ap-southeast-5（马来西亚） | 开启 + **S3 Object Lock（Governance，30 天保留期）** | NoncurrentVersionExpiration 30 天 + 清理过期的删除标记 |
+| `findmyjob-backups` | 加密数据库备份 | ap-southeast-5（马来西亚） | 开启 + **S3 Object Lock（Governance，30 天保留期）** | 当前版本 Expiration 30 天；NoncurrentVersionExpiration 1 天；清理过期的删除标记（实际保留约 31 天，见下方说明） |
 | `findmyjob-files`（应用桶） | 用户上传文件 | ap-southeast-5 | 开启 | 非当前版本 30 天后过期 |
 
-**备份桶生命周期说明**：Object Lock 防止写入凭据（`backup-writer`）删除或覆盖已上传的对象（满足 ARCHITECTURE A20「写入凭据删不了历史」）。Object Lock 下版本控制的"当前版本 30 天后过期"只会加删除标记，旧版本会永久保留，与隐私政策的 30 天保留要求矛盾；正确做法是用 NoncurrentVersionExpiration 清理旧版本 + 清理过期删除标记，让 Object Lock 的保留期（30 天）自然到期后对象可被正常删除。
+**备份桶生命周期说明**：每个 dump 的 key 唯一（如 `2026-11-05T19-15-00Z.dump.age`），始终是当前版本，NoncurrentVersionExpiration 对其不生效；必须同时配置当前版本 **Expiration 30 天**才能触发自动删除，否则 dump 永不过期，与隐私政策的「保存 30 天」矛盾。Object Lock（Governance，30 天保留期）防止写入凭据（`backup-writer`）删除或覆盖已上传对象（满足 ARCHITECTURE A20「写入凭据删不了历史」）。Expiration 在第 30 天加上删除标记，Object Lock 保留期同日到期，实际清理在第 31 天左右完成，**实际保留约 31 天**。隐私政策写的是「30 天」（用户视角的上限），实际不超过 31 天，不修改法律文本。NoncurrentVersionExpiration 1 天清理因意外重名上传产生的旧版本；清理过期删除标记防止存储费用积累。
 
 IAM 权限见 M7-H01 配置表：
 - `backup-writer`：对 `db/*` 仅 PutObject（Object Lock 下无法删除）
@@ -190,8 +190,8 @@ IAM 权限见 M7-H01 配置表：
 1. 登录 healthchecks.io，确认 `findmyjob-backup` 显示绿色。
 2. 或者列出 S3 对象（需要 List/Get 权限；**使用 restore-reader 凭据，在离线机器上执行**）：
    ```bash
-   export AWS_ACCESS_KEY_ID=<restore-reader-key-id>
-   export AWS_SECRET_ACCESS_KEY=<restore-reader-secret>
+   read -rs AWS_ACCESS_KEY_ID && export AWS_ACCESS_KEY_ID
+   read -rs AWS_SECRET_ACCESS_KEY && export AWS_SECRET_ACCESS_KEY
    aws s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 5
    ```
 3. 验证文件头（前 21 字节应为 `age-encryption.org/v1`；同样使用 restore-reader 凭据）：
@@ -222,19 +222,28 @@ sudo systemctl reload cron
 
 - 有 age 私钥的离线介质。
 - `restore-reader` IAM 凭据（临时注入）。
-- 目标机器上安装了 `age`、`awscli`、`postgresql-client-16`、`python3`。
-- Docker 和 `docker compose` 可用。
-- 已 `clone` 仓库并位于仓库根目录。
+- **管理机**（操作员的离线机或演练机）上已安装 `age`、`awscli`、`postgresql-client-16`、`python3`。
+  `tools` 镜像**不含** psql/age/awscli，不可在 tools 容器里执行本脚本。
+- 已 `clone` 仓库并位于仓库根目录（在管理机上，非服务器）。
 
 ### 步骤
+
+> **执行位置**：所有步骤在**管理机**上执行。数据库连接经 SSH 隧道转发：
+>
+> ```bash
+> ssh -L 15432:127.0.0.1:5432 <admin>@43.134.49.247 -N -f
+> ```
+>
+> 然后 `RESTORE_ADMIN_DATABASE_URL` 写 `postgresql://findmyjob_owner:<pass>@127.0.0.1:15432/postgres`。
+> `postgres` 主机名只在 compose 网络内可解析，管理机无法直接使用。
 
 ```bash
 # 1. 设置恢复凭据（演练时临时设置，不要写入 .env；用 read -rs 避免进 shell 历史）
 read -rs RESTORE_S3_ACCESS_KEY_ID && export RESTORE_S3_ACCESS_KEY_ID
 read -rs RESTORE_S3_SECRET_ACCESS_KEY && export RESTORE_S3_SECRET_ACCESS_KEY
 read -rs RESTORE_ADMIN_DATABASE_URL && export RESTORE_ADMIN_DATABASE_URL
-# RESTORE_ADMIN_DATABASE_URL 格式：postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
-# （postgres 是 compose 网络里的服务名；在 tools 容器或服务器上执行，不是本机 127.0.0.1）
+# 格式（SSH 隧道）：postgresql://findmyjob_owner:<pass>@127.0.0.1:15432/postgres
+# （先开隧道：ssh -L 15432:127.0.0.1:5432 <admin>@43.134.49.247 -N -f）
 export BACKUP_S3_BUCKET=findmyjob-backups
 read -rs PII_KEYS && export PII_KEYS
 export APP_TAG=<当前镜像 tag>
@@ -289,19 +298,21 @@ cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
    ```bash
    docker compose -f /opt/findmyjob/docker-compose.prod.yml stop app worker
    ```
-4. **执行恢复**：用 `--key` 选取已知完好的 `db/pre-migrate/` 或 `db/daily/` 对象，加 `--skip-rpo`（真实恢复时 RPO 超限属已知情况）和 `--keep`（保留恢复库用于切换）。目标库用 `findmyjob_restore_drill`（以 `_drill` 结尾是安全检查的前提）：
+4. **执行恢复**：用 `--key` 选取已知完好的 `db/pre-migrate/` 或 `db/daily/` 对象，加 `--skip-rpo`（真实恢复时 RPO 超限属已知情况）和 `--keep`（保留恢复库用于切换）。目标库用 `findmyjob_restore_drill`（以 `_drill` 结尾是安全检查的前提）。
+   **在管理机上执行**（需已安装 age、awscli、postgresql-client-16、python3，并开好 SSH 隧道）：
    ```bash
    cat /media/usb/age-private.key | bash scripts/db/restore-drill.sh \
      --key db/daily/2026-11-05T19-15-00Z.dump.age \
      --skip-rpo --keep \
      findmyjob_restore_drill
    ```
-   恢复完成后切换步骤（在服务器上执行）：
+   恢复完成后切换步骤（**在服务器上**通过 `docker compose exec postgres psql` 执行；服务器上 `postgres` 主机名在 compose 网络内可解析）：
    ```bash
-   # 停止服务
+   # 停止服务（在服务器上）
    docker compose -f /opt/findmyjob/docker-compose.prod.yml stop app worker
-   # 把恢复库重命名为生产库
-   psql "$RESTORE_ADMIN_DATABASE_URL" \
+   # 把恢复库重命名为生产库（在服务器上，经 compose exec 进入 postgres 容器）
+   docker compose -f /opt/findmyjob/docker-compose.prod.yml exec postgres \
+     psql -U postgres \
      -c 'ALTER DATABASE findmyjob RENAME TO findmyjob_old;' \
      -c 'ALTER DATABASE findmyjob_restore_drill RENAME TO findmyjob;'
    # 修改 /opt/findmyjob/env/*.env 里的 DATABASE_URL（如需要），然后重启服务

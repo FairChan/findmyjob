@@ -133,9 +133,26 @@ DRILL_START=$(date +%s)
 echo "[drill] $(date -u +%Y-%m-%dT%H:%M:%SZ) starting restore drill into ${DB_NAME}"
 echo "[drill] backup key: s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}"
 
-# ── 1. verify age magic header (streaming, no disk) ──────────────────────────
-MAGIC="$(aws s3 cp "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}" - 2>/dev/null \
-  | head -c 21 | tr -d '\n')"
+# ── 1. verify age magic header ────────────────────────────────────────────────
+# Use s3api get-object --range instead of "s3 cp … | head -c 21" to avoid
+# SIGPIPE: when head exits, aws s3 cp receives SIGPIPE (exit 141), making the
+# pipeline fail under set -euo pipefail and causing a silent exit before the
+# magic check runs. The 21-byte temp file contains only ciphertext — no plaintext.
+MAGIC_TMP="${TMPDIR_LOCAL}/magic.bin"
+S3API_RANGE_ARGS=(--region "$BACKUP_S3_REGION" --bucket "$BACKUP_S3_BUCKET" \
+  --key "$OBJECT_KEY" --range "bytes=0-20")
+if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
+  S3API_RANGE_ARGS+=(--endpoint-url "$BACKUP_S3_ENDPOINT")
+fi
+if [ -n "$VERSION_ID" ]; then
+  S3API_RANGE_ARGS+=(--version-id "$VERSION_ID")
+fi
+if ! aws s3api get-object "${S3API_RANGE_ARGS[@]}" "$MAGIC_TMP" >/dev/null; then
+  echo "ERROR: failed to fetch magic header from s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}" >&2
+  exit 1
+fi
+MAGIC="$(tr -d '\n' < "$MAGIC_TMP")"
+rm -f "$MAGIC_TMP"
 if [ "$MAGIC" != "age-encryption.org/v1" ]; then
   echo "ERROR: S3 object does not look like an age-encrypted file (magic: '${MAGIC}')" >&2
   exit 1
