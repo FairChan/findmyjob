@@ -12,6 +12,8 @@ import { logAudit } from './services/audit'
 import { getClientIp } from './lib/client-ip'
 import { assertStudentSignupOpen, maybeWarnCap } from './services/signup-cap'
 import { isEmployerRegistration } from './lib/employer-registration-context'
+import { recordConsents } from './services/consent'
+import { getSetting } from './services/settings'
 import { SignupClosedError } from './errors'
 import { logger } from './lib/logger'
 
@@ -89,6 +91,9 @@ export const auth = betterAuth({
     '/sign-in/email-otp',
     '/email-otp/request-password-reset',
     '/forget-password/email-otp',
+    '/email-otp/reset-password',
+    '/email-otp/check-verification-otp',
+    '/email-otp/verify-email',
   ],
 
   // Connect Better Auth's internal logger to the app logger (suppresses raw messages in prod)
@@ -263,6 +268,49 @@ export const auth = betterAuth({
         before: async (data) => {
           if (isEmployerRegistration()) {
             return { data: { ...data, role: 'EMPLOYER' } }
+          }
+        },
+        // Create Consent and StudentProfile from the sign-up request body.
+        // This hook runs for every real user creation (not for the anti-enum fake user),
+        // so it covers both UI-initiated and direct API registrations.
+        after: async (user: Record<string, unknown>, ctx?: any) => {
+          if (!user?.id) return
+          const body = ctx?.body as Record<string, unknown> | undefined
+          const isEmployer = isEmployerRegistration()
+          const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
+          const reqHeaders: Headers | null = ctx?.request?.headers ?? null
+          const ip = reqHeaders ? getClientIp(reqHeaders as Headers) : null
+          const userAgent = reqHeaders ? (reqHeaders as unknown as Headers).get('user-agent') : null
+          const userId = user.id as string
+
+          if (!isEmployer) {
+            const joinTalentPool = body?.joinTalentPool === true
+            const fullName = ((body?.name as string) ?? (user.name as string) ?? '').trim()
+            await db.$transaction([
+              db.studentProfile.create({
+                data: {
+                  userId,
+                  fullName,
+                  visibility: joinTalentPool ? 'PUBLIC' : 'HIDDEN',
+                },
+              }),
+              db.consent.createMany({
+                data: [
+                  { userId, type: 'TERMS', granted: true, version: legalVersion, ip, userAgent },
+                  { userId, type: 'PRIVACY', granted: true, version: legalVersion, ip, userAgent },
+                  { userId, type: 'TALENT_POOL', granted: joinTalentPool, version: legalVersion, ip, userAgent },
+                ],
+              }),
+            ])
+          } else {
+            await recordConsents(
+              userId,
+              [
+                { type: 'TERMS', granted: true },
+                { type: 'PRIVACY', granted: true },
+              ],
+              { ip, userAgent },
+            )
           }
         },
       },

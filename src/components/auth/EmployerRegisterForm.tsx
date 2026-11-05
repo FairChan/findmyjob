@@ -58,6 +58,8 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
           setError(t('errorRequired'))
         } else if (result.code === 'REGISTER_FAILED') {
           setError(t('errorRegisterFailed'))
+        } else if (result.code === 'TURNSTILE_FAILED') {
+          setError(t('errorTurnstileFailed'))
         } else {
           setError(t('errorUnknown'))
         }
@@ -140,13 +142,19 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
 
       <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} />
 
+      {!turnstileToken && !isPending && (
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          {t('turnstileLoading')}
+        </p>
+      )}
+
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}
         </p>
       )}
 
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="w-full" disabled={isPending || !turnstileToken}>
         {isPending ? '...' : t('submitEmployer')}
       </Button>
     </form>

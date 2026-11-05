@@ -315,7 +315,7 @@
 > 完成 2026-11-05：`advanced.ipAddress.ipAddressHeaders: ['x-real-ip']`（删掉 rateLimit.ipAddressHeaders）；`rateLimit.enabled: true` 显式设置；`advanced.backgroundTasks.handler` 用 next/server `after()` 包装邮件发送；`emailAndPassword.revokeSessionsOnPasswordReset: true`；`/change-password` hooks.before 强制 `revokeOtherSessions=true`；`databaseHooks.session.create.before` 拒绝非 ACTIVE 用户登录（ACCOUNT_SUSPENDED）；`auth.login` 审计记 session.ipAddress（配置固定后等价于 getClientIp）；Better Auth logger 接到 app logger（log 函数，仅 warn 以上）；email 发送失败只记错误码不记原始 err.message；`emailVerification.afterEmailVerification` 调 maybeWarnCap；trustedOrigins 仅 development 加 localhost:3000；BETTER_AUTH_SECRET ≥32 位生产强制；/[locale]/s、/e、/admin 新建 layout.tsx（分别用 requireStudent、requireEmployer、requireAdmin 守卫）；authz.ts 新增 requireEmployer；route() 实现真正的 zod 解析（query/body，失败返回 400）；verify-email 跳转去掉 email 参数，messages 改为通用措辞；email.ts 加 import 'server-only'；signup-cap.ts：ttlHours 用 z.number().int().min(1) 校验回落 48，分批删除 ≤1000；env.ts 生产强制 BETTER_AUTH_SECRET ≥32；tests/unit/auth-hardening.test.ts（route() 5 个用例）；authz-matrix 新增 requireEmployer 5 行；signup-cap tests 更新为批量删除；pnpm lint/typecheck/test/db:check 全部通过（199 tests）；偏差：verification.storeIdentifier:'hashed' 在 Better Auth 1.7.16 类型中不存在（未添加）；auth.login audit IP 通过 session.ipAddress（配置 x-real-ip 后等价）；E2E（SUSPENDED 用户、IP 限流复现）需 Mailpit+真实 DB
 > 总控复审 2026-11-05：storeIdentifier 没设（「类型里不存在」的说法不对）；useSecureCookies 写成了 false 而不是 undefined；审计 ip 没用 getClientIp；验收测试基本没写。转 M1-T11。
 
-#### [ ] M1-T10 注册路径二次补修：同意记录放进建号钩子、不留半成品、真实配置的集成测试
+#### [x] M1-T10 注册路径二次补修：同意记录放进建号钩子、不留半成品、真实配置的集成测试
 依赖：M1-T09
 > 总控 2026-11-05 加入：复审 M1-T08（abddd7b）的结论是要求 3 没做到、要求 1 只做到一部分，而且所列验收测试几乎都把 `auth.handler` mock 掉了，真实的认证配置一次都没被测到。下面每条都在 better-auth 1.7.16 源码里核实过。
 做：
@@ -338,6 +338,8 @@
   - token 到达之前，登录和注册页的提交按钮都是 disabled；
   - token 缺失或无效时，服务端返回 TURNSTILE_FAILED，页面显示人机验证失败的专门提示，文案里不含「邮箱或密码错误」。
   测试里现有的「等 token 有值再提交」那一步可以保留，但不能代替这两条。
+
+> 完成 2026-11-05：Consent+StudentProfile 移入 databaseHooks.user.create.after（从 ctx.body 读 joinTalentPool/name 及请求头 IP/UA），直接 POST 也能建完整记录；register.ts 删掉重复写入；ref_code cookie 移到 callAuthSignUp 之前，新旧邮箱路径均写 cookie；disabledPaths 补 /email-otp/reset-password、/email-otp/check-verification-otp、/email-otp/verify-email；TurnstileWidget effect 始终返回 cleanup 防止旧回调污染；四个表单（登录/学生注册/企业注册/找回密码）在 token 未到前 submit 按钮 disabled，TURNSTILE_FAILED 显示专用文案，不再显示「邮箱或密码错误」；新建 tests/integration/auth-real-config.test.ts（16 个集成测试，真实 auth.handler，Turnstile 在网络层 stub）；tests/e2e/auth-redirect.spec.ts 新增 2 条断言（按钮 disabled + TURNSTILE_FAILED 提示）；register.test.ts 更新以反映 profile/consent 创建移至 hook；pnpm lint/typecheck/test 全通过（215 tests）；getSetting 60s 缓存在同文件测试间会泄漏，quota 测试 afterEach 用 setSetting 清缓存；发信失败原已由 M1-T09 backgroundTasks.handler 覆盖（发信在 after() 里执行不阻塞响应）；E2E 全流程（含新增 2 条断言）需 dev server + Mailpit，本轮无人值守未执行。
 
 #### [ ] M1-T11 认证加固补完：M1-T09 没做到的三项、可观测性和验收测试
 依赖：M1-T10

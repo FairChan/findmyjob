@@ -8,6 +8,35 @@ import { test, expect } from '@playwright/test'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
 
+test.describe('Turnstile widget UX', () => {
+  test('submit button is disabled until Turnstile token loads', async ({ page }) => {
+    await page.goto('/zh/register/student')
+    // Before the token arrives the button must be disabled
+    await expect(page.locator('button[type="submit"]')).toBeDisabled()
+    // After the token arrives the button is enabled
+    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
+    await expect(page.locator('button[type="submit"]')).toBeEnabled()
+  })
+
+  test('TURNSTILE_FAILED shows specific error message, not generic "邮箱或密码错误"', async ({ page }) => {
+    await page.goto('/zh/login')
+    // Wait for Turnstile token so the button is enabled
+    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
+    // Corrupt the hidden token so the server rejects it
+    await page.evaluate(() => {
+      const el = document.querySelector<HTMLInputElement>('input[name="cf-turnstile-response"]')
+      if (el) el.value = 'INVALID_TOKEN_FOR_TEST'
+    })
+    await page.fill('[name="email"]', 'any@example.test')
+    await page.fill('[name="password"]', 'Password123!')
+    await page.click('button[type="submit"]')
+
+    // Should show Turnstile-specific error, NOT the generic credentials error
+    await expect(page.getByRole('alert')).toContainText('人机验证失败', { timeout: 10000 })
+    await expect(page.getByRole('alert')).not.toContainText('邮箱或密码错误')
+  })
+})
+
 test.describe('student registration → verification → login → sign-out', () => {
   test('new student reaches /s/onboarding, then sign-out invalidates the session', async ({ page, request }) => {
     const mailpitCheck = await request.get(`${MAILPIT_URL}/api/v1/messages`).catch(() => null)

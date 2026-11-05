@@ -183,31 +183,24 @@ describe('auth.handler error code propagation', () => {
 })
 
 // ---------------------------------------------------------------------------
-// StudentProfile + Consent atomicity
+// StudentProfile + Consent are created by databaseHooks.user.create.after (M1-T10)
 // ---------------------------------------------------------------------------
 
-describe('StudentProfile and Consent are created together', () => {
-  it('creates both StudentProfile and Consent for a real student', async () => {
-    const email = `atomic-${Date.now()}@example.test`
+describe('StudentProfile and Consent (now created by databaseHook, not the action)', () => {
+  it('registerStudent returns ok:true without creating profile/consent (delegated to hook)', async () => {
+    // The action no longer creates StudentProfile or Consent; auth.ts databaseHooks.user.create.after does.
+    // With auth.handler mocked, no hook fires — the action must still succeed.
     const user = await testDb.user.create({
-      data: { name: 'Atomic Student', email, emailVerified: false, role: 'STUDENT', status: 'ACTIVE' },
+      data: { name: 'Hook Student', email: `hook-${Date.now()}@example.test`, emailVerified: false, role: 'STUDENT', status: 'ACTIVE' },
     })
-    // Insert a system setting so getSetting returns a version
-    await testDb.systemSetting.upsert({
-      where: { key: 'legal.currentVersion' },
-      update: {},
-      create: { key: 'legal.currentVersion', value: JSON.stringify('1.0') },
-    })
+    mockFreshUser(user.id, user.email)
 
-    mockFreshUser(user.id, email)
-    const result = await registerStudent({ ...BASE_STUDENT, email })
+    const result = await registerStudent({ ...BASE_STUDENT, email: user.email })
     expect(result.ok).toBe(true)
 
+    // Profile is NOT created by the action (it's the hook's responsibility).
     const profile = await testDb.studentProfile.findUnique({ where: { userId: user.id } })
-    expect(profile).not.toBeNull()
-
-    const consents = await testDb.consent.findMany({ where: { userId: user.id } })
-    expect(consents.length).toBeGreaterThanOrEqual(2) // TERMS + PRIVACY (+ optional TALENT_POOL)
+    expect(profile).toBeNull()
   })
 })
 

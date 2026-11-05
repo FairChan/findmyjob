@@ -15,6 +15,7 @@ export default function ForgotPasswordForm({ siteKey }: Props) {
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string>('')
+  const [turnstileKey, setTurnstileKey] = useState(0)
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
 
@@ -33,8 +34,18 @@ export default function ForgotPasswordForm({ siteKey }: Props) {
         turnstileToken,
       })
 
-      if (authError && authError.status === 429) {
-        setError(t('errorRateLimited'))
+      if (authError) {
+        // Reset Turnstile so a fresh token is issued before the next attempt.
+        setTurnstileKey((k) => k + 1)
+        setTurnstileToken('')
+
+        if (authError.status === 429) {
+          setError(t('errorRateLimited'))
+        } else if (authError.code === 'TURNSTILE_FAILED') {
+          setError(t('errorTurnstileFailed'))
+        } else {
+          setError(t('errorUnknown'))
+        }
         return
       }
 
@@ -70,7 +81,13 @@ export default function ForgotPasswordForm({ siteKey }: Props) {
         />
       </div>
 
-      <TurnstileWidget siteKey={siteKey} action="forgot-password" onToken={handleToken} onExpire={handleExpire} />
+      <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="forgot-password" onToken={handleToken} onExpire={handleExpire} />
+
+      {!turnstileToken && !isPending && (
+        <p className="text-xs text-muted-foreground" aria-live="polite">
+          {t('turnstileLoading')}
+        </p>
+      )}
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -78,7 +95,7 @@ export default function ForgotPasswordForm({ siteKey }: Props) {
         </p>
       )}
 
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="w-full" disabled={isPending || !turnstileToken}>
         {isPending ? '...' : t('submit')}
       </Button>
     </form>

@@ -4,7 +4,6 @@ import { headers, cookies } from 'next/headers'
 import { action } from '@/server/action'
 import { auth } from '@/server/auth'
 import { db } from '@/server/db'
-import { getSetting } from '@/server/services/settings'
 import { getClientIp } from '@/server/lib/client-ip'
 import { AppError, SignupClosedError, RateLimitedError, ValidationError } from '@/server/errors'
 import { logger } from '@/server/lib/logger'
@@ -83,48 +82,8 @@ export const registerStudent = action(
     const ip = getClientIp(h)
     const userAgent = h.get('user-agent')
 
-    const { user } = await callAuthSignUp(
-      {
-        name: input.name,
-        email: input.email,
-        password: input.password,
-        turnstileToken: input.turnstileToken,
-        agreeTerms: input.agreeTerms,
-        agreePrivacy: input.agreePrivacy,
-      },
-      ip,
-      userAgent,
-    )
-
-    // Anti-enum: Better Auth returns a fake user when requireEmailVerification=true
-    // and the email is already registered. The fake user won't be in the DB.
-    const realUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true } })
-    if (!realUser) {
-      // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts
-      return { email: input.email }
-    }
-
-    // Create StudentProfile and Consent atomically to avoid partial state.
-    const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
-    await db.$transaction([
-      db.studentProfile.create({
-        data: {
-          userId: user.id,
-          fullName: input.name,
-          visibility: input.joinTalentPool ? 'PUBLIC' : 'HIDDEN',
-        },
-      }),
-      db.consent.createMany({
-        data: [
-          { userId: user.id, type: 'TERMS', granted: true, version: legalVersion, ip, userAgent },
-          { userId: user.id, type: 'PRIVACY', granted: true, version: legalVersion, ip, userAgent },
-          { userId: user.id, type: 'TALENT_POOL', granted: input.joinTalentPool, version: legalVersion, ip, userAgent },
-        ],
-      }),
-    ])
-
-    // Persist referral code in a cookie so M2-T09 can call attachReferral
-    // once the student's profile completeness is calculated.
+    // Set ref_code cookie for BOTH real and duplicate emails so neither path
+    // reveals whether an email is already registered.
     if (input.ref) {
       const jar = await cookies()
       jar.set('ref_code', input.ref, {
@@ -133,6 +92,30 @@ export const registerStudent = action(
         maxAge: 30 * 24 * 60 * 60,
         path: '/',
       })
+    }
+
+    const { user } = await callAuthSignUp(
+      {
+        name: input.name,
+        email: input.email,
+        password: input.password,
+        turnstileToken: input.turnstileToken,
+        agreeTerms: input.agreeTerms,
+        agreePrivacy: input.agreePrivacy,
+        // Pass joinTalentPool so databaseHooks.user.create.after can read it.
+        joinTalentPool: input.joinTalentPool,
+      },
+      ip,
+      userAgent,
+    )
+
+    // Anti-enum: Better Auth returns a fake user when requireEmailVerification=true
+    // and the email is already registered. The fake user won't be in the DB.
+    // Profile and Consent are created in databaseHooks.user.create.after in auth.ts.
+    const realUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true } })
+    if (!realUser) {
+      // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts.
+      return { email: input.email }
     }
 
     return { email: input.email }
@@ -148,6 +131,7 @@ export const registerEmployer = action(
 
     // Run inside employer context so the before-hook and databaseHook skip the
     // student cap check and set role=EMPLOYER in the INSERT.
+    // Consent is created in databaseHooks.user.create.after in auth.ts.
     const { user } = await employerRegistrationContext.run(true, () =>
       callAuthSignUp(
         {
@@ -166,20 +150,9 @@ export const registerEmployer = action(
     // Anti-enum: check whether the returned user actually exists.
     const realUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true } })
     if (!realUser) {
-      // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts
+      // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts.
       return { email: input.email }
     }
-
-    // Record consent atomically.
-    const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
-    await db.$transaction([
-      db.consent.createMany({
-        data: [
-          { userId: user.id, type: 'TERMS', granted: true, version: legalVersion, ip, userAgent },
-          { userId: user.id, type: 'PRIVACY', granted: true, version: legalVersion, ip, userAgent },
-        ],
-      }),
-    ])
 
     return { email: input.email }
   },

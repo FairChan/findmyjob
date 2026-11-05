@@ -49,21 +49,21 @@ export default function TurnstileWidget({ siteKey, action, onToken, onExpire }: 
 
     if (window.turnstile) {
       renderWidget()
-      return
+    } else {
+      const scriptId = 'cf-turnstile-script'
+      if (!document.getElementById(scriptId)) {
+        const script = document.createElement('script')
+        script.id = scriptId
+        script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onloadTurnstileCallback'
+        script.async = true
+        script.defer = true
+        document.head.appendChild(script)
+      }
+      window.onloadTurnstileCallback = renderWidget
     }
 
-    const scriptId = 'cf-turnstile-script'
-    if (!document.getElementById(scriptId)) {
-      const script = document.createElement('script')
-      script.id = scriptId
-      script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onloadTurnstileCallback'
-      script.async = true
-      script.defer = true
-      document.head.appendChild(script)
-    }
-
-    window.onloadTurnstileCallback = renderWidget
-
+    // Always clean up on unmount or dependency change to prevent stale callbacks
+    // from firing into a remounted component's state.
     return () => {
       if (widgetIdRef.current && window.turnstile) {
         window.turnstile.remove(widgetIdRef.current)
