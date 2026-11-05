@@ -396,6 +396,7 @@
 验收：至少 15 个单元测试用例（含中英混排、全角字符、带空格或横线的号码），且不误伤普通数字（年份、GPA、百分比）
 > 完成 2026-11-05：src/lib/redact.ts（全角归一化 + 7 条正则：URL、邮箱、+60、01x、+86、通用国际、微信/WeChat/wx）；tests/unit/redact.test.ts（24 组、60 个断言，含全角、中英混排、哨兵电话、false-positive 安全验证）；pnpm lint / typecheck / test 全部通过
 > 修复 2026-11-05：补充微信号/vx/VX/V信/wechat id、裸大陆手机号（含全角）、www. 和已知域名无协议 URL、QQ、Telegram/TG、Line ID、WhatsApp 共 14 个模式；新增 20KB 性能用例和技术名/版本号/日期防误伤用例，共 62 个断言全部通过
+> 修复 2026-11-05（二，总控手工，轮次两次超出 32k 输出上限）：按安全审查补齐微信连接词和括号、电话分隔符与 60/(+60)/Tel 写法、零宽字符和数学字体数字、中文句号、﹫、(at)、汉字本地部分和常见邮箱的 at/dot 拼写、wa.me 和 whatsapp.com 链接；归一化改为逐码点并记下原文下标；修掉邮箱正则的二次回溯（10 万字符 <50ms）；tests/unit/redact-hardening.test.ts 64 例。偏差：逐位空格分开的号码（1 3 8 …）不遮，见 DECISIONS
 
 #### [x] M4-T02 脱敏序列化器 + 防泄漏测试
 依赖：M4-T01

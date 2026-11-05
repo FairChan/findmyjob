@@ -1,91 +1,140 @@
 export const REDACTED = '[已隐藏]'
 
-/** Converts full-width ASCII characters to half-width equivalents for regex matching. */
-function toHalfWidth(text: string): string {
-  return text
-    .replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-    .replace(/　/g, ' ')
+// Characters that render as nothing; students (or copy-paste) can hide them inside numbers.
+const INVISIBLE = new Set([0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0x00ad])
+// Look-alikes that a Chinese IME or a font picker produces instead of ASCII punctuation.
+const AS_DOT = new Set([0x3002, 0xff61, 0xfe52]) // 。 ｡ ﹒
+const AS_AT = new Set([0xfe6b]) // ﹫
+const NON_ASCII_DIGIT = /\p{Nd}/u
+
+interface Normalized {
+  text: string
+  /** For each UTF-16 unit of `text`: [start, end) of the source code point in the input. */
+  from: number[]
+  to: number[]
 }
 
-type MatchRange = [number, number]
-
-function collectMatches(text: string, pattern: RegExp): MatchRange[] {
-  const ranges: MatchRange[] = []
-  const re = new RegExp(
-    pattern.source,
-    pattern.flags.includes('g') ? pattern.flags : pattern.flags + 'g',
-  )
-  let m: RegExpExecArray | null
-  while ((m = re.exec(text)) !== null) {
-    ranges.push([m.index, m.index + m[0].length])
+/**
+ * Builds the string the patterns run on, one code point at a time, and remembers where each
+ * output unit came from. Matching happens on the normalized text; replacement happens on the
+ * original, so anything outside a match is returned byte-for-byte.
+ */
+function normalize(input: string): Normalized {
+  let text = ''
+  const from: number[] = []
+  const to: number[] = []
+  for (let i = 0; i < input.length; ) {
+    const cp = input.codePointAt(i)!
+    const width = cp > 0xffff ? 2 : 1
+    let out: string
+    if (INVISIBLE.has(cp)) out = ''
+    else if (cp >= 0xff01 && cp <= 0xff5e) out = String.fromCharCode(cp - 0xfee0)
+    else if (cp === 0x3000) out = ' '
+    else if (AS_DOT.has(cp)) out = '.'
+    else if (AS_AT.has(cp)) out = '@'
+    else {
+      out = input.slice(i, i + width)
+      if (cp > 0x7f && NON_ASCII_DIGIT.test(out)) {
+        // Mathematical / styled digits fold to ASCII under NFKC; scripts like Arabic-Indic do not.
+        const folded = out.normalize('NFKC')
+        if (/^[0-9]$/.test(folded)) out = folded
+      }
+    }
+    for (let k = 0; k < out.length; k++) {
+      from.push(i)
+      to.push(i + width)
+    }
+    text += out
+    i += width
   }
-  return ranges
+  return { text, from, to }
 }
 
-// Patterns ordered so URLs come before emails and emails come before phones.
-// No nested variable-length quantifiers to prevent catastrophic backtracking.
+// Phone separators: whitespace, ASCII/Unicode dashes, dots, slashes, parentheses — up to three.
+const SEP = String.raw`[\s\-‐-―./()]{0,3}`
+const MAIL_PROVIDERS = String.raw`(?:gmail|googlemail|yahoo|hotmail|outlook|live|icloud|me|qq|foxmail|163|126|yeah|sina|sohu|aliyun|proton(?:mail)?)`
+const DOMAIN = String.raw`[A-Za-z0-9\-]{1,63}(?:\.[A-Za-z0-9\-]{1,63}){0,4}\.[A-Za-z]{2,24}`
+const LOCAL = String.raw`(?:(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]{1,64}|\p{Script=Han}{1,6})`
+const WECHAT_KEYWORD = String.raw`(?:微信号?|威信|[vV](?:[xX]|信)|\bwx\b|\bwechat(?:\s*id)?\b|\bweixin\b)`
+const OPEN_BRACKET = String.raw`[(\[【「《<]?`
+
+// Every quantifier is bounded and every pattern is anchored by a literal or a look-behind, so
+// matching stays linear on long free text (100k chars well under 50ms).
 const PATTERNS: RegExp[] = [
-  // URL (http/https)
-  /https?:\/\/[^\s　]+/gi,
-  // URL without http(s): www. prefix
-  /\bwww\.\S{3,}/gi,
-  // URL without http(s): known professional/social domains (require path to avoid tech-name false positives)
-  /\b(?:linkedin|github|gitlab)\.com\/\S+|\bt\.me\/\S+/gi,
-  // Email
-  /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
-  // Malaysian phone with +60 country code
-  /\+60[\s\-]?1[0-9][\s\-]?\d{3,4}[\s\-]?\d{4}/g,
-  // Malaysian phone without country code (01X-…)
-  /\b01[0-9][\s\-]?\d{3,4}[\s\-]?\d{4}\b/g,
-  // Chinese mobile with +86 country code
-  /\+86[\s\-]?1[3-9]\d[\s\-]?\d{4}[\s\-]?\d{4}/g,
-  // Chinese mobile without country code (1[3-9]X, 11 digits); lookbehind blocks digits/letters to avoid matching within longer numbers
-  /(?<![0-9a-zA-Z])[1][3-9][0-9][\s\-]?\d{4}[\s\-]?\d{4}(?![0-9])/g,
-  // Generic international: +CC followed by 7–15 digits (with optional spaces/dashes)
-  /\+[1-9]\d{0,2}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4}/g,
-  // WeChat and aliases: 微信/微信号/vx/VX/V信/wx/wechat/wechat id
-  /(?:微信号?|[vV](?:[xX]|信)|\bwx\b|wechat(?:\s+id)?)\s*[：:＝=]?\s*[a-zA-Z0-9_\-.@]+/gi,
-  // QQ number
-  /QQ号?\s*[：:＝=]?\s*\d{5,12}/gi,
-  // Telegram / TG handle
-  /(?:\btelegram\b|\btg\b)\s*[：:＝=]?\s*@[a-zA-Z0-9_]{5,}/gi,
-  // Line ID
-  /\bline\s+id\s*[：:＝=]?\s*[a-zA-Z0-9_\-.@]+/gi,
-  // WhatsApp with phone number (keyword + number captured together)
-  /\bwhatsapp\s+\+?[0-9][\d\s\-]{7,15}/gi,
+  // URLs with a scheme, then scheme-less forms that carry a contact on their own
+  /https?:\/\/[!-~]{1,2048}/gi,
+  /\bwww\.[!-~]{3,2048}/gi,
+  /\b(?:linkedin|github|gitlab)\.com\/[!-~]{1,2048}/gi,
+  /\b(?:t\.me|wa\.me|wa\.link)\/[!-~]{1,2048}/gi,
+  /\b(?:api\.)?whatsapp\.com\/[!-~]{1,2048}/gi,
+
+  // Email, including spaces around @, (at)/[at], a Han local part, and "x at gmail dot com"
+  new RegExp(String.raw`${LOCAL}\s{0,2}@\s{0,2}${DOMAIN}`, 'gu'),
+  new RegExp(String.raw`${LOCAL}\s{0,2}[(\[]\s{0,2}at\s{0,2}[)\]]\s{0,2}${DOMAIN}`, 'giu'),
+  new RegExp(
+    String.raw`(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]{1,64}\s{1,3}at\s{1,3}${MAIL_PROVIDERS}\s{1,3}dot\s{1,3}(?:com|net|org|cn|my|edu)\b`,
+    'gi',
+  ),
+
+  // Malaysia: +60 / (+60) / 60 / 0 then 1x, with flexible separators
+  new RegExp(String.raw`(?<![0-9])(?:\(\s?\+?\s?60\s?\)|\+?\s?60)${SEP}1[0-9]${SEP}\d{3,4}${SEP}\d{4}(?![0-9])`, 'g'),
+  new RegExp(String.raw`(?<![0-9])\(?01[0-9]\)?${SEP}\d{3,4}${SEP}\d{4}(?![0-9])`, 'g'),
+  // Mainland China mobile, with or without +86
+  new RegExp(String.raw`(?<![0-9])(?:\(?\+?\s?86\)?${SEP})?1[3-9][0-9]${SEP}\d{4}${SEP}\d{4}(?![0-9])`, 'g'),
+  // Any other +CC number
+  new RegExp(String.raw`\+[1-9]\d{0,2}${SEP}\(?\d{1,4}\)?${SEP}\d{3,4}${SEP}\d{3,4}(?![0-9])`, 'g'),
+
+  // WeChat with an explicit connector (：/=/-/是/为/is/…) or bracket: any handle-like token
+  new RegExp(
+    String.raw`${WECHAT_KEYWORD}\s{0,3}(?:号码?\s{0,3})?(?:[:=\-–—→/]|是|为|is\b|id\b)\s{0,3}${OPEN_BRACKET}\s{0,3}[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}`,
+    'gi',
+  ),
+  // WeChat without a connector: only tokens that contain a digit or underscore, so
+  // "WeChat Pay" / "WeChat mini-program" stay as written
+  new RegExp(
+    String.raw`${WECHAT_KEYWORD}\s{0,3}${OPEN_BRACKET}\s{0,3}(?=[A-Za-z0-9_.\-]{0,29}[0-9_])[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}`,
+    'gi',
+  ),
+
+  // Other handles
+  /QQ\s{0,3}号?\s{0,3}(?:[:=]|是|为)?\s{0,3}\d{5,12}/gi,
+  /(?:\btelegram\b|\btg\b)\s{0,3}(?:[:=]|is\b)?\s{0,3}@[a-zA-Z0-9_]{5,32}/gi,
+  /\bline\s{1,3}id\s{0,3}[:=]?\s{0,3}[a-zA-Z0-9_\-.@]{1,30}/gi,
+  /\bwhats\s?app\b\s{0,3}(?:[:=]|is\b)?\s{0,3}\+?[0-9][\d\s\-]{7,15}/gi,
 ]
 
 /**
- * Replaces emails, phone numbers, URLs, and common contact handle patterns in
- * free text with [已隐藏].  Full-width digits and punctuation are normalised
- * before matching so that patterns written in full-width are caught too;
- * non-sensitive characters are returned as-is.
+ * Replaces emails, phone numbers, URLs and common contact handles in free text with [已隐藏].
+ * Matching runs on a normalized copy (full-width → half-width, invisible characters dropped,
+ * styled digits folded); text outside a match is returned exactly as given.
  */
 export function redact(text: string): string {
-  const normalized = toHalfWidth(text)
+  const n = normalize(text)
 
-  const rawRanges: MatchRange[] = []
+  const ranges: [number, number][] = []
   for (const pattern of PATTERNS) {
-    rawRanges.push(...collectMatches(normalized, pattern))
-  }
-
-  // Sort and merge overlapping / adjacent ranges.
-  rawRanges.sort((a, b) => a[0] - b[0])
-  const merged: MatchRange[] = []
-  for (const [start, end] of rawRanges) {
-    const last = merged[merged.length - 1]
-    if (last && start <= last[1]) {
-      last[1] = Math.max(last[1], end)
-    } else {
-      merged.push([start, end])
+    pattern.lastIndex = 0
+    for (const m of n.text.matchAll(pattern)) {
+      if (m[0].length === 0) continue
+      const s = m.index!
+      ranges.push([n.from[s]!, n.to[s + m[0].length - 1]!])
     }
   }
+  if (ranges.length === 0) return text
 
-  // Replace from right to left so that earlier offsets stay valid.
-  let result = text
-  for (let i = merged.length - 1; i >= 0; i--) {
-    const [start, end] = merged[i]!
-    result = result.slice(0, start) + REDACTED + result.slice(end)
+  ranges.sort((a, b) => a[0] - b[0])
+  const merged: [number, number][] = []
+  for (const [start, end] of ranges) {
+    const last = merged[merged.length - 1]
+    if (last && start <= last[1]) last[1] = Math.max(last[1], end)
+    else merged.push([start, end])
   }
-  return result
+
+  let out = ''
+  let cursor = 0
+  for (const [start, end] of merged) {
+    out += text.slice(cursor, start) + REDACTED
+    cursor = end
+  }
+  return out + text.slice(cursor)
 }
