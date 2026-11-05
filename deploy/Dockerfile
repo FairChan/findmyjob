@@ -60,8 +60,7 @@ ENTRYPOINT ["/opt/findmyjob/bin/findmyjob-backup"]
 # ── runner (default) ──────────────────────────────────────────────────────────
 # Serves the Next.js app (CMD) and also supports the worker service
 # (docker-compose overrides CMD to: node --conditions=react-server -r tsx/cjs src/worker.ts)
-FROM ${NODE_IMAGE} AS runner
-WORKDIR /app
+FROM base AS runner
 ENV NODE_ENV=production \
     PORT=3000 \
     HOSTNAME=0.0.0.0
