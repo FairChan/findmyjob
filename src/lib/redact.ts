@@ -23,9 +23,14 @@ function collectMatches(text: string, pattern: RegExp): MatchRange[] {
 }
 
 // Patterns ordered so URLs come before emails and emails come before phones.
+// No nested variable-length quantifiers to prevent catastrophic backtracking.
 const PATTERNS: RegExp[] = [
   // URL (http/https)
   /https?:\/\/[^\s　]+/gi,
+  // URL without http(s): www. prefix
+  /\bwww\.\S{3,}/gi,
+  // URL without http(s): known professional/social domains (require path to avoid tech-name false positives)
+  /\b(?:linkedin|github|gitlab)\.com\/\S+|\bt\.me\/\S+/gi,
   // Email
   /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g,
   // Malaysian phone with +60 country code
@@ -34,16 +39,27 @@ const PATTERNS: RegExp[] = [
   /\b01[0-9][\s\-]?\d{3,4}[\s\-]?\d{4}\b/g,
   // Chinese mobile with +86 country code
   /\+86[\s\-]?1[3-9]\d[\s\-]?\d{4}[\s\-]?\d{4}/g,
+  // Chinese mobile without country code (1[3-9]X, 11 digits); lookbehind blocks digits/letters to avoid matching within longer numbers
+  /(?<![0-9a-zA-Z])[1][3-9][0-9][\s\-]?\d{4}[\s\-]?\d{4}(?![0-9])/g,
   // Generic international: +CC followed by 7–15 digits (with optional spaces/dashes)
   /\+[1-9]\d{0,2}[\s\-]?\(?\d{1,4}\)?[\s\-]?\d{3,4}[\s\-]?\d{3,4}/g,
-  // WeChat: "微信"/"WeChat"/"wx" (word-bounded) followed by optional delimiter and account
-  /(?:微信|WeChat|\bwx\b)\s*[：:＝=]?\s*[a-zA-Z0-9_\-.@]+/g,
+  // WeChat and aliases: 微信/微信号/vx/VX/V信/wx/wechat/wechat id
+  /(?:微信号?|[vV](?:[xX]|信)|\bwx\b|wechat(?:\s+id)?)\s*[：:＝=]?\s*[a-zA-Z0-9_\-.@]+/gi,
+  // QQ number
+  /QQ号?\s*[：:＝=]?\s*\d{5,12}/gi,
+  // Telegram / TG handle
+  /(?:\btelegram\b|\btg\b)\s*[：:＝=]?\s*@[a-zA-Z0-9_]{5,}/gi,
+  // Line ID
+  /\bline\s+id\s*[：:＝=]?\s*[a-zA-Z0-9_\-.@]+/gi,
+  // WhatsApp with phone number (keyword + number captured together)
+  /\bwhatsapp\s+\+?[0-9][\d\s\-]{7,15}/gi,
 ]
 
 /**
- * Replaces emails, phone numbers, URLs, and WeChat handles in free text with [已隐藏].
- * Full-width digits and punctuation are normalised before matching so that patterns
- * written in full-width are caught too; non-sensitive characters are returned as-is.
+ * Replaces emails, phone numbers, URLs, and common contact handle patterns in
+ * free text with [已隐藏].  Full-width digits and punctuation are normalised
+ * before matching so that patterns written in full-width are caught too;
+ * non-sensitive characters are returned as-is.
  */
 export function redact(text: string): string {
   const normalized = toHalfWidth(text)

@@ -50,6 +50,29 @@ describe('redact – Chinese phones', () => {
   })
 })
 
+describe('redact – Chinese mobile without country code', () => {
+  it('replaces bare 11-digit Chinese mobile', () => {
+    expect(redact('13812345678')).toBe(R)
+  })
+
+  it('replaces Chinese mobile with spaces', () => {
+    expect(redact('138 1234 5678')).toBe(R)
+  })
+
+  it('replaces Chinese mobile with hyphens', () => {
+    expect(redact('138-1234-5678')).toBe(R)
+  })
+
+  it('replaces full-width Chinese mobile', () => {
+    expect(redact('１３８１２３４５６７８')).toBe(R)
+  })
+
+  it('does not redact bare 11-digit number preceded by another digit', () => {
+    // e.g. a longer ID number should not trip the phone pattern
+    expect(redact('学号 213812345678')).toBe('学号 213812345678')
+  })
+})
+
 describe('redact – WeChat patterns', () => {
   it('replaces 微信：<id>', () => {
     expect(redact('微信：abc123')).toBe(R)
@@ -68,6 +91,32 @@ describe('redact – WeChat patterns', () => {
   })
 })
 
+describe('redact – WeChat aliases', () => {
+  it('replaces 微信号：<id>', () => {
+    expect(redact('微信号：wxid_abc123')).toBe(R)
+  })
+
+  it('replaces 微信号 <id> (space separator)', () => {
+    expect(redact('微信号 abc_123')).toBe(R)
+  })
+
+  it('replaces vx: <id>', () => {
+    expect(redact('加我vx: abc_123')).toBe(`加我${R}`)
+  })
+
+  it('replaces VX：<id>', () => {
+    expect(redact('VX：abc123')).toBe(R)
+  })
+
+  it('replaces V信 <id>', () => {
+    expect(redact('V信 abc123')).toBe(R)
+  })
+
+  it('replaces wechat id: <id>', () => {
+    expect(redact('wechat id: abc.123')).toBe(R)
+  })
+})
+
 describe('redact – URLs', () => {
   it('replaces https URL', () => {
     expect(redact('profile: https://linkedin.com/in/alice')).toBe(`profile: ${R}`)
@@ -75,6 +124,50 @@ describe('redact – URLs', () => {
 
   it('replaces http URL', () => {
     expect(redact('查看 http://example.com/cv')).toBe(`查看 ${R}`)
+  })
+})
+
+describe('redact – URLs without http(s)', () => {
+  it('replaces www. prefixed URL', () => {
+    expect(redact('www.example.com/me')).toBe(R)
+  })
+
+  it('replaces linkedin.com path', () => {
+    expect(redact('linkedin.com/in/abc')).toBe(R)
+  })
+
+  it('replaces github.com path', () => {
+    expect(redact('github.com/abc')).toBe(R)
+  })
+
+  it('replaces t.me handle', () => {
+    expect(redact('t.me/abc_handle')).toBe(R)
+  })
+})
+
+describe('redact – other contact platforms', () => {
+  it('replaces QQ：<number>', () => {
+    expect(redact('QQ：123456789')).toBe(R)
+  })
+
+  it('replaces QQ号 <number>', () => {
+    expect(redact('QQ号 12345')).toBe(R)
+  })
+
+  it('replaces Telegram: @handle', () => {
+    expect(redact('Telegram: @abc_handle')).toBe(R)
+  })
+
+  it('replaces TG @handle', () => {
+    expect(redact('TG @abc_handle')).toBe(R)
+  })
+
+  it('replaces Line ID: <id>', () => {
+    expect(redact('Line ID: abc123')).toBe(R)
+  })
+
+  it('replaces WhatsApp <phone>', () => {
+    expect(redact('WhatsApp 012-345 6789')).toBe(R)
   })
 })
 
@@ -127,5 +220,84 @@ describe('redact – false-positive safety (normal numbers must NOT be redacted)
   it('leaves plain text unchanged', () => {
     const plain = '本科毕业，主修计算机科学，GPA 3.8，热爱编程。'
     expect(redact(plain)).toBe(plain)
+  })
+})
+
+describe('redact – false-positive safety (tech names and formats)', () => {
+  it('does not redact Node.js', () => {
+    expect(redact('熟练掌握 Node.js')).toBe('熟练掌握 Node.js')
+  })
+
+  it('does not redact Next.js', () => {
+    expect(redact('使用 Next.js 开发')).toBe('使用 Next.js 开发')
+  })
+
+  it('does not redact Vue.js', () => {
+    expect(redact('Vue.js 组件')).toBe('Vue.js 组件')
+  })
+
+  it('does not redact ASP.NET', () => {
+    expect(redact('ASP.NET 项目')).toBe('ASP.NET 项目')
+  })
+
+  it('does not redact C#', () => {
+    expect(redact('语言：C#')).toBe('语言：C#')
+  })
+
+  it('does not redact .NET', () => {
+    expect(redact('.NET Framework')).toBe('.NET Framework')
+  })
+
+  it('does not redact TypeScript version', () => {
+    expect(redact('TypeScript 5.4')).toBe('TypeScript 5.4')
+  })
+
+  it('does not redact semver version', () => {
+    expect(redact('v1.2.3')).toBe('v1.2.3')
+  })
+
+  it('does not redact year range', () => {
+    expect(redact('2019-2023 在读')).toBe('2019-2023 在读')
+  })
+
+  it('does not redact recent year', () => {
+    expect(redact('2024年项目')).toBe('2024年项目')
+  })
+
+  it('does not redact GPA with two decimals', () => {
+    expect(redact('GPA 3.85/4.00')).toBe('GPA 3.85/4.00')
+  })
+
+  it('does not redact percentage', () => {
+    expect(redact('35%')).toBe('35%')
+  })
+
+  it('does not redact percentage increase', () => {
+    expect(redact('提升 120%')).toBe('提升 120%')
+  })
+
+  it('does not redact Malaysian Ringgit amount', () => {
+    expect(redact('RM 3500')).toBe('RM 3500')
+  })
+
+  it('does not redact student ID style short string', () => {
+    expect(redact('学号 2021A1234')).toBe('学号 2021A1234')
+  })
+
+  it('does not redact ISO date', () => {
+    expect(redact('2024-06-30')).toBe('2024-06-30')
+  })
+})
+
+describe('redact – performance', () => {
+  it('handles ~20KB text without PII within 1 second', () => {
+    const chunk =
+      '技术栈：TypeScript 5.4、Node.js、Next.js、Vue.js、C#、ASP.NET；2024年；GPA 3.85/4.00；v1.2.3；RM 3500；2021A1234；2024-06-30。'
+    const longText = chunk.repeat(300)
+    const start = Date.now()
+    const result = redact(longText)
+    const elapsed = Date.now() - start
+    expect(result).toBe(longText)
+    expect(elapsed).toBeLessThan(1000)
   })
 })

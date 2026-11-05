@@ -395,6 +395,7 @@
 做：`lib/redact.ts`：把邮箱、电话（+60 / 01x-xxxxxxx、+86 1xxxxxxxxxx、通用国际格式）、URL、微信号模式（"微信"、"WeChat"、"wx" 后跟账号）替换为「[已隐藏]」。
 验收：至少 15 个单元测试用例（含中英混排、全角字符、带空格或横线的号码），且不误伤普通数字（年份、GPA、百分比）
 > 完成 2026-11-05：src/lib/redact.ts（全角归一化 + 7 条正则：URL、邮箱、+60、01x、+86、通用国际、微信/WeChat/wx）；tests/unit/redact.test.ts（24 组、60 个断言，含全角、中英混排、哨兵电话、false-positive 安全验证）；pnpm lint / typecheck / test 全部通过
+> 修复 2026-11-05：补充微信号/vx/VX/V信/wechat id、裸大陆手机号（含全角）、www. 和已知域名无协议 URL、QQ、Telegram/TG、Line ID、WhatsApp 共 14 个模式；新增 20KB 性能用例和技术名/版本号/日期防误伤用例，共 62 个断言全部通过
 
 #### [x] M4-T02 脱敏序列化器 + 防泄漏测试
 依赖：M4-T01
