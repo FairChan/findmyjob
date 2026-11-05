@@ -891,9 +891,12 @@
 > AI 扫描的顺序、范围和花费记录方法见 `docs/AI-SKILLS.md`；扫描都在干净的 worktree 里由人交互运行，报告写到 `.reports/`。
 
 ### M0 合并前（人工）
-- [ ] verify、e2e、guard、gitleaks 全绿；第一个 Dependabot PR 不需要 secrets 也能跑绿
-- [ ] 用 supply-chain-risk-auditor 先跑 collect.py 再跑 render.py，读完 report.md 把结论记进 DECISIONS
-- [ ] `git diff` 过一遍 package.json，新增的直接依赖都已在 DECISIONS 登记
+- [x] verify、e2e、guard、gitleaks 全绿；第一个 Dependabot PR 不需要 secrets 也能跑绿
+  > 2026-11-05 总控：本机 e2e 6/6、guard（迁移未改、无敏感文件、`pnpm audit --prod` 0 条）、gitleaks 全历史 0 条（先修了误报，见 M0-T09）；verify 由 autopilot 合并前跑。Dependabot 这条不适用：用户选了只在本机合并、暂不建 GitHub 仓库，建仓后补验
+- [x] 用 supply-chain-risk-auditor 先跑 collect.py 再跑 render.py，读完 report.md 把结论记进 DECISIONS
+  > 2026-11-05 总控：已记进 DECISIONS「开发中决策」和「已接受风险」
+- [x] `git diff` 过一遍 package.json，新增的直接依赖都已在 DECISIONS 登记
+  > 2026-11-05 总控：补登记了 14 个脚手架配套包
 
 ### 🚦 GATE-M4 · 隐私与扣点（人工逐项测试）
 - [ ] `pnpm lint`、`typecheck`、`test`、`test:e2e` 全部通过，其中包含 pii-leak（人才侧）和 authz-matrix
