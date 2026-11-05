@@ -232,10 +232,12 @@
 
 > 完成 2026-11-05：src/server/authz.ts（requireUser/requireStudent/requireCompanyMember/requireVerifiedCompany/requireAdmin，每次查库，SUSPENDED/DELETED 一律拒绝）；proxy.ts 增加 /api/* 和 /:locale/s|e|admin/* 的 session cookie 守卫（无 cookie 返回 401 或跳转 login）；action.ts/route.ts 补充 student/company/admin auth 类型（company 支持 minRole + verified 选项）；tests/integration/authz-matrix.test.ts 23 行表驱动测试（requireUser/requireStudent/requireCompanyMember/requireVerifiedCompany/requireAdmin，覆盖 guest/student/employer/admin/suspended/deleted/inactive-company/cross-company）；pnpm lint/typecheck/test 全部通过（65 tests）；偏差：/zh/login 登录页不存在（M1-T04 建），middleware redirect 目前落到 404，CI 才能跑 E2E 验证
 
-#### [ ] M1-T04 登录跳转与账号设置
+#### [x] M1-T04 登录跳转与账号设置
 依赖：M1-T03
 做：登录后按角色跳转（学生 → `/s` 或 `/s/onboarding`，企业 → `/e` 或 `/e/onboarding`，运营 → `/admin`）；修改密码；语言偏好；忘记密码（邮件重置）。
 验收：E2E：学生注册 → 验证 → 进入 `/s/onboarding`
+
+> 完成 2026-11-05：/login 页（LoginForm，Better Auth 客户端 signIn.email，按角色跳转：学生 completeness=0→/s/onboarding，否则→/s；企业无公司→/e/onboarding；运营→/admin；支持 ?redirect= 参数）；/forgot-password（防枚举，统一成功提示）；/reset-password（token 重置）；/s/settings（修改密码 revokeOtherSessions=true、语言偏好 updateLocaleAction 写 User.locale）；新增 stub 页：/s、/s/onboarding、/e、/e/onboarding、/admin；E2E tests/e2e/auth-redirect.spec.ts（依赖 Mailpit，无 Mailpit 时 skip）；pnpm lint/typecheck/test/db:check 全部通过（65 tests）
 
 #### [ ] M1-T05 认证限流、人机验证、防枚举与审计
 依赖：M1-T03
