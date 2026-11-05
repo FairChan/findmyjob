@@ -120,6 +120,7 @@ const eslintConfig = [
       'src/server/services/contact-access.ts',
       'src/server/services/credits.ts',
       'prisma/seed.ts',
+      'prisma/seed-load.ts',
       'tests/**/*.ts',
       'tests/**/*.spec.ts',
       // Maintenance scripts may read encrypted fields directly for drill/verification purposes

@@ -692,7 +692,7 @@
 做：`/safety` 反诈专区页（内容来自 Article）；职位详情页「举报」按钮，按用户限流每天 `limits.jobReportsPerDay` 次；`services/reports.ts`、`services/articles.ts`。
 验收：举报出现在运营队列里；处理时写审计 `job.report.resolve`；第 11 次举报被拒
 
-#### [ ] M7-T10 k6 压测脚本（browse+search 和 smoke）
+#### [x] M7-T10 k6 压测脚本（browse+search 和 smoke）
 依赖：M7-T06
 做：
 - `load/k6/browse-search.js`：ramping-vus 爬到 E2 人数的 1.2 倍，场景包括职位列表、EXACT 和 RELATED 两种搜索、人才库搜索（用 seed-load 预先生成的会话 cookie，不走登录）。
@@ -702,6 +702,8 @@
 验收：
 - seed-load.ts 在非 staging 环境下退出码不为 0
 - 阈值写在脚本里：p(95) 小于 800ms，http_req_failed 小于 1%
+
+> 完成 2026-11-05：load/k6/browse-search.js（ramping-vus 240=200×1.2，jobBrowse+talentSearch 两个场景，阈值 p95<800ms+错误率<1%）；load/k6/smoke.js（1VU/1min，5条公开路径+/api/health）；prisma/seed-load.ts（非staging exit 1，20条合成企业账号+会话，写 load/accounts.local.json）；eslint.config.mjs 增加 seed-load.ts 豁免；pnpm lint/typecheck/test 全部通过
 
 > M7-T12 排在 M7-T11 前面：部署脚本在迁移前要调用备份脚本。
 
