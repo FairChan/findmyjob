@@ -117,6 +117,45 @@ export interface TalentDetail extends TalentCard {
   contact: ContactInput | null
 }
 
+// --- Name redaction for free-text fields (§5.2: full name must not appear when unlocked=false) ---
+
+const COMPOUND_SURNAMES_REDACT = [
+  '欧阳', '司马', '诸葛', '上官', '东方', '皇甫', '尉迟', '公孙', '慕容', '长孙', '令狐', '夏侯',
+]
+
+function redactNameParts(text: string, fullName: string): string {
+  if (!fullName || !text) return text
+  const HIDDEN = '[已隐藏]'
+  let result = text
+  if (result.includes(fullName)) {
+    result = result.split(fullName).join(HIDDEN)
+  }
+  const chars = [...fullName]
+  const firstCp = chars[0]?.codePointAt(0) ?? 0
+  const isCjkFirst = firstCp >= 0x4e00 && firstCp <= 0x9fff
+  if (isCjkFirst) {
+    let surnameLen = 1
+    for (const cs of COMPOUND_SURNAMES_REDACT) {
+      if (fullName.startsWith(cs)) {
+        surnameLen = [...cs].length
+        break
+      }
+    }
+    const given = chars.slice(surnameLen).join('')
+    if ([...given].length >= 2 && result.includes(given)) {
+      result = result.split(given).join(HIDDEN)
+    }
+  } else {
+    for (const seg of fullName.split(/\s+/)) {
+      if ([...seg].length >= 3) {
+        const escaped = seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        result = result.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), HIDDEN)
+      }
+    }
+  }
+  return result
+}
+
 // --- Serializers ---
 
 /**
@@ -143,12 +182,14 @@ export function toTalentCard(
     degreeLevel: profile.degreeLevel,
     graduationYear: profile.graduationYear,
     cgpa: profile.cgpa != null ? profile.cgpa.toString() : null,
-    skills: unlocked ? profile.skills : profile.skills.map(redact),
+    skills: unlocked
+      ? profile.skills
+      : profile.skills.map((s) => redactNameParts(redact(s), profile.fullName)),
     headline:
       profile.headline != null
         ? unlocked
           ? profile.headline
-          : redact(profile.headline)
+          : redactNameParts(redact(profile.headline), profile.fullName)
         : null,
     completeness: profile.completeness,
     workAuth: profile.workAuth,
@@ -176,14 +217,19 @@ export function toTalentDetail(
       profile.summary != null
         ? unlocked
           ? profile.summary
-          : redact(profile.summary)
+          : redactNameParts(redact(profile.summary), profile.fullName)
         : null,
     educations: [...profile.educations]
       .sort((a, b) => a.sortOrder - b.sortOrder)
       .map((edu) => ({
         id: edu.id,
         schoolName: redact(edu.schoolName),
-        major: edu.major != null ? redact(edu.major) : null,
+        major:
+          edu.major != null
+            ? unlocked
+              ? redact(edu.major)
+              : redactNameParts(redact(edu.major), profile.fullName)
+            : null,
         degreeLevel: edu.degreeLevel,
         startDate: edu.startDate,
         endDate: edu.endDate,
@@ -191,7 +237,7 @@ export function toTalentDetail(
           edu.description != null
             ? unlocked
               ? edu.description
-              : redact(edu.description)
+              : redactNameParts(redact(edu.description), profile.fullName)
             : null,
         sortOrder: edu.sortOrder,
       })),
@@ -200,12 +246,14 @@ export function toTalentDetail(
       .map((exp) => ({
         id: exp.id,
         kind: exp.kind,
-        title: unlocked ? exp.title : redact(exp.title),
+        title: unlocked
+          ? exp.title
+          : redactNameParts(redact(exp.title), profile.fullName),
         organization:
           exp.organization != null
             ? unlocked
               ? exp.organization
-              : redact(exp.organization)
+              : redactNameParts(redact(exp.organization), profile.fullName)
             : null,
         startDate: exp.startDate,
         endDate: exp.endDate,
@@ -213,7 +261,7 @@ export function toTalentDetail(
           exp.description != null
             ? unlocked
               ? exp.description
-              : redact(exp.description)
+              : redactNameParts(redact(exp.description), profile.fullName)
             : null,
         sortOrder: exp.sortOrder,
       })),

@@ -136,5 +136,20 @@
   },
   "onboarding": {
     "title": "Complete Your Profile"
+  },
+  "legal": {
+    "privacyTitle": "Privacy Policy",
+    "termsTitle": "Terms of Use",
+    "reconsentTitle": "Terms Updated",
+    "reconsentDescription": "We have updated our Privacy Policy and Terms of Use. Please read and confirm your agreement.",
+    "reconsentViewPrivacy": "View Privacy Policy",
+    "reconsentViewTerms": "View Terms of Use",
+    "reconsentAgree": "I have read and agree to the latest Privacy Policy and Terms of Use",
+    "reconsentSubmit": "Confirm and Continue",
+    "reconsentRequired": "Please check the box to continue",
+    "reconsentSuccess": "Thank you for confirming",
+    "reconsentVersionMismatch": "The terms have been updated. Please refresh the page and read again.",
+    "lastUpdated": "Last updated: {version}",
+    "backToHome": "Back to Home"
   }
 }

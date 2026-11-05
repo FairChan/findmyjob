@@ -912,6 +912,17 @@ model SystemSetting {
   updatedAt   DateTime @updatedAt @db.Timestamptz(3)
 }
 
+/// 数据库级固定窗口限流桶；prune-rate-limit 任务定期清理过期行
+model RateLimitBucket {
+  key       String
+  windowEnd DateTime @db.Timestamptz(3)
+  count     Int      @default(1)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@id([key, windowEnd])
+  @@index([windowEnd])
+}
+
 model DataRequest {
   id         String            @id @default(cuid())
   userId     String

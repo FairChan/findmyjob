@@ -1,0 +1,213 @@
+name: findmyjob-prod
+
+services:
+  postgres:
+    image: postgres:16.6-bookworm
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - timezone=UTC
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - log_parameter_max_length=0
+      - -c
+      - log_lock_waits=on
+    env_file: /opt/findmyjob/env/db.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-d", "findmyjob"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/fairchan/findmyjob:${APP_TAG:?}
+    env_file: /opt/findmyjob/env/app.env
+    environment:
+      APP_TAG: ${APP_TAG:?}
+    networks:
+      - backend
+      - outbound
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          fetch('http://localhost:3000/api/health')
+          .then(r => r.ok ? process.exit(0) : process.exit(1))
+          .catch(() => process.exit(1))
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/fairchan/findmyjob:${APP_TAG:?}
+    command:
+      - node
+      - --conditions=react-server
+      - -r
+      - tsx/cjs
+      - src/worker.ts
+    env_file: /opt/findmyjob/env/app.env
+    environment:
+      APP_TAG: ${APP_TAG:?}
+    networks:
+      - backend
+      - outbound
+    depends_on:
+      postgres:
+        condition: service_healthy
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.9.1-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - outbound
+    depends_on:
+      - app
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+  # ops profile: run-once services (migration, tools, backup)
+  migrate:
+    image: ghcr.io/fairchan/findmyjob-migrate:${APP_TAG:?}
+    env_file: /opt/findmyjob/env/migrate.env
+    networks:
+      - backend
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ops
+
+  tools:
+    image: ghcr.io/fairchan/findmyjob-tools:${APP_TAG:?}
+    env_file: /opt/findmyjob/env/app.env
+    networks:
+      - backend
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ops
+    # usage: docker compose run --rm tools scripts/backfill/xxx.ts
+    # entrypoint: node --conditions=react-server -r tsx/cjs <script>
+
+  backup:
+    image: ghcr.io/fairchan/findmyjob-backup:${APP_TAG:?}
+    env_file: /opt/findmyjob/env/backup.env
+    volumes:
+      - backup_tmp:/backup-tmp
+    networks:
+      - backend
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ops
+
+  # Restore service: runs restore-drill.sh inside the backend network so it can
+  # reach postgres by service name. Credentials and age private key are injected
+  # at run-time only — never stored in env files.
+  # Usage (演练/真实恢复，在服务器上执行):
+  #   cat /media/usb/age.key | docker compose --profile ops run -T --rm \
+  #     -e RESTORE_ADMIN_DATABASE_URL \
+  #     -e RESTORE_S3_ACCESS_KEY_ID \
+  #     -e RESTORE_S3_SECRET_ACCESS_KEY \
+  #     -e BACKUP_S3_BUCKET \
+  #     restore --key db/daily/YYYY-MM-DDTHH-MM-SSZ.dump.age findmyjob_restore_drill
+  restore:
+    image: ghcr.io/fairchan/findmyjob-backup:${APP_TAG:?}
+    entrypoint: ["/opt/findmyjob/scripts/db/restore-drill.sh"]
+    networks:
+      - backend
+      - outbound
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    profiles:
+      - ops
+
+networks:
+  backend:
+    internal: true
+  outbound: {}
+
+volumes:
+  postgres_data: {}
+  caddy_data: {}
+  caddy_config: {}
+  backup_tmp: {}

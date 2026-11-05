@@ -20,19 +20,25 @@ function isCjk(char: string): boolean {
 
 /**
  * Returns a privacy-safe display name:
- * - Chinese: compound surname (12 supported) or first character + "同学"
+ * - Chinese: compound surname (12 supported, only when name ≥ 3 chars) or first character + "同学"
  * - Non-Chinese: first letter (uppercased) + "."
+ * Uses code-point iteration so supplementary characters (e.g. U+20000+) are handled correctly.
  */
 export function maskName(fullName: string): string {
   if (!fullName) return ''
 
-  for (const surname of COMPOUND_SURNAMES) {
-    if (fullName.startsWith(surname)) {
-      return surname + '同学'
+  const chars = [...fullName]
+
+  // Compound surname only applies when the full name has at least 3 characters
+  if (chars.length >= 3) {
+    for (const surname of COMPOUND_SURNAMES) {
+      if (fullName.startsWith(surname)) {
+        return surname + '同学'
+      }
     }
   }
 
-  const first = fullName[0]!
+  const first = chars[0]!
   if (isCjk(first)) {
     return first + '同学'
   }

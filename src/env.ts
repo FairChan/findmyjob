@@ -48,6 +48,8 @@ const schema = z
     SENTRY_DSN: z.string().optional(),
     NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
     SENTRY_ENVIRONMENT: z.string().optional(),
+    NEXT_PUBLIC_APP_TAG: z.string().optional(),
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: z.string().optional(),
 
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace"])
@@ -64,6 +66,11 @@ const schema = z
 
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
+
+    // Worker job healthcheck ping URLs (M7-T14); one per scheduled job
+    // env.example stores these as empty strings; coerce '' → undefined before URL validation
+    HEALTHCHECKS_EXAMPLE: z.preprocess(v => (v === '' ? undefined : v), z.string().url().optional()),
+    HEALTHCHECKS_PRUNE_RATE_LIMIT: z.preprocess(v => (v === '' ? undefined : v), z.string().url().optional()),
   })
   .superRefine((data, ctx) => {
     if (data.APP_ENV === "production") {
@@ -158,6 +165,9 @@ const schema = z
       });
     }
   });
+
+/** Exported for unit testing only — use `env` for runtime access. */
+export const _envSchema = schema
 
 function parseEnv() {
   if (process.env.SKIP_ENV_VALIDATION) {

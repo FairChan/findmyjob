@@ -287,6 +287,64 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
+  image:
+    name: Build & Push Docker images
+    runs-on: ubuntu-24.04
+    # Only runs on push to main, after verify and e2e pass
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [verify, e2e]
+    permissions:
+      contents: read
+      packages: write
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Login to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Build and push app image
+        run: |
+          docker build \
+            --target runner \
+            --tag "ghcr.io/fairchan/findmyjob:${{ github.sha }}" \
+            --file deploy/Dockerfile \
+            .
+          docker push "ghcr.io/fairchan/findmyjob:${{ github.sha }}"
+
+      - name: Build and push migrate image
+        run: |
+          docker build \
+            --target migrate \
+            --tag "ghcr.io/fairchan/findmyjob-migrate:${{ github.sha }}" \
+            --file deploy/Dockerfile \
+            .
+          docker push "ghcr.io/fairchan/findmyjob-migrate:${{ github.sha }}"
+
+      - name: Build and push backup image
+        run: |
+          docker build \
+            --target backup \
+            --tag "ghcr.io/fairchan/findmyjob-backup:${{ github.sha }}" \
+            --file deploy/Dockerfile \
+            .
+          docker push "ghcr.io/fairchan/findmyjob-backup:${{ github.sha }}"
+
+      - name: Build and push tools image
+        run: |
+          docker build \
+            --target tools \
+            --tag "ghcr.io/fairchan/findmyjob-tools:${{ github.sha }}" \
+            --file deploy/Dockerfile \
+            .
+          docker push "ghcr.io/fairchan/findmyjob-tools:${{ github.sha }}"
+
   security:
     name: Security Scan
     runs-on: ubuntu-24.04

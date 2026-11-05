@@ -60,3 +60,9 @@ export class SignupClosedError extends AppError {
     super(message, 'SIGNUP_CLOSED', 403)
   }
 }
+
+export class VersionMismatchError extends AppError {
+  constructor(message = 'Terms version mismatch') {
+    super(message, 'VERSION_MISMATCH', 409)
+  }
+}

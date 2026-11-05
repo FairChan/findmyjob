@@ -51,7 +51,15 @@ function extractLocale(pathname: string): string {
   return routing.defaultLocale
 }
 
-export default function middleware(request: NextRequest) {
+// 线 B（M7-T02）留下的钩子：已登录用户需要重新同意新版条款时，在这里重定向。
+// 目前是桩函数，真正接入 needsReconsent(userId)（src/server/services/legal-consent.ts）记在 M1-T07 的遗留项里。
+async function checkReconsent(
+  _request: NextRequest,
+): Promise<NextResponse | null> {
+  return null
+}
+
+export default async function middleware(request: NextRequest) {
   const requestId = request.headers.get('x-request-id') ?? randomUUID()
   const requestHeaders = new Headers(request.headers)
   requestHeaders.set('x-request-id', requestId)
@@ -92,8 +100,13 @@ export default function middleware(request: NextRequest) {
     }
   }
 
-  // --- All other page routes: run intl middleware ---
+  // --- All other page routes: re-consent check, then intl middleware ---
   const req = new NextRequest(request, { headers: requestHeaders })
+  const reconsentRedirect = await checkReconsent(req)
+  if (reconsentRedirect) {
+    reconsentRedirect.headers.set('x-request-id', requestId)
+    return reconsentRedirect
+  }
   const response = intlMiddleware(req)
   response.headers.set('x-request-id', requestId)
   return response

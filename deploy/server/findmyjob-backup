@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# findmyjob-backup — daily encrypted database backup to S3
+# Runs inside the backup Docker container (entrypoint).
+# Full plaintext never touches disk: pg_dump | age > /backup-tmp/<encrypted file>,
+# then one PutObject to S3, then delete the temp file via trap.
+set -euo pipefail
+
+# ── required env ──────────────────────────────────────────────────────────────
+: "${BACKUP_DATABASE_URL:?BACKUP_DATABASE_URL is required}"
+: "${AGE_PUBLIC_KEY:?AGE_PUBLIC_KEY is required}"
+: "${BACKUP_S3_BUCKET:?BACKUP_S3_BUCKET is required}"
+: "${BACKUP_S3_ACCESS_KEY_ID:?BACKUP_S3_ACCESS_KEY_ID is required}"
+[ -n "${BACKUP_S3_SECRET_ACCESS_KEY:-}" ] || { echo "BACKUP_S3_SECRET_ACCESS_KEY is required" >&2; exit 1; }
+: "${HEALTHCHECKS_BACKUP_URL:?HEALTHCHECKS_BACKUP_URL is required}"
+
+BACKUP_S3_REGION="${BACKUP_S3_REGION:-ap-southeast-5}"
+BACKUP_MODE="${BACKUP_MODE:-daily}"   # daily | pre-migrate
+
+# Split BACKUP_DATABASE_URL into individual PG env vars so credentials are not
+# visible on the pg_dump / psql command line (exposed via `ps` or `docker inspect`).
+# The password must not contain '@'; use %40 if needed.
+_pg="${BACKUP_DATABASE_URL#postgresql://}"
+_pg="${_pg#postgres://}"
+export PGUSER="${_pg%%:*}"
+_pg="${_pg#*:}"
+export PGPASSWORD="${_pg%%@*}"
+_pg="${_pg#*@}"
+export PGHOST="${_pg%%:*}"
+_pg="${_pg#*:}"
+export PGPORT="${_pg%%/*}"
+export PGDATABASE="${_pg#*/}"
+export PGDATABASE="${PGDATABASE%%\?*}"
+unset _pg BACKUP_DATABASE_URL
+
+TIMESTAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+TMP_DUMP="/backup-tmp/${TIMESTAMP}.dump.age"
+TMP_COUNTS="/backup-tmp/${TIMESTAMP}.counts.json"
+
+cleanup() {
+  rm -f "$TMP_DUMP" "$TMP_COUNTS"
+}
+trap cleanup EXIT
+
+if [ "$BACKUP_MODE" = "pre-migrate" ]; then
+  S3_DUMP_KEY="db/pre-migrate/${TIMESTAMP}.dump.age"
+  S3_COUNTS_KEY="db/pre-migrate/${TIMESTAMP}.counts.json"
+else
+  S3_DUMP_KEY="db/daily/${TIMESTAMP}.dump.age"
+  S3_COUNTS_KEY="db/daily/${TIMESTAMP}.counts.json"
+fi
+
+echo "[backup] $(date -u +%Y-%m-%dT%H:%M:%SZ) starting backup (mode: ${BACKUP_MODE})"
+
+# ── 1. pg_dump piped to age encryption ────────────────────────────────────────
+# PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE are now set above; no URL on argv.
+# pipefail (already on) means the whole pipeline fails if either command fails.
+pg_dump -Fc --exclude-schema=pgboss \
+  | age -r "$AGE_PUBLIC_KEY" \
+  > "$TMP_DUMP"
+
+# Verify the output is an age-encrypted file (magic header)
+MAGIC="$(dd if="$TMP_DUMP" bs=21 count=1 2>/dev/null | tr -d '\n')"
+if [ "$MAGIC" != "age-encryption.org/v1" ]; then
+  echo "[backup] ERROR: output does not look like an age-encrypted file" >&2
+  exit 1
+fi
+
+echo "[backup] encrypted dump: $(du -sh "$TMP_DUMP" | cut -f1)"
+
+# ── 2. counts.json — key-table row counts (not sensitive, plain JSON) ─────────
+# PGHOST/PGPORT/PGUSER/PGPASSWORD/PGDATABASE already in env; no URL on argv.
+psql -t -A -c "
+SELECT json_build_object(
+  'timestamp',      to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'),
+  'User',           (SELECT count(*)::int FROM \"User\"),
+  'StudentProfile', (SELECT count(*)::int FROM \"StudentProfile\"),
+  'Company',        (SELECT count(*)::int FROM \"Company\"),
+  'Job',            (SELECT count(*)::int FROM \"Job\"),
+  'Application',    (SELECT count(*)::int FROM \"Application\"),
+  'CreditLedger',   (SELECT count(*)::int FROM \"CreditLedger\"),
+  'AuditLog',       (SELECT count(*)::int FROM \"AuditLog\")
+)::text
+" > "$TMP_COUNTS"
+
+echo "[backup] counts: $(cat "$TMP_COUNTS")"
+
+# ── 3. upload to S3 ───────────────────────────────────────────────────────────
+S3_ARGS=(--no-progress --region "$BACKUP_S3_REGION")
+if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
+  S3_ARGS+=(--endpoint-url "$BACKUP_S3_ENDPOINT")
+fi
+
+export AWS_ACCESS_KEY_ID="$BACKUP_S3_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="$BACKUP_S3_SECRET_ACCESS_KEY"
+
+# One PutObject — the encrypted dump
+aws s3 cp "${S3_ARGS[@]}" "$TMP_DUMP" "s3://${BACKUP_S3_BUCKET}/${S3_DUMP_KEY}"
+echo "[backup] uploaded: s3://${BACKUP_S3_BUCKET}/${S3_DUMP_KEY}"
+
+# Per-dump counts.json (same prefix as dump key; no shared file to overwrite)
+aws s3 cp "${S3_ARGS[@]}" "$TMP_COUNTS" "s3://${BACKUP_S3_BUCKET}/${S3_COUNTS_KEY}"
+echo "[backup] uploaded: s3://${BACKUP_S3_BUCKET}/${S3_COUNTS_KEY}"
+
+# ── 4. healthchecks dead-man's ping ───────────────────────────────────────────
+curl -fsS --max-time 10 --retry 3 "${HEALTHCHECKS_BACKUP_URL}" > /dev/null
+echo "[backup] $(date -u +%Y-%m-%dT%H:%M:%SZ) backup complete"

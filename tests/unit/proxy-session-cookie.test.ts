@@ -14,29 +14,29 @@ function req(path: string, cookie?: string) {
 }
 
 describe('proxy session cookie check', () => {
-  it('redirects a protected page to login when there is no session cookie', () => {
-    const res = middleware(req('/zh/s'))
+  it('redirects a protected page to login when there is no session cookie', async () => {
+    const res = await middleware(req('/zh/s'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/zh/login?redirect=%2Fzh%2Fs')
   })
 
-  it('lets a protected page through with the plain cookie name (development)', () => {
-    const res = middleware(req('/zh/s', 'better-auth.session_token=abc.def'))
+  it('lets a protected page through with the plain cookie name (development)', async () => {
+    const res = await middleware(req('/zh/s', 'better-auth.session_token=abc.def'))
     expect(res.headers.get('location') ?? '').not.toContain('/login')
   })
 
-  it('lets a protected page through with the __Secure- cookie name (production)', () => {
-    const res = middleware(req('/zh/s', '__Secure-better-auth.session_token=abc.def'))
+  it('lets a protected page through with the __Secure- cookie name (production)', async () => {
+    const res = await middleware(req('/zh/s', '__Secure-better-auth.session_token=abc.def'))
     expect(res.headers.get('location') ?? '').not.toContain('/login')
   })
 
-  it('returns 401 for a protected API without a session cookie', () => {
-    const res = middleware(req('/api/example'))
+  it('returns 401 for a protected API without a session cookie', async () => {
+    const res = await middleware(req('/api/example'))
     expect(res.status).toBe(401)
   })
 
-  it('lets a protected API through with the __Secure- cookie name', () => {
-    const res = middleware(req('/api/example', '__Secure-better-auth.session_token=abc.def'))
+  it('lets a protected API through with the __Secure- cookie name', async () => {
+    const res = await middleware(req('/api/example', '__Secure-better-auth.session_token=abc.def'))
     expect(res.status).not.toBe(401)
   })
 })

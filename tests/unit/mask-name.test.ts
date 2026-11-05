@@ -32,6 +32,22 @@ describe('maskName – non-Chinese names', () => {
 
 describe('maskName – edge cases', () => {
   it('empty string returns empty string', () => expect(maskName('')).toBe(''))
-  it('compound surname alone returns surname + 同学', () => expect(maskName('欧阳')).toBe('欧阳同学'))
+  // 2-char compound surname: treated as single-char surname (compound rule requires ≥ 3 chars)
+  it('夏侯 (2-char compound alone) → 夏同学', () => expect(maskName('夏侯')).toBe('夏同学'))
+  it('欧阳 (2-char compound alone) → 欧同学', () => expect(maskName('欧阳')).toBe('欧同学'))
   it('single char non-CJK returns uppercase + .', () => expect(maskName('z')).toBe('Z.'))
+})
+
+describe('maskName – compound surname requires ≥ 3 chars', () => {
+  it('东方明 (3 chars, compound surname) → 东方同学', () => expect(maskName('东方明')).toBe('东方同学'))
+  it('欧阳明明 (4 chars, compound surname) → 欧阳同学', () => expect(maskName('欧阳明明')).toBe('欧阳同学'))
+})
+
+describe('maskName – supplementary characters (no isolated surrogates)', () => {
+  it('𠀀明 uses code-point-safe first char', () => {
+    const result = maskName('𠀀明')
+    // Must not contain isolated surrogates (U+D800–U+DFFF as lone code units)
+    expect(result).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/)
+    expect(result).not.toMatch(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/)
+  })
 })
