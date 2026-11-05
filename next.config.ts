@@ -4,7 +4,7 @@ import type { NextConfig } from 'next'
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts')
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ['pino'],
+  serverExternalPackages: ['pino', '@sentry/nextjs', '@sentry/node'],
 }
 
 export default withNextIntl(nextConfig)

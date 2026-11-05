@@ -637,7 +637,7 @@
 - purge 跑完后，该学生的 StudentContact、ResumeFile 记录和对象的所有版本都被清除；以 findmyjob_app 身份运行不报 42501（集成测试）
 - purge 跑完后，用该学生的哨兵值（`哨兵测试同学甲`、`+60 12-000 0420`、`leak-sentinel@example.test`）查 User（name、email）、StudentProfile、Education、Experience、Application（coverNote、companyNote）、ApplicationEvent.note、TalentFolderItem.note、Invitation.message、Notification.payload，以及对象存储里该用户的 `exports/` 前缀，都查不到；CreditLedger 和 AuditLog 只剩内部 ID（AuditLog.ip 按 D22）（TM-029）
 
-#### [ ] M7-T04 可观测性：Sentry 与健康检查
+#### [x] M7-T04 可观测性：Sentry 与健康检查
 依赖：M0-T08
 做：
 - `@sentry/nextjs` 锁精确版本。在 `instrumentation.ts` 的 register() 和 onRequestError，以及 `instrumentation-client.ts` 里初始化；worker 用 `@sentry/node`。不运行 `npx @sentry/wizard`。
@@ -648,6 +648,7 @@
 - 人为抛错能在 Sentry 里看到（用测试 DSN 或 mock 验证）
 - 单测：scrubEvent 处理后的输出里，cookie、`?token=abc` 和两个哨兵值都不存在
 - 停掉数据库后 /api/health 返回 503；CI 跑完 E2E 后，在应用日志里 grep 不到哨兵值
+> 完成 2026-11-05：@sentry/nextjs@11.10.0 + @sentry/node@11.10.0（精确版本，pnpm add --save-exact）；src/lib/sentry-options.ts（sentryOptions + scrubEvent：删除 cookies/data/query_string，仅保留 user-agent header，URL 去 query string，去 user 字段，message 过 redact()）；src/instrumentation.ts（register() + onRequestError()）；src/instrumentation-client.ts；src/worker.ts 加 @sentry/node init；src/server/lib/alert.ts 加 Sentry.captureMessage；src/app/api/health/route.ts（SELECT 1，2s timeout，503/no-store）；tests/unit/sentry-scrub.test.ts（12 个断言）；next.config.ts 加 serverExternalPackages；pnpm lint/typecheck/test（133）全部通过。偏差：@sentry/core 不在顶层 node_modules，Event/ErrorEvent 类型从 @sentry/node 间接导入；不需要 allowBuilds（@sentry 包没有 postinstall 脚本）
 
 #### [ ] M7-T05 安全响应头与复查
 依赖：M7-T03

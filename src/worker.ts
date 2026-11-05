@@ -1,7 +1,11 @@
+import * as Sentry from '@sentry/node'
 import { PgBoss } from 'pg-boss'
 import { env } from '@/env'
 import { logger } from '@/server/lib/logger'
 import { registerJobs } from '@/server/jobs/registry'
+import { sentryOptions } from '@/lib/sentry-options'
+
+Sentry.init(sentryOptions)
 
 async function main() {
   const connectionString = env.WORKER_DATABASE_URL ?? env.DATABASE_URL
