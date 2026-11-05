@@ -3,16 +3,8 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { AppError, ForbiddenError } from './errors'
 import { logger } from './lib/logger'
-
-async function getSessionUserId(req: Request): Promise<string | null> {
-  try {
-    const { getSession } = await import('./auth')
-    const session = await getSession(req.headers as unknown as Headers)
-    return session?.user?.id ?? null
-  } catch {
-    return null
-  }
-}
+import type { CompanyMemberRole } from '@prisma/client'
+import type { AuthOption, CompanyAuthOpt } from './action'
 
 function getAllowedOrigin(): string | null {
   if (typeof process === 'undefined') return null
@@ -39,12 +31,56 @@ function isOriginAllowed(origin: string | null): boolean {
   return false
 }
 
-type RouteHandler = (req: Request, ctx: { userId?: string }) => Promise<Response>
+async function resolveRouteAuth(
+  auth: AuthOption,
+  req: Request,
+): Promise<{ userId?: string; companyId?: string; companyRole?: CompanyMemberRole }> {
+  if (auth === 'public') return {}
 
-export function route(opts: {
-  auth: 'public' | 'user'
-  input?: z.ZodType<unknown>
-}, handler: RouteHandler): (req: Request) => Promise<Response> {
+  const h = req.headers as unknown as Headers
+
+  if (auth === 'user') {
+    const { requireUser } = await import('./authz')
+    return await requireUser(h)
+  }
+
+  if (auth === 'student') {
+    const { requireStudent } = await import('./authz')
+    return await requireStudent(h)
+  }
+
+  if (auth === 'admin') {
+    const { requireAdmin } = await import('./authz')
+    return await requireAdmin(h)
+  }
+
+  const opt: CompanyAuthOpt =
+    auth === 'company' ? { type: 'company' } : (auth as CompanyAuthOpt)
+  const minRole: CompanyMemberRole = opt.minRole ?? 'RECRUITER'
+
+  if (opt.verified) {
+    const { requireVerifiedCompany } = await import('./authz')
+    const ctx = await requireVerifiedCompany(minRole, h)
+    return { userId: ctx.userId, companyId: ctx.companyId, companyRole: ctx.role }
+  }
+
+  const { requireCompanyMember } = await import('./authz')
+  const ctx = await requireCompanyMember(minRole, h)
+  return { userId: ctx.userId, companyId: ctx.companyId, companyRole: ctx.role }
+}
+
+type RouteHandler = (
+  req: Request,
+  ctx: { userId?: string; companyId?: string; companyRole?: CompanyMemberRole },
+) => Promise<Response>
+
+export function route(
+  opts: {
+    auth: AuthOption
+    input?: z.ZodType<unknown>
+  },
+  handler: RouteHandler,
+): (req: Request) => Promise<Response> {
   return async (req: Request): Promise<Response> => {
     const requestId = req.headers.get('x-request-id') ?? randomUUID()
     try {
@@ -62,23 +98,23 @@ export function route(opts: {
         }
       }
 
-      let userId: string | undefined
-
-      if (opts.auth === 'user') {
-        const id = await getSessionUserId(req)
-        if (!id) {
-          return new Response(JSON.stringify({ ok: false, code: 'FORBIDDEN' }), {
-            status: 403,
+      let authCtx: { userId?: string; companyId?: string; companyRole?: CompanyMemberRole }
+      try {
+        authCtx = await resolveRouteAuth(opts.auth, req)
+      } catch (err) {
+        if (err instanceof AppError) {
+          return new Response(JSON.stringify({ ok: false, code: err.code }), {
+            status: err.httpStatus,
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
             },
           })
         }
-        userId = id
+        throw err
       }
 
-      const response = await handler(req, { userId })
+      const response = await handler(req, authCtx)
 
       // Ensure Cache-Control is set on the response
       if (!response.headers.has('Cache-Control')) {
@@ -102,10 +138,13 @@ export function route(opts: {
           },
         })
       }
-      logger.error({
-        requestId,
-        err: err instanceof Error ? err.message : String(err),
-      }, 'Unhandled route error')
+      logger.error(
+        {
+          requestId,
+          err: err instanceof Error ? err.message : String(err),
+        },
+        'Unhandled route error',
+      )
       return new Response(JSON.stringify({ ok: false, code: 'INTERNAL_ERROR' }), {
         status: 500,
         headers: {

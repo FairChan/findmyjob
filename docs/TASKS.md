@@ -218,7 +218,7 @@
 
 > 完成 2026-11-05：`/register/student`（含 `?ref=` 参数，存入 ref_code cookie）和 `/register/employer` 页面；`server/services/consent.ts`（recordConsents，version 取 legal.currentVersion，记录 IP/UA）；`server/actions/register.ts`（registerStudent/registerEmployer，均用 action() 包装，role 写入 EMPLOYER，学生在注册时创建最小 StudentProfile 并按 TALENT_POOL 勾选设 visibility）；i18n 中英文案；5 个单元测试；pnpm lint/typecheck/test 全部通过；偏差：`auth.api.signUpEmail` 端到端行为（邮件发送）需手工验证（同 M1-T01 偏差）
 
-#### [ ] M1-T03 权限守卫与越权矩阵
+#### [x] M1-T03 权限守卫与越权矩阵
 依赖：M1-T01
 做：
 - middleware 粗粒度拦截，matcher 用正向列表：`/:locale/s|e|admin/:path*` 和 `/api/:path*`，排除 `/api/auth/*` 和 `/api/health`。
@@ -229,6 +229,8 @@
 - 集成测试覆盖：各角色访问其他角色路径被拒；停用用户被拒；企业成员不能访问其他企业的数据
 - zh 和 en 两种 locale 下，`/s`、`/e`、`/admin` 未登录访问都跳转到登录页
 - 矩阵里现有的行全部通过
+
+> 完成 2026-11-05：src/server/authz.ts（requireUser/requireStudent/requireCompanyMember/requireVerifiedCompany/requireAdmin，每次查库，SUSPENDED/DELETED 一律拒绝）；proxy.ts 增加 /api/* 和 /:locale/s|e|admin/* 的 session cookie 守卫（无 cookie 返回 401 或跳转 login）；action.ts/route.ts 补充 student/company/admin auth 类型（company 支持 minRole + verified 选项）；tests/integration/authz-matrix.test.ts 23 行表驱动测试（requireUser/requireStudent/requireCompanyMember/requireVerifiedCompany/requireAdmin，覆盖 guest/student/employer/admin/suspended/deleted/inactive-company/cross-company）；pnpm lint/typecheck/test 全部通过（65 tests）；偏差：/zh/login 登录页不存在（M1-T04 建），middleware redirect 目前落到 404，CI 才能跑 E2E 验证
 
 #### [ ] M1-T04 登录跳转与账号设置
 依赖：M1-T03
