@@ -1,4 +1,6 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import type { ErrorEvent } from '@sentry/node'
+import { scrubEvent } from '@/lib/sentry-options'
 
 vi.mock('@/server/lib/logger', () => ({
   pinoOptions: {},
@@ -43,5 +45,25 @@ describe('alert', () => {
     alert('wallet.mismatch')
     const ctx = vi.mocked(logger.error).mock.calls[0][0] as unknown as Record<string, unknown>
     expect(ctx).toMatchObject({ alert: 'wallet.mismatch' })
+  })
+})
+
+describe('alert Sentry extra scrubbing', () => {
+  it('email in ctx does not reach Sentry event extra after scrubEvent', () => {
+    // alert() passes ctx as extra to captureMessage; scrubEvent is beforeSend
+    const mockEvent: ErrorEvent = {
+      event_id: 'test',
+      type: undefined,
+      extra: { email: 'leak-sentinel@example.test', companyId: 'c-123', amount: 100 },
+    } as ErrorEvent
+
+    const result = scrubEvent(mockEvent)
+
+    // PII key 'email' must be removed entirely
+    expect(result?.extra).not.toHaveProperty('email')
+    // No raw email in the serialized output
+    expect(JSON.stringify(result?.extra ?? {})).not.toContain('leak-sentinel@example.test')
+    // Non-PII fields survive
+    expect(result?.extra).toHaveProperty('companyId', 'c-123')
   })
 })

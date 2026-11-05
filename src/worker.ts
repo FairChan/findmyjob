@@ -41,6 +41,7 @@ async function main() {
 }
 
 main().catch((err: unknown) => {
+  Sentry.captureException(err)
   logger.error({ err }, 'worker startup failed')
   process.exit(1)
 })

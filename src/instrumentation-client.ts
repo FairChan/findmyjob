@@ -1,4 +1,9 @@
 import { init } from '@sentry/nextjs'
-import { sentryOptions } from './lib/sentry-options'
+import { sentryOptions, beforeBreadcrumb } from './lib/sentry-options'
 
-init(sentryOptions)
+init({
+  ...sentryOptions,
+  release: process.env.NEXT_PUBLIC_APP_TAG,
+  environment: process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT ?? 'development',
+  beforeBreadcrumb,
+})

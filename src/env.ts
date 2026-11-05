@@ -48,6 +48,8 @@ const schema = z
     SENTRY_DSN: z.string().optional(),
     NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
     SENTRY_ENVIRONMENT: z.string().optional(),
+    NEXT_PUBLIC_APP_TAG: z.string().optional(),
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT: z.string().optional(),
 
     LOG_LEVEL: z
       .enum(["fatal", "error", "warn", "info", "debug", "trace"])
