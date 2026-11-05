@@ -6,7 +6,8 @@ useDefault = true
 [[rules]]
 id = "findmyjob-app-secrets"
 description = "FindMYJob application secret environment variables"
-regex = '''(?i)(?:PII_KEYS|PII_HMAC_KEY|BETTER_AUTH_SECRET|TURNSTILE_SECRET_KEY|S3_SECRET_ACCESS_KEY|SEED_ADMIN_PASSWORD|RESEND_API_KEY|STRIPE_[A-Z_]+)\s*[=:]\s*['"]?([^\s'"]{16,})'''
+# 用 [ \t]* 而不是 \s*：值为空的 `KEY=` 不能跨行把下一行当成值（ARCHITECTURE.md 的变量表曾被误报）
+regex = '''(?i)(?:PII_KEYS|PII_HMAC_KEY|BETTER_AUTH_SECRET|TURNSTILE_SECRET_KEY|S3_SECRET_ACCESS_KEY|SEED_ADMIN_PASSWORD|RESEND_API_KEY|STRIPE_[A-Z_]+)[ \t]*[=:][ \t]*['"]?([^\s'"]{16,})'''
 secretGroup = 1
 keywords = [
   "PII_KEYS",
@@ -21,8 +22,10 @@ keywords = [
 
   [rules.allowlist]
   description = "Known safe values in example files and official test keys"
+  # 第二条只放过「值是代码表达式」的情况（src/env.ts 的 zod 定义、process.env 引用），真实密钥不会以这两种前缀开头
   regexes = [
     '''1x0000000000000000000000000000000AA''',
+    '''^(?:z|process\.env)\.''',
   ]
   paths = [
     '''env\.example''',

@@ -149,6 +149,7 @@
 - 本机提交一个含随机 BETTER_AUTH_SECRET 的文件，被 pre-commit 拦下；`git config --get core.hooksPath` 输出 `.githooks`
 
 > 完成 2026-11-05：.gitleaks.toml（useDefault=true + findmyjob-app-secrets 规则，匹配 8 类密钥变量，值≥16 位，allowlist: env.example 路径 + Turnstile 官方测试 key 正则）；security job 加入 ci.yml（fetch-depth:0，docker run ghcr.io/gitleaks/gitleaks:v8.21.2 与 pre-commit 同 tag，全历史 git 扫描 + 负例自测 jq 断言）；偏差：任务规格写 `gitleaks dir`，gitleaks v8.21.2 的目录扫描命令为 `detect --source`，CI 自测步骤使用 `detect --source /scan` 替代
+> 总控补修 2026-11-05：合并前复查发现全历史扫描其实报 11 处（退出码 1），全是自定义规则误报：`\s*` 跨行把 ARCHITECTURE.md 变量表里空值 `KEY=` 的下一行当成值，src/env.ts 的 `z.string()…` 也被当成值。正则改为 `[ 	]*`，allowlist 加一条只放过以 `z.` 或 `process.env.` 开头的代码表达式。复测：5 个真密钥样例（.env、带引号、YAML、export、负例自测文件）都命中，误报样例 0，全历史扫描退出码 0
 
 #### [x] M0-T10 PII 密钥环（keyId 前缀 + AAD）
 依赖：M0-T07
