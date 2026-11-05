@@ -1,5 +1,5 @@
 import http from 'k6/http'
-import { sleep, check } from 'k6'
+import { sleep, check, fail } from 'k6'
 import { SharedArray } from 'k6/data'
 
 // E2 pilot capacity = 200; ramp to 1.2x
@@ -9,15 +9,17 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:3000'
 
 // Pre-generated employer sessions from prisma/seed-load.ts (staging only)
 const accounts = new SharedArray('accounts', function () {
-  try {
-    return JSON.parse(open('../../load/accounts.local.json'))
-  } catch {
-    return []
-  }
+  return JSON.parse(open('../../load/accounts.local.json'))
 })
 
 const LOCALES = ['zh', 'en']
 const SEARCH_TERMS = ['软件', '财务', '市场', '运营', '销售', 'intern', 'finance', 'marketing', 'IT']
+
+export function setup() {
+  if (accounts.length === 0) {
+    fail('accounts file is empty — run prisma/seed-load.ts (APP_ENV=staging) first')
+  }
+}
 
 export const options = {
   scenarios: {
@@ -79,11 +81,6 @@ export function jobBrowse() {
 }
 
 export function talentSearch() {
-  if (accounts.length === 0) {
-    sleep(1)
-    return
-  }
-
   const account = accounts[__VU % accounts.length]
   const locale = LOCALES[__VU % LOCALES.length]
   const term = SEARCH_TERMS[Math.floor(Math.random() * SEARCH_TERMS.length)]
@@ -95,9 +92,10 @@ export function talentSearch() {
         Accept: 'text/html,application/xhtml+xml',
         Cookie: account.cookie,
       },
+      redirects: 0,
       tags: { name: 'talent_search' },
     },
   )
-  check(res, { 'talent search ok': (r) => r.status === 200 || r.status === 302 })
+  check(res, { 'talent search ok': (r) => r.status === 200 })
   sleep(1 + Math.random())
 }

@@ -5,6 +5,7 @@
  */
 import { PrismaClient } from '@prisma/client'
 import { Faker, zh_CN, en } from '@faker-js/faker'
+import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -16,7 +17,6 @@ if (APP_ENV !== 'staging') {
 }
 
 const faker = new Faker({ locale: [zh_CN, en] })
-faker.seed(20261109)
 
 const db = new PrismaClient()
 
@@ -62,10 +62,10 @@ async function main(): Promise<void> {
       update: { verificationStatus: 'VERIFIED', isActive: true },
     })
 
-    // Ensure CreditWallet exists
+    // Ensure CreditWallet exists (balance stays 0 — credits.ts not yet available)
     await db.creditWallet.upsert({
       where: { companyId: company.id },
-      create: { companyId: company.id, balance: 100 },
+      create: { companyId: company.id },
       update: {},
     })
 
@@ -76,8 +76,8 @@ async function main(): Promise<void> {
       update: {},
     })
 
-    // Upsert session (token chosen to be stable per account index)
-    const token = `loadtest-session-${i}-${faker.string.alphanumeric(32)}`
+    // Upsert session with a cryptographically random token
+    const token = crypto.randomBytes(32).toString('base64url')
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
 
     // Delete stale load-test sessions for this user before creating a fresh one

@@ -741,6 +741,7 @@
 
 > 完成 2026-11-05：deploy/server/findmyjob-deploy（SHA 校验、migration 比对+exit 3、pre-migrate backup、migrate、health check+auto-revert、deploy-history.log）；ci.yml 增加 image job（push-to-main 触发，needs verify+e2e，packages:write，推 findmyjob/findmyjob-migrate/findmyjob-backup 三个 target，不推 latest）；RUNBOOK.md 填写部署、回滚、P3009/INVALID 索引三节；偏差：本地演练需要真实 prod compose 环境（依赖 M7-H01 配置的服务器），脚本逻辑在验收清单范围内正确实现
 > 修复 2026-11-05：(1) backup+migrate 改用 APP_TAG env-prefix，update_app_tag 推迟到迁移成功后，ERR trap 在 tag 写入后失败时恢复 .env；(2) 回滚目标改为「当前 sha 最近一次 deploy 之前的那条 deploy 记录」（awk 逐行跟踪 prev），避免 rollback-after-rollback 再次回到坏版本；(3) 迁移检查先 test -d 判断目录存在，移除 2>/dev/null 和 || true 让 docker run 失败可见，校验迁移名格式 ^[0-9]{14}_[a-z0-9_]+$；(4) DB URL 改走 --env-file 临时文件，不出现在命令行参数；(5) 部署和回滚均记录 digest 并支持 --expect-digest sha256:… 核对；RUNBOOK 部署/回滚两节同步更新；bash -n 语法通过，pnpm lint+typecheck+test 全绿。真机演练（部署 A、部署 B、回滚）仍需在 M7-H01 配置好的服务器上执行。
+> 修复 2026-11-05：(a) wallet 余额保持 0（credits.ts 未实现，M4-T06 未完成）；(b) session token 改用 crypto.randomBytes(32).toString('base64url')，不再可预测；(c) k6 setup() 在 accounts 为空时 fail()；(d) 人才库请求改为 redirects:0、只认 200 为成功；ESLint 豁免保留（seed-load.ts 仍访问 User.email PII）。
 
 #### [x] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
 依赖：M7-T06
@@ -753,6 +754,7 @@
 验收：RUNBOOK 里包含以上各节；`docs/incidents/TEMPLATE.md` 已存在
 
 > 完成 2026-11-05：RUNBOOK 新增「事故响应」节（SEV 1/2/3 分级、联系表占位、五个止血场景、三条只读 SQL 模板、PDPA 通报流程）；每周检查清单扩充为 12 项（含 AuditLog 异常扫描、INVALID 索引检查、pg-boss 死信队列、GHCR PAT 到期日）；新建 docs/incidents/TEMPLATE.md、docs/templates/breach-notice-zh.md、docs/templates/breach-notice-en.md（均为占位内容，联系方式不编造）
+> 修复 2026-11-05：SQL 模板按真实 AuditLog 列改写：subjectId → targetId、actorId AS companyId → actorId AS actorUserId、三条模板均加 BEGIN READ ONLY/COMMIT；注释说明 findmyjob_app 有 DML 权限须用 READ ONLY 事务。
 
 #### [ ] M7-H01 云主机初始化、IAM、发信域、uptime 和 healthchecks（人工）
 依赖：M7-T06
