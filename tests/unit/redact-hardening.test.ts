@@ -113,6 +113,38 @@ describe('redact hardening – existing negatives still hold', () => {
   ])('%s', (input) => expect(redact(input)).toBe(input))
 })
 
+// Follow-up from the commit security review of f79f286.
+describe('redact hardening – review of f79f286', () => {
+  it.each([
+    ['微信 alicewong', 'alicewong'],
+    ['微信alicewong', 'alicewong'],
+    ['vx alicewong', 'alicewong'],
+    ['wx alicewong', 'alicewong'],
+    ['WeChat alicewong', 'alicewong'],
+    ['-'.repeat(62) + 'alice@gmail.com', 'alice'],
+    ['.'.repeat(70) + 'bob@qq.com', 'bob'],
+    ['x'.repeat(80) + '@gmail.com', 'xxxxxxxx'],
+    ['alice@a.b.c.d.e.f.g.com', 'alice'],
+    ['linkedin.com/in/王明-a1b2c3', '王明'],
+    ['https://example.com/u/王明明', '王明明'],
+    ['t.me/王明_2024', '王明'],
+  ])('%s', (input, secret) => expectHidden(input, secret))
+
+  it.each([
+    'WeChat Pay 接入',
+    'WeChat mini-program development',
+    'WeChat Mini Program',
+    'WeChat official account 运营',
+    'WeChat payments integration',
+    'WeChat development',
+    'WeChat ecosystem',
+  ])('does not touch %s', (input) => expect(redact(input)).toBe(input))
+
+  it('stops a URL at sentence punctuation', () => {
+    expect(redact('主页 https://example.com/me，欢迎访问')).toBe(`主页 ${R}，欢迎访问`)
+  })
+})
+
 describe('redact hardening – backtracking', () => {
   it.each([
     ['a'.repeat(100_000)],
@@ -120,6 +152,10 @@ describe('redact hardening – backtracking', () => {
     ['1'.repeat(100_000)],
     ['微信'.repeat(20_000)],
     ['.'.repeat(100_000)],
+    ['-'.repeat(100_000) + '@'],
+    ['a@' + '1.'.repeat(50_000)],
+    ['https://' + '王'.repeat(100_000)],
+    ['微信 ' + 'a'.repeat(100_000)],
   ])('long input finishes within 50ms (%#)', (input) => {
     const t = performance.now()
     redact(input)

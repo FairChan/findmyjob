@@ -53,26 +53,32 @@ function normalize(input: string): Normalized {
 // Phone separators: whitespace, ASCII/Unicode dashes, dots, slashes, parentheses — up to three.
 const SEP = String.raw`[\s\-‐-―./()]{0,3}`
 const MAIL_PROVIDERS = String.raw`(?:gmail|googlemail|yahoo|hotmail|outlook|live|icloud|me|qq|foxmail|163|126|yeah|sina|sohu|aliyun|proton(?:mail)?)`
-const DOMAIN = String.raw`[A-Za-z0-9\-]{1,63}(?:\.[A-Za-z0-9\-]{1,63}){0,4}\.[A-Za-z]{2,24}`
-const LOCAL = String.raw`(?:(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]{1,64}|\p{Script=Han}{1,6})`
+const DOMAIN = String.raw`[A-Za-z0-9\-]{1,63}(?:\.[A-Za-z0-9\-]{1,63}){0,10}\.[A-Za-z]{2,24}`
+// The look-behind pins each attempt to the start of a run, so the unbounded `+` stays linear;
+// a length cap here would let "-----…alice@gmail.com" (64+ chars) slip through.
+const LOCAL = String.raw`(?:(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+|\p{Script=Han}{1,6})`
 const WECHAT_KEYWORD = String.raw`(?:微信号?|威信|[vV](?:[xX]|信)|\bwx\b|\bwechat(?:\s*id)?\b|\bweixin\b)`
 const OPEN_BRACKET = String.raw`[(\[【「《<]?`
+// Words that follow "WeChat" in résumés without being an account name.
+const WECHAT_PRODUCT_WORDS = String.raw`(?:pay(?:ments?)?|mini(?:-?programs?)?|programs?|official|accounts?|work|moments|channels?|stores?|groups?|api|sdk|apps?|open|platforms?|develop(?:er|ers|ment)?|marketing|ecosystem|integration|login|oauth|cloud|search|ads|wallet|merchants?|services?|support|users?|e-?commerce)\b`
+// A URL ends at whitespace or sentence punctuation; non-ASCII path segments (/in/王明-…) stay inside.
+const URL_TAIL = String.raw`[^\s,;!"'<>、】」》』]`
 
 // Every quantifier is bounded and every pattern is anchored by a literal or a look-behind, so
 // matching stays linear on long free text (100k chars well under 50ms).
 const PATTERNS: RegExp[] = [
   // URLs with a scheme, then scheme-less forms that carry a contact on their own
-  /https?:\/\/[!-~]{1,2048}/gi,
-  /\bwww\.[!-~]{3,2048}/gi,
-  /\b(?:linkedin|github|gitlab)\.com\/[!-~]{1,2048}/gi,
-  /\b(?:t\.me|wa\.me|wa\.link)\/[!-~]{1,2048}/gi,
-  /\b(?:api\.)?whatsapp\.com\/[!-~]{1,2048}/gi,
+  new RegExp(String.raw`https?:\/\/${URL_TAIL}{1,2048}`, 'giu'),
+  new RegExp(String.raw`\bwww\.${URL_TAIL}{3,2048}`, 'giu'),
+  new RegExp(String.raw`\b(?:linkedin|github|gitlab)\.com\/${URL_TAIL}{1,2048}`, 'giu'),
+  new RegExp(String.raw`\b(?:t\.me|wa\.me|wa\.link)\/${URL_TAIL}{1,2048}`, 'giu'),
+  new RegExp(String.raw`\b(?:api\.)?whatsapp\.com\/${URL_TAIL}{1,2048}`, 'giu'),
 
   // Email, including spaces around @, (at)/[at], a Han local part, and "x at gmail dot com"
   new RegExp(String.raw`${LOCAL}\s{0,2}@\s{0,2}${DOMAIN}`, 'gu'),
   new RegExp(String.raw`${LOCAL}\s{0,2}[(\[]\s{0,2}at\s{0,2}[)\]]\s{0,2}${DOMAIN}`, 'giu'),
   new RegExp(
-    String.raw`(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]{1,64}\s{1,3}at\s{1,3}${MAIL_PROVIDERS}\s{1,3}dot\s{1,3}(?:com|net|org|cn|my|edu)\b`,
+    String.raw`(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+\s{1,3}at\s{1,3}${MAIL_PROVIDERS}\s{1,3}dot\s{1,3}(?:com|net|org|cn|my|edu)\b`,
     'gi',
   ),
 
@@ -89,10 +95,11 @@ const PATTERNS: RegExp[] = [
     String.raw`${WECHAT_KEYWORD}\s{0,3}(?:号码?\s{0,3})?(?:[:=\-–—→/]|是|为|is\b|id\b)\s{0,3}${OPEN_BRACKET}\s{0,3}[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}`,
     'gi',
   ),
-  // WeChat without a connector: only tokens that contain a digit or underscore, so
-  // "WeChat Pay" / "WeChat mini-program" stay as written
+  // WeChat without a connector: a token with a digit or underscore, or a letters-first token of
+  // 6+ chars that is not a product word — so "微信 alicewong" is hidden but "WeChat Pay",
+  // "WeChat mini-program", "WeChat development" stay as written
   new RegExp(
-    String.raw`${WECHAT_KEYWORD}\s{0,3}${OPEN_BRACKET}\s{0,3}(?=[A-Za-z0-9_.\-]{0,29}[0-9_])[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}`,
+    String.raw`${WECHAT_KEYWORD}\s{0,3}${OPEN_BRACKET}\s{0,3}(?:(?=[A-Za-z0-9_.\-]{0,29}[0-9_])[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}|(?!${WECHAT_PRODUCT_WORDS})[A-Za-z][A-Za-z0-9_.\-]{5,29})`,
     'gi',
   ),
 
