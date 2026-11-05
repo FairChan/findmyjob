@@ -209,8 +209,23 @@ describe('alert Sentry integration – full production sentryOptions', () => {
     await close(2000).catch(() => {})
   })
 
-  it('receives at least one event (transport is wired via sentryOptions)', () => {
-    expect(collected.length).toBeGreaterThan(0)
+  // Envelope = [headers, [[itemHeader, payload], …]]. Count real event items, not any envelope:
+  // a client_report envelope alone would otherwise make every "no sentinel" check pass vacuously.
+  type EventPayload = { exception?: { values?: { value?: string }[] }; message?: string }
+  const eventItems = (): EventPayload[] =>
+    (collected as [unknown, [{ type?: string }, unknown][]][]).flatMap((env) =>
+      (env[1] ?? []).filter(([h]) => h?.type === 'event').map(([, p]) => p as EventPayload),
+    )
+
+  it('receives both the alert() event and the exception event', () => {
+    expect(eventItems().length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('the exception event keeps its path but loses the query string', () => {
+    const values = eventItems().flatMap((e) => e.exception?.values ?? []).map((v) => v.value ?? '')
+    const failed = values.find((v) => v.includes('failed for /api/x'))
+    expect(failed).toBeDefined()
+    expect(failed).not.toContain('?')
   })
 
   it('no sentinel email in any envelope – console breadcrumb dropped + extra scrubbed', () => {

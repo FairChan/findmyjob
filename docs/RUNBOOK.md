@@ -233,46 +233,41 @@ sudo systemctl reload cron
 > 通过 `backend` 网络直连 `postgres` 服务——不需要 SSH 隧道。
 
 ```bash
-# 在服务器上，cd /opt/findmyjob 后操作
+# 在服务器上 cd /opt/findmyjob 后操作。APP_TAG 由 /opt/findmyjob/.env 提供（部署脚本写入），
+# 不要另外 export：export 的值会盖过 .env，${APP_TAG:?} 会拉错镜像或直接报错。
+DC="docker compose -f /opt/findmyjob/docker-compose.prod.yml --env-file /opt/findmyjob/.env"
 
-# 0. 确认当前 APP_TAG
-export APP_TAG=$(grep APP_TAG env/app.env | cut -d= -f2)
-
-# 1. 设置 restore-reader 凭据（临时注入，不写入文件；用 read -rs 避免进 shell 历史）
+# 1. 临时读入凭据：read -rs 不回显、不进 shell 历史；之后只用 -e VAR 透传，值不出现在命令行参数里
 read -rs RESTORE_S3_ACCESS_KEY_ID     && export RESTORE_S3_ACCESS_KEY_ID
 read -rs RESTORE_S3_SECRET_ACCESS_KEY && export RESTORE_S3_SECRET_ACCESS_KEY
-# owner 密码在 /opt/findmyjob/env/db.env 里，不要在 shell 里明文出现；用 read -rs 读入
-read -rs RESTORE_ADMIN_DATABASE_URL   && export RESTORE_ADMIN_DATABASE_URL
-# 格式：postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
+read -rs RESTORE_ADMIN_DATABASE_URL   && export RESTORE_ADMIN_DATABASE_URL   # postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
 export BACKUP_S3_BUCKET=findmyjob-backups
+# 第 2 步直接调 aws CLI，它只认 AWS_* 变量名
+export AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$RESTORE_S3_SECRET_ACCESS_KEY"
 
-# 2. 列出可用备份，由操作人选择目标 key
-docker compose --profile ops run --rm -T \
-  -e AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID" \
-  -e AWS_SECRET_ACCESS_KEY="$RESTORE_S3_SECRET_ACCESS_KEY" \
-  restore \
-  bash -c 'aws s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 10'
+# 2. 列出可用备份，由操作人选目标 key（restore 服务的入口是 restore-drill.sh，这里临时换成 aws）
+$DC --profile ops run --rm -T --entrypoint aws \
+  -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+  restore s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 10
 
-# 3. 执行演练（私钥从 USB 经 stdin 传入 restore 容器；--key 由操作人从上面列表中选）
+# 3. 执行演练：私钥从 USB 经 stdin 传进 restore 容器。
+#    --keep 是为了留下演练库给第 4 步用；Session 仍由脚本的 cleanup trap 清空，失败时库会被删掉
 cat /media/usb/age-private.key | \
-  docker compose --profile ops run -T --rm \
-    -e RESTORE_ADMIN_DATABASE_URL \
-    -e RESTORE_S3_ACCESS_KEY_ID \
-    -e RESTORE_S3_SECRET_ACCESS_KEY \
-    -e BACKUP_S3_BUCKET \
-    restore \
-    --key db/daily/2026-11-05T19-15-00Z.dump.age \
-    findmyjob_restore_drill
+  $DC --profile ops run --rm -T \
+    -e RESTORE_ADMIN_DATABASE_URL -e RESTORE_S3_ACCESS_KEY_ID -e RESTORE_S3_SECRET_ACCESS_KEY -e BACKUP_S3_BUCKET \
+    restore --key db/daily/<选中的 key>.dump.age --keep findmyjob_restore_drill
 
-# 4. verify-decrypt（独立一步，使用 tools 容器；DATABASE_URL 指向演练库）
-read -rs PII_KEYS && export PII_KEYS
-docker compose --profile ops run --rm -T \
-  -e DATABASE_URL="postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill" \
-  -e PII_KEYS \
-  -e PII_ACTIVE_KEY_ID=v1 \
+# 4. verify-decrypt（独立一步，tools 容器）：DATABASE_URL 和 PII_KEYS 同样 read -rs 读入、-e 透传
+read -rs PII_KEYS     && export PII_KEYS
+read -rs DATABASE_URL && export DATABASE_URL   # postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill
+$DC --profile ops run --rm -T -e DATABASE_URL -e PII_KEYS -e PII_ACTIVE_KEY_ID=v1 \
   tools scripts/db/verify-decrypt.ts
 
-# 5. 检查输出：所有 ✓，最后打印 RTO；演练库已由脚本自动清空 Session 并删除
+# 5. 删掉演练库，清掉 shell 里的秘密
+$DC exec -T postgres psql -U postgres -c 'DROP DATABASE IF EXISTS findmyjob_restore_drill;'
+unset RESTORE_S3_ACCESS_KEY_ID RESTORE_S3_SECRET_ACCESS_KEY RESTORE_ADMIN_DATABASE_URL \
+  AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY PII_KEYS DATABASE_URL
+# 第 3 步的输出要全部是 ✓，最后一行打印 RTO；第 4 步输出一条掩码过的手机号
 ```
 
 ### 脚本检查项
@@ -318,45 +313,36 @@ docker compose --profile ops run --rm -T \
    目标库 `findmyjob_restore_drill` 以 `_drill` 结尾是脚本安全检查的前提。
    Session 由 cleanup trap 在脚本退出时自动清空（`--keep` 时也执行）。
    ```bash
-   # 在服务器上，cd /opt/findmyjob 后操作
-   export APP_TAG=$(grep APP_TAG env/app.env | cut -d= -f2)
+   # 在服务器上 cd /opt/findmyjob 后操作；APP_TAG 由 .env 提供，不要另外 export
+   DC="docker compose -f /opt/findmyjob/docker-compose.prod.yml --env-file /opt/findmyjob/.env"
    read -rs RESTORE_S3_ACCESS_KEY_ID     && export RESTORE_S3_ACCESS_KEY_ID
    read -rs RESTORE_S3_SECRET_ACCESS_KEY && export RESTORE_S3_SECRET_ACCESS_KEY
-   read -rs RESTORE_ADMIN_DATABASE_URL   && export RESTORE_ADMIN_DATABASE_URL
-   # 格式：postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
+   read -rs RESTORE_ADMIN_DATABASE_URL   && export RESTORE_ADMIN_DATABASE_URL   # postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
    export BACKUP_S3_BUCKET=findmyjob-backups
 
    cat /media/usb/age-private.key | \
-     docker compose --profile ops run -T --rm \
-       -e RESTORE_ADMIN_DATABASE_URL \
-       -e RESTORE_S3_ACCESS_KEY_ID \
-       -e RESTORE_S3_SECRET_ACCESS_KEY \
-       -e BACKUP_S3_BUCKET \
-       restore \
-       --key db/daily/2026-11-05T19-15-00Z.dump.age \
-       --skip-rpo --keep \
-       findmyjob_restore_drill
+     $DC --profile ops run --rm -T \
+       -e RESTORE_ADMIN_DATABASE_URL -e RESTORE_S3_ACCESS_KEY_ID -e RESTORE_S3_SECRET_ACCESS_KEY -e BACKUP_S3_BUCKET \
+       restore --key db/daily/<选中的 key>.dump.age --skip-rpo --keep findmyjob_restore_drill
    ```
 5. **verify-decrypt**（恢复库就绪后，使用 tools 容器）：
    ```bash
-   read -rs PII_KEYS && export PII_KEYS
-   docker compose --profile ops run --rm -T \
-     -e DATABASE_URL="postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill" \
-     -e PII_KEYS \
-     -e PII_ACTIVE_KEY_ID=v1 \
+   read -rs PII_KEYS     && export PII_KEYS
+   read -rs DATABASE_URL && export DATABASE_URL   # postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill
+   $DC --profile ops run --rm -T -e DATABASE_URL -e PII_KEYS -e PII_ACTIVE_KEY_ID=v1 \
      tools scripts/db/verify-decrypt.ts
+   unset RESTORE_S3_ACCESS_KEY_ID RESTORE_S3_SECRET_ACCESS_KEY RESTORE_ADMIN_DATABASE_URL PII_KEYS DATABASE_URL
    ```
 6. **切换数据库**（在服务器上，经 `compose exec postgres` 进入 postgres 容器执行 RENAME）：
    ```bash
-   docker compose -f /opt/findmyjob/docker-compose.prod.yml exec postgres \
+   $DC exec -T postgres \
      psql -U postgres \
      -c 'ALTER DATABASE findmyjob RENAME TO findmyjob_old;' \
      -c 'ALTER DATABASE findmyjob_restore_drill RENAME TO findmyjob;'
    ```
 7. **补跑账号清除**（`tools` 容器经 compose 网络连 `postgres`）：
    ```bash
-   docker compose -f /opt/findmyjob/docker-compose.prod.yml \
-     --profile ops run --rm tools scripts/backfill/purge-deleted-accounts.ts
+   $DC --profile ops run --rm tools scripts/backfill/purge-deleted-accounts.ts
    ```
 8. **重启服务**：
    ```bash

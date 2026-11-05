@@ -658,6 +658,7 @@
 > 修复 2026-11-05：dataCollection 全关（sendDefaultPii 改由 dataCollection 实现，sendDefaultPii:false 保留）；tracesSampler/beforeSendTransaction 防上游 trace 传播；scrubEvent 增加 contexts.nextjs.request_path 去查询串、exception.values 过 redact、extra 删 PII 键并递归 redact；ID 路径段替换为 [id]；beforeBreadcrumb 去 URL 查询串；worker/registry 加 captureException；health 改用 $transaction+statement_timeout+clearTimeout；NEXT_PUBLIC_APP_TAG/NEXT_PUBLIC_SENTRY_ENVIRONMENT 新增环境变量
 > 修复 2026-11-05（二）：beforeBreadcrumb 对 console 类面包屑直接 return null（防 data.arguments 泄漏）；scrubExtra 增加 scrubValue 递归处理数组元素；exception.value 在 redact 前先 replace(/\?[^"'\s]*/g,'') 去掉查询串；tests/unit/alert.test.ts 改用真实 transport 收集 envelope，断言 alert() 确实发送事件且 extra 中 PII 键被删除；tests/unit/sentry-scrub.test.ts 更新 console breadcrumb 断言为 null
 > 修复 2026-11-05（四）：alert.test.ts 新增 "alert Sentry integration – full production sentryOptions" suite：init 时传入 { ...sentryOptions, dsn: 假 DSN, transport: 收集 envelope 的假 transport }，beforeSend/beforeBreadcrumb/dataCollection/tracesSampler 全来自生产配置；addBreadcrumb 注入 console 类哨兵面包屑，alert() 传含数组和嵌套 token 的 extra，captureException 用带查询串的 Error，flush 后断言：确实有 envelope（防空过）、dump 中无 leak-sentinel@example.test、无 +60 12-000 0420、无 token=abc 和 ?email=；本地验证：临时注释掉 beforeBreadcrumb 中 console return null 后，"no sentinel email" 测试失败，恢复后全套 536 个测试通过。
+> 修复 2026-11-05（五，总控手工）：Sentry transport 测试改为断言至少收到两条 type=event 的条目，并且异常事件保留路径、去掉了查询串；做过变异验证：去掉查询串剥离时有 3 个用例失败
 
 #### [ ] M7-T05 安全响应头与复查
 依赖：M7-T03
@@ -734,6 +735,7 @@
 > 修复 2026-11-05：cron 行补 `-f /opt/findmyjob/docker-compose.prod.yml --env-file`；backup 脚本把 DATABASE_URL 拆成 PG 单项 env var（凭据不再出现在 pg_dump/psql 命令行）；counts.json 改为每个 dump 同名文件，不再共用；restore-drill 完全流式（私钥读进变量+process substitution，dump 不落盘）；--key 必填（操作人自选，不自动取最新）；--skip-rpo/--keep 参数；RPO 从 key 名取时间戳（先 regex 校验）；times.json 路径经 argv 传 python（无字符串插值）；tools 容器改 `-e PII_KEYS`（透传）；eslint 豁免收窄到 verify-decrypt.ts；RUNBOOK 7 处修订（桶生命周期/真实恢复步骤/postgres 服务名/read -rs/日志路径/restore-reader 验证/healthchecks URL）；DECISIONS 追加 findmyjob_app 已接受风险。真机验证需人工执行（无法本机 docker build/run）。
 > 修复 2026-11-05（二）：restore-drill.sh 用 aws s3api get-object --range bytes=0-20+临时文件替换 aws s3 cp … | head -c 21，消除 SIGPIPE 导致 set -euo pipefail 静默退出；RUNBOOK 备份桶补充当前版本 Expiration 30 天（原 NoncurrentVersionExpiration 对唯一 key 无效），实际保留约 31 天，与隐私政策"30 天"出入已在说明中注明；RUNBOOK 恢复演练/真实恢复说明执行位置改为管理机（tools 镜像无 psql）+SSH 隧道，RENAME 步骤改用 docker compose exec postgres psql，export AWS_SECRET_ACCESS_KEY=… 改 read -rs；新增 mock-aws 失败测试（11 passed）。bash -n 验证语法通过。
 > 修复 2026-11-05（三）：(1) docker-compose.prod.yml 新增 ops profile 下的 restore 服务（复用 findmyjob-backup 镜像，接 backend+outbound 网络，cap_drop ALL，no-new-privileges，不发布端口，entrypoint 指向镜像内 restore-drill.sh）；(2) Dockerfile backup stage 补装 python3，并将 restore-drill.sh、db-setup.sql、prisma/migrations COPY 进镜像，使 restore 服务在生产服务器上免安装直连 postgres:5432；(3) restore-drill.sh：去掉 step 9 的 docker compose tools 调用（verify-decrypt 提取为 RUNBOOK 独立步骤），Session 清空移入 cleanup trap（任何检查失败或 --keep 时都执行），cleanup 里用 ${RESTORE_ADMIN_DATABASE_URL%/*}/${DB_NAME} 组装目标 URL；(4) restore-drill.test.sh 新增 session-cleared-on-failure 和 session-cleared-on-failure --keep 两个 mock 测试（13 passed）；(5) RUNBOOK 恢复演练/真实恢复两节全部改为在生产服务器上通过 docker compose run restore 执行，凭据 -e 透传 + stdin 私钥，去掉 SSH 隧道和管理机要求，verify-decrypt 改为独立步骤。bash -n 通过，pnpm lint+typecheck+test 532 passed 全绿。真机演练仍需在 M7-H01 配置好的服务器上验证。
+> 修复 2026-11-05（四，总控手工）：按最后一轮只读核对，改正 RUNBOOK 恢复演练和真实恢复的命令：统一用 `$DC`（`-f docker-compose.prod.yml --env-file /opt/findmyjob/.env`），不再 export APP_TAG；列备份时用 `--entrypoint aws`；演练加 `--keep`，verify-decrypt 跑完再 DROP 演练库；所有秘密都用 `read -rs` 读入、`-e VAR` 透传，不进命令行参数
 
 #### [x] M7-T11 部署流水线：人工 SSH 执行 findmyjob-deploy
 依赖：M7-T06、M7-T12
@@ -869,6 +871,7 @@
   - restore-drill.test.sh 同时断言错误信息；
   - 演练命令里的 URL 不放进 argv。
 - M7-T06 Caddy：日志里的 Referer 和 remote_ip 怎么处理。
+- M7-T12 RUNBOOK：「在离线机器上列出 S3 对象」自相矛盾（离线机器连不上 S3）；改写这一步的执行位置。
 - M7-T13 RUNBOOK：去掉「companyId」「单个企业」的旧说法，SQL 模板加上 targetType 过滤。
 - M7-T02 同意：撤回如果记在别的版本号下会被忽略；版本号和正文内容的绑定（例如加内容哈希）。
 - M7-T14 止血开关：等 M4-T07 解锁、M4-T03 人才库搜索、M2-T05 上传实现时接到各自入口（这一项随那几个任务做，在这里核对）。
