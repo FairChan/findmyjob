@@ -151,7 +151,7 @@ services:
     # override entrypoint per use: docker compose run --rm tools scripts/backfill/xxx.ts
 
   backup:
-    image: ghcr.io/fairchan/findmyjob:${APP_TAG}
+    image: ghcr.io/fairchan/findmyjob-backup:${APP_TAG}
     env_file: /opt/findmyjob/env/backup.env
     volumes:
       - backup_tmp:/backup-tmp
@@ -164,7 +164,6 @@ services:
       - no-new-privileges:true
     profiles:
       - ops
-    entrypoint: ["/opt/findmyjob/bin/findmyjob-backup"]
 
 networks:
   backend:

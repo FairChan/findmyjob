@@ -63,3 +63,17 @@ COPY --chown=node:node package.json ./package.json
 ENV NODE_ENV=production
 USER node
 ENTRYPOINT ["node", "--conditions=react-server", "-r", "tsx/cjs"]
+
+# ── backup ────────────────────────────────────────────────────────────────────
+# pushed as ghcr.io/fairchan/findmyjob-backup:<sha>
+# deps: postgresql-client-16 (pg_dump, psql), age (encryption), awscli (S3), curl (healthchecks)
+FROM postgres:16.6-bookworm AS backup
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    age \
+    awscli \
+    curl \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --chmod=755 deploy/server/findmyjob-backup /opt/findmyjob/bin/findmyjob-backup
+USER postgres
+ENTRYPOINT ["/opt/findmyjob/bin/findmyjob-backup"]

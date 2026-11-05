@@ -705,7 +705,7 @@
 
 > M7-T12 排在 M7-T11 前面：部署脚本在迁移前要调用备份脚本。
 
-#### [ ] M7-T12 age 加密的异地备份、死信监控与恢复演练脚本
+#### [x] M7-T12 age 加密的异地备份、死信监控与恢复演练脚本
 依赖：M7-T06
 做：
 - 新增 `deploy/server/findmyjob-backup`，开头 `set -euo pipefail`。流程：`pg_dump -Fc --exclude-schema=pgboss`，管道给 `age -r <公钥>`，输出到容器里挂载的普通磁盘目录（例如 /backup-tmp）中的临时密文；不用 /dev/shm（Docker 默认只给 64MB）；检查退出码后，只做一次 PutObject，上传到 `db/daily/<UTC时间>.dump.age` 或 `db/pre-migrate/`；成功后 curl healthchecks 的 ping 地址。全程不在磁盘上留明文。
@@ -716,6 +716,8 @@
 验收：
 - 手动跑一次备份：db/daily/ 下出现新对象，文件前 21 个字节是 `age-encryption.org/v1`，healthchecks 显示绿色
 - 把口令故意改错再跑：脚本以非 0 退出，healthchecks 收不到 ping，也没有生成新对象；restore-drill.sh 对名为 findmyjob 的库直接拒绝
+
+> 完成 2026-11-05：deploy/server/findmyjob-backup（set -euo pipefail，pg_dump|age→/backup-tmp，pipefail 检查，S3 PutObject，healthchecks curl，trap 清理）；deploy/server/findmyjob-cron（19:15 UTC，/etc/cron.d/findmyjob）；deploy/Dockerfile 新增 backup stage（postgres:16.6-bookworm + age + awscli）；docker-compose.prod.yml backup 服务改用 findmyjob-backup 镜像；scripts/db/restore-drill.sh（_drill 校验、stdin 私钥 shred 清除、pg_restore、6 项检查、Session 清空、RTO 输出）；scripts/db/verify-decrypt.ts（自包含解密验证，掩码输出）；RUNBOOK 备份/恢复演练/真实恢复三节；env.example 新增备份和恢复演练相关变量；DECISIONS 记录镜像选型偏差
 
 #### [ ] M7-T11 部署流水线：人工 SSH 执行 findmyjob-deploy
 依赖：M7-T06、M7-T12

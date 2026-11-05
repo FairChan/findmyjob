@@ -1,0 +1,10 @@
+# /etc/cron.d/findmyjob
+# Install: sudo install -m 644 deploy/server/findmyjob-cron /etc/cron.d/findmyjob
+# Requires: docker compose available as /usr/bin/docker or in root PATH.
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# Daily encrypted backup at 19:15 UTC (03:15 Kuala Lumpur / Asia/Kuala_Lumpur).
+# Runs the backup service defined in docker-compose.prod.yml (profile: ops).
+15 19 * * *  root  cd /opt/findmyjob && docker compose --profile ops run --rm --no-deps backup >> /var/log/findmyjob-backup.log 2>&1
