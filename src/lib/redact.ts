@@ -84,8 +84,6 @@ const URL_TAIL = String.raw`(?:${URL_CHAR}|(?<=[\/\-_=])\p{L}{1,20})+`
 
 const WECHAT_CN = String.raw`(?:微信号?|威信|(?<![A-Za-z])[vV](?:[xX]|信)(?![A-Za-z])|(?<![A-Za-z])[wW][xX](?![A-Za-z]))`
 const WECHAT_EN = String.raw`(?:\bwechat\b|\bweixin\b)`
-// Case-spelled so the lowercase-handle rule below can run without the i flag.
-const WECHAT_EN_CS = String.raw`(?:\b[wW][eE][cC][hH][aA][tT]\b|\b[wW][eE][iI][xX][iI][nN]\b)`
 const WECHAT_ANY = String.raw`(?:${WECHAT_CN}|${WECHAT_EN})`
 const ID_SUFFIX = String.raw`(?:\s{0,3}(?:号码?|id\b))?\s{0,3}`
 const STRONG = String.raw`(?:[:=]|是|为|→)`
@@ -124,11 +122,12 @@ const PATTERNS: RegExp[] = [
   rx(String.raw`(?:${ASCII_LOCAL}|${HAN_LOCAL})\s{0,3}[(\[【]\s?at\s?[)\]】]\s{0,3}${DOMAIN}`, 'giu'),
   rx(String.raw`${ASCII_LOCAL}\s{0,3}${AT_WORD}\s{0,3}${MAIL_PROVIDERS}\s{0,3}${DOT_WORD}\s{0,3}${TLD}`, 'giu'),
 
-  // Phones, matched by digit count rather than grouping
-  // Malaysia mobile: +60 / (+60) / 0060 / 60 / 0, then 1 and 8–9 more digits
-  rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?(?:00\s?)?60\s?\)|\+?\s?(?:00\s?)?60)${DSEP}|\(?0)1(?:${D}){8,9}(?![0-9])`, 'g'),
-  // Malaysia landline: 03–09 area code, 7–8 digits
-  rx(String.raw`(?<![0-9])\(?0[3-9]\)?(?:${D}){7,8}(?![0-9])`, 'g'),
+  // Phones, matched by digit count rather than grouping — but the operator / area prefix must be
+  // written unbroken (012, 011, 03…), otherwise date ranges like "09-01 - 2025-06-30" look like numbers
+  // Malaysia mobile: +60 / (+60) / 0060 / 60 / 0, then 1X and 7–8 more digits
+  rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?(?:00\s?)?60\s?\)|\+?\s?(?:00\s?)?60)${DSEP}|\(?0)1[0-9](?:${D}){7,8}(?![0-9])`, 'g'),
+  // Malaysia landline: 03–09 area code, then the real 3–4 + 4 grouping
+  rx(String.raw`(?<![0-9])\(?0[3-9]\)?${DSEP}\d{3,4}${DSEP}\d{4}(?![0-9])`, 'g'),
   // Mainland China mobile, with or without +86
   rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?86\s?\)|\+?\s?86)${DSEP})?1[3-9](?:${D}){9}(?![0-9])`, 'g'),
   // Mainland China landline: area code, a dash, 7–8 digits
@@ -148,14 +147,15 @@ const PATTERNS: RegExp[] = [
 
   // English keyword: after an explicit "ID", any letters-only handle that is not a product word
   rx(String.raw`${WECHAT_EN}\s{0,3}id\b\s{0,3}(?:(?:${WEAK}|${STRONG})\s{0,3})?${OPEN}${TOKEN_LETTERS}`),
-  // English keyword without ID: a lowercase handle of 6+ (IDs are usually lowercase; résumé phrases
-  // like "WeChat Programme" are capitalized), never after "is" ("WeChat is widely used")
-  rx(String.raw`${WECHAT_EN_CS}\s{0,3}(?:[\-–—/]\s{0,3})?${OPEN}(?!${PRODUCT_WORDS})[a-z][a-z0-9_.\-]{5,}`, 'g'),
+  // No letters-only rule for English "WeChat" without "ID": in English sentences almost every word
+  // can follow it ("log in through WeChat within seconds"); see DECISIONS「M4-T01 收尾（二）」
 
   // QQ, other platforms' handles, WhatsApp with a number
   rx(String.raw`\bline\s{1,3}id\s{1,3}${TOKEN_IDLIKE}`),
   rx(String.raw`QQ\s{0,3}(?:号码?)?\s{0,3}(?:(?:[:=]|是|为)\s{0,3}){0,2}\d{5,12}(?![0-9])`),
-  rx(String.raw`${SOCIAL}\s{0,3}(?:id\s{0,3})?[:=]\s{0,3}@?${TOKEN_ANY}`),
+  // the handle must look like one (@…, or contains a digit / _): "Product line: consumer electronics"
+  // and "IG: 5000 followers" stay as written
+  rx(String.raw`${SOCIAL}\s{0,3}(?:id\s{0,3})?[:=]\s{0,3}(?:@[A-Za-z0-9_.]{2,}|${TOKEN_IDLIKE})`),
   rx(String.raw`(?:\btelegram\b|\btg\b|\big\b|\binstagram\b|\btwitter\b|\btiktok\b)\s{0,3}@[A-Za-z0-9_.]{2,}`),
   rx(String.raw`\bwhats\s?app\b\s{0,3}(?:[:=]|is\b)?\s{0,3}\+?[0-9][\d\s\-]{7,15}`),
 ]

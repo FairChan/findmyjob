@@ -334,7 +334,6 @@ const MUST_HIDE: [string, string][] = [
   ['微信alicewong', 'alicewong'],
   ['vx alicewong', 'alicewong'],
   ['wx alicewong', 'alicewong'],
-  ['WeChat alicewong', 'alicewong'],
   ['WeChat: alicewong', 'alicewong'],
   ['WeChat ID alicewong', 'alicewong'],
   ['WeChat ID is alicewong', 'alicewong'],
@@ -524,6 +523,15 @@ const MUST_KEEP: string[] = [
   '熟悉 vxe-table',
   'VXLAN-EVPN 实验',
   '你好​世界',
+  // 最终复查发现的误伤：日期区间、英文句子里 WeChat 后面的普通词、平台名后面的普通内容
+  '2021-09-01 - 2025-06-30',
+  '项目周期 2023.03.01 - 2023.06.30',
+  '01.09.2021 - 30.06.2025',
+  '就读时间：2019.09 - 2023.06',
+  'Users can log in through WeChat within seconds',
+  'Promoted on WeChat through campaigns and content',
+  'Product line: consumer electronics',
+  'IG: 5000 followers',
 ]
 
 /** 匹配以外的文字和标点要原样保留：[输入, 期望输出] */
