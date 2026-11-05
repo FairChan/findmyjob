@@ -84,6 +84,8 @@ const URL_TAIL = String.raw`(?:${URL_CHAR}|(?<=[\/\-_=])\p{L}{1,20})+`
 
 const WECHAT_CN = String.raw`(?:微信号?|威信|(?<![A-Za-z])[vV](?:[xX]|信)(?![A-Za-z])|(?<![A-Za-z])[wW][xX](?![A-Za-z]))`
 const WECHAT_EN = String.raw`(?:\bwechat\b|\bweixin\b)`
+// Case-spelled so the lowercase-handle rule can run without the i flag.
+const WECHAT_EN_CS = String.raw`(?:\b[wW][eE][cC][hH][aA][tT]\b|\b[wW][eE][iI][xX][iI][nN]\b)`
 const WECHAT_ANY = String.raw`(?:${WECHAT_CN}|${WECHAT_EN})`
 const ID_SUFFIX = String.raw`(?:\s{0,3}(?:号码?|id\b))?\s{0,3}`
 const STRONG = String.raw`(?:[:=]|是|为|→)`
@@ -94,10 +96,11 @@ const TOKEN_ANY = String.raw`[A-Za-z0-9][A-Za-z0-9_.\-]{2,}`
 // WeChat IDs start with a letter; plain numbers after 微信 ("微信 300 万用户") are counts, not IDs.
 const TOKEN_IDLIKE = String.raw`(?:[A-Za-z](?=[A-Za-z0-9_.\-]{0,63}[0-9_])[A-Za-z0-9_.\-]{2,}|\d{5,})`
 // Words that follow 微信 / vx in résumés without being an account (only 6+ letters matter here).
-const PRODUCT_WORDS = String.raw`(?:payments?|alipay|grabpay|mini-?program(?:me)?s?|program(?:me)?s?|official|public|accounts?|enterprise|subscriptions?|articles?|moments|channels?|stores|groups|js-?sdk|applets?|openid|unionid|platforms?|develop(?:er|ers|ment)?|marketing|ecosystem|integrations?|search|advertising|analytics|wallet|merchants?|services?|support|customers?|operations?|business|messag(?:e|es|ing)|notifications?|chatbots?|translate|backend|frontend|server|mobile|android|html5|version|verification|authentication|promotions?|livestream(?:ing)?|international|global|cross-?border|e-?commerce|whatsapp|telegram|douyin|xiaohongshu|tencent|shopee|lazada|malaysia|singapore|features?|website|uni-?app|integrated|powered|enabled|compatible|friendly|related|ordering|booking|community|chatting|sharing|scanning|stickers?|contacts|friends|widely|popular|official)(?![A-Za-z0-9_.\-])`
+const PRODUCT_WORDS = String.raw`(?:payments?|alipay|grabpay|mini-?program(?:me)?s?|program(?:me)?s?|official|public|accounts?|enterprise|subscriptions?|articles?|moments|channels?|stores|groups|js-?sdk|applets?|openid|unionid|platforms?|develop(?:er|ers|ment)?|marketing|ecosystem|integrations?|search|advertising|analytics|wallet|merchants?|services?|support|customers?|operations?|business|messag(?:e|es|ing)|notifications?|chatbots?|translate|backend|frontend|server|mobile|android|html5|version|verification|authentication|promotions?|livestream(?:ing)?|international|global|cross-?border|e-?commerce|whatsapp|telegram|douyin|xiaohongshu|tencent|shopee|lazada|malaysia|singapore|features?|website|uni-?app|integrated|powered|enabled|compatible|friendly|related|ordering|booking|community|chatting|sharing|scanning|stickers?|contacts|friends|widely|popular|official)(?![A-Za-z0-9_\-]|\.[A-Za-z0-9])`
 const TOKEN_LETTERS = String.raw`(?!${PRODUCT_WORDS})[A-Za-z][A-Za-z0-9_.\-]{5,}`
 
-const SOCIAL = String.raw`(?:\btelegram\b|\btg\b|\bline\b|\big\b|\binstagram\b|\bfacebook\b|\bfb\b|\btwitter\b|\btiktok\b|小红书|抖音|微博)`
+// LINE is handled separately below because "line" is also an ordinary English word.
+const SOCIAL = String.raw`(?:\btelegram\b|\btg\b|\big\b|\binstagram\b|\bfacebook\b|\bfb\b|\btwitter\b|\btiktok\b|小红书|抖音|微博)`
 
 const rx = (source: string, flags = 'gi') => new RegExp(source, flags)
 
@@ -126,8 +129,9 @@ const PATTERNS: RegExp[] = [
   // written unbroken (012, 011, 03…), otherwise date ranges like "09-01 - 2025-06-30" look like numbers
   // Malaysia mobile: +60 / (+60) / 0060 / 60 / 0, then 1X and 7–8 more digits
   rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?(?:00\s?)?60\s?\)|\+?\s?(?:00\s?)?60)${DSEP}|\(?0)1[0-9](?:${D}){7,8}(?![0-9])`, 'g'),
-  // Malaysia landline: 03–09 area code, then the real 3–4 + 4 grouping
-  rx(String.raw`(?<![0-9])\(?0[3-9]\)?${DSEP}\d{3,4}${DSEP}\d{4}(?![0-9])`, 'g'),
+  // Malaysia landline: area code written unbroken (03–09, East Malaysia 082–089), then the real
+  // 3–4 + 4 grouping, or 3 + 3 for East Malaysia's 6-digit numbers (088-123456)
+  rx(String.raw`(?<![0-9])\(?0(?:8[2-9]|[3-9])\)?${DSEP}(?:\d{3,4}${DSEP}\d{4}|\d{3}${DSEP}\d{3})(?![0-9])`, 'g'),
   // Mainland China mobile, with or without +86
   rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?86\s?\)|\+?\s?86)${DSEP})?1[3-9](?:${D}){9}(?![0-9])`, 'g'),
   // Mainland China landline: area code, a dash, 7–8 digits
@@ -147,15 +151,23 @@ const PATTERNS: RegExp[] = [
 
   // English keyword: after an explicit "ID", any letters-only handle that is not a product word
   rx(String.raw`${WECHAT_EN}\s{0,3}id\b\s{0,3}(?:(?:${WEAK}|${STRONG})\s{0,3})?${OPEN}${TOKEN_LETTERS}`),
-  // No letters-only rule for English "WeChat" without "ID": in English sentences almost every word
-  // can follow it ("log in through WeChat within seconds"); see DECISIONS「M4-T01 收尾（二）」
+  // English keyword without ID: a lowercase handle of 6+ only when it ends the text or is followed by
+  // punctuation or Chinese ("WeChat alicewong。", "WeChat alicewong 欢迎联系"). In an English sentence
+  // the next word follows ("through WeChat within seconds"), so ordinary words are left alone.
+  rx(
+    String.raw`${WECHAT_EN_CS}\s{0,3}(?:[\-–—/]\s{0,3})?${OPEN}(?!${PRODUCT_WORDS})[a-z][a-z0-9_\-]{5,}(?:\.[a-z0-9_\-]+)*(?=\s{0,3}(?:$|[.,;:!?)\]、）】]|[^\x00-\x7F]))`,
+    'gm',
+  ),
 
   // QQ, other platforms' handles, WhatsApp with a number
-  rx(String.raw`\bline\s{1,3}id\s{1,3}${TOKEN_IDLIKE}`),
   rx(String.raw`QQ\s{0,3}(?:号码?)?\s{0,3}(?:(?:[:=]|是|为)\s{0,3}){0,2}\d{5,12}(?![0-9])`),
-  // the handle must look like one (@…, or contains a digit / _): "Product line: consumer electronics"
-  // and "IG: 5000 followers" stay as written
-  rx(String.raw`${SOCIAL}\s{0,3}(?:id\s{0,3})?[:=]\s{0,3}(?:@[A-Za-z0-9_.]{2,}|${TOKEN_IDLIKE})`),
+  // explicit platform + ：/=: any handle except a short number or a product word
+  // ("IG: 5000 followers", "Facebook: marketing campaigns" stay as written)
+  rx(String.raw`${SOCIAL}\s{0,3}(?:id\s{0,3})?[:=]\s{0,3}@?(?!\d{1,4}(?![A-Za-z0-9_.\-]))(?!${PRODUCT_WORDS})${TOKEN_ANY}`),
+  // LINE is also an English word ("Product line: consumer electronics"): after "line" only ID-like
+  // handles, after "line id" any
+  rx(String.raw`\bline\s{0,3}[:=]\s{0,3}(?:@[A-Za-z0-9_.]{2,}|${TOKEN_IDLIKE})`),
+  rx(String.raw`\bline\s{1,3}id\s{0,3}[:=]?\s{0,3}@?${TOKEN_ANY}`),
   rx(String.raw`(?:\btelegram\b|\btg\b|\big\b|\binstagram\b|\btwitter\b|\btiktok\b)\s{0,3}@[A-Za-z0-9_.]{2,}`),
   rx(String.raw`\bwhats\s?app\b\s{0,3}(?:[:=]|is\b)?\s{0,3}\+?[0-9][\d\s\-]{7,15}`),
 ]

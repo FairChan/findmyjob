@@ -334,6 +334,9 @@ const MUST_HIDE: [string, string][] = [
   ['微信alicewong', 'alicewong'],
   ['vx alicewong', 'alicewong'],
   ['wx alicewong', 'alicewong'],
+  ['WeChat alicewong', 'alicewong'],
+  ['Find me on WeChat alicewong.', 'alicewong'],
+  ['WeChat alicewong 欢迎联系', 'alicewong'],
   ['WeChat: alicewong', 'alicewong'],
   ['WeChat ID alicewong', 'alicewong'],
   ['WeChat ID is alicewong', 'alicewong'],
@@ -390,6 +393,9 @@ const MUST_HIDE: [string, string][] = [
   ['021-12345678', '12345678'],
   ['0060123456789', '0060123456789'],
   ['WhatsApp 012-345 6789', '6789'],
+  ['088-123456', '123456'],
+  ['082-123 456', '123 456'],
+  ['(089) 123 456', '123 456'],
 
   // 全角、零宽、格式字符、带圈和数学字体数字
   ['１３８１２３４５６７８', '５６７８'],
@@ -467,6 +473,9 @@ const MUST_HIDE: [string, string][] = [
   ['Line ID abc123', 'abc123'],
   ['Line: alice123', 'alice123'],
   ['IG: @alice.wong', 'alice.wong'],
+  ['IG: alice.wong', 'alice.wong'],
+  ['Telegram: alicewong', 'alicewong'],
+  ['Line ID alicewong', 'alicewong'],
 ]
 
 /** 正常文本：输出必须和输入逐字相同 */
@@ -532,6 +541,9 @@ const MUST_KEEP: string[] = [
   'Promoted on WeChat through campaigns and content',
   'Product line: consumer electronics',
   'IG: 5000 followers',
+  'Facebook: 10 posts per week',
+  'Students use WeChat daily.',
+  'Experienced with WeChat development.',
 ]
 
 /** 匹配以外的文字和标点要原样保留：[输入, 期望输出] */
