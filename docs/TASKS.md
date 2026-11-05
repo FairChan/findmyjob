@@ -740,6 +740,7 @@
 - 用一个健康检查返回 500 的镜像部署，脚本会自动回到上一个 tag 并以 exit 1 结束；有待执行迁移但没加批准参数时，在迁移之前就停下
 
 > 完成 2026-11-05：deploy/server/findmyjob-deploy（SHA 校验、migration 比对+exit 3、pre-migrate backup、migrate、health check+auto-revert、deploy-history.log）；ci.yml 增加 image job（push-to-main 触发，needs verify+e2e，packages:write，推 findmyjob/findmyjob-migrate/findmyjob-backup 三个 target，不推 latest）；RUNBOOK.md 填写部署、回滚、P3009/INVALID 索引三节；偏差：本地演练需要真实 prod compose 环境（依赖 M7-H01 配置的服务器），脚本逻辑在验收清单范围内正确实现
+> 修复 2026-11-05：(1) backup+migrate 改用 APP_TAG env-prefix，update_app_tag 推迟到迁移成功后，ERR trap 在 tag 写入后失败时恢复 .env；(2) 回滚目标改为「当前 sha 最近一次 deploy 之前的那条 deploy 记录」（awk 逐行跟踪 prev），避免 rollback-after-rollback 再次回到坏版本；(3) 迁移检查先 test -d 判断目录存在，移除 2>/dev/null 和 || true 让 docker run 失败可见，校验迁移名格式 ^[0-9]{14}_[a-z0-9_]+$；(4) DB URL 改走 --env-file 临时文件，不出现在命令行参数；(5) 部署和回滚均记录 digest 并支持 --expect-digest sha256:… 核对；RUNBOOK 部署/回滚两节同步更新；bash -n 语法通过，pnpm lint+typecheck+test 全绿。真机演练（部署 A、部署 B、回滚）仍需在 M7-H01 配置好的服务器上执行。
 
 #### [x] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
 依赖：M7-T06

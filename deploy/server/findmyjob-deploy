@@ -3,14 +3,21 @@
 # Install: sudo install -m 755 deploy/server/findmyjob-deploy /opt/findmyjob/bin/findmyjob-deploy
 #
 # Usage:
-#   findmyjob-deploy deploy <40-char-sha> [--approve-migrations]
-#   findmyjob-deploy rollback
+#   findmyjob-deploy deploy <40-char-sha> [--approve-migrations] [--expect-digest sha256:…]
+#   findmyjob-deploy rollback [<40-char-sha>] [--expect-digest sha256:…]
 #
 # Execution order (deploy):
-#   pull → compare migrations → [exit 3 if pending & not approved]
-#   → pre-migrate backup → migrate → up -d app worker
-#   → 60s health check → record to deploy-history.log
-#   → on failure: restore previous tag and exit 1
+#   pull → [verify --expect-digest] → compare migrations → [exit 3 if unapproved]
+#   → pre-migrate backup (APP_TAG env override — .env unchanged)
+#   → migrate           (APP_TAG env override — .env unchanged)
+#   → update .env APP_TAG → up -d app worker → 60s health check
+#   → success: record to deploy-history.log
+#   → ERR after tag write: trap restores .env to prev_tag
+#   → health-check failure: explicit revert to prev_tag, exit 1
+#
+# deploy-history.log line format (one entry per line):
+#   deploy   <sha>  <digest|unknown>  <timestamp>
+#   rollback <sha>  <digest|unknown>  <timestamp>
 set -euo pipefail
 
 WORKDIR="/opt/findmyjob"
@@ -86,35 +93,61 @@ check_pending_migrations() {
   local sha="$1" approve="$2"
   log "Checking pending migrations in ${IMAGE_MIGRATE}:${sha}..."
 
-  # List migration directories inside the new migrate image
-  local image_migs
-  image_migs=$(docker run --rm --entrypoint /bin/sh \
-    "${IMAGE_MIGRATE}:${sha}" \
-    -c 'ls /app/prisma/migrations/ 2>/dev/null | grep -v "^migration_lock"' \
-    2>/dev/null | sort || true)
-
-  if [ -z "$image_migs" ]; then
-    log "No migrations found in image — skipping migration check."
+  # Check whether a prisma/migrations directory exists in the image.
+  # Only suppress the test's own stderr; a container-launch failure is fatal.
+  if ! docker run --rm --entrypoint /bin/sh \
+      "${IMAGE_MIGRATE}:${sha}" -c 'test -d /app/prisma/migrations' 2>/dev/null; then
+    log "No prisma/migrations directory in image — skipping migration check."
     return 0
   fi
 
-  # Read the database URL from migrate.env (uses MIGRATE_DATABASE_URL or DATABASE_URL)
+  # List migration directories. Errors are fatal (no 2>/dev/null, no || true).
+  local image_migs
+  image_migs=$(docker run --rm --entrypoint /bin/sh \
+    "${IMAGE_MIGRATE}:${sha}" \
+    -c 'ls /app/prisma/migrations/ | grep -v "^migration_lock"' | sort)
+
+  if [ -z "$image_migs" ]; then
+    log "No migration directories found — skipping migration check."
+    return 0
+  fi
+
+  # Validate every migration name before it enters any comparison.
+  while IFS= read -r mig; do
+    [ -z "$mig" ] && continue
+    if ! [[ "$mig" =~ ^[0-9]{14}_[a-z0-9_]+$ ]]; then
+      die "Unexpected migration name in image: '${mig}'. Expected ^[0-9]{14}_[a-z0-9_]+\$"
+    fi
+  done <<< "$image_migs"
+
+  # Read the database URL from migrate.env.
   local db_url
   db_url=$(grep -m1 '^MIGRATE_DATABASE_URL=' "$MIGRATE_ENV" 2>/dev/null | cut -d= -f2- || true)
   [ -z "$db_url" ] && \
     db_url=$(grep -m1 '^DATABASE_URL=' "$MIGRATE_ENV" 2>/dev/null | cut -d= -f2- || true)
   [ -z "$db_url" ] && die "Cannot read MIGRATE_DATABASE_URL from ${MIGRATE_ENV}."
 
-  # Query the DB for applied migrations via a temporary postgres container
-  local db_migs
+  # Write URL to a 600-mode temp file so it never appears in 'ps' output.
+  local tmp_env
+  tmp_env=$(mktemp "${WORKDIR}/.mig-check.XXXXXX")
+  chmod 600 "$tmp_env"
+  printf 'MIGRATE_DATABASE_URL=%s\n' "$db_url" > "$tmp_env"
+
+  # Query the DB for applied migrations. Errors are fatal.
+  local db_migs query_ok
+  query_ok=true
   db_migs=$(docker run --rm \
     --network "$NETWORK" \
+    --env-file "$tmp_env" \
     "postgres:16.6-bookworm" \
-    psql "$db_url" -t -A \
-    -c "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL" \
-    2>/dev/null | sort || true)
+    sh -c 'psql "$MIGRATE_DATABASE_URL" -t -A \
+      -c "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL"' \
+    | sort) || query_ok=false
 
-  # Find migrations in image but not yet applied in DB
+  rm -f "$tmp_env"
+  "$query_ok" || die "Failed to query applied migrations from DB."
+
+  # Find migrations present in image but not yet applied in DB.
   local pending=()
   while IFS= read -r mig; do
     [ -z "$mig" ] && continue
@@ -151,11 +184,15 @@ check_pending_migrations() {
 
 # ── deploy command ─────────────────────────────────────────────────────────────
 cmd_deploy() {
-  local sha="$1" approve="$2"
+  local sha="$1" approve="$2" expect_digest="${3:-}"
 
   # Validate SHA: exactly 40 lowercase hex characters
   if ! [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
     die "Invalid SHA '${sha}': must be exactly 40 lowercase hex characters."
+  fi
+
+  if [ -n "$expect_digest" ] && ! [[ "$expect_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    die "Invalid --expect-digest '${expect_digest}': expected sha256:<64 hex chars>."
   fi
 
   local prev_tag
@@ -169,40 +206,57 @@ cmd_deploy() {
   docker pull "${IMAGE_MIGRATE}:${sha}"
   docker pull "${IMAGE_BACKUP}:${sha}"
 
-  # 2. Check pending migrations (may exit 3 if unapproved)
+  # 2. Capture app image digest; optionally verify against --expect-digest
+  local actual_digest
+  actual_digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
+    "${IMAGE_APP}:${sha}" 2>/dev/null | head -1 || echo "unknown")
+
+  if [ -n "$expect_digest" ]; then
+    if [ "$actual_digest" != "$expect_digest" ]; then
+      die "Digest mismatch: expected ${expect_digest}, got ${actual_digest}."
+    fi
+    log "App image digest verified: ${actual_digest}"
+  elif [ "$actual_digest" != "unknown" ]; then
+    log "App image digest: ${actual_digest}"
+  fi
+
+  # 3. Check pending migrations (may exit 3 if unapproved)
   check_pending_migrations "$sha" "$approve"
 
-  # 3. Update APP_TAG — point of no return for the deploy
-  update_app_tag "$sha"
-
-  # 4. Pre-migrate backup
+  # 4. Pre-migrate backup (APP_TAG env-prefix — .env is NOT updated yet)
   log "Running pre-migrate backup (BACKUP_MODE=pre-migrate)..."
-  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" \
-    --profile ops run --rm --no-deps \
+  APP_TAG="$sha" dc --profile ops run --rm --no-deps \
     -e BACKUP_MODE=pre-migrate backup
 
-  # 5. Run migrations
+  # 5. Run migrations (APP_TAG env-prefix — .env still unchanged)
   log "Running migrations..."
-  dc --profile ops run --rm --no-deps migrate
+  APP_TAG="$sha" dc --profile ops run --rm --no-deps migrate
 
-  # 6. Restart app + worker with the new image
+  # 6. Write new tag to .env (after backup+migrate succeed).
+  #    Set up an ERR trap BEFORE writing so any subsequent failure restores .env.
+  if [ -n "$prev_tag" ] && [ "$prev_tag" != "$sha" ]; then
+    trap "err 'Failure after tag write; restoring .env to ${prev_tag}...'; update_app_tag '${prev_tag}' || true" ERR
+  fi
+  update_app_tag "$sha"
+
+  # 7. Restart app + worker with the new image
   log "Restarting app and worker with ${sha}..."
   dc up -d app worker
 
-  # 7. Health check; on failure revert to previous tag
+  # 8. Health check; on failure revert explicitly (health-check path bypasses ERR trap)
   if wait_healthy; then
-    local digest
-    digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
-      "${IMAGE_APP}:${sha}" 2>/dev/null | head -1 || echo "unknown")
-    printf '%s %s %s\n' "$sha" "$digest" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$HISTORY_LOG"
+    trap - ERR
+    printf 'deploy %s %s %s\n' "$sha" "${actual_digest:-unknown}" \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$HISTORY_LOG"
     log "=== Deploy ${sha} SUCCEEDED ==="
   else
+    trap - ERR
     err "Health check failed after deploy."
     if [ -n "$prev_tag" ] && [ "$prev_tag" != "$sha" ]; then
       log "Auto-reverting app + worker to previous tag ${prev_tag}..."
       update_app_tag "$prev_tag"
       dc up -d app worker
-      log "Reverted app + worker to ${prev_tag}. NOTE: migrations have NOT been rolled back."
+      log "Reverted to ${prev_tag}. NOTE: migrations have NOT been rolled back."
     else
       err "No previous tag available; manual intervention required."
     fi
@@ -212,27 +266,81 @@ cmd_deploy() {
 
 # ── rollback command ──────────────────────────────────────────────────────────
 cmd_rollback() {
+  local explicit_sha="${1:-}" expect_digest="${2:-}"
+
+  if [ -n "$explicit_sha" ] && ! [[ "$explicit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    die "Invalid SHA '${explicit_sha}': must be exactly 40 lowercase hex characters."
+  fi
+
+  if [ -n "$expect_digest" ] && ! [[ "$expect_digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    die "Invalid --expect-digest '${expect_digest}': expected sha256:<64 hex chars>."
+  fi
+
   if [ ! -f "$HISTORY_LOG" ]; then
     die "Cannot rollback: ${HISTORY_LOG} does not exist."
   fi
 
-  local line_count
-  line_count=$(wc -l < "$HISTORY_LOG")
-  if [ "$line_count" -lt 2 ]; then
-    die "Cannot rollback: deploy-history.log has only ${line_count} entry (need ≥ 2)."
+  local running_tag
+  running_tag=$(current_tag)
+
+  local target_sha target_digest
+
+  if [ -n "$explicit_sha" ]; then
+    target_sha="$explicit_sha"
+    local hist_line
+    hist_line=$(grep "^deploy ${target_sha} " "$HISTORY_LOG" 2>/dev/null | tail -1 || true)
+    target_digest=$(echo "$hist_line" | awk '{print $3}')
+    [ -z "$target_digest" ] && target_digest="unknown"
+  else
+    # Find the deploy entry that immediately preceded the last deployment of running_tag.
+    # This ensures "rollback after rollback" never re-targets the version we just left.
+    local target_line
+    target_line=$(grep '^deploy ' "$HISTORY_LOG" 2>/dev/null \
+      | awk -v cur="${running_tag:-}" '
+            { if ($2 == cur) result = prev; prev = $0 }
+            END { print result }
+          ' || true)
+
+    if [ -z "$target_line" ]; then
+      die "No previous deploy found for current tag ${running_tag:-none} in ${HISTORY_LOG}."
+    fi
+
+    target_sha=$(echo  "$target_line" | awk '{print $2}')
+    target_digest=$(echo "$target_line" | awk '{print $3}')
+    [ -z "$target_sha" ] && die "Failed to parse target sha from history entry: ${target_line}"
   fi
 
-  local current_sha prev_sha
-  current_sha=$(tail -1 "$HISTORY_LOG" | awk '{print $1}')
-  prev_sha=$(tail -2 "$HISTORY_LOG" | head -1 | awk '{print $1}')
+  log "=== Rollback: ${running_tag:-?} → ${target_sha} ==="
 
-  log "=== Rollback: ${current_sha} → ${prev_sha} ==="
-  update_app_tag "$prev_sha"
+  # Pull app image, then verify digest if we have a recorded or expected value.
+  log "Pulling app image..."
+  docker pull "${IMAGE_APP}:${target_sha}"
+
+  local actual_digest
+  actual_digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
+    "${IMAGE_APP}:${target_sha}" 2>/dev/null | head -1 || echo "unknown")
+
+  local check_digest="${expect_digest:-}"
+  if [ -z "$check_digest" ] && [[ "${target_digest:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    check_digest="$target_digest"
+  fi
+
+  if [ -n "$check_digest" ]; then
+    if [ "$actual_digest" != "$check_digest" ]; then
+      die "Digest mismatch: expected ${check_digest}, got ${actual_digest:-unknown}."
+    fi
+    log "App image digest verified: ${actual_digest}"
+  elif [ "$actual_digest" != "unknown" ]; then
+    log "App image digest: ${actual_digest}"
+  fi
+
+  update_app_tag "$target_sha"
   dc up -d app worker
 
   if wait_healthy; then
-    printf '%s rollback %s\n' "$prev_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$HISTORY_LOG"
-    log "=== Rollback to ${prev_sha} SUCCEEDED ==="
+    printf 'rollback %s %s %s\n' "$target_sha" "${actual_digest:-unknown}" \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$HISTORY_LOG"
+    log "=== Rollback to ${target_sha} SUCCEEDED ==="
     log "NOTE: migrations have NOT been rolled back."
   else
     err "Health check failed after rollback; manual intervention required."
@@ -247,20 +355,41 @@ shift 2>/dev/null || true
 case "$COMMAND" in
   deploy)
     SHA="${1:-}"
-    [ -z "$SHA" ] && die "Missing SHA. Usage: findmyjob-deploy deploy <40-char-sha> [--approve-migrations]"
+    [ -z "$SHA" ] && die "Missing SHA. Usage: findmyjob-deploy deploy <40-char-sha> [--approve-migrations] [--expect-digest sha256:…]"
+    shift || true
     APPROVE=false
-    for arg in "$@"; do
-      [ "$arg" = "--approve-migrations" ] && APPROVE=true
+    EXPECT_DIGEST=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --approve-migrations) APPROVE=true ;;
+        --expect-digest=*)    EXPECT_DIGEST="${1#--expect-digest=}" ;;
+        --expect-digest)      shift; EXPECT_DIGEST="${1:-}" ;;
+      esac
+      shift
     done
-    cmd_deploy "$SHA" "$APPROVE"
+    cmd_deploy "$SHA" "$APPROVE" "$EXPECT_DIGEST"
     ;;
   rollback)
-    cmd_rollback
+    ROLLBACK_SHA=""
+    EXPECT_DIGEST=""
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --expect-digest=*)    EXPECT_DIGEST="${1#--expect-digest=}" ;;
+        --expect-digest)      shift; EXPECT_DIGEST="${1:-}" ;;
+        *)
+          if [[ "${1:-}" =~ ^[0-9a-f]{40}$ ]]; then
+            ROLLBACK_SHA="$1"
+          fi
+          ;;
+      esac
+      shift
+    done
+    cmd_rollback "$ROLLBACK_SHA" "$EXPECT_DIGEST"
     ;;
   *)
     echo "Usage:" >&2
-    echo "  findmyjob-deploy deploy <40-char-sha> [--approve-migrations]" >&2
-    echo "  findmyjob-deploy rollback" >&2
+    echo "  findmyjob-deploy deploy <40-char-sha> [--approve-migrations] [--expect-digest sha256:…]" >&2
+    echo "  findmyjob-deploy rollback [<40-char-sha>] [--expect-digest sha256:…]" >&2
     exit 1
     ;;
 esac

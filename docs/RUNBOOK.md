@@ -18,8 +18,16 @@
 ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy deploy <40位sha>
 ```
 
-脚本自动完成：拉取镜像 → 比对迁移 → 预迁移备份 → 执行迁移 → 重启 app/worker → 60 秒健康检查。
-成功后 sha 和 digest 写入 `/opt/findmyjob/deploy-history.log`。
+脚本自动完成：拉取镜像 → [核对 digest] → 比对迁移 → 预迁移备份 → 执行迁移 → 写入 .env → 重启 app/worker → 60 秒健康检查。
+备份和迁移阶段使用 `APP_TAG=<sha>` 环境变量前缀，**.env 在迁移成功后才更新**；迁移失败时 `set -e` 直接退出，.env 仍为旧 tag；健康检查失败时 ERR trap 或显式回退将 .env 恢复为旧 tag。
+成功后以 `deploy <sha> <digest> <timestamp>` 格式追加到 `/opt/findmyjob/deploy-history.log`。
+
+**CI 输出的 digest 核对**（推荐）：CI `image` job 输出 app 镜像的 digest，传入 `--expect-digest` 可在 pull 后立即核对，防止镜像篡改：
+
+```bash
+ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy deploy <sha> \
+  --expect-digest sha256:<digest-from-ci>
+```
 
 **有待执行迁移时**（exit 3）：脚本打印 SQL 后停止。审阅 SQL 无破坏性操作后，加 `--approve-migrations` 重新执行：
 
@@ -41,7 +49,19 @@ GitHub 不持有部署私钥。镜像由 CI `image` job 在 push 到 main 时自
 ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy rollback
 ```
 
-回滚 = 将 app/worker 切换回 `deploy-history.log` 倒数第二条记录的镜像 tag。**迁移不回滚**：已执行的迁移保持不变。如果回滚后旧镜像与当前 schema 不兼容，需要写一个前滚迁移并重新 deploy。
+回滚 = 在 `deploy-history.log` 里找「紧接在当前 sha 上一次部署之前的那条 `deploy` 记录」，将 app/worker 切换到该镜像；`rollback` 类型的条目会被跳过，避免反复来回。
+若 history 里有该 sha 的 digest，拉取后自动核对；不一致则终止。**迁移不回滚**：已执行的迁移保持不变。如果回滚后旧镜像与当前 schema 不兼容，需要写一个前滚迁移并重新 deploy。
+
+**指定回滚目标**（来自 deploy-history.log 或 CI 输出）：
+
+```bash
+ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy rollback <40位sha>
+# 加 --expect-digest 可核对镜像完整性：
+ssh <admin>@43.134.49.247 sudo -u deploy /opt/findmyjob/bin/findmyjob-deploy rollback <40位sha> \
+  --expect-digest sha256:<digest-from-history>
+```
+
+> CI 推送镜像后输出的 digest 与 deploy-history.log 里记录的 `deploy <sha> <digest>` 应当一致；对不上时停止部署并检查 GHCR 镜像完整性。
 
 ## 迁移失败
 
