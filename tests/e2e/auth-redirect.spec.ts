@@ -66,6 +66,7 @@ test.describe('student registration → verification → login → sign-out', ()
     await expect(page.locator('h1')).toContainText('登录')
     await page.fill('[name="email"]', email)
     await page.fill('[name="password"]', password)
+    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
     await page.click('button[type="submit"]')
 
     // --- Step 5: Lands on /s/onboarding ---
