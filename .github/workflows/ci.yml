@@ -23,7 +23,7 @@ jobs:
       TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
       EMAIL_PROVIDER: smtp
       EMAIL_FROM: FindMYJob <no-reply@example.test>
-      SMTP_URL: smtp://127.0.0.1:1025
+      SMTP_URL: smtp://127.0.0.1:1026
       LOG_LEVEL: error
       HSTS_MAX_AGE: "300"
       # S3 values are fake; no MinIO service in verify job
@@ -186,7 +186,7 @@ jobs:
       TURNSTILE_SECRET_KEY: 1x0000000000000000000000000000000AA
       EMAIL_PROVIDER: smtp
       EMAIL_FROM: FindMYJob <no-reply@example.test>
-      SMTP_URL: smtp://127.0.0.1:1025
+      SMTP_URL: smtp://127.0.0.1:1026
       LOG_LEVEL: error
       S3_ENDPOINT: http://127.0.0.1:9000
       S3_REGION: ap-southeast-5
@@ -208,6 +208,12 @@ jobs:
           --health-retries 5
         ports:
           - 5432:5432
+
+      mailpit:
+        image: axllent/mailpit:v1.21.5
+        ports:
+          - 1026:1025
+          - 8026:8025
 
     steps:
       - name: Checkout

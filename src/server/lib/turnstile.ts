@@ -6,6 +6,7 @@ interface SiteverifyResponse {
   hostname?: string
   action?: string
   'error-codes'?: string[]
+  metadata?: { result_with_testing_key?: boolean }
 }
 
 export class TurnstileError extends Error {
@@ -44,8 +45,12 @@ export async function verifyTurnstile(
       body: params.toString(),
       signal: AbortSignal.timeout(5000),
     })
+    if (!res.ok) {
+      throw new TurnstileError(`Turnstile siteverify returned HTTP ${res.status}`)
+    }
     result = (await res.json()) as SiteverifyResponse
-  } catch {
+  } catch (e) {
+    if (e instanceof TurnstileError) throw e
     throw new TurnstileError('Turnstile verification timed out or network error')
   }
 
@@ -53,12 +58,21 @@ export async function verifyTurnstile(
     throw new TurnstileError('Turnstile verification failed')
   }
 
-  const expectedHostname = new URL(env.APP_URL).hostname
-  if (result.hostname && result.hostname !== expectedHostname) {
-    throw new TurnstileError(`Turnstile hostname mismatch: got ${result.hostname}`)
+  const strict = env.APP_ENV === 'production'
+  // Cloudflare 测试密钥的结果固定是 hostname=example.com、没有 action，并带 result_with_testing_key 标记。
+  // 非生产环境（本地、CI）认这个标记、跳过两项比对；生产环境见到它一律拒绝（env.ts 另外禁止生产用测试密钥）
+  if (result.metadata?.result_with_testing_key === true) {
+    if (strict) throw new TurnstileError('Turnstile testing-key result rejected in production')
+    return
   }
 
-  if (result.action && result.action !== action) {
-    throw new TurnstileError(`Turnstile action mismatch: got ${result.action}, expected ${action}`)
+  // 生产环境缺字段也算失败；非生产环境只在字段存在时比对
+  const expectedHostname = new URL(env.APP_URL).hostname
+  if ((strict || result.hostname) && result.hostname !== expectedHostname) {
+    throw new TurnstileError(`Turnstile hostname mismatch: got ${result.hostname ?? '(none)'}`)
+  }
+
+  if ((strict || result.action) && result.action !== action) {
+    throw new TurnstileError(`Turnstile action mismatch: got ${result.action ?? '(none)'}, expected ${action}`)
   }
 }

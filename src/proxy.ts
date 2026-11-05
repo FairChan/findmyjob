@@ -2,11 +2,15 @@ import createMiddleware from 'next-intl/middleware'
 import { routing } from './i18n/routing'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { getSessionCookie } from 'better-auth/cookies'
 
 const intlMiddleware = createMiddleware(routing)
 
-// Better Auth sets this cookie when a session is active
-const SESSION_COOKIE = 'better-auth.session_token'
+// 只做「有没有会话 cookie」的乐观判断，真正的会话校验在页面和 action 里。
+// 用 getSessionCookie 而不是写死 cookie 名：生产环境 useSecureCookies 会把名字变成 __Secure-better-auth.session_token
+function hasSessionCookie(request: NextRequest): boolean {
+  return Boolean(getSessionCookie(request))
+}
 
 // Segments of the app that require authentication
 const PROTECTED_SEGMENTS = ['s', 'e', 'admin'] as const
@@ -56,8 +60,7 @@ export default function middleware(request: NextRequest) {
 
   // --- Protected API routes ---
   if (isProtectedApi(pathname)) {
-    const session = request.cookies.get(SESSION_COOKIE)
-    if (!session?.value) {
+    if (!hasSessionCookie(request)) {
       return new NextResponse(JSON.stringify({ ok: false, code: 'FORBIDDEN' }), {
         status: 401,
         headers: {
@@ -81,8 +84,7 @@ export default function middleware(request: NextRequest) {
 
   // --- Protected page routes: redirect to login if no session ---
   if (isProtectedPage(pathname)) {
-    const session = request.cookies.get(SESSION_COOKIE)
-    if (!session?.value) {
+    if (!hasSessionCookie(request)) {
       const locale = extractLocale(pathname)
       const loginUrl = new URL(`/${locale}/login`, request.url)
       loginUrl.searchParams.set('redirect', pathname)

@@ -110,7 +110,10 @@
     "localeChinese": "中文",
     "localeEnglish": "English",
     "localeSubmit": "Save",
-    "localeUpdateSuccess": "Language preference updated"
+    "localeUpdateSuccess": "Language preference updated",
+    "signOutTitle": "Sign out",
+    "signOut": "Sign out",
+    "errorSignOutFailed": "Sign-out failed. Please try again."
   },
   "studentDashboard": {
     "title": "Student Dashboard"

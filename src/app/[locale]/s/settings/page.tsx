@@ -5,6 +5,7 @@ import { db } from '@/server/db'
 import { redirect } from 'next/navigation'
 import ChangePasswordForm from '@/components/auth/ChangePasswordForm'
 import LocaleForm from '@/components/auth/LocaleForm'
+import SignOutButton from '@/components/auth/SignOutButton'
 
 export default async function StudentSettingsPage({
   params,
@@ -37,6 +38,11 @@ export default async function StudentSettingsPage({
       <section className="rounded-lg border bg-card p-6 space-y-4">
         <h2 className="text-lg font-semibold">{t('languageTitle')}</h2>
         <LocaleForm currentLocale={userLocale} />
+      </section>
+
+      <section className="rounded-lg border bg-card p-6 space-y-4">
+        <h2 className="text-lg font-semibold">{t('signOutTitle')}</h2>
+        <SignOutButton />
       </section>
     </div>
   )

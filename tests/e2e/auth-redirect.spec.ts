@@ -1,26 +1,20 @@
 /**
- * M1-T04 E2E: student registration → email verification → login → /s/onboarding
+ * M1-T01 / M1-T04 E2E：学生注册 → Mailpit 收验证邮件 → 验证 → 登录 → 进入 /s/onboarding → 登出 → 会话失效
  *
- * Requires Mailpit (http://localhost:8025) to be running.
- * Skips gracefully when Mailpit is not available (local dev without Docker).
+ * 需要 Mailpit：本地 `docker compose up -d mailpit`（宿主机 1026/8026），CI 的 e2e job 有同端口的 service。
+ * 没有 Mailpit 或收不到邮件时直接失败，不 skip：否则 verify 全绿可能只是跳过了。
  */
 import { test, expect } from '@playwright/test'
 
-const MAILPIT_URL = 'http://localhost:8025'
+const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
 
-async function isMailpitAvailable(request: typeof test.info extends () => infer R ? R : never): Promise<boolean> {
-  // We detect availability inline per test; just return true optimistically.
-  return true
-}
-
-test.describe('student registration → verification → onboarding redirect', () => {
-  test('new student is redirected to /s/onboarding after login', async ({ page, request }) => {
-    // Skip if Mailpit is not available
+test.describe('student registration → verification → login → sign-out', () => {
+  test('new student reaches /s/onboarding, then sign-out invalidates the session', async ({ page, request }) => {
     const mailpitCheck = await request.get(`${MAILPIT_URL}/api/v1/messages`).catch(() => null)
-    if (!mailpitCheck || !mailpitCheck.ok()) {
-      test.skip(true, 'Mailpit not available — skipping E2E email verification test')
-      return
-    }
+    expect(
+      mailpitCheck?.ok(),
+      `Mailpit is not reachable at ${MAILPIT_URL} (run: docker compose up -d mailpit)`,
+    ).toBe(true)
 
     const unique = Date.now()
     const email = `e2e-student-${unique}@example.test`
@@ -33,53 +27,38 @@ test.describe('student registration → verification → onboarding redirect', (
     await page.fill('[name="password"]', password)
     await page.check('[name="agreeTerms"]')
     await page.check('[name="agreePrivacy"]')
+    // Turnstile 异步发 token（测试密钥也要先加载 Cloudflare 脚本）；token 到了再提交
+    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
     await page.click('button[type="submit"]')
 
-    // Should reach verify-email page
     await expect(page).toHaveURL(/\/register\/verify-email/)
 
-    // --- Step 2: Fetch verification link from Mailpit ---
-    // Poll for the verification email (up to 10 seconds)
+    // --- Step 2: Fetch the verification link from Mailpit (up to 15 seconds) ---
     let verificationUrl: string | null = null
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 15 && !verificationUrl; i++) {
       await page.waitForTimeout(1000)
       const response = await request.get(`${MAILPIT_URL}/api/v1/messages`)
       if (!response.ok()) continue
 
       const data = await response.json()
-      const messages: Array<{
-        ID: string
-        To: Array<{ Address: string }>
-        Subject: string
-      }> = data.messages ?? []
-
+      const messages: Array<{ ID: string; To: Array<{ Address: string }> }> = data.messages ?? []
       const msg = messages.find((m) => m.To.some((r) => r.Address === email))
       if (!msg) continue
 
-      // Get the full message body
       const bodyResp = await request.get(`${MAILPIT_URL}/api/v1/message/${msg.ID}`)
       if (!bodyResp.ok()) continue
-
       const bodyData = await bodyResp.json()
       const html: string = bodyData.HTML ?? bodyData.Text ?? ''
 
-      // Extract verification link (Better Auth sends https://APP_URL/api/auth/verify-email?token=...)
-      const match = html.match(/href="([^"]*verify-email[^"]*)"/)
-        ?? html.match(/(https?:\/\/[^\s<>"]*verify-email[^\s<>"]*)/i)
-      if (match) {
-        verificationUrl = match[1].replace(/&amp;/g, '&')
-        break
-      }
+      const match =
+        html.match(/href="([^"]*verify-email[^"]*)"/) ??
+        html.match(/(https?:\/\/[^\s<>"]*verify-email[^\s<>"]*)/i)
+      if (match) verificationUrl = match[1].replace(/&amp;/g, '&')
     }
+    expect(verificationUrl, `no verification email for ${email} arrived in Mailpit within 15 seconds`).not.toBeNull()
 
-    if (!verificationUrl) {
-      test.skip(true, 'Verification email not received within 10 seconds')
-      return
-    }
-
-    // --- Step 3: Click the verification link ---
-    await page.goto(verificationUrl)
-    // After verification, Better Auth may redirect or show a page; wait briefly
+    // --- Step 3: Verify ---
+    await page.goto(verificationUrl!)
     await page.waitForURL(/.*/, { timeout: 5000 }).catch(() => {})
 
     // --- Step 4: Log in ---
@@ -89,7 +68,28 @@ test.describe('student registration → verification → onboarding redirect', (
     await page.fill('[name="password"]', password)
     await page.click('button[type="submit"]')
 
-    // --- Step 5: Should land on /s/onboarding ---
+    // --- Step 5: Lands on /s/onboarding ---
     await expect(page).toHaveURL(/\/s\/onboarding/, { timeout: 10000 })
+
+    const sessionBefore = await page.request.get('/api/auth/get-session')
+    expect((await sessionBefore.json())?.user?.email).toBe(email)
+    const sessionCookies = (await page.context().cookies()).filter((c) =>
+      c.name.endsWith('better-auth.session_token'),
+    )
+    expect(sessionCookies.length).toBeGreaterThan(0)
+
+    // --- Step 6: Sign out ---
+    await page.goto('/zh/s/settings')
+    await page.getByRole('button', { name: '退出登录' }).click()
+    await expect(page).toHaveURL(/\/zh\/login/, { timeout: 10000 })
+
+    // --- Step 7: The session is gone ---
+    await page.goto('/zh/s')
+    await expect(page).toHaveURL(/\/zh\/login\?redirect=%2Fzh%2Fs/)
+
+    // 把登出前的 cookie 塞回去，服务端也必须认为会话已失效（不只是浏览器删了 cookie）
+    await page.context().addCookies(sessionCookies)
+    const sessionAfter = await page.request.get('/api/auth/get-session')
+    expect(await sessionAfter.json()).toBeNull()
   })
 })
