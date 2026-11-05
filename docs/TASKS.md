@@ -656,6 +656,7 @@
 - 停掉数据库后 /api/health 返回 503；CI 跑完 E2E 后，在应用日志里 grep 不到哨兵值
 > 完成 2026-11-05：@sentry/nextjs@11.10.0 + @sentry/node@11.10.0（精确版本，pnpm add --save-exact）；src/lib/sentry-options.ts（sentryOptions + scrubEvent：删除 cookies/data/query_string，仅保留 user-agent header，URL 去 query string，去 user 字段，message 过 redact()）；src/instrumentation.ts（register() + onRequestError()）；src/instrumentation-client.ts；src/worker.ts 加 @sentry/node init；src/server/lib/alert.ts 加 Sentry.captureMessage；src/app/api/health/route.ts（SELECT 1，2s timeout，503/no-store）；tests/unit/sentry-scrub.test.ts（12 个断言）；next.config.ts 加 serverExternalPackages；pnpm lint/typecheck/test（133）全部通过。偏差：@sentry/core 不在顶层 node_modules，Event/ErrorEvent 类型从 @sentry/node 间接导入；不需要 allowBuilds（@sentry 包没有 postinstall 脚本）
 > 修复 2026-11-05：dataCollection 全关（sendDefaultPii 改由 dataCollection 实现，sendDefaultPii:false 保留）；tracesSampler/beforeSendTransaction 防上游 trace 传播；scrubEvent 增加 contexts.nextjs.request_path 去查询串、exception.values 过 redact、extra 删 PII 键并递归 redact；ID 路径段替换为 [id]；beforeBreadcrumb 去 URL 查询串；worker/registry 加 captureException；health 改用 $transaction+statement_timeout+clearTimeout；NEXT_PUBLIC_APP_TAG/NEXT_PUBLIC_SENTRY_ENVIRONMENT 新增环境变量
+> 修复 2026-11-05（二）：beforeBreadcrumb 对 console 类面包屑直接 return null（防 data.arguments 泄漏）；scrubExtra 增加 scrubValue 递归处理数组元素；exception.value 在 redact 前先 replace(/\?[^"'\s]*/g,'') 去掉查询串；tests/unit/alert.test.ts 改用真实 transport 收集 envelope，断言 alert() 确实发送事件且 extra 中 PII 键被删除；tests/unit/sentry-scrub.test.ts 更新 console breadcrumb 断言为 null
 
 #### [ ] M7-T05 安全响应头与复查
 依赖：M7-T03
