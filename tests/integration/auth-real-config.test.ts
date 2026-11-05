@@ -592,3 +592,97 @@ describe('email provider failure observability', () => {
     )
   })
 })
+
+// ---------------------------------------------------------------------------
+// 总控补充（M1 合并前复审）：半成品回滚、名额满时新老邮箱一致、发信失败、限流跨重启
+// ---------------------------------------------------------------------------
+
+describe('sign-up rollback when the after-hook fails', () => {
+  it('deletes the just-created user if writing Consent/StudentProfile throws', async () => {
+    stubFetchTurnstileSuccess()
+    const email = `rollback-${Date.now()}@example.test`
+    const spy = vi.spyOn(testDb, '$transaction').mockRejectedValueOnce(new Error('boom'))
+
+    const res = await auth.handler(makeSignUpReq({ email }, '10.0.3.1'))
+    expect(res.status).toBeGreaterThanOrEqual(400)
+    spy.mockRestore()
+
+    expect(await testDb.user.count({ where: { email } })).toBe(0)
+    expect(await testDb.account.count({ where: { user: { email } } })).toBe(0)
+  })
+})
+
+describe('signup quota parity for existing and new email', () => {
+  afterEach(async () => {
+    await setSetting('signup.studentCap', 3000).catch(() => {})
+  })
+
+  it('returns the same SIGNUP_CLOSED for an already-registered email and a new one', async () => {
+    stubFetchTurnstileSuccess()
+    const existingEmail = `cap-existing-${Date.now()}@example.test`
+    await testDb.user.create({
+      data: { name: 'Cap Existing', email: existingEmail, emailVerified: true, role: 'STUDENT', status: 'ACTIVE' },
+    })
+    await setSetting('signup.studentCap', 0)
+
+    const resExisting = await auth.handler(makeSignUpReq({ email: existingEmail }, '10.0.3.2'))
+    const resNew = await auth.handler(makeSignUpReq({ email: `cap-new-${Date.now()}@example.test` }, '10.0.3.3'))
+    expect(resExisting.status).toBe(resNew.status)
+    const [a, b] = [(await resExisting.json()) as { code?: string }, (await resNew.json()) as { code?: string }]
+    expect(a.code).toBe('SIGNUP_CLOSED')
+    expect(b.code).toBe('SIGNUP_CLOSED')
+  })
+})
+
+describe('email provider failure during sign-up', () => {
+  it('still creates a complete user and answers new and existing emails the same way', async () => {
+    stubFetchTurnstileSuccess()
+    mockSendEmail.mockRejectedValue(Object.assign(new Error('smtp down'), { code: 'ECONNREFUSED' }))
+    try {
+      const fresh = `mailfail-new-${Date.now()}@example.test`
+      const existing = `mailfail-old-${Date.now()}@example.test`
+      await testDb.user.create({
+        data: { name: 'Mail Old', email: existing, emailVerified: true, role: 'STUDENT', status: 'ACTIVE' },
+      })
+
+      const resNew = await auth.handler(makeSignUpReq({ email: fresh }, '10.0.3.4'))
+      const resOld = await auth.handler(makeSignUpReq({ email: existing }, '10.0.3.5'))
+      expect(resNew.status).toBe(200)
+      expect(resOld.status).toBe(resNew.status)
+
+      const user = await testDb.user.findFirst({ where: { email: fresh } })
+      expect(user).not.toBeNull()
+      expect(await testDb.studentProfile.count({ where: { userId: user!.id } })).toBe(1)
+      expect(await testDb.consent.count({ where: { userId: user!.id, type: { in: ['TERMS', 'PRIVACY'] } } })).toBe(2)
+    } finally {
+      mockSendEmail.mockReset()
+      mockSendEmail.mockResolvedValue(undefined)
+    }
+  })
+})
+
+describe('rate-limit counters survive a process restart in staging/production', () => {
+  afterEach(() => {
+    mockEnv.APP_ENV = 'ci' as typeof mockEnv.APP_ENV
+  })
+
+  it('uses database storage, so the 4th sign-up after a restart is still 429', async () => {
+    stubFetchTurnstileSuccess()
+    mockEnv.APP_ENV = 'staging' as typeof mockEnv.APP_ENV
+    const ip = '192.0.2.77'
+
+    vi.resetModules()
+    const first = (await import('@/server/auth')).auth
+    for (let i = 0; i < 3; i++) {
+      const res = await first.handler(makeSignUpReq({ email: `restart-${i}-${Date.now()}@example.test` }, ip))
+      expect(res.status).not.toBe(429)
+    }
+    expect(await testDb.rateLimit.count()).toBeGreaterThan(0)
+
+    // 重新加载模块 = 新进程：内存里的计数全部丢失，只有数据库里的还在
+    vi.resetModules()
+    const second = (await import('@/server/auth')).auth
+    const res = await second.handler(makeSignUpReq({ email: `restart-4-${Date.now()}@example.test` }, ip))
+    expect(res.status).toBe(429)
+  })
+})

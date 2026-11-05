@@ -5,35 +5,47 @@
  * 没有 Mailpit 或收不到邮件时直接失败，不 skip：否则 verify 全绿可能只是跳过了。
  */
 import { test, expect } from '@playwright/test'
+import { stubTurnstile } from './helpers/turnstile'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
 
 test.describe('Turnstile widget UX', () => {
-  test('submit button is disabled until Turnstile token loads', async ({ page }) => {
+  test('submit button is disabled until the Turnstile token arrives', async ({ page }) => {
+    await stubTurnstile(page, { delayMs: 1500 })
     await page.goto('/zh/register/student')
-    // Before the token arrives the button must be disabled
+    const submit = page.locator('button[type="submit"]')
+    await expect(submit).toBeDisabled()
+    await expect(submit).toBeEnabled({ timeout: 10000 })
+
+    await page.goto('/zh/login')
     await expect(page.locator('button[type="submit"]')).toBeDisabled()
-    // After the token arrives the button is enabled
-    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
-    await expect(page.locator('button[type="submit"]')).toBeEnabled()
+    await expect(page.locator('button[type="submit"]')).toBeEnabled({ timeout: 10000 })
   })
 
-  test('TURNSTILE_FAILED shows specific error message, not generic "邮箱或密码错误"', async ({ page }) => {
+  test('a blocked Turnstile script shows the verification error instead of hanging', async ({ page }) => {
+    await page.route('https://challenges.cloudflare.com/turnstile/v0/api.js**', (route) => route.abort())
     await page.goto('/zh/login')
-    // Wait for Turnstile token so the button is enabled
-    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
-    // Corrupt the hidden token so the server rejects it
-    await page.evaluate(() => {
-      const el = document.querySelector<HTMLInputElement>('input[name="cf-turnstile-response"]')
-      if (el) el.value = 'INVALID_TOKEN_FOR_TEST'
+    await expect(page.getByRole('alert').filter({ hasText: /\S/ })).toContainText('人机验证失败', { timeout: 10000 })
+    await expect(page.locator('button[type="submit"]')).toBeDisabled()
+  })
+
+  test('TURNSTILE_FAILED shows the dedicated message, not "邮箱或密码错误"', async ({ page }) => {
+    await stubTurnstile(page)
+    // 表单发的是组件内部状态里的 token；在网络层把它改成空串，服务端确定性地返回 TURNSTILE_FAILED
+    await page.route('**/api/auth/sign-in/email', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}')
+      body.turnstileToken = ''
+      await route.continue({ postData: JSON.stringify(body) })
     })
+    await page.goto('/zh/login')
     await page.fill('[name="email"]', 'any@example.test')
     await page.fill('[name="password"]', 'Password123!')
+    await expect(page.locator('button[type="submit"]')).toBeEnabled({ timeout: 10000 })
     await page.click('button[type="submit"]')
 
-    // Should show Turnstile-specific error, NOT the generic credentials error
-    await expect(page.getByRole('alert')).toContainText('人机验证失败', { timeout: 10000 })
-    await expect(page.getByRole('alert')).not.toContainText('邮箱或密码错误')
+    const alert = page.getByRole('alert').filter({ hasText: /\S/ })
+    await expect(alert).toContainText('人机验证失败', { timeout: 10000 })
+    await expect(alert).not.toContainText('邮箱或密码错误')
   })
 })
 
@@ -49,6 +61,8 @@ test.describe('student registration → verification → login → sign-out', ()
     const email = `e2e-student-${unique}@example.test`
     const password = 'Password123!'
 
+    await stubTurnstile(page)
+
     // --- Step 1: Register ---
     await page.goto('/zh/register/student')
     await page.fill('[name="name"]', `E2E Student ${unique}`)
@@ -57,10 +71,11 @@ test.describe('student registration → verification → login → sign-out', ()
     await page.check('[name="agreeTerms"]')
     await page.check('[name="agreePrivacy"]')
     // Turnstile 异步发 token（测试密钥也要先加载 Cloudflare 脚本）；token 到了再提交
-    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
+    await expect(page.locator('button[type="submit"]')).toBeEnabled({ timeout: 15000 })
     await page.click('button[type="submit"]')
 
-    await expect(page).toHaveURL(/\/register\/verify-email/)
+    // 冷启动的 dev server 第一次编译 action 和 verify-email 页可能超过默认的 5 秒
+    await expect(page).toHaveURL(/\/register\/verify-email/, { timeout: 20000 })
 
     // --- Step 2: Fetch the verification link from Mailpit (up to 15 seconds) ---
     let verificationUrl: string | null = null
@@ -95,7 +110,7 @@ test.describe('student registration → verification → login → sign-out', ()
     await expect(page.locator('h1')).toContainText('登录')
     await page.fill('[name="email"]', email)
     await page.fill('[name="password"]', password)
-    await expect(page.locator('input[name="cf-turnstile-response"]')).not.toHaveValue('', { timeout: 15000 })
+    await expect(page.locator('button[type="submit"]')).toBeEnabled({ timeout: 15000 })
     await page.click('button[type="submit"]')
 
     // --- Step 5: Lands on /s/onboarding ---

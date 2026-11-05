@@ -88,6 +88,46 @@ if (env.APP_ENV === 'development') {
   trustedOrigins.push('http://localhost:3000')
 }
 
+async function writeSignupRecords(user: Record<string, unknown>, ctx?: any): Promise<void> {
+  const body = ctx?.body as Record<string, unknown> | undefined
+  const isEmployer = isEmployerRegistration()
+  const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
+  const reqHeaders: Headers | null = ctx?.request?.headers ?? null
+  const ip = reqHeaders ? getClientIp(reqHeaders as Headers) : null
+  const userAgent = reqHeaders ? (reqHeaders as unknown as Headers).get('user-agent') : null
+  const userId = user.id as string
+
+  if (!isEmployer) {
+    const joinTalentPool = body?.joinTalentPool === true
+    const fullName = ((body?.name as string) ?? (user.name as string) ?? '').trim()
+    await db.$transaction([
+      db.studentProfile.create({
+        data: {
+          userId,
+          fullName,
+          visibility: joinTalentPool ? 'PUBLIC' : 'HIDDEN',
+        },
+      }),
+      db.consent.createMany({
+        data: [
+          { userId, type: 'TERMS', granted: true, version: legalVersion, ip, userAgent },
+          { userId, type: 'PRIVACY', granted: true, version: legalVersion, ip, userAgent },
+          { userId, type: 'TALENT_POOL', granted: joinTalentPool, version: legalVersion, ip, userAgent },
+        ],
+      }),
+    ])
+  } else {
+    await recordConsents(
+      userId,
+      [
+        { type: 'TERMS', granted: true },
+        { type: 'PRIVACY', granted: true },
+      ],
+      { ip, userAgent },
+    )
+  }
+}
+
 export const auth = betterAuth({
   baseURL: env.APP_URL,
   secret: env.BETTER_AUTH_SECRET,
@@ -248,8 +288,8 @@ export const auth = betterAuth({
   },
 
   rateLimit: {
-    // Explicitly enabled; production/staging use database storage (persists across restarts, DECISIONS A24).
-    // Development/CI/test use memory storage so E2E runs don't share rate-limit buckets between runs (DECISIONS A30).
+    // Explicitly enabled; production/staging use database storage (persists across restarts, DECISIONS A24 and the 2026-11-05 M1-T11 row).
+    // Development/CI/test use memory storage (DECISIONS 2026-11-05 M1-T11 row); note Playwright reuses a running dev server, so local buckets persist until it restarts.
     enabled: true,
     storage: (env.APP_ENV === 'production' || env.APP_ENV === 'staging') ? 'database' : 'memory',
     customRules: {
@@ -306,42 +346,14 @@ export const auth = betterAuth({
         // so it covers both UI-initiated and direct API registrations.
         after: async (user: Record<string, unknown>, ctx?: any) => {
           if (!user?.id) return
-          const body = ctx?.body as Record<string, unknown> | undefined
-          const isEmployer = isEmployerRegistration()
-          const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
-          const reqHeaders: Headers | null = ctx?.request?.headers ?? null
-          const ip = reqHeaders ? getClientIp(reqHeaders as Headers) : null
-          const userAgent = reqHeaders ? (reqHeaders as unknown as Headers).get('user-agent') : null
-          const userId = user.id as string
-
-          if (!isEmployer) {
-            const joinTalentPool = body?.joinTalentPool === true
-            const fullName = ((body?.name as string) ?? (user.name as string) ?? '').trim()
-            await db.$transaction([
-              db.studentProfile.create({
-                data: {
-                  userId,
-                  fullName,
-                  visibility: joinTalentPool ? 'PUBLIC' : 'HIDDEN',
-                },
-              }),
-              db.consent.createMany({
-                data: [
-                  { userId, type: 'TERMS', granted: true, version: legalVersion, ip, userAgent },
-                  { userId, type: 'PRIVACY', granted: true, version: legalVersion, ip, userAgent },
-                  { userId, type: 'TALENT_POOL', granted: joinTalentPool, version: legalVersion, ip, userAgent },
-                ],
-              }),
-            ])
-          } else {
-            await recordConsents(
-              userId,
-              [
-                { type: 'TERMS', granted: true },
-                { type: 'PRIVACY', granted: true },
-              ],
-              { ip, userAgent },
-            )
+          // prismaAdapter 的 transaction 默认关闭：走到这里时 User 和 Account 已经提交、验证邮件也已排队。
+          // 这里任何一步失败都把刚建的用户删掉（Account、Consent、StudentProfile 级联删除），不留没有同意记录的账号
+          try {
+            await writeSignupRecords(user, ctx)
+          } catch (err) {
+            await db.user.delete({ where: { id: user.id as string } }).catch(() => {})
+            logger.error({ code: 'SIGNUP_RECORDS_FAILED', userId: user.id }, 'sign-up rolled back')
+            throw err
           }
         },
       },

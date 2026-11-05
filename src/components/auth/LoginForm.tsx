@@ -23,6 +23,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
   const [turnstileKey, setTurnstileKey] = useState(0)
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
+  const handleTurnstileError = useCallback(() => setError(t('errorTurnstileFailed')), [t])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -33,35 +34,42 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
     const password = data.get('password') as string
 
     startTransition(async () => {
-      const { error: authError } = await authClient.signIn.email({
-        email,
-        password,
-        // @ts-expect-error extra field consumed by hooks.before
-        turnstileToken,
-      })
+      try {
+        const { error: authError } = await authClient.signIn.email({
+          email,
+          password,
+          // @ts-expect-error extra field consumed by hooks.before
+          turnstileToken,
+        })
 
-      if (authError) {
-        // Reset Turnstile so a fresh token is issued before the next attempt.
+        if (authError) {
+          // Reset Turnstile so a fresh token is issued before the next attempt.
+          setTurnstileKey((k) => k + 1)
+          setTurnstileToken('')
+
+          if (authError.code === 'EMAIL_NOT_VERIFIED') {
+            setError(t('errorEmailNotVerified'))
+          } else if (authError.status === 429) {
+            setError(t('errorRateLimited'))
+          } else if (authError.code === 'TURNSTILE_FAILED') {
+            setError(t('errorTurnstileFailed'))
+          } else {
+            setError(t('errorInvalidCredentials'))
+          }
+          return
+        }
+
+        const result = await getPostLoginRedirect({ locale, redirect })
+        if (result.ok) {
+          router.push(result.data.path)
+        } else {
+          router.push(`/${locale}/s`)
+        }
+      } catch {
+        // 网络错误时 action 或 fetch 会直接抛出：重置 Turnstile（旧 token 可能已被消耗），给出提示
         setTurnstileKey((k) => k + 1)
         setTurnstileToken('')
-
-        if (authError.code === 'EMAIL_NOT_VERIFIED') {
-          setError(t('errorEmailNotVerified'))
-        } else if (authError.status === 429) {
-          setError(t('errorRateLimited'))
-        } else if (authError.code === 'TURNSTILE_FAILED') {
-          setError(t('errorTurnstileFailed'))
-        } else {
-          setError(t('errorInvalidCredentials'))
-        }
-        return
-      }
-
-      const result = await getPostLoginRedirect({ locale, redirect })
-      if (result.ok) {
-        router.push(result.data.path)
-      } else {
-        router.push(`/${locale}/s`)
+        setError(t('errorNetwork'))
       }
     })
   }
@@ -108,7 +116,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
         </Link>
       </div>
 
-      <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="login" onToken={handleToken} onExpire={handleExpire} />
+      <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="login" onToken={handleToken} onExpire={handleExpire} onError={handleTurnstileError} />
 
       {!turnstileToken && !isPending && (
         <p className="text-xs text-muted-foreground" aria-live="polite">

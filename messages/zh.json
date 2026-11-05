@@ -51,7 +51,8 @@
     "signupClosed": "学生名额已满，暂停开放注册，请关注官方通知。",
     "errorSignupClosed": "学生名额已满，注册暂停。",
     "turnstileLoading": "正在进行人机验证，请稍候…",
-    "errorTurnstileFailed": "人机验证失败，请刷新页面后重试。"
+    "errorTurnstileFailed": "人机验证失败，请刷新页面后重试。",
+    "errorNetwork": "网络连接出错，请稍后重试。"
   },
   "verifyEmail": {
     "title": "请验证您的邮箱",
@@ -74,7 +75,8 @@
     "errorEmailNotVerified": "邮箱尚未验证，请查收验证邮件",
     "errorRateLimited": "登录失败次数过多，请稍后再试",
     "turnstileLoading": "正在进行人机验证，请稍候…",
-    "errorTurnstileFailed": "人机验证失败，请刷新页面后重试。"
+    "errorTurnstileFailed": "人机验证失败，请刷新页面后重试。",
+    "errorNetwork": "网络连接出错，请稍后重试。"
   },
   "forgotPassword": {
     "title": "找回密码",
@@ -87,7 +89,8 @@
     "errorRateLimited": "请求过于频繁，请稍后再试",
     "turnstileLoading": "正在进行人机验证，请稍候…",
     "errorTurnstileFailed": "人机验证失败，请刷新页面后重试。",
-    "errorUnknown": "发生未知错误，请稍后重试"
+    "errorUnknown": "发生未知错误，请稍后重试",
+    "errorNetwork": "网络连接出错，请稍后重试。"
   },
   "resetPassword": {
     "title": "重置密码",

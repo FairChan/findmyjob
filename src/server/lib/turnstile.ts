@@ -9,6 +9,13 @@ interface SiteverifyResponse {
   metadata?: { result_with_testing_key?: boolean }
 }
 
+// https://developers.cloudflare.com/turnstile/troubleshooting/testing/
+const TEST_SECRET_RESULTS: Record<string, 'pass' | 'fail' | 'duplicate'> = {
+  '1x0000000000000000000000000000000AA': 'pass',
+  '2x0000000000000000000000000000000AA': 'fail',
+  '3x0000000000000000000000000000000AA': 'duplicate',
+}
+
 export class TurnstileError extends Error {
   constructor(message: string) {
     super(message)
@@ -27,6 +34,15 @@ export async function verifyTurnstile(
 ): Promise<void> {
   if (!token || typeof token !== 'string') {
     throw new TurnstileError('Missing Turnstile token')
+  }
+
+  // Cloudflare 公开的测试 secret 对任何 token 的结果是固定的（1x 必过，2x 必败，3x 视为重复使用）。
+  // 非生产环境用它们时不走网络：本机连 Cloudflare 时快时慢，5 秒超时会让 E2E 随机失败（2026-11-05 实测）。
+  // 生产环境 env.ts 本来就禁止测试 secret，这里也不走捷径。
+  if (env.APP_ENV !== 'production') {
+    const fixed = TEST_SECRET_RESULTS[env.TURNSTILE_SECRET_KEY]
+    if (fixed === 'pass') return
+    if (fixed) throw new TurnstileError(`Turnstile verification failed (test secret: ${fixed})`)
   }
 
   const params = new URLSearchParams({

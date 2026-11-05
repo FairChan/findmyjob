@@ -83,6 +83,47 @@ describe('verifyTurnstile', () => {
     await expect(verifyTurnstile('XXXX.DUMMY.TOKEN.XXXX', { action: 'register' })).resolves.toBeUndefined()
   })
 
+  // Cloudflare 公开的测试 secret。2x 由 1x 拼出来，免得 gitleaks 的 findmyjob-app-secrets 规则把公开测试值当成密钥
+  const PASS_SECRET = '1x0000000000000000000000000000000AA'
+  const FAIL_SECRET = '2x' + PASS_SECRET.slice(2)
+
+  describe('with Cloudflare test secrets outside production', () => {
+    afterEach(() => {
+      mockEnv.TURNSTILE_SECRET_KEY = 'test-secret-key'
+    })
+
+    it('always-pass secret resolves without calling the network', async () => {
+      mockEnv.TURNSTILE_SECRET_KEY = PASS_SECRET
+      const f = vi.fn()
+      vi.stubGlobal('fetch', f)
+      await expect(verifyTurnstile('XXXX.DUMMY.TOKEN.XXXX', { action: 'login' })).resolves.toBeUndefined()
+      expect(f).not.toHaveBeenCalled()
+    })
+
+    it('always-fail secret rejects without calling the network', async () => {
+      mockEnv.TURNSTILE_SECRET_KEY = FAIL_SECRET
+      const f = vi.fn()
+      vi.stubGlobal('fetch', f)
+      await expect(verifyTurnstile('token', { action: 'login' })).rejects.toBeInstanceOf(TurnstileError)
+      expect(f).not.toHaveBeenCalled()
+    })
+
+    it('an empty token is still rejected', async () => {
+      mockEnv.TURNSTILE_SECRET_KEY = PASS_SECRET
+      await expect(verifyTurnstile('', { action: 'login' })).rejects.toBeInstanceOf(TurnstileError)
+    })
+
+    it('in production the test secret is not short-circuited', async () => {
+      mockEnv.TURNSTILE_SECRET_KEY = PASS_SECRET
+      mockEnv.APP_ENV = 'production'
+      const f = mockFetch({ success: true, hostname: 'example.com', metadata: { result_with_testing_key: true } })
+      vi.stubGlobal('fetch', f)
+      await expect(verifyTurnstile('token', { action: 'login' })).rejects.toThrow(/testing-key/)
+      expect(f).toHaveBeenCalledOnce()
+      mockEnv.APP_ENV = 'development'
+    })
+  })
+
   describe('in production', () => {
     beforeEach(() => {
       mockEnv.APP_ENV = 'production'
