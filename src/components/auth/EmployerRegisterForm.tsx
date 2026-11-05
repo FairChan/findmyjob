@@ -1,15 +1,23 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useState, useCallback, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { registerEmployer } from '@/server/actions/register'
+import TurnstileWidget from './TurnstileWidget'
 
-export default function EmployerRegisterForm() {
+interface Props {
+  siteKey: string
+}
+
+export default function EmployerRegisterForm({ siteKey }: Props) {
   const t = useTranslations('register')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [turnstileToken, setTurnstileToken] = useState<string>('')
+  const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
+  const handleExpire = useCallback(() => setTurnstileToken(''), [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -34,6 +42,7 @@ export default function EmployerRegisterForm() {
         password,
         agreeTerms: true,
         agreePrivacy: true,
+        turnstileToken,
       })
 
       if (result.ok) {
@@ -122,6 +131,8 @@ export default function EmployerRegisterForm() {
           <span className="text-sm">{t('agreePrivacy')}</span>
         </label>
       </div>
+
+      <TurnstileWidget siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

@@ -1,12 +1,40 @@
 import 'server-only'
 import { betterAuth } from 'better-auth'
+import { createAuthMiddleware, APIError } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { emailOTP } from 'better-auth/plugins/email-otp'
 import { db } from './db'
 import { env } from '@/env'
 import { createEmailProvider } from '@/lib/email'
+import { verifyTurnstile, TurnstileError } from './lib/turnstile'
+import { logAudit } from './services/audit'
+import { getClientIp } from './lib/client-ip'
 
 const emailProvider = createEmailProvider()
+
+const TURNSTILE_PATHS: Record<string, string> = {
+  '/sign-in/email': 'login',
+  '/sign-up/email': 'register',
+  '/email-otp/send-verification-otp': 'send-otp',
+  '/request-password-reset': 'forgot-password',
+}
+
+const turnstileHook = createAuthMiddleware(async (ctx) => {
+  const action = TURNSTILE_PATHS[ctx.path ?? '']
+  if (!action) return
+
+  const token = (ctx.body as Record<string, unknown> | undefined)?.turnstileToken
+  const ip = ctx.request ? getClientIp(ctx.request.headers) : null
+
+  try {
+    await verifyTurnstile(typeof token === 'string' ? token : '', { action, ip })
+  } catch (err) {
+    if (err instanceof TurnstileError) {
+      throw new APIError('BAD_REQUEST', { message: err.message, code: 'TURNSTILE_FAILED' })
+    }
+    throw err
+  }
+})
 
 const trustedOrigins = [env.APP_URL]
 if (env.APP_ENV !== 'production') {
@@ -117,6 +145,32 @@ export const auth = betterAuth({
       storeOTP: 'hashed',
     }),
   ],
+
+  hooks: {
+    before: turnstileHook,
+  },
+
+  databaseHooks: {
+    session: {
+      create: {
+        after: async (session) => {
+          if (!session.userId) return
+          await Promise.all([
+            db.user.update({
+              where: { id: session.userId },
+              data: { lastLoginAt: new Date() },
+            }),
+            logAudit({
+              actorId: session.userId,
+              action: 'auth.login',
+              targetType: 'User',
+              targetId: session.userId,
+            }),
+          ])
+        },
+      },
+    },
+  },
 })
 
 export type Session = typeof auth.$Infer.Session

@@ -1,5 +1,6 @@
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
+import { env } from '@/env'
 import StudentRegisterForm from '@/components/auth/StudentRegisterForm'
 
 interface Props {
@@ -16,7 +17,7 @@ export default async function StudentRegisterPage({ params, searchParams }: Prop
     <div className="container mx-auto max-w-md px-4 py-12">
       <div className="rounded-lg border bg-card p-8 shadow-sm">
         <h1 className="text-2xl font-bold mb-6">{t('studentTitle')}</h1>
-        <StudentRegisterForm locale={locale} ref={ref} />
+        <StudentRegisterForm locale={locale} ref={ref} siteKey={env.TURNSTILE_SITE_KEY} />
         <div className="mt-4 flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
             {t('loginHint')}{' '}

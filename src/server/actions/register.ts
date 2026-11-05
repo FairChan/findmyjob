@@ -8,6 +8,10 @@ import { recordConsents } from '@/server/services/consent'
 import { getClientIp } from '@/server/lib/client-ip'
 import { AppError } from '@/server/errors'
 import { logger } from '@/server/lib/logger'
+import { createEmailProvider } from '@/lib/email'
+import { verifyTurnstile, TurnstileError } from '@/server/lib/turnstile'
+
+const emailProvider = createEmailProvider()
 
 const studentInput = z.object({
   name: z.string().min(1).max(100),
@@ -17,6 +21,7 @@ const studentInput = z.object({
   agreePrivacy: z.literal(true),
   joinTalentPool: z.boolean().default(false),
   ref: z.string().max(255).optional(),
+  turnstileToken: z.string(),
 })
 
 const employerInput = z.object({
@@ -25,6 +30,7 @@ const employerInput = z.object({
   password: z.string().min(8).max(128),
   agreeTerms: z.literal(true),
   agreePrivacy: z.literal(true),
+  turnstileToken: z.string(),
 })
 
 export const registerStudent = action(
@@ -33,6 +39,13 @@ export const registerStudent = action(
     const h = await headers()
     const ip = getClientIp(h)
     const userAgent = h.get('user-agent')
+
+    try {
+      await verifyTurnstile(input.turnstileToken, { action: 'register', ip })
+    } catch (err) {
+      if (err instanceof TurnstileError) throw new AppError(err.message, 'TURNSTILE_FAILED')
+      throw err
+    }
 
     let userId: string
     try {
@@ -47,6 +60,21 @@ export const registerStudent = action(
       userId = user.id
     } catch (err) {
       if (err instanceof AppError) throw err
+      // Anti-enumeration: detect duplicate email, send reminder, return same response
+      const errBody = (err as { body?: { code?: string } } | null)?.body
+      if (errBody?.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
+        emailProvider
+          .sendEmail({
+            to: input.email,
+            subject: 'Someone tried to register with your FindMYJob account',
+            html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${process.env.APP_URL ?? ''}/login">log in</a> instead.</p>`,
+            text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
+          })
+          .catch((emailErr: unknown) =>
+            logger.error({ err: emailErr }, 'Failed to send duplicate email reminder'),
+          )
+        return { email: input.email }
+      }
       logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Student signup failed')
       throw new AppError('Registration failed', 'REGISTER_FAILED')
     }
@@ -94,6 +122,13 @@ export const registerEmployer = action(
     const ip = getClientIp(h)
     const userAgent = h.get('user-agent')
 
+    try {
+      await verifyTurnstile(input.turnstileToken, { action: 'register', ip })
+    } catch (err) {
+      if (err instanceof TurnstileError) throw new AppError(err.message, 'TURNSTILE_FAILED')
+      throw err
+    }
+
     let userId: string
     try {
       const result = await auth.api.signUpEmail({
@@ -107,6 +142,21 @@ export const registerEmployer = action(
       userId = user.id
     } catch (err) {
       if (err instanceof AppError) throw err
+      // Anti-enumeration: detect duplicate email, send reminder, return same response
+      const errBody = (err as { body?: { code?: string } } | null)?.body
+      if (errBody?.code === 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL') {
+        emailProvider
+          .sendEmail({
+            to: input.email,
+            subject: 'Someone tried to register with your FindMYJob account',
+            html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${process.env.APP_URL ?? ''}/login">log in</a> instead.</p>`,
+            text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
+          })
+          .catch((emailErr: unknown) =>
+            logger.error({ err: emailErr }, 'Failed to send duplicate email reminder'),
+          )
+        return { email: input.email }
+      }
       logger.warn({ err: err instanceof Error ? err.message : String(err) }, 'Employer signup failed')
       throw new AppError('Registration failed', 'REGISTER_FAILED')
     }

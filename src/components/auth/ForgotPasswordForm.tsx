@@ -1,14 +1,22 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useState, useCallback, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { authClient } from '@/lib/auth-client'
+import TurnstileWidget from './TurnstileWidget'
 
-export default function ForgotPasswordForm() {
+interface Props {
+  siteKey: string
+}
+
+export default function ForgotPasswordForm({ siteKey }: Props) {
   const t = useTranslations('forgotPassword')
   const [isPending, startTransition] = useTransition()
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [turnstileToken, setTurnstileToken] = useState<string>('')
+  const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
+  const handleExpire = useCallback(() => setTurnstileToken(''), [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -21,6 +29,8 @@ export default function ForgotPasswordForm() {
       const { error: authError } = await authClient.requestPasswordReset({
         email,
         redirectTo: `${window.location.origin}/reset-password`,
+        // @ts-expect-error extra field consumed by hooks.before
+        turnstileToken,
       })
 
       if (authError && authError.status === 429) {
@@ -59,6 +69,8 @@ export default function ForgotPasswordForm() {
           className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
+
+      <TurnstileWidget siteKey={siteKey} action="forgot-password" onToken={handleToken} onExpire={handleExpire} />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">

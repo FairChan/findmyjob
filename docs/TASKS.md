@@ -239,7 +239,7 @@
 
 > 完成 2026-11-05：/login 页（LoginForm，Better Auth 客户端 signIn.email，按角色跳转：学生 completeness=0→/s/onboarding，否则→/s；企业无公司→/e/onboarding；运营→/admin；支持 ?redirect= 参数）；/forgot-password（防枚举，统一成功提示）；/reset-password（token 重置）；/s/settings（修改密码 revokeOtherSessions=true、语言偏好 updateLocaleAction 写 User.locale）；新增 stub 页：/s、/s/onboarding、/e、/e/onboarding、/admin；E2E tests/e2e/auth-redirect.spec.ts（依赖 Mailpit，无 Mailpit 时 skip）；pnpm lint/typecheck/test/db:check 全部通过（65 tests）
 
-#### [ ] M1-T05 认证限流、人机验证、防枚举与审计
+#### [x] M1-T05 认证限流、人机验证、防枚举与审计
 依赖：M1-T03
 做：
 - `lib/turnstile.ts`：`verifyTurnstile(token, { action })`，siteverify 设 5 秒超时，超时按失败处理；校验 success、hostname 和 action；token 只能用一次。开发环境用 Cloudflare 官方测试 key；`APP_ENV=production` 时拒绝官方测试 secret（前缀以官方文档为准）。
@@ -251,6 +251,8 @@
 - mock siteverify：hostname 不对、success=false、超时，三种情况都被拒
 - 已注册邮箱和新邮箱的注册响应快照完全一致；`APP_ENV=production` 用测试 secret 时无法启动
 - 同一 IP 连续失败超过阈值后返回限流错误
+
+> 完成 2026-11-05：创建 src/server/lib/turnstile.ts（verifyTurnstile，5 秒超时，校验 success/hostname/action）；auth.ts 加 hooks.before（TURNSTILE_PATHS 对 4 个端点拦截）和 databaseHooks.session.create.after（写 auth.login 审计 + 更新 lastLoginAt）；register.ts 两个 action 均直接调用 verifyTurnstile（server-to-server 调用绕过 HTTP 中间件）；LoginForm/StudentRegisterForm/EmployerRegisterForm/ForgotPasswordForm 均集成 TurnstileWidget 并传 token；防枚举逻辑已在 register 和 auth 层实现；新增 tests/unit/turnstile.test.ts（6 个用例）；lint/typecheck/test 全部通过（71 tests）
 
 #### [ ] M1-T06 学生注册上限
 依赖：M1-T02、M0-T11

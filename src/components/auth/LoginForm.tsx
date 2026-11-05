@@ -1,22 +1,27 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useState, useCallback, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { authClient } from '@/lib/auth-client'
 import { getPostLoginRedirect } from '@/server/actions/account'
+import TurnstileWidget from './TurnstileWidget'
 
 interface Props {
   locale: string
   redirect?: string
+  siteKey: string
 }
 
-export default function LoginForm({ locale, redirect }: Props) {
+export default function LoginForm({ locale, redirect, siteKey }: Props) {
   const t = useTranslations('login')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [turnstileToken, setTurnstileToken] = useState<string>('')
+  const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
+  const handleExpire = useCallback(() => setTurnstileToken(''), [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -27,7 +32,12 @@ export default function LoginForm({ locale, redirect }: Props) {
     const password = data.get('password') as string
 
     startTransition(async () => {
-      const { error: authError } = await authClient.signIn.email({ email, password })
+      const { error: authError } = await authClient.signIn.email({
+        email,
+        password,
+        // @ts-expect-error extra field consumed by hooks.before
+        turnstileToken,
+      })
 
       if (authError) {
         if (authError.code === 'EMAIL_NOT_VERIFIED') {
@@ -90,6 +100,8 @@ export default function LoginForm({ locale, redirect }: Props) {
           {t('forgotPassword')}
         </Link>
       </div>
+
+      <TurnstileWidget siteKey={siteKey} action="login" onToken={handleToken} onExpire={handleExpire} />
 
       {error && (
         <p role="alert" className="text-sm text-destructive">
