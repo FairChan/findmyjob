@@ -25,6 +25,26 @@ describe('assertUnlockEnabled', () => {
     mockGetSetting.mockResolvedValueOnce(false)
     await expect(assertUnlockEnabled()).rejects.toThrow(FeatureDisabledError)
   })
+
+  it('throws when getSetting returns string "false"', async () => {
+    mockGetSetting.mockResolvedValueOnce('false')
+    await expect(assertUnlockEnabled()).rejects.toThrow(FeatureDisabledError)
+  })
+
+  it('throws when getSetting returns 0', async () => {
+    mockGetSetting.mockResolvedValueOnce(0)
+    await expect(assertUnlockEnabled()).rejects.toThrow(FeatureDisabledError)
+  })
+
+  it('throws when getSetting returns null', async () => {
+    mockGetSetting.mockResolvedValueOnce(null)
+    await expect(assertUnlockEnabled()).rejects.toThrow(FeatureDisabledError)
+  })
+
+  it('throws when getSetting returns string "true"', async () => {
+    mockGetSetting.mockResolvedValueOnce('true')
+    await expect(assertUnlockEnabled()).rejects.toThrow(FeatureDisabledError)
+  })
 })
 
 describe('assertTalentSearchEnabled', () => {

@@ -59,4 +59,19 @@ describe('hitBucket', () => {
     // Prisma.sql produces an object with a `strings` array
     expect((sql as { strings: string[] }).strings.join('')).toContain('ON CONFLICT')
   })
+
+  it('returns the raw count from the DB', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ count: BigInt(3) }])
+    const result = await hitBucket(KEY, OPTS)
+    expect(result.count).toBe(3)
+  })
+
+  it('SQL uses double-quoted column names', async () => {
+    mockQueryRaw.mockResolvedValueOnce([{ count: BigInt(1) }])
+    await hitBucket(KEY, OPTS)
+    const [sql] = mockQueryRaw.mock.calls[0]
+    const joined = (sql as { strings: string[] }).strings.join('')
+    expect(joined).toContain('"key"')
+    expect(joined).toContain('"count"')
+  })
 })

@@ -16,11 +16,11 @@ export async function hitBucket(
   const windowEnd = new Date(windowEndMs)
 
   const rows = await db.$queryRaw<[{ count: bigint }]>(Prisma.sql`
-    INSERT INTO "RateLimitBucket" (key, "windowEnd", count, "createdAt")
+    INSERT INTO "RateLimitBucket" ("key", "windowEnd", "count", "createdAt")
     VALUES (${key}, ${windowEnd}, 1, now())
-    ON CONFLICT (key, "windowEnd")
-    DO UPDATE SET count = "RateLimitBucket".count + 1
-    RETURNING count
+    ON CONFLICT ("key", "windowEnd")
+    DO UPDATE SET "count" = "RateLimitBucket"."count" + 1
+    RETURNING "count"
   `)
 
   const count = Number(rows[0].count)
@@ -30,5 +30,6 @@ export async function hitBucket(
     allowed,
     remaining: Math.max(0, opts.limit - count),
     resetAt: windowEndMs,
+    count,
   }
 }
