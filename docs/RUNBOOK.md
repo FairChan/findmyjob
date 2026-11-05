@@ -261,14 +261,209 @@ psql "$RESTORE_ADMIN_DATABASE_URL" -c 'DROP DATABASE IF EXISTS findmyjob_drill;'
 8. **记录**：在 `docs/incidents/` 新建事故记录，注明恢复时间、数据丢失范围、后续行动。
 
 ## 事故响应
-（M7-T13 填写：SEV 分级、角色、联系表（核实后再填，不编造号码）、五个止血场景、只读 SQL 模板、PDPA 通报。）
+
+### SEV 分级
+
+| 等级 | 描述 | 响应时间 | 示例 |
+|---|---|---|---|
+| SEV 1 | 生产严重故障 / PII 泄露 / 账本不一致 | 立即（< 15 分钟） | 整站持续 500、企业读到未解锁学生的联系方式、CreditLedger 对账不过 |
+| SEV 2 | 核心功能受损 / 单个用户受影响 | < 1 小时 | 解锁功能报错、邮件全部投递失败、备份连续失败 2 次 |
+| SEV 3 | 轻微异常 / 仅影响体验 | 下一工作日 | 个别页面加载慢、非关键告警 |
+
+### 角色与联系方式
+
+> 联系表须由人工核实后填写，不编造号码。
+
+| 角色 | 人 | 联系方式 |
+|---|---|---|
+| 技术负责人 | 待定 | 核实后填写 |
+| 运维备份人 | 待指定 | 核实后填写 |
+
+### 止血场景
+
+#### 场景 1：企业看到了不该看的学生数据
+
+**判断**：收到举报，或 AuditLog 里出现 `contact.read` 记录但对应 TalentUnlock 不存在。
+
+**步骤**：
+1. 以只读身份运行「只读 SQL 模板」里的 `talent.view` / `talent.unlock` 查询，确认涉及的 companyId 和 studentId（只看 ID 和数量，不查完整行）。
+2. 若确认企业读到了联系方式，立即禁用该企业并清除其会话（以 findmyjob_owner 执行）：
+   ```sql
+   UPDATE "Company" SET "isActive" = false WHERE id = '<companyId>';
+   DELETE FROM "Session" WHERE "userId" IN (
+     SELECT "userId" FROM "CompanyMember" WHERE "companyId" = '<companyId>'
+   );
+   ```
+3. 在 `docs/incidents/` 新建事故记录（格式见 TEMPLATE.md），注明泄露范围。
+4. 评估是否需要启动 PDPA 通报流程（见「PDPA 通报」节）。
+5. 通知受影响学生，使用 `docs/templates/breach-notice-zh.md` / `breach-notice-en.md` 模板。
+
+#### 场景 2：凭据泄露
+
+包括：PII_KEYS、BETTER_AUTH_SECRET、数据库密码、S3 密钥、GHCR PAT 中的任意一个。
+
+**步骤**：
+1. **立即**在对应平台吊销泄露的凭据。
+2. 生成新凭据，更新 `/opt/findmyjob/env/*.env`，重启 app 和 worker。
+3. 若 PII_KEYS 泄露：评估所有加密 StudentContact 字段是否需要重新加密（`scripts/backfill/reencrypt-contacts.ts`）；旧密钥按轮换步骤处理。
+4. 检查 AuditLog（用只读 SQL）是否有异常访问。
+5. 若 PII_KEYS 或 BETTER_AUTH_SECRET 泄露，启动 PDPA 通报流程评估。
+
+#### 场景 3：账本不一致
+
+**判断**：`reconcile-wallets` 任务触发 `alert('wallet.mismatch')` 告警。
+
+**步骤**：
+1. 以只读身份运行对账 SQL，确认受影响的 companyId 和差值：
+   ```sql
+   SELECT w.id, w."companyId", w.balance,
+          COALESCE(SUM(l.delta), 0)            AS "sumDelta",
+          w.balance - COALESCE(SUM(l.delta), 0) AS diff
+   FROM "CreditWallet" w
+   LEFT JOIN "CreditLedger" l ON l."walletId" = w.id
+   GROUP BY w.id, w."companyId", w.balance
+   HAVING w.balance <> COALESCE(SUM(l.delta), 0);
+   ```
+2. **不要直接修改 CreditWallet.balance**；只通过 `adminAdjust`（填原因）补差值，所有操作写 AuditLog。
+3. 追查不一致的来源（并发 bug、事务意外回滚等），记录事故并安排代码修复。
+
+#### 场景 4：整站不可用
+
+**判断**：/api/health 持续返回非 200，或 UptimeRobot 告警。
+
+**步骤**：
+1. 检查容器状态和最近日志：
+   ```bash
+   ssh <admin>@43.134.49.247 docker compose -f /opt/findmyjob/docker-compose.prod.yml ps
+   ssh <admin>@43.134.49.247 docker compose -f /opt/findmyjob/docker-compose.prod.yml logs --tail=100 app
+   ```
+2. 若是最近部署引起，立即执行回滚（见「回滚」节）。
+3. 若是数据库连接问题，检查 postgres 容器状态和连接数：
+   ```bash
+   ssh <admin>@43.134.49.247 docker compose -f /opt/findmyjob/docker-compose.prod.yml exec postgres \
+     psql -U postgres -d findmyjob -c "SELECT count(*) FROM pg_stat_activity;"
+   ```
+4. 检查 Caddy 是否正常（`docker compose logs caddy`）。
+5. 整站不可用超过 15 分钟按 SEV 1 处理，记录影响时段和根因。
+
+#### 场景 5：备份失败
+
+**判断**：healthchecks.io 显示 `findmyjob-backup` 告警（超过 26 小时未 ping）。
+
+**步骤**：
+1. 检查备份容器日志：
+   ```bash
+   ssh <admin>@43.134.49.247 docker compose -f /opt/findmyjob/docker-compose.prod.yml \
+     --profile ops logs findmyjob-backup
+   ```
+2. 常见原因及检查点：
+   - age 公钥配置错误：确认 `backup.env` 里的 `AGE_PUBLIC_KEY`。
+   - S3 权限问题：确认 `backup-writer` IAM 凭据和桶策略。
+   - 磁盘空间不足：检查 `/backup-tmp` 挂载的卷容量。
+3. 修复后手动触发一次备份验证：
+   ```bash
+   ssh <admin>@43.134.49.247 docker compose -f /opt/findmyjob/docker-compose.prod.yml \
+     --profile ops run --rm backup
+   ```
+4. 若超过 72 小时无成功备份，按 SEV 1 处理并评估 PDPA 影响（数据库损坏时无备份可用）。
+
+### 只读 SQL 模板
+
+> 以 `findmyjob_app` 只读身份运行，只输出 ID 和数量，**不输出完整 AuditLog 行**。
+
+#### 按时间窗统计 talent.view
+
+```sql
+SELECT "subjectId"  AS "studentId",
+       COUNT(*)     AS "viewCount"
+FROM   "AuditLog"
+WHERE  action       = 'talent.view'
+  AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
+  AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
+GROUP  BY "subjectId"
+ORDER  BY "viewCount" DESC
+LIMIT  100;
+```
+
+#### 按时间窗统计 talent.unlock
+
+```sql
+SELECT "subjectId"  AS "studentId",
+       "actorId"    AS "companyId",
+       COUNT(*)     AS "unlockCount"
+FROM   "AuditLog"
+WHERE  action       = 'talent.unlock'
+  AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
+  AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
+GROUP  BY "subjectId", "actorId"
+ORDER  BY "unlockCount" DESC
+LIMIT  100;
+```
+
+#### 按时间窗统计 resume.download
+
+```sql
+SELECT "subjectId"  AS "studentId",
+       "actorId"    AS "memberId",
+       COUNT(*)     AS "downloadCount"
+FROM   "AuditLog"
+WHERE  action       = 'resume.download'
+  AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
+  AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
+GROUP  BY "subjectId", "actorId"
+ORDER  BY "downloadCount" DESC
+LIMIT  100;
+```
+
+### PDPA 通报
+
+> **待律师核实**：以下时限为草案，正式上线前须由法律顾问确认。
+
+马来西亚《个人资料保护法》（PDPA 2010）要求：
+
+| 通报对象 | 时限（草案） | 渠道 |
+|---|---|---|
+| 个人资料保护专员（PDPC） | 72 小时内 | PDPC 官方渠道（待核实后填写联系方式） |
+| 受影响用户 | 7 天内 | 应用内通知 + 邮件；见 `docs/templates/breach-notice-zh/en.md` |
+
+**触发条件**：有理由相信已发生或可能发生个人资料泄露，影响到在 FindMYJob 注册的用户。
+
+**流程**：
+1. 确认泄露范围和受影响用户 ID（用只读 SQL 模板，只看 ID）。
+2. 在 `docs/incidents/` 记录事故，包含时间线和初步判断。
+3. 在 72 小时截止前向 PDPC 提交初步通报。
+4. 在 7 天内通过应用内通知和邮件告知受影响用户（使用 `docs/templates/` 里的模板）。
+5. 完成最终事故报告，说明根因和整改措施。
+
+**隐私守则**（全员须知）：事故处理时，**不把真实数据、完整的 AuditLog 行、`.env` 内容贴进 Claude 或任何 AI 会话**；只用 ID 和数量进行分析；需要查看具体字段时在数据库终端里操作。
 
 ## 每周一 30 分钟例行检查
 
 负责人：技术负责人（待定）；缺席时由运维备份人做。
 
+**安全与隐私**
 - [ ] Dependabot 的安全 PR：逐个看，能合的合，不能合的在 DECISIONS 写原因和到期日
 - [ ] Sentry 里未解决的 issue：确认没有新的 PII 泄露类问题
+- [ ] 用只读 SQL 模板快速扫描过去 7 天 AuditLog：`talent.unlock` 次数有无异常峰值（例如单个企业单天超过 50 次）
+
+**可用性与备份**
 - [ ] healthchecks：备份和定时任务过去 7 天都是绿色
+- [ ] UptimeRobot：/api/health 过去 7 天无异常告警
+- [ ] S3 `db/daily/` 下最新备份不超过 26 小时，抽查一个文件前 21 字节是 `age-encryption.org/v1`
+
+**数据库与任务**
+- [ ] `reconcile-wallets` 任务日志：过去 7 天无 `wallet.mismatch` 告警
+- [ ] 检查有无 INVALID 索引（若有应立即处理，见「INVALID 索引」节）：
+  ```sql
+  SELECT indexname FROM pg_indexes
+  JOIN pg_class ON pg_class.relname = pg_indexes.indexname
+  WHERE pg_class.relisvalid = false;
+  ```
+- [ ] pg-boss 死信队列：`deadLetter` 表是否有未处理的失败任务（`SELECT name, COUNT(*) FROM pgboss.dead GROUP BY name`）
+
+**费用与密钥**
 - [ ] `.reports/COSTS.tsv` 和中转扣费：本周花费、累计是否接近 D23 上限
-- [ ] 记一行检查结果（日期、执行人、发现的问题编号）
+- [ ] GHCR PAT 到期日：距到期少于 14 天时立即轮换（见「GHCR PAT 轮换」节）
+
+**记录**
+- [ ] 记一行检查结果到 `docs/incidents/weekly-checks.md`（日期、执行人、发现的问题编号；无问题写「无」）

@@ -734,7 +734,7 @@
 
 > 完成 2026-11-05：deploy/server/findmyjob-deploy（SHA 校验、migration 比对+exit 3、pre-migrate backup、migrate、health check+auto-revert、deploy-history.log）；ci.yml 增加 image job（push-to-main 触发，needs verify+e2e，packages:write，推 findmyjob/findmyjob-migrate/findmyjob-backup 三个 target，不推 latest）；RUNBOOK.md 填写部署、回滚、P3009/INVALID 索引三节；偏差：本地演练需要真实 prod compose 环境（依赖 M7-H01 配置的服务器），脚本逻辑在验收清单范围内正确实现
 
-#### [ ] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
+#### [x] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
 依赖：M7-T06
 做：按 shipping-and-launch 检查清单加上本项目的补充项做。
 - RUNBOOK 增加「事故响应」：SEV 分级、角色、联系表（核实后再填，不编造号码）；五个止血场景：企业看到了不该看的数据、凭据泄露、账本不一致、整站不可用、备份失败。
@@ -743,6 +743,8 @@
 - 隐私守则：事故处理时不把真实数据、完整的 AuditLog 行、.env 贴进 Claude 会话。
 - 完善 RUNBOOK 里已预留的「每周一 30 分钟例行检查」清单。
 验收：RUNBOOK 里包含以上各节；`docs/incidents/TEMPLATE.md` 已存在
+
+> 完成 2026-11-05：RUNBOOK 新增「事故响应」节（SEV 1/2/3 分级、联系表占位、五个止血场景、三条只读 SQL 模板、PDPA 通报流程）；每周检查清单扩充为 12 项（含 AuditLog 异常扫描、INVALID 索引检查、pg-boss 死信队列、GHCR PAT 到期日）；新建 docs/incidents/TEMPLATE.md、docs/templates/breach-notice-zh.md、docs/templates/breach-notice-en.md（均为占位内容，联系方式不编造）
 
 #### [ ] M7-H01 云主机初始化、IAM、发信域、uptime 和 healthchecks（人工）
 依赖：M7-T06
