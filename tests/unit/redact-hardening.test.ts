@@ -120,6 +120,7 @@ describe('redact hardening – review of f79f286', () => {
     ['微信alicewong', 'alicewong'],
     ['vx alicewong', 'alicewong'],
     ['wx alicewong', 'alicewong'],
+    ['WeChat alicewong', 'alicewong'],
     ['WeChat: alicewong', 'alicewong'],
     ['-'.repeat(62) + 'alice@gmail.com', 'alice'],
     ['.'.repeat(70) + 'bob@qq.com', 'bob'],

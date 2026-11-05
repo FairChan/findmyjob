@@ -78,22 +78,25 @@ const DOT_WORD = String.raw`(?:\.|[(\[【]\s?dot\s?[)\]】]|\bdot\b)`
 
 // RFC 3986 characters minus the ones that end a sentence or wrap a link: , ; ' " ( ) < >
 const URL_CHAR = String.raw`[A-Za-z0-9\-._~:/?#\[\]@!$&*+=%]`
-// Non-ASCII is allowed only as a path segment right after / - _ = (linkedin.com/in/王明-a1b2c3),
+// Non-ASCII letters are allowed only as a path segment right after / - _ = (linkedin.com/in/王明-a1b2c3),
 // so the Chinese sentence that follows a link stays readable.
-const URL_TAIL = String.raw`(?:${URL_CHAR}|(?<=[\/\-_=])\p{Script=Han}{1,20})+`
+const URL_TAIL = String.raw`(?:${URL_CHAR}|(?<=[\/\-_=])\p{L}{1,20})+`
 
 const WECHAT_CN = String.raw`(?:微信号?|威信|(?<![A-Za-z])[vV](?:[xX]|信)(?![A-Za-z])|(?<![A-Za-z])[wW][xX](?![A-Za-z]))`
 const WECHAT_EN = String.raw`(?:\bwechat\b|\bweixin\b)`
+// Case-spelled so the lowercase-handle rule below can run without the i flag.
+const WECHAT_EN_CS = String.raw`(?:\b[wW][eE][cC][hH][aA][tT]\b|\b[wW][eE][iI][xX][iI][nN]\b)`
 const WECHAT_ANY = String.raw`(?:${WECHAT_CN}|${WECHAT_EN})`
 const ID_SUFFIX = String.raw`(?:\s{0,3}(?:号码?|id\b))?\s{0,3}`
 const STRONG = String.raw`(?:[:=]|是|为|→)`
 const WEAK = String.raw`(?:[\-–—/]|is\b)`
 const OPEN = String.raw`\s{0,3}[(\[【「『《<“"'‘]?\s{0,3}@?`
 const TOKEN_ANY = String.raw`[A-Za-z0-9][A-Za-z0-9_.\-]{2,}`
+// The look-ahead is bounded: unbounded, it rescans the rest of the run at every keyword ('-wx' × 30k).
 // WeChat IDs start with a letter; plain numbers after 微信 ("微信 300 万用户") are counts, not IDs.
-const TOKEN_IDLIKE = String.raw`(?:[A-Za-z](?=[A-Za-z0-9_.\-]*[0-9_])[A-Za-z0-9_.\-]{2,}|\d{5,})`
+const TOKEN_IDLIKE = String.raw`(?:[A-Za-z](?=[A-Za-z0-9_.\-]{0,63}[0-9_])[A-Za-z0-9_.\-]{2,}|\d{5,})`
 // Words that follow 微信 / vx in résumés without being an account (only 6+ letters matter here).
-const PRODUCT_WORDS = String.raw`(?:payments?|alipay|grabpay|mini-?program(?:me)?s?|program(?:me)?s?|official|public|accounts?|enterprise|subscriptions?|articles?|moments|channels?|stores|groups|js-?sdk|applets?|openid|unionid|platforms?|develop(?:er|ers|ment)?|marketing|ecosystem|integrations?|search|advertising|analytics|wallet|merchants?|services?|support|customers?|operations?|business|messag(?:e|es|ing)|notifications?|chatbots?|translate|backend|frontend|server|mobile|android|html5|version|verification|authentication|promotions?|livestream(?:ing)?|international|global|cross-?border|e-?commerce|whatsapp|telegram|douyin|xiaohongshu|tencent|shopee|lazada|malaysia|singapore|features?|website|uni-?app)(?![A-Za-z0-9_.\-])`
+const PRODUCT_WORDS = String.raw`(?:payments?|alipay|grabpay|mini-?program(?:me)?s?|program(?:me)?s?|official|public|accounts?|enterprise|subscriptions?|articles?|moments|channels?|stores|groups|js-?sdk|applets?|openid|unionid|platforms?|develop(?:er|ers|ment)?|marketing|ecosystem|integrations?|search|advertising|analytics|wallet|merchants?|services?|support|customers?|operations?|business|messag(?:e|es|ing)|notifications?|chatbots?|translate|backend|frontend|server|mobile|android|html5|version|verification|authentication|promotions?|livestream(?:ing)?|international|global|cross-?border|e-?commerce|whatsapp|telegram|douyin|xiaohongshu|tencent|shopee|lazada|malaysia|singapore|features?|website|uni-?app|integrated|powered|enabled|compatible|friendly|related|ordering|booking|community|chatting|sharing|scanning|stickers?|contacts|friends|widely|popular|official)(?![A-Za-z0-9_.\-])`
 const TOKEN_LETTERS = String.raw`(?!${PRODUCT_WORDS})[A-Za-z][A-Za-z0-9_.\-]{5,}`
 
 const SOCIAL = String.raw`(?:\btelegram\b|\btg\b|\bline\b|\big\b|\binstagram\b|\bfacebook\b|\bfb\b|\btwitter\b|\btiktok\b|小红书|抖音|微博)`
@@ -113,6 +116,11 @@ const PATTERNS: RegExp[] = [
   // Email: plain; Han local part (spaces allowed); listed providers with any at/dot spelling
   rx(String.raw`${ASCII_LOCAL}@${DOMAIN}`, 'gu'),
   rx(String.raw`${HAN_LOCAL}\s{0,2}@\s{0,2}${DOMAIN}`, 'gu'),
+  // spaces around @ only when the local part looks like an address (lowercase, or has a digit . _)
+  // or follows a contact word — so "Intern @ Shopee.com.my" stays readable
+  rx(String.raw`(?<![A-Za-z0-9._%+\-])(?:[a-z0-9._%+\-]+|(?=[A-Za-z0-9._%+\-]{0,64}[0-9._])[A-Za-z0-9._%+\-]+)\s{0,2}@\s{0,2}${DOMAIN}`, 'gu'),
+  // the contact word is context only (look-behind), so "邮箱 " itself stays visible
+  rx(String.raw`(?<=(?:e-?mail|mail|邮箱|邮件|电邮|contact)\s{0,3}[:=]?\s{0,3})${ASCII_LOCAL}\s{0,2}@\s{0,2}${DOMAIN}`, 'giu'),
   rx(String.raw`(?:${ASCII_LOCAL}|${HAN_LOCAL})\s{0,3}[(\[【]\s?at\s?[)\]】]\s{0,3}${DOMAIN}`, 'giu'),
   rx(String.raw`${ASCII_LOCAL}\s{0,3}${AT_WORD}\s{0,3}${MAIL_PROVIDERS}\s{0,3}${DOT_WORD}\s{0,3}${TLD}`, 'giu'),
 
@@ -125,6 +133,8 @@ const PATTERNS: RegExp[] = [
   rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?86\s?\)|\+?\s?86)${DSEP})?1[3-9](?:${D}){9}(?![0-9])`, 'g'),
   // Mainland China landline: area code, a dash, 7–8 digits
   rx(String.raw`(?<![0-9])0[1-9]\d{1,2}[\-‐-―−]\d{7,8}(?![0-9])`, 'g'),
+  // Slash-separated phones, exact shape only (a general "/" separator would hit ratios like 150/2000)
+  rx(String.raw`(?<![0-9])(?:01\d\/\d{3,4}|1[3-9]\d\/\d{4})\/\d{4}(?![0-9])`, 'g'),
   // Any other +CC number
   rx(String.raw`\+[1-9]\d{0,2}(?:${D}){6,14}(?![0-9])`, 'g'),
 
@@ -136,7 +146,14 @@ const PATTERNS: RegExp[] = [
   // after 微信 / vx / wx only: a letters-only handle of 6+ that is not a product word
   rx(String.raw`${WECHAT_CN}${ID_SUFFIX}(?:${WEAK}\s{0,3})?${OPEN}${TOKEN_LETTERS}`),
 
+  // English keyword: after an explicit "ID", any letters-only handle that is not a product word
+  rx(String.raw`${WECHAT_EN}\s{0,3}id\b\s{0,3}(?:(?:${WEAK}|${STRONG})\s{0,3})?${OPEN}${TOKEN_LETTERS}`),
+  // English keyword without ID: a lowercase handle of 6+ (IDs are usually lowercase; résumé phrases
+  // like "WeChat Programme" are capitalized), never after "is" ("WeChat is widely used")
+  rx(String.raw`${WECHAT_EN_CS}\s{0,3}(?:[\-–—/]\s{0,3})?${OPEN}(?!${PRODUCT_WORDS})[a-z][a-z0-9_.\-]{5,}`, 'g'),
+
   // QQ, other platforms' handles, WhatsApp with a number
+  rx(String.raw`\bline\s{1,3}id\s{1,3}${TOKEN_IDLIKE}`),
   rx(String.raw`QQ\s{0,3}(?:号码?)?\s{0,3}(?:(?:[:=]|是|为)\s{0,3}){0,2}\d{5,12}(?![0-9])`),
   rx(String.raw`${SOCIAL}\s{0,3}(?:id\s{0,3})?[:=]\s{0,3}@?${TOKEN_ANY}`),
   rx(String.raw`(?:\btelegram\b|\btg\b|\big\b|\binstagram\b|\btwitter\b|\btiktok\b)\s{0,3}@[A-Za-z0-9_.]{2,}`),

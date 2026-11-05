@@ -78,6 +78,48 @@ describe('redact re-review – leaks', () => {
   })
 })
 
+// Commit security review of 5452dab.
+describe('redact re-review – review of 5452dab', () => {
+  it.each([
+    ['WeChat ID alicewong', 'alicewong'],
+    ['alice.wong @ example.com', 'alice.wong'],
+    ['alice2024 @ example.com', 'alice2024'],
+    ['邮箱 alice @ example.com', 'alice'],
+    ['Email: alice @ example.com', 'alice'],
+    ['Line ID abc123', 'abc123'],
+    ['012/345/6789', '6789'],
+    ['138/1234/5678', '5678'],
+    ['https://vk.com/иван_петров', 'иван'],
+    ['WeChat ID is alicewong', 'alicewong'],
+    ['alice @ alice.dev', 'alice'],
+    ['wang.ming @ um.edu.my', 'wang.ming'],
+  ])('%j', (input, secret) => expectHidden(input, secret))
+
+  it.each([
+    'WeChat ID verification',
+    'Intern @ Shopee.com.my',
+    'Data Analyst @ Fave.co',
+    'Production line id 5',
+    '排名 150/2000 2023 年',
+    'Built a WeChat-integrated ordering system',
+    'WeChat is widely used in China',
+    'Developed a WeChat Programme for students',
+  ])(
+    'does not touch %s',
+    (input) => expect(redact(input)).toBe(input),
+  )
+
+  it.each([['-wx'.repeat(30_000)], ['vx-'.repeat(30_000)], ['微信-a'.repeat(20_000)], ['wx a1'.repeat(20_000)]])(
+    'repeated keywords stay linear (%#)',
+    (input) => {
+      const t = performance.now()
+      redact(input)
+      // generous bound for slow CI; quadratic behaviour shows up as seconds, not ms
+      expect(performance.now() - t).toBeLessThan(250)
+    },
+  )
+})
+
 describe('redact re-review – ordinary text stays unchanged', () => {
   it.each([
     // English "WeChat <word>" in résumés
