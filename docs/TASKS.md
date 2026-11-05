@@ -365,6 +365,22 @@
 - 发信 provider 抛错时，日志里有 EMAIL_SEND_FAILED，并调用了 alert()
 > 完成 2026-11-05：verification.storeIdentifier:'hashed'、useSecureCookies=true(prod)/undefined(其他)、session.create.after 用 getClientIp(ctx.request.headers) 记审计 ip、Better Auth logger 去掉 level:'warn'、sendEmailAfterResponse helper（after 失败时直接调用）、发信 catch 记 alert('email.send.failed',{code})、purgeUnverifiedAccounts deleteMany 带 emailVerified/createdAt 过滤、maybeWarnCap 写 signup.capWarnSent 标记防重复告警、route() 解析失败返回 400 INVALID_JSON、限流非生产用 memory 存储（集成测试各用独立 IP）；tests 225/225 通过。
 
+
+#### [ ] M1-T12 补齐 M1-T11 的验收测试（只改测试）
+依赖：M1-T11
+> 总控 2026-11-05 加入：复审 M1-T11（7181001）时，功能代码没有发现缺陷，但验收测试有的没写，有的写了却什么也没检查。本任务只补测试；测试暴露出代码问题时，在同一个提交里修，并在完成说明里写明。真实认证配置的测试都写在 `tests/integration/auth-real-config.test.ts`，复用里面现成的 mock 和请求构造函数。新加的重置密码测试换一个 x-real-ip，因为 10.0.0.1 的 3 次额度已经被前面的用例用完了。
+做 / 验收：
+- 重置令牌不落明文：调用 request-password-reset 后，从 mockSendEmail 收到的链接里用 `/reset-password\/([^?"]+)/` 取出 token，取不到就让测试失败（现有用例用 `if (!x) return` 提前返回，结果永远通过）。断言 Verification 表里没有 `reset-password:<token>` 这一行，但有它的 sha256（base64url）那一行。接着 POST `/reset-password` 完成重置，断言旧会话的 get-session 返回 null。
+- 改密码撤销其他会话：同一个用户登录两次，得到会话 A 和 B。带 A 的 cookie POST `/change-password`，请求里不带 revokeOtherSessions。断言 B 的 get-session 返回 null，而且 `auth.login` 审计的条数没有增加。
+- SUSPENDED 用户：用正确密码登录，断言返回 403，code 是 ACCOUNT_SUSPENDED（以代码里实际的码为准），响应里没有会话 cookie，get-session 返回 null。
+- 页面守卫：分别用真实登录得到的学生、企业 cookie 调 `s/layout.tsx`、`admin/layout.tsx`、`e/layout.tsx`（mock `next/headers` 的 headers），再用伪造的 cookie 调一次。断言：学生访问 admin、企业访问 s、伪造 cookie 访问 s，都抛 NEXT_REDIRECT，目标是 `/zh/login`（或代码里实际的拒绝页）。
+- purge TTL：用 `setSetting()` 设 `signup.unverifiedTtlHours`（它会顺带清掉 getSetting 的缓存），分别设为 0、-1、null，断言都按 48 小时处理。
+- purge 分批和竞态：改为连真实测试库。准备 1500 个过期的未验证学生，断言分 2 批删完。再准备一个在 findMany 和 deleteMany 之间被改成 emailVerified=true 的用户（可以在 findMany 返回之后、deleteMany 之前用钩子改），断言它没被删。
+- 找回密码时间差：已存在和不存在的邮箱各请求约 10 次，每组取中位数，断言两者相差不到 100ms，响应体完全一致。
+- 发信失败：spy logger，断言日志里有 `code: 'ECONNREFUSED'`；再造一个不带 code 的 provider 错误，断言日志里是 `EMAIL_SEND_FAILED`，并且调用了 alert()。
+- `auth-real-config.test.ts` 的文件头改成同时列出 M1-T10、M1-T11、M1-T12 覆盖的内容。
+- 完成说明写明：单元+集成测试的用例数和通过数，以及 E2E 的通过、失败、跳过数（要求 0 失败、0 跳过）。
+
 ---
 
 ## M2 · 学生档案、额度与邀请（约 3.6 天）
@@ -872,6 +888,16 @@
 依赖：M1-T03
 做：新增 `tests/architecture/server-boundary.test.ts`：用 TS 编译器 API 扫描所有 `use server` 文件和 route.ts 的导出；`action()` 和 `route()` 的注册表与越权矩阵逐项对比。
 验收：故意加一个没有包装的 export，测试失败
+> 总控 2026-11-05 追加（M1 收尾时已知、延后处理；按收尾规则不挡 M1 合并，到 P1 时一并做）：
+> - auth.login 审计在 `ctx.request` 缺失时回落到 session.ipAddress，可能是空串或被截成 /64 的 IPv6。改为取 `ctx?.headers ?? ctx?.request?.headers`。
+> - Better Auth logger 的附加参数被包在数组里，pino 的 `*.email`、`*.token` 脱敏够不到。只记 `{code, status}`。
+> - signup-cap：capWarnSent 一直不复位，调高上限后不会再提醒；先查后设可能并发报两次；缓存是按进程的。`maybeWarnCap().catch(() => {})` 把错误静默吞掉了。purge 的 deleteMany 没有再带上 `role: 'STUDENT'`。
+> - 限流存储依赖 env.ts 把 APP_ENV 默认成 development，生产环境漏设 APP_ENV 时会退回内存存储（和 A23 同一类问题）。改为缺省就报错，或者按 NODE_ENV 兜底。
+> - user.create.after 不检查来源路径：以后新增的建号路径（admin 插件、社交登录、脚本里调 auth.api.signUpEmail）会自动写上「已同意」，并建学生档案。要求 `ctx.path === '/sign-up/email'`，而且两个同意字段都是 true。
+> - DECISIONS 里两处描述不准确：after-hook 其实有 ctx 参数，类型可以不用 any；changeEmail 关闭时 `/email-otp/request-email-change`、`/email-otp/change-email` 仍然会路由；send-verification-otp 仍会给 sign-in、forget-password 发码，但这些码没有地方可以用。
+> - ref_code 在注册失败时也会写入；register.ts 里 realUser 那次查询两个分支结果一样，是多余的一次查库；新邮箱路径比已有邮箱多几次数据库往返，存在时间差。
+> - route() 会读掉 body，需要原始 body 的 handler（比如 webhook 验签）不能走 input 解析；JSON 格式错误时静默变成 `{}` 的问题已改为返回 400。
+> - 名额满时直接 POST 原始端点返回伪造的 200：已改为 hooks.before 统一返回 SIGNUP_CLOSED。GATE-M4 时再核对一遍。
 
 #### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02
