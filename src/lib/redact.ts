@@ -1,11 +1,25 @@
 export const REDACTED = '[已隐藏]'
 
-// Characters that render as nothing; students (or copy-paste) can hide them inside numbers.
-const INVISIBLE = new Set([0x200b, 0x200c, 0x200d, 0x2060, 0xfeff, 0x00ad])
+// Format characters (zero-width, bidi controls, soft hyphen, BOM…) and combining / enclosing marks
+// (variation selectors, keycaps) render as nothing or decorate a digit; drop them before matching.
+const INVISIBLE = /[\p{Cf}\p{Mn}\p{Me}]/u
+// Characters whose compatibility form is a single digit: styled digits, circled ①, superscript ¹.
+const DIGIT_LIKE = /[\p{Nd}\p{No}]/u
 // Look-alikes that a Chinese IME or a font picker produces instead of ASCII punctuation.
 const AS_DOT = new Set([0x3002, 0xff61, 0xfe52]) // 。 ｡ ﹒
 const AS_AT = new Set([0xfe6b]) // ﹫
-const NON_ASCII_DIGIT = /\p{Nd}/u
+
+// NFKC is the slow step; the set of digit-like code points is small and fixed, so memoize per code point.
+const foldedDigits = new Map<number, string>()
+function foldDigit(cp: number, ch: string): string {
+  let out = foldedDigits.get(cp)
+  if (out === undefined) {
+    const folded = ch.normalize('NFKC')
+    out = /^[0-9]$/.test(folded) ? folded : ch
+    foldedDigits.set(cp, out)
+  }
+  return out
+}
 
 interface Normalized {
   text: string
@@ -17,7 +31,7 @@ interface Normalized {
 /**
  * Builds the string the patterns run on, one code point at a time, and remembers where each
  * output unit came from. Matching happens on the normalized text; replacement happens on the
- * original, so anything outside a match is returned byte-for-byte.
+ * original, so anything outside a match is returned exactly as given.
  */
 function normalize(input: string): Normalized {
   let text = ''
@@ -26,20 +40,16 @@ function normalize(input: string): Normalized {
   for (let i = 0; i < input.length; ) {
     const cp = input.codePointAt(i)!
     const width = cp > 0xffff ? 2 : 1
+    const ch = input.slice(i, i + width)
     let out: string
-    if (INVISIBLE.has(cp)) out = ''
+    if (cp < 0x80) out = ch
     else if (cp >= 0xff01 && cp <= 0xff5e) out = String.fromCharCode(cp - 0xfee0)
     else if (cp === 0x3000) out = ' '
     else if (AS_DOT.has(cp)) out = '.'
     else if (AS_AT.has(cp)) out = '@'
-    else {
-      out = input.slice(i, i + width)
-      if (cp > 0x7f && NON_ASCII_DIGIT.test(out)) {
-        // Mathematical / styled digits fold to ASCII under NFKC; scripts like Arabic-Indic do not.
-        const folded = out.normalize('NFKC')
-        if (/^[0-9]$/.test(folded)) out = folded
-      }
-    }
+    else if (INVISIBLE.test(ch)) out = ''
+    else if (DIGIT_LIKE.test(ch)) out = foldDigit(cp, ch)
+    else out = ch
     for (let k = 0; k < out.length; k++) {
       from.push(i)
       to.push(i + width)
@@ -50,65 +60,91 @@ function normalize(input: string): Normalized {
   return { text, from, to }
 }
 
-// Phone separators: whitespace, ASCII/Unicode dashes, dots, slashes, parentheses — up to three.
-const SEP = String.raw`[\s\-‐-―./()]{0,3}`
-const MAIL_PROVIDERS = String.raw`(?:gmail|googlemail|yahoo|hotmail|outlook|live|icloud|me|qq|foxmail|163|126|yeah|sina|sohu|aliyun|proton(?:mail)?)`
-const DOMAIN = String.raw`[A-Za-z0-9\-]{1,63}(?:\.[A-Za-z0-9\-]{1,63}){0,10}\.[A-Za-z]{2,24}`
-// The look-behind pins each attempt to the start of a run, so the unbounded `+` stays linear;
-// a length cap here would let "-----…alice@gmail.com" (64+ chars) slip through.
-const LOCAL = String.raw`(?:(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+|\p{Script=Han}{1,6})`
-const WECHAT_KEYWORD = String.raw`(?:微信号?|威信|[vV](?:[xX]|信)|\bwx\b|\bwechat(?:\s*id)?\b|\bweixin\b)`
-const OPEN_BRACKET = String.raw`[(\[【「《<]?`
-// Words that follow "WeChat" in résumés without being an account name.
-const WECHAT_PRODUCT_WORDS = String.raw`(?:pay(?:ments?)?|mini(?:-?programs?)?|programs?|official|accounts?|work|moments|channels?|stores?|groups?|api|sdk|apps?|open|platforms?|develop(?:er|ers|ment)?|marketing|ecosystem|integration|login|oauth|cloud|search|ads|wallet|merchants?|services?|support|users?|e-?commerce)\b`
-// A URL ends at whitespace or sentence punctuation; non-ASCII path segments (/in/王明-…) stay inside.
-const URL_TAIL = String.raw`[^\s,;!"'<>、】」》』]`
+// ---- building blocks ---------------------------------------------------------------------------
 
-// Every quantifier is bounded and every pattern is anchored by a literal or a look-behind, so
-// matching stays linear on long free text (100k chars well under 50ms).
+// Separator allowed between any two digits of a phone number (no "/": "150/2000" is a ratio).
+const DSEP = String.raw`[\s\-‐-―−.()_~·‧•]{0,3}`
+const D = String.raw`${DSEP}\d`
+
+const MAIL_PROVIDERS = String.raw`(?:gmail|googlemail|yahoo|hotmail|outlook|live|icloud|qq|foxmail|163|126|yeah|sina|sohu|aliyun|proton(?:mail)?)`
+const TLD = String.raw`(?:com|net|org|cn|my|edu)(?:\.[a-z]{2})?\b`
+// Empty labels ("gmail..com", "@.gmail.com") are still an address a human can read.
+const DOMAIN = String.raw`\.{0,3}[A-Za-z0-9\-]{1,63}(?:\.{1,3}[A-Za-z0-9\-]{1,63}){0,10}\.{1,3}[A-Za-z]{2,24}`
+// The look-behind pins each attempt to the start of a run, so the unbounded `+` stays linear.
+const ASCII_LOCAL = String.raw`(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+`
+const HAN_LOCAL = String.raw`\p{Script=Han}{1,6}`
+const AT_WORD = String.raw`(?:@|[(\[【]\s?at\s?[)\]】]|\bat\b)`
+const DOT_WORD = String.raw`(?:\.|[(\[【]\s?dot\s?[)\]】]|\bdot\b)`
+
+// RFC 3986 characters minus the ones that end a sentence or wrap a link: , ; ' " ( ) < >
+const URL_CHAR = String.raw`[A-Za-z0-9\-._~:/?#\[\]@!$&*+=%]`
+// Non-ASCII is allowed only as a path segment right after / - _ = (linkedin.com/in/王明-a1b2c3),
+// so the Chinese sentence that follows a link stays readable.
+const URL_TAIL = String.raw`(?:${URL_CHAR}|(?<=[\/\-_=])\p{Script=Han}{1,20})+`
+
+const WECHAT_CN = String.raw`(?:微信号?|威信|(?<![A-Za-z])[vV](?:[xX]|信)(?![A-Za-z])|(?<![A-Za-z])[wW][xX](?![A-Za-z]))`
+const WECHAT_EN = String.raw`(?:\bwechat\b|\bweixin\b)`
+const WECHAT_ANY = String.raw`(?:${WECHAT_CN}|${WECHAT_EN})`
+const ID_SUFFIX = String.raw`(?:\s{0,3}(?:号码?|id\b))?\s{0,3}`
+const STRONG = String.raw`(?:[:=]|是|为|→)`
+const WEAK = String.raw`(?:[\-–—/]|is\b)`
+const OPEN = String.raw`\s{0,3}[(\[【「『《<“"'‘]?\s{0,3}@?`
+const TOKEN_ANY = String.raw`[A-Za-z0-9][A-Za-z0-9_.\-]{2,}`
+// WeChat IDs start with a letter; plain numbers after 微信 ("微信 300 万用户") are counts, not IDs.
+const TOKEN_IDLIKE = String.raw`(?:[A-Za-z](?=[A-Za-z0-9_.\-]*[0-9_])[A-Za-z0-9_.\-]{2,}|\d{5,})`
+// Words that follow 微信 / vx in résumés without being an account (only 6+ letters matter here).
+const PRODUCT_WORDS = String.raw`(?:payments?|alipay|grabpay|mini-?program(?:me)?s?|program(?:me)?s?|official|public|accounts?|enterprise|subscriptions?|articles?|moments|channels?|stores|groups|js-?sdk|applets?|openid|unionid|platforms?|develop(?:er|ers|ment)?|marketing|ecosystem|integrations?|search|advertising|analytics|wallet|merchants?|services?|support|customers?|operations?|business|messag(?:e|es|ing)|notifications?|chatbots?|translate|backend|frontend|server|mobile|android|html5|version|verification|authentication|promotions?|livestream(?:ing)?|international|global|cross-?border|e-?commerce|whatsapp|telegram|douyin|xiaohongshu|tencent|shopee|lazada|malaysia|singapore|features?|website|uni-?app)(?![A-Za-z0-9_.\-])`
+const TOKEN_LETTERS = String.raw`(?!${PRODUCT_WORDS})[A-Za-z][A-Za-z0-9_.\-]{5,}`
+
+const SOCIAL = String.raw`(?:\btelegram\b|\btg\b|\bline\b|\big\b|\binstagram\b|\bfacebook\b|\bfb\b|\btwitter\b|\btiktok\b|小红书|抖音|微博)`
+
+const rx = (source: string, flags = 'gi') => new RegExp(source, flags)
+
+// Every attempt is anchored by a literal or a look-behind, and no two adjacent quantified pieces
+// can match the same characters, so matching stays linear on long free text.
 const PATTERNS: RegExp[] = [
-  // URLs with a scheme, then scheme-less forms that carry a contact on their own
-  new RegExp(String.raw`https?:\/\/${URL_TAIL}{1,2048}`, 'giu'),
-  new RegExp(String.raw`\bwww\.${URL_TAIL}{3,2048}`, 'giu'),
-  new RegExp(String.raw`\b(?:linkedin|github|gitlab)\.com\/${URL_TAIL}{1,2048}`, 'giu'),
-  new RegExp(String.raw`\b(?:t\.me|wa\.me|wa\.link)\/${URL_TAIL}{1,2048}`, 'giu'),
-  new RegExp(String.raw`\b(?:api\.)?whatsapp\.com\/${URL_TAIL}{1,2048}`, 'giu'),
+  // URLs: with a scheme, www., and scheme-less hosts that identify a person on their own
+  rx(String.raw`https?:\/\/${URL_TAIL}`, 'giu'),
+  rx(String.raw`\bwww\.${URL_TAIL}`, 'giu'),
+  rx(String.raw`\b(?:linkedin|github|gitlab|instagram|facebook|fb|twitter|x|tiktok|weibo|xiaohongshu|douyin)\.com\/${URL_TAIL}`, 'giu'),
+  rx(String.raw`\b(?:t\.me|wa\.me|wa\.link|xhslink\.com|u\.wechat\.com|v\.douyin\.com)\/${URL_TAIL}`, 'giu'),
+  rx(String.raw`\b(?:api\.)?whatsapp\.com\/${URL_TAIL}`, 'giu'),
 
-  // Email, including spaces around @, (at)/[at], a Han local part, and "x at gmail dot com"
-  new RegExp(String.raw`${LOCAL}\s{0,2}@\s{0,2}${DOMAIN}`, 'gu'),
-  new RegExp(String.raw`${LOCAL}\s{0,2}[(\[]\s{0,2}at\s{0,2}[)\]]\s{0,2}${DOMAIN}`, 'giu'),
-  new RegExp(
-    String.raw`(?<![A-Za-z0-9._%+\-])[A-Za-z0-9._%+\-]+\s{1,3}at\s{1,3}${MAIL_PROVIDERS}\s{1,3}dot\s{1,3}(?:com|net|org|cn|my|edu)\b`,
-    'gi',
-  ),
+  // Email: plain; Han local part (spaces allowed); listed providers with any at/dot spelling
+  rx(String.raw`${ASCII_LOCAL}@${DOMAIN}`, 'gu'),
+  rx(String.raw`${HAN_LOCAL}\s{0,2}@\s{0,2}${DOMAIN}`, 'gu'),
+  rx(String.raw`(?:${ASCII_LOCAL}|${HAN_LOCAL})\s{0,3}[(\[【]\s?at\s?[)\]】]\s{0,3}${DOMAIN}`, 'giu'),
+  rx(String.raw`${ASCII_LOCAL}\s{0,3}${AT_WORD}\s{0,3}${MAIL_PROVIDERS}\s{0,3}${DOT_WORD}\s{0,3}${TLD}`, 'giu'),
 
-  // Malaysia: +60 / (+60) / 60 / 0 then 1x, with flexible separators
-  new RegExp(String.raw`(?<![0-9])(?:\(\s?\+?\s?60\s?\)|\+?\s?60)${SEP}1[0-9]${SEP}\d{3,4}${SEP}\d{4}(?![0-9])`, 'g'),
-  new RegExp(String.raw`(?<![0-9])\(?01[0-9]\)?${SEP}\d{3,4}${SEP}\d{4}(?![0-9])`, 'g'),
+  // Phones, matched by digit count rather than grouping
+  // Malaysia mobile: +60 / (+60) / 0060 / 60 / 0, then 1 and 8–9 more digits
+  rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?(?:00\s?)?60\s?\)|\+?\s?(?:00\s?)?60)${DSEP}|\(?0)1(?:${D}){8,9}(?![0-9])`, 'g'),
+  // Malaysia landline: 03–09 area code, 7–8 digits
+  rx(String.raw`(?<![0-9])\(?0[3-9]\)?(?:${D}){7,8}(?![0-9])`, 'g'),
   // Mainland China mobile, with or without +86
-  new RegExp(String.raw`(?<![0-9])(?:\(?\+?\s?86\)?${SEP})?1[3-9][0-9]${SEP}\d{4}${SEP}\d{4}(?![0-9])`, 'g'),
+  rx(String.raw`(?<![0-9])(?:(?:\(\s?\+?\s?86\s?\)|\+?\s?86)${DSEP})?1[3-9](?:${D}){9}(?![0-9])`, 'g'),
+  // Mainland China landline: area code, a dash, 7–8 digits
+  rx(String.raw`(?<![0-9])0[1-9]\d{1,2}[\-‐-―−]\d{7,8}(?![0-9])`, 'g'),
   // Any other +CC number
-  new RegExp(String.raw`\+[1-9]\d{0,2}${SEP}\(?\d{1,4}\)?${SEP}\d{3,4}${SEP}\d{3,4}(?![0-9])`, 'g'),
+  rx(String.raw`\+[1-9]\d{0,2}(?:${D}){6,14}(?![0-9])`, 'g'),
 
-  // WeChat with an explicit connector (：/=/-/是/为/is/…) or bracket: any handle-like token
-  new RegExp(
-    String.raw`${WECHAT_KEYWORD}\s{0,3}(?:号码?\s{0,3})?(?:[:=\-–—→/]|是|为|is\b|id\b)\s{0,3}${OPEN_BRACKET}\s{0,3}[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}`,
-    'gi',
-  ),
-  // WeChat without a connector: a token with a digit or underscore, or a letters-first token of
-  // 6+ chars that is not a product word — so "微信 alicewong" is hidden but "WeChat Pay",
-  // "WeChat mini-program", "WeChat development" stay as written
-  new RegExp(
-    String.raw`${WECHAT_KEYWORD}\s{0,3}${OPEN_BRACKET}\s{0,3}(?:(?=[A-Za-z0-9_.\-]{0,29}[0-9_])[A-Za-z0-9][A-Za-z0-9_.\-]{2,29}|(?!${WECHAT_PRODUCT_WORDS})[A-Za-z][A-Za-z0-9_.\-]{5,29})`,
-    'gi',
-  ),
+  // WeChat — strong connector (：= 是 为 →, optionally after a weak one): any handle
+  rx(String.raw`${WECHAT_ANY}${ID_SUFFIX}(?:(?:${WEAK}|${STRONG})\s{0,3})?${STRONG}${OPEN}${TOKEN_ANY}`),
+  // weak connector (- / is) or none: only ID-like handles (a digit or _), so "WeChat-based",
+  // "WeChat/Alipay", "WeChat is popular" stay as written
+  rx(String.raw`${WECHAT_ANY}${ID_SUFFIX}(?:${WEAK}\s{0,3})?${OPEN}${TOKEN_IDLIKE}`),
+  // after 微信 / vx / wx only: a letters-only handle of 6+ that is not a product word
+  rx(String.raw`${WECHAT_CN}${ID_SUFFIX}(?:${WEAK}\s{0,3})?${OPEN}${TOKEN_LETTERS}`),
 
-  // Other handles
-  /QQ\s{0,3}号?\s{0,3}(?:[:=]|是|为)?\s{0,3}\d{5,12}/gi,
-  /(?:\btelegram\b|\btg\b)\s{0,3}(?:[:=]|is\b)?\s{0,3}@[a-zA-Z0-9_]{5,32}/gi,
-  /\bline\s{1,3}id\s{0,3}[:=]?\s{0,3}[a-zA-Z0-9_\-.@]{1,30}/gi,
-  /\bwhats\s?app\b\s{0,3}(?:[:=]|is\b)?\s{0,3}\+?[0-9][\d\s\-]{7,15}/gi,
+  // QQ, other platforms' handles, WhatsApp with a number
+  rx(String.raw`QQ\s{0,3}(?:号码?)?\s{0,3}(?:(?:[:=]|是|为)\s{0,3}){0,2}\d{5,12}(?![0-9])`),
+  rx(String.raw`${SOCIAL}\s{0,3}(?:id\s{0,3})?[:=]\s{0,3}@?${TOKEN_ANY}`),
+  rx(String.raw`(?:\btelegram\b|\btg\b|\big\b|\binstagram\b|\btwitter\b|\btiktok\b)\s{0,3}@[A-Za-z0-9_.]{2,}`),
+  rx(String.raw`\bwhats\s?app\b\s{0,3}(?:[:=]|is\b)?\s{0,3}\+?[0-9][\d\s\-]{7,15}`),
 ]
+
+const EDGE_TRIM_END = /[\s.,:;!?]/
+const EDGE_TRIM_START = /\s/
 
 /**
  * Replaces emails, phone numbers, URLs and common contact handles in free text with [已隐藏].
@@ -120,11 +156,13 @@ export function redact(text: string): string {
 
   const ranges: [number, number][] = []
   for (const pattern of PATTERNS) {
-    pattern.lastIndex = 0
     for (const m of n.text.matchAll(pattern)) {
-      if (m[0].length === 0) continue
-      const s = m.index!
-      ranges.push([n.from[s]!, n.to[s + m[0].length - 1]!])
+      let s = m.index!
+      let e = s + m[0].length
+      // Keep the sentence's own punctuation and spacing outside the replacement.
+      while (e > s && EDGE_TRIM_END.test(n.text[e - 1]!)) e--
+      while (s < e && EDGE_TRIM_START.test(n.text[s]!)) s++
+      if (e > s) ranges.push([n.from[s]!, n.to[e - 1]!])
     }
   }
   if (ranges.length === 0) return text
