@@ -1,5 +1,4 @@
 import { randomUUID } from 'crypto'
-import { z } from 'zod'
 import { route } from '@/server/route'
 import { checkRateLimit } from '@/server/lib/rate-limit'
 import { logAudit } from '@/server/services/audit'
@@ -8,18 +7,9 @@ import { assertUploadsEnabled } from '@/server/services/feature-flags'
 import { putObject } from '@/lib/storage'
 import { detectFileType, checkPdf, MIME_TYPES } from '@/server/lib/pdf'
 import { db } from '@/server/db'
+import { purposeSchema, validateFileName } from '@/server/lib/upload-input'
 import type { AllowedMimeKey } from '@/server/lib/pdf'
-
-type UploadPurpose = 'RESUME' | 'VERIFICATION' | 'PAYMENT_PROOF' | 'LOGO'
-
-const purposeSchema = z.enum(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO'])
-
-// Bidi and invisible control characters that must not appear in stored filenames
-const BIDI_RE = /[‪-‮⁦-⁩\u0000-\u001f\u007f]/g
-
-function sanitizeFileName(raw: string): string {
-  return raw.replace(BIDI_RE, '').trim().slice(0, 255) || 'upload'
-}
+import type { UploadPurpose } from '@/server/lib/upload-input'
 
 interface PurposeConfig {
   types: AllowedMimeKey[]
@@ -168,6 +158,18 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
     key = `${purpose.toLowerCase()}s/${userId}/${randomUUID()}.${EXT[detectedType]}`
   }
 
+  // Filename validation — must pass before putObject
+  const fileNameResult = validateFileName(file.name)
+  if (!fileNameResult.ok) {
+    await logAudit({
+      actorId: userId,
+      action: 'upload.reject',
+      targetType: 'Upload',
+      metadata: { reason: 'invalid_file_name', purpose },
+    })
+    return rejectJson('INVALID_FILE_NAME', 400)
+  }
+
   // All checks passed — upload to object storage
   await putObject(key, buf, MIME_TYPES[detectedType])
 
@@ -181,12 +183,11 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
       return rejectJson('NOT_FOUND', 404)
     }
 
-    const safeFileName = sanitizeFileName(file.name)
     const resume = await db.resumeFile.create({
       data: {
         studentId: profile.id,
         storageKey: key,
-        fileName: safeFileName,
+        fileName: fileNameResult.name,
         mimeType: MIME_TYPES[detectedType],
         sizeBytes: file.size,
         pageCount: pageCount ?? null,

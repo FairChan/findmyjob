@@ -1,13 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { z } from 'zod'
-
-// Replicate the schemas from the route for unit testing
-const purposeSchema = z.enum(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO'])
-const idSchema = z.string().cuid()
-const BIDI_RE = /[‪-‮⁦-⁩\u0000-\u001f\u007f]/g
-function sanitizeFileName(raw: string): string {
-  return raw.replace(BIDI_RE, '').trim().slice(0, 255) || 'upload'
-}
+import { purposeSchema, validateFileName } from '@/server/lib/upload-input'
 
 describe('purposeSchema', () => {
   it.each(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO'])('accepts valid purpose %s', purpose => {
@@ -19,57 +11,60 @@ describe('purposeSchema', () => {
   })
 })
 
-describe('idSchema (cuid)', () => {
-  it('accepts a valid cuid', () => {
-    // Real cuid from @paralleldrive/cuid2 format used by prisma cuid()
-    expect(idSchema.safeParse('cln5ue1mn000008jl1234abcd').success).toBe(true)
+describe('validateFileName', () => {
+  it('passes through a normal filename', () => {
+    const r = validateFileName('my-resume.pdf')
+    expect(r).toEqual({ ok: true, name: 'my-resume.pdf' })
   })
 
   it('rejects empty string', () => {
-    expect(idSchema.safeParse('').success).toBe(false)
+    expect(validateFileName('')).toEqual({ ok: false })
   })
 
-  it.each(['../etc/passwd', 'SELECT * FROM', '1 OR 1=1'])(
-    'rejects non-cuid value: %s',
-    id => {
-      expect(idSchema.safeParse(id).success).toBe(false)
-    },
-  )
-})
-
-describe('sanitizeFileName', () => {
-  it('passes through a normal filename unchanged', () => {
-    expect(sanitizeFileName('my-resume.pdf')).toBe('my-resume.pdf')
+  it('rejects whitespace-only string', () => {
+    expect(validateFileName('   ')).toEqual({ ok: false })
   })
 
-  it('strips bidi control characters (U+202A–U+202E)', () => {
-    const malicious = 'resume‮.pdf'
-    expect(sanitizeFileName(malicious)).toBe('resume.pdf')
+  it('rejects name that becomes empty after stripping control chars', () => {
+    expect(validateFileName('\u0000\u001f')).toEqual({ ok: false })
+  })
+
+  it('rejects 256-character name', () => {
+    expect(validateFileName('a'.repeat(256))).toEqual({ ok: false })
+  })
+
+  it('accepts 255-character name', () => {
+    const r = validateFileName('a'.repeat(255))
+    expect(r).toEqual({ ok: true, name: 'a'.repeat(255) })
+  })
+
+  it('strips bidi override characters (U+202A–U+202E)', () => {
+    const r = validateFileName('resume‮.pdf')
+    expect(r).toEqual({ ok: true, name: 'resume.pdf' })
   })
 
   it('strips bidi isolate characters (U+2066–U+2069)', () => {
-    const malicious = '⁦hidden⁩name.pdf'
-    expect(sanitizeFileName(malicious)).toBe('hiddenname.pdf')
+    const r = validateFileName('⁦hidden⁩name.pdf')
+    expect(r).toEqual({ ok: true, name: 'hiddenname.pdf' })
   })
 
-  it('strips null bytes and other control characters', () => {
-    expect(sanitizeFileName('file\u0000name.pdf')).toBe('filename.pdf')
+  it('strips C0 control characters', () => {
+    const r = validateFileName('file\u0000name.pdf')
+    expect(r).toEqual({ ok: true, name: 'filename.pdf' })
   })
 
-  it('truncates to 255 characters', () => {
-    const long = 'a'.repeat(300)
-    expect(sanitizeFileName(long).length).toBe(255)
+  it('strips C1 control characters (U+0080–U+009F)', () => {
+    const r = validateFileName('file\u0085name.pdf')
+    expect(r).toEqual({ ok: true, name: 'filename.pdf' })
   })
 
-  it('returns fallback "upload" when result is empty after stripping', () => {
-    expect(sanitizeFileName('‪‫')).toBe('upload')
+  it('strips U+200E and U+200F (LRM/RLM)', () => {
+    const r = validateFileName('‎name‏.pdf')
+    expect(r).toEqual({ ok: true, name: 'name.pdf' })
   })
 
-  it('returns 400-invalid when filename zod schema rejects', () => {
-    // Empty filename is invalid
-    const fileNameSchema = z.string().trim().min(1).max(255)
-    expect(fileNameSchema.safeParse('').success).toBe(false)
-    expect(fileNameSchema.safeParse('a').success).toBe(true)
-    expect(fileNameSchema.safeParse('a'.repeat(256)).success).toBe(false)
+  it('strips U+061C (Arabic Letter Mark)', () => {
+    const r = validateFileName('na؜me.pdf')
+    expect(r).toEqual({ ok: true, name: 'name.pdf' })
   })
 })
