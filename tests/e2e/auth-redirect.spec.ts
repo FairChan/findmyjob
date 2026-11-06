@@ -5,9 +5,17 @@
  * 没有 Mailpit 或收不到邮件时直接失败，不 skip：否则 verify 全绿可能只是跳过了。
  */
 import { test, expect } from '@playwright/test'
+import { E2E_PASSWORD } from './helpers/password'
 import { stubTurnstile } from './helpers/turnstile'
+import { uniqueClientIp } from './helpers/client-ip'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
+
+
+// 每条用例一个独立的 x-real-ip，避免并行注册、登录共用一个限流桶（见 helpers/client-ip.ts）
+test.beforeEach(async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'x-real-ip': uniqueClientIp() })
+})
 
 test.describe('Turnstile widget UX', () => {
   test('submit button is disabled until the Turnstile token arrives', async ({ page }) => {
@@ -39,7 +47,7 @@ test.describe('Turnstile widget UX', () => {
     })
     await page.goto('/zh/login')
     await page.fill('[name="email"]', 'any@example.test')
-    await page.fill('[name="password"]', 'Password123!')
+    await page.fill('[name="password"]', E2E_PASSWORD)
     await expect(page.locator('button[type="submit"]')).toBeEnabled({ timeout: 10000 })
     await page.click('button[type="submit"]')
 
@@ -59,7 +67,7 @@ test.describe('student registration → verification → login → sign-out', ()
 
     const unique = Date.now()
     const email = `e2e-student-${unique}@example.test`
-    const password = 'Password123!'
+    const password = E2E_PASSWORD
 
     await stubTurnstile(page)
 
@@ -114,7 +122,9 @@ test.describe('student registration → verification → login → sign-out', ()
     await page.click('button[type="submit"]')
 
     // --- Step 5: Lands on /s/onboarding ---
-    await expect(page).toHaveURL(/\/s\/onboarding/, { timeout: 10000 })
+    // 精确匹配：曾经跳到 /zh/zh/s/onboarding（404），旧的「包含 /s/onboarding」断言照样通过
+    await expect(page).toHaveURL(/^http:\/\/localhost:\d+\/zh\/s\/onboarding$/, { timeout: 10000 })
+    await expect(page.locator('[id="fullName"]')).toBeVisible()
 
     const sessionBefore = await page.request.get('/api/auth/get-session')
     expect((await sessionBefore.json())?.user?.email).toBe(email)

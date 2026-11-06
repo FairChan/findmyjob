@@ -32,9 +32,19 @@ vi.mock('next/headers', () => ({
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createEmployerWithoutCompany } from '../factories'
 import { requireUser, requireStudent, requireEmployer, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
-import { ForbiddenError, ValidationError } from '@/server/errors'
+import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
 import { createCompany, updateCompany } from '@/server/services/company'
 import * as authMod from '@/server/auth'
+import { viewTalentProfile } from '@/server/services/talent-view'
+import { searchTalents } from '@/server/services/talent-search'
+import {
+  listFolders,
+  createFolder,
+  addToFolder,
+  removeFromFolder,
+  getFolderItems,
+  getStudentFolderIds,
+} from '@/server/services/talent-folders'
 
 setupTestDb()
 
@@ -346,6 +356,52 @@ describe('requireEmployer (M1-T09)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// talent.view (M4-T05): viewTalentProfile authz
+// ---------------------------------------------------------------------------
+
+describe('talent.view: viewTalentProfile authz', () => {
+  async function makeVisible(profileId: string) {
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date(), completeness: 80 },
+    })
+  }
+
+  it('verified employer can view a visible student profile', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await makeVisible(profileId)
+
+    const detail = await viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId)
+    expect(detail.id).toBe(profileId)
+  })
+
+  it('company A cannot view a student blocked from them', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await makeVisible(profileId)
+    await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
+
+    await expect(
+      viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('company B cannot view a HIDDEN student (returns NotFoundError, not data leak)', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    // Student visibility stays HIDDEN
+
+    await expect(
+      viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Team management authz (M3-T04)
 // ---------------------------------------------------------------------------
 
@@ -489,6 +545,207 @@ describe('company service authz (M3-T01)', () => {
     })
     expect(result.ok).toBe(false)
     expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// talent.folders (M4-T11): folder authz
+// ---------------------------------------------------------------------------
+
+describe('talent.folders: folder access control', () => {
+  async function makeVisible(profileId: string) {
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date(), completeness: 80 },
+    })
+  }
+
+  it('employer can create and list folders for own company', async () => {
+    const emp = await createEmployer(testDb)
+    // listFolders requires verified company
+    await testDb.company.update({
+      where: { id: emp.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
+    const ctx = { userId: emp.userId, companyId: emp.companyId }
+
+    const folder = await createFolder(ctx, { name: 'Test Folder' })
+    expect(folder.id).toBeTruthy()
+
+    const folders = await listFolders(ctx)
+    expect(folders.some((f) => f.id === folder.id)).toBe(true)
+  })
+
+  it('company A cannot access folders from company B', async () => {
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+    // Both must be verified to test isolation (not the verification gate)
+    await testDb.company.update({
+      where: { id: empA.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
+    await testDb.company.update({
+      where: { id: empB.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
+
+    const folderB = await createFolder(
+      { userId: empB.userId, companyId: empB.companyId },
+      { name: 'Company B Folder' },
+    )
+
+    // Company A should not see company B's folders
+    const foldersA = await listFolders({ userId: empA.userId, companyId: empA.companyId })
+    expect(foldersA.some((f) => f.id === folderB.id)).toBe(false)
+  })
+
+  it('company A cannot view folder items from company B', async () => {
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+
+    // Verify A so the ownership check (not the verification gate) is exercised
+    await testDb.company.update({
+      where: { id: empA.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
+
+    const folderB = await createFolder(
+      { userId: empB.userId, companyId: empB.companyId },
+      { name: 'Company B Folder' },
+    )
+
+    await expect(
+      getFolderItems({ userId: empA.userId, companyId: empA.companyId }, folderB.id),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('addToFolder checks student visibility — hidden student is rejected', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    // Student stays HIDDEN
+
+    const folder = await createFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { name: 'Folder' },
+    )
+
+    await expect(
+      addToFolder(
+        { userId: emp.userId, companyId: emp.companyId },
+        { folderId: folder.id, studentId: profileId },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('addToFolder succeeds for a visible student, duplicate upsert is idempotent', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    await makeVisible(profileId)
+
+    const folder = await createFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { name: 'Folder' },
+    )
+
+    await addToFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { folderId: folder.id, studentId: profileId },
+    )
+    // Second call must not throw (upsert, not insert)
+    await expect(
+      addToFolder(
+        { userId: emp.userId, companyId: emp.companyId },
+        { folderId: folder.id, studentId: profileId },
+      ),
+    ).resolves.not.toThrow()
+  })
+
+  it('getStudentFolderIds returns only folders from the requesting company', async () => {
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    await makeVisible(profileId)
+
+    const folderA = await createFolder(
+      { userId: empA.userId, companyId: empA.companyId },
+      { name: 'Folder A' },
+    )
+    await addToFolder(
+      { userId: empA.userId, companyId: empA.companyId },
+      { folderId: folderA.id, studentId: profileId },
+    )
+
+    const idsFromA = await getStudentFolderIds(
+      { userId: empA.userId, companyId: empA.companyId },
+      profileId,
+    )
+    const idsFromB = await getStudentFolderIds(
+      { userId: empB.userId, companyId: empB.companyId },
+      profileId,
+    )
+    expect(idsFromA).toContain(folderA.id)
+    expect(idsFromB).not.toContain(folderA.id)
+  })
+
+  it('removeFromFolder only removes from own company folder', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    await makeVisible(profileId)
+
+    const folder = await createFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { name: 'Folder' },
+    )
+    await addToFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { folderId: folder.id, studentId: profileId },
+    )
+    await removeFromFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { folderId: folder.id, studentId: profileId },
+    )
+
+    const ids = await getStudentFolderIds(
+      { userId: emp.userId, companyId: emp.companyId },
+      profileId,
+    )
+    expect(ids).not.toContain(folder.id)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 未认证企业（M4-T14）: verified company gate on talent operations
+// ---------------------------------------------------------------------------
+
+describe('未认证企业搜索人才被拒', () => {
+  it('unverified company calling searchTalents → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    // createEmployer leaves verificationStatus=UNSUBMITTED
+    await expect(
+      searchTalents({ userId: emp.userId, companyId: emp.companyId }, {}),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+describe('未认证企业查看收藏夹被拒', () => {
+  it('unverified company calling getFolderItems → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    // Need a folder ID; use a fake one (the company check fires first)
+    await expect(
+      getFolderItems({ userId: emp.userId, companyId: emp.companyId }, 'doesnotexist00000000000000'),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('被撤销认证的企业列出收藏夹被拒 — listFolders → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    // Set status to REJECTED (represents revoked/failed verification)
+    await testDb.company.update({
+      where: { id: emp.companyId },
+      data: { verificationStatus: 'REJECTED' },
+    })
+    await expect(
+      listFolders({ userId: emp.userId, companyId: emp.companyId }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
   })
 })
 

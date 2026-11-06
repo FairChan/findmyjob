@@ -9,6 +9,7 @@ import { AppError, SignupClosedError, RateLimitedError, ValidationError } from '
 import { logger } from '@/server/lib/logger'
 import { env } from '@/env'
 import { employerRegistrationContext } from '@/server/lib/employer-registration-context'
+import { attachReferral } from '@/server/services/referrals'
 
 const signUpUrl = new URL('/api/auth/sign-up/email', env.APP_URL).toString()
 
@@ -116,6 +117,18 @@ export const registerStudent = action(
     if (!realUser) {
       // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts.
       return { email: input.email }
+    }
+
+    if (input.ref) {
+      const profile = await db.studentProfile.findUnique({
+        where: { userId: user.id },
+        select: { id: true },
+      })
+      if (profile) {
+        await attachReferral(profile.id, input.ref).catch((err: unknown) => {
+          logger.warn({ err }, 'attachReferral failed during registration')
+        })
+      }
     }
 
     return { email: input.email }
