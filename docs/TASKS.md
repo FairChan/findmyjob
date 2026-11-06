@@ -1097,6 +1097,49 @@
   - `tests/e2e/helpers/smoke.ts` 检查错误浮层和错误页的字符串，在 Next 16.4.5 上对不上：global-error 显示的是「A server error occurred」。崩溃目前靠 200 状态码和 console、pageerror 检查抓到；改成和 Next 实际显示的文案一致。
   - 控制台冒烟只断言 RECRUITER 看不到「认证材料」链接，没断言横幅 CTA 和提示文案。
   - 「过期邀请不占名额」的测试，要两个过滤条件都去掉才会失败。
+- M5-T01 职位管理（2026-11-07 复查和最终复查延后的项）：
+  - deadline 按 UTC 0 点存，比马来西亚时间早 16 小时过期；应按 Asia/Kuala_Lumpur 当天结束换算。
+  - DRAFT 也显示「关闭」按钮，点了必然失败。
+  - 没有测试证明未认证企业能存草稿。
+  - 保存已发布职位、会回到待审时，没有提示「保存后会下线等待审核」。
+  - category 是自由文本，应改成枚举或受控列表。
+  - REJECTED 的职位不能修改后重新提交。
+  - 服务端没校验 salaryMin ≤ salaryMax。
+  - 列表和详情把州显示成原始代码（KUL 等）。
+  - 关闭、复制用了 window.confirm，没用 shadcn Dialog。
+  - 回到待审时 publishedAt 仍保留旧值。
+  - hasSensitiveChange 仍是逐个列出敏感字段，以后新加字段会默认不审。改成类型层面的穷举（例如 `satisfies Record<keyof JobFormInput, 'review' | 'skip'>`），或者真正的白名单。
+  - jobFormSchema 里的 updatedAt 是可选的，不带它的调用方会跳过版本检查。编辑应要求必带。
+  - copyJob 的默认后缀仍写死「 (复制)」，只有 action 传入了按 locale 取的后缀。
+  - authz-matrix 跨企业用例只断言 toThrow，应断言 NotFoundError。
+  - 「旧 updatedAt 被拒」的用例没断言库里不变；deadline 没有白名单用例。
+- M5-T02 职位审核：
+  - 再次通过同一个职位（驳回后改好再提交，或编辑后回到待审）时，approvedJobCount 会重复加。
+  - 待审列表的「类型」列显示有误；日期没有指定时区。
+  - 只有空白字符的 reviewNote 能通过 min(1)。
+  - 驳回和通过不发邮件（M5-T08 统一处理）。
+  - 审核时没有重新检查企业的认证状态和 isActive。
+  - ReviewJobForm.tsx 的文件名不是 kebab-case；jobId 路由参数没经 zod 校验。
+  - 审核页响应的 Cache-Control 等 M7-T05。
+  - 审核页的 deadline 用 toLocaleDateString('en-MY')，没指定时区；acceptsStudentPass、sponsorsWorkPass 两个布尔字段没显示。
+  - approveJob 的 publishedAt 取自事务外读到的值。
+- M6-T07 代管企业：
+  - 导入脚本写的审计没有 targetId，并且用最早的管理员当 actor。
+  - 导入脚本没复用 createManagedCompany。
+  - logAudit 在事务外执行（全项目写法，见上面 M3-T03）。
+  - 并发插入同一个 SSM 号时，P2002 会返回 500；没有 SSM 号的重复行不去重。
+  - 导入脚本可能把 err.message 原样打印出来。
+  - assertAdmin 只看 role，不看 status。
+  - approvedJobCount 把平台代发的职位也算进去了。
+  - 没有 dry-run 的测试。
+  - 「两个移交邀请并发接受」的用例其实是顺序执行的：第二次接受被事务外的 isManaged 检查挡下，没测到事务里带条件的 updateMany。应改成 Promise.all。
+  - 两个邀请同时被接受时，两个事务按相反顺序锁邀请行，可能死锁。结果仍然只有一个 OWNER，但失败的那个会返回 500。
+  - transferManagedCompanyAction 发邮件失败时直接吞掉，没记日志；邮件的 locale 写死 zh，正文是中文（M5-T08 统一处理）。
+  - 代管企业的非 OWNER 邀请会走普通的加成员流程。
+  - DOMAIN_MATCH 的域名比较没按公共后缀判断（例如 co.uk）。
+  - verificationRecord 是运营填的自由文本，会原样写进审计 metadata。要提醒运营不要在里面写个人电话。
+  - 运营后台还没有代管企业的页面（创建、代发职位、移交），需要总控另排任务。
+- E2E 测试库（fix(M3-T01) e2e-testdb，最终复查）：validateTestDbUrl 把 0.0.0.0 也当成本机。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
