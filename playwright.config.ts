@@ -31,7 +31,7 @@ if (process.env.TEST_DATABASE_URL) {
   } catch (err) {
     throw new Error(
       `[playwright.config] Cannot resolve TEST_DATABASE_URL: ${(err as Error).message}\n` +
-        '  Add TEST_DATABASE_URL=postgresql://...@127.0.0.1:5432/findmyjob_laneb_test to .env',
+        '  Add TEST_DATABASE_URL=postgresql://...@127.0.0.1:5432/<findmyjob_test|findmyjob_laneb_test> to .env',
     )
   }
 }
@@ -39,9 +39,12 @@ if (process.env.TEST_DATABASE_URL) {
 // Validate before we start anything — a bad URL means we stop right here.
 validateTestDbUrl(testDatabaseUrl)
 
-const port = Number(process.env.PORT) || 3001
+// 主线默认 3000；线 B 的 lane-auto.sh 设 PORT=3001。两条线各自起 dev server，互不复用
+const port = Number(process.env.PORT) || 3000
 
 export default defineConfig({
+  // M4-T14/T15：准备人才库的企业、学生、收藏夹（只写测试库，密码每次随机）
+  globalSetup: './tests/e2e/global-setup.ts',
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -53,9 +56,16 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
+    // 先登录一次、写出 storageState（auth.setup.ts），其余用例依赖它
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
     },
   ],
   webServer: {

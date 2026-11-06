@@ -388,6 +388,7 @@ model StudentProfile {
   skills              String[]
   visibility          Visibility   @default(HIDDEN)
   completeness        Int          @default(0)
+  onboardingStep      Int          @default(1) // 1–4 = 当前待完成的步骤，5 = 向导已完成
   referralCode        String?      @unique // 邀请码，首次打开邀请页时生成
   lastActiveAt        DateTime     @default(now()) @db.Timestamptz(3)
   createdAt           DateTime     @default(now()) @db.Timestamptz(3)

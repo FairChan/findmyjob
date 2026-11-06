@@ -139,6 +139,9 @@ docs/TASKS.md 就是已批准的设计，不走 brainstorming。
   subjects="$(git log --format=%s "$before..$after" 2>/dev/null || true)"
   committed=no; [[ -n "$subjects" && "$subjects" == *"$id"* ]] && committed=yes
   checked=no; grep -qE "^#### \[x\] ${id}([^0-9]|$)" docs/TASKS.md && checked=yes
+  # E2E 会起 next dev：它会改写 next-env.d.ts，检测到 AI 代理时还会生成 AGENTS.md。两者都是生成物，判断工作区是否干净之前先还原
+  git restore -- next-env.d.ts 2>/dev/null || true
+  git ls-files --error-unmatch AGENTS.md >/dev/null 2>&1 || rm -f AGENTS.md
   dirty="$(git status --porcelain)"
   guard="$(git diff --name-only "$before" "$after" -- "${GUARD[@]}")"
   migr="$(git diff --name-only --diff-filter=MDR "$before" "$after" -- prisma/migrations)"

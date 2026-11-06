@@ -53,6 +53,7 @@ export interface ProfileCardInput {
   completeness: number
   visibility: Visibility
   school: SchoolSnippet | null
+  lastActiveAt?: Date | null
 }
 
 export interface ProfileDetailInput extends ProfileCardInput {
@@ -75,6 +76,7 @@ export interface ContactInput {
 export interface TalentCard {
   id: string
   name: string
+  unlocked: boolean
   school: { id: string; nameZh: string; nameEn: string } | null
   major: string | null
   degreeLevel: DegreeLevel | null
@@ -84,6 +86,7 @@ export interface TalentCard {
   headline: string | null
   completeness: number
   workAuth: WorkAuth | null
+  lastActiveAt: Date | null
 }
 
 export interface TalentEducation {
@@ -156,6 +159,19 @@ function redactNameParts(text: string, fullName: string): string {
   return result
 }
 
+// --- Free-text helper (TM-002 + §5.2) ---
+
+/**
+ * Returns the employer-visible version of a free-text field.
+ * When unlocked=false (most employer views): redacts PII and strips the student's own name.
+ * When unlocked=true: returns the text as-is.
+ * Used for search matching text so the student's name cannot be found by keyword search.
+ */
+export function employerFreeText(text: string, fullName: string, unlocked: boolean): string {
+  if (unlocked) return text
+  return redactNameParts(redact(text), fullName)
+}
+
 // --- Serializers ---
 
 /**
@@ -171,6 +187,7 @@ export function toTalentCard(
   return {
     id: profile.id,
     name: unlocked ? profile.fullName : maskName(profile.fullName),
+    unlocked,
     school: profile.school
       ? {
           id: profile.school.id,
@@ -193,6 +210,7 @@ export function toTalentCard(
         : null,
     completeness: profile.completeness,
     workAuth: profile.workAuth,
+    lastActiveAt: profile.lastActiveAt ?? null,
   }
 }
 
