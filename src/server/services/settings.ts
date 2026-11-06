@@ -12,6 +12,10 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>()
 
+export function clearSettingsCache(): void {
+  cache.clear()
+}
+
 export async function getSetting<T>(key: string, defaultValue: T): Promise<T> {
   const cached = cache.get(key)
   if (cached && cached.expiresAt > Date.now()) {

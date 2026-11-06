@@ -19,6 +19,7 @@ const SETTINGS: Array<[string, unknown]> = [
   ['talentSearch.maxPage', 25],
   ['talentPool.minCompleteness', 60],
   ['team.maxMembers', 3],
+  ['team.maxInvitesPerDay', 3],
   ['jobs.autoPublishAfter', 1000],
   ['jobs.salaryBands', [2000, 3000, 5000, 8000]],
   ['invitations.expireDays', 14],
