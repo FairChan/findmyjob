@@ -254,5 +254,25 @@
     "reconsentVersionMismatch": "The terms have been updated. Please refresh the page and read again.",
     "lastUpdated": "Last updated: {version}",
     "backToHome": "Back to Home"
+  },
+  "contact": {
+    "title": "Contact Details",
+    "subtitle": "Your contact details are only visible to companies that have unlocked your profile. They are stored encrypted and never shown publicly.",
+    "privacyNotice": "Your contact details are encrypted and protected. They will only be shared with a company after they successfully unlock your profile. FindMYJob does not sell or share your personal information.",
+    "phoneLabel": "Phone Number",
+    "phonePlaceholder": "e.g. +60 12-345 6789",
+    "emailLabel": "Contact Email",
+    "emailPlaceholder": "e.g. name@example.com",
+    "whatsappLabel": "WhatsApp",
+    "whatsappPlaceholder": "e.g. +60 12-345 6789",
+    "wechatLabel": "WeChat ID",
+    "wechatPlaceholder": "e.g. wxid_xxxxxx",
+    "linkedinLabel": "LinkedIn",
+    "linkedinPlaceholder": "e.g. https://www.linkedin.com/in/username",
+    "save": "Save",
+    "saving": "Saving…",
+    "saveSuccess": "Contact details saved",
+    "saveError": "Save failed, please try again",
+    "errorValidation": "Please check your input format (phone must include country code, e.g. +60)"
   }
 }

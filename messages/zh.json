@@ -254,5 +254,25 @@
     "reconsentVersionMismatch": "条款已更新，请刷新页面后重新阅读",
     "lastUpdated": "最后更新：{version}",
     "backToHome": "返回首页"
+  },
+  "contact": {
+    "title": "联系方式",
+    "subtitle": "你的联系方式仅在企业解锁后可见，加密存储，不会公开展示。",
+    "privacyNotice": "你的联系方式受加密保护，仅在企业成功解锁你的档案后，才会向该企业展示。FindMYJob 不会主动出售或分享你的个人信息。",
+    "phoneLabel": "手机号码",
+    "phonePlaceholder": "例：+60 12-345 6789",
+    "emailLabel": "联系邮箱",
+    "emailPlaceholder": "例：name@example.com",
+    "whatsappLabel": "WhatsApp",
+    "whatsappPlaceholder": "例：+60 12-345 6789",
+    "wechatLabel": "微信号",
+    "wechatPlaceholder": "例：wxid_xxxxxx",
+    "linkedinLabel": "LinkedIn",
+    "linkedinPlaceholder": "例：https://www.linkedin.com/in/username",
+    "save": "保存",
+    "saving": "保存中…",
+    "saveSuccess": "联系方式已保存",
+    "saveError": "保存失败，请重试",
+    "errorValidation": "请检查输入格式（手机号需含国际区号，如 +60）"
   }
 }

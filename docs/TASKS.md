@@ -410,10 +410,12 @@
 
 > 完成 2026-11-06：`src/server/lib/completeness.ts` 实现 `computeCompleteness` 纯函数（权重 30/15/20/20/10/5）；`recalcCompleteness` 在 student-profile.ts 的每个 saveStepN 事务内调用；修复 WIP 中 `studentContact` 直接访问违规，改用 `hasStudentContact(profileId)`；tests/unit/completeness.test.ts 20 个用例全部通过（empty=0, full=100, no-pdf=90, 各分项及不重复计分）；pnpm lint/typecheck/test 全部通过（725 tests）。
 
-#### [ ] M2-T04 联系方式
+#### [x] M2-T04 联系方式
 依赖：M0-T10、M2-T01
 做：`services/contact-access.ts` 中的 `getOwnContact` / `updateOwnContact`（经 `encryptField` / `decryptField` 加密存储，带 AAD）；`/s/contact` 页面，附隐私提示。
 验收：数据库里的值以 `enc:v` 开头；学生本人读取到明文；手机号格式校验（马来西亚 / 中国 / 国际格式）
+
+> 完成 2026-11-06：`services/contact-access.ts` 新增 `getOwnContact`/`updateOwnContact`（AES-256-GCM 加密，AAD=`StudentContact.<field>:<studentId>`）；`updateContactSchema` 含手机号国际格式校验（`+[1-9][\\d\\s\\-]{5,25}`，覆盖马来西亚/中国/国际）；`actions/contact.ts` 包装两个 server action；`/s/contact` 页面含隐私提示（服务端组件）；`components/contact/ContactForm.tsx` 客户端表单；zh/en i18n 新增 contact 命名空间；`tests/unit/contact-access.test.ts` 23 个用例（加密存储、解密还原、手机号格式、NotFoundError、enc:v 前缀）；pnpm lint/typecheck/test 全部通过（742 tests）
 
 #### [ ] M2-T05 文件上传（app 中转）与简历
 依赖：M0-T02、M0-T07
