@@ -1081,6 +1081,13 @@
   - /e 的 X-Robots-Tag 等 M7-T05。
   - e/page.tsx 的 `<main>` 套在 layout 的 `<main>` 里。
   - 公开页的 id 参数没有经过 zod 校验。
+- 第二轮修复后最终复核的遗留项（2026-11-07）：
+  - `/api/resumes/[id]` 的 idSchema 还是自己定义的，没有从 `src/server/lib/upload-input.ts` 导入。归属检查的测试由单独的 fix(M2-T05) 补，不在本任务里。
+  - 公开主页的 logo 归属只给 `isOwnLogoKey` 写了单测，页面层没有测试。
+  - 重写后的 authz-matrix「Hijack」用例没在输入里塞别家的 companyId，抓不住 `input.companyId ?? ctx.companyId` 这类回退。
+  - `tests/e2e/helpers/smoke.ts` 检查错误浮层和错误页的字符串，在 Next 16.4.5 上对不上：global-error 显示的是「A server error occurred」。崩溃目前靠 200 状态码和 console、pageerror 检查抓到；改成和 Next 实际显示的文案一致。
+  - 控制台冒烟只断言 RECRUITER 看不到「认证材料」链接，没断言横幅 CTA 和提示文案。
+  - 「过期邀请不占名额」的测试，要两个过滤条件都去掉才会失败。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
