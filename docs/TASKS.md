@@ -652,10 +652,11 @@
 - 已发布的职位修改标题、描述、要求、福利、薪资或地点后，回到 PENDING_REVIEW，从公开列表和搜索里下线，重新审核通过后才恢复（`approvedJobCount` 未达到 `jobs.autoPublishAfter` 时）；集成测试覆盖（TM-007）
 > 完成 2026-11-07：services/jobs.ts（createJob/updateJob/copyJob/closeJob/list/get）；/e/jobs 列表、/e/jobs/new 新建、/e/jobs/[id]/edit 编辑；JobFormClient + JobListClient 客户端组件；Server Actions；zh/en i18n（jobs 命名空间）；19 个集成测试全部通过（含 TM-007 敏感字段回退逻辑）；3 个 E2E 冒烟测试通过
 
-#### [ ] M5-T02 职位审核
+#### [x] M5-T02 职位审核
 依赖：M5-T01
 做：`/admin/jobs` 待审队列：通过（PUBLISHED，`approvedJobCount + 1`）/ 驳回（填原因）；审计 `job.review`；通知创建者。
 验收：达到阈值后，新职位自动发布
+> 完成 2026-11-07：services/review-jobs.ts（listPendingJobs/approveJob/rejectJob，含 AuditLog + Notification）；admin-jobs.ts Server Actions（admin auth）；/admin/jobs 列表页和 /admin/jobs/[jobId] 详情+ReviewJobForm；zh/en adminJobs i18n；13 个集成测试（含阈值自动发布验收）；4 个 E2E 冒烟测试；authz-matrix 加 4 行。lint/typecheck/860 tests/db:check 全部通过。
 
 #### [ ] M5-T03 公开职位页（白名单输出、额度锁、noindex）
 依赖：M5-T01、M2-T10

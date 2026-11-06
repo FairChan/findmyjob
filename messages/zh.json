@@ -439,5 +439,28 @@
       "verifiedOnly": "企业认证通过后才能提交职位审核",
       "back": "返回列表"
     }
+  },
+  "adminJobs": {
+    "title": "职位审核",
+    "pendingList": "待审核职位",
+    "noPending": "暂无待审核职位",
+    "companyLabel": "企业",
+    "titleLabel": "职位名称",
+    "typeLabel": "类型",
+    "submittedAtLabel": "提交时间",
+    "reviewAction": "审核",
+    "detailTitle": "职位审核详情",
+    "back": "返回列表",
+    "approveTitle": "通过",
+    "approveSubmit": "通过审核",
+    "rejectTitle": "驳回",
+    "rejectNoteLabel": "驳回原因",
+    "rejectNotePlaceholder": "说明驳回原因，企业方将收到通知",
+    "rejectSubmit": "驳回",
+    "errorNoteRequired": "请填写驳回原因",
+    "errorFailed": "操作失败，请稍后重试",
+    "noJob": "未找到该职位或已不在待审核状态",
+    "statusPending": "待审核",
+    "descriptionLabel": "职位描述"
   }
 }

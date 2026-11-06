@@ -439,5 +439,28 @@
     "website": "Website",
     "openPositions": "Open Positions",
     "noJobs": "No open positions at this time"
+  },
+  "adminJobs": {
+    "title": "Job Review",
+    "pendingList": "Jobs Pending Review",
+    "noPending": "No jobs pending review",
+    "companyLabel": "Company",
+    "titleLabel": "Job Title",
+    "typeLabel": "Type",
+    "submittedAtLabel": "Submitted At",
+    "reviewAction": "Review",
+    "detailTitle": "Job Review Details",
+    "back": "Back to list",
+    "approveTitle": "Approve",
+    "approveSubmit": "Approve",
+    "rejectTitle": "Reject",
+    "rejectNoteLabel": "Rejection Reason",
+    "rejectNotePlaceholder": "Explain the rejection reason. The company will be notified.",
+    "rejectSubmit": "Reject",
+    "errorNoteRequired": "Please enter a rejection reason",
+    "errorFailed": "Operation failed. Please try again.",
+    "noJob": "Job not found or no longer pending review",
+    "statusPending": "Pending",
+    "descriptionLabel": "Job Description"
   }
 }

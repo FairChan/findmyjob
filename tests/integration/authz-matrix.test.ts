@@ -569,6 +569,77 @@ describe('admin-verification actions authz (M3-T03)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// admin-jobs actions authz (M5-T02)
+// ---------------------------------------------------------------------------
+
+describe('admin-jobs actions authz (M5-T02)', () => {
+  async function makePendingJobFixture() {
+    const { userId: ownerId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const job = await testDb.job.create({
+      data: {
+        companyId,
+        createdById: ownerId,
+        title: 'Authz Test Job',
+        type: 'INTERNSHIP',
+        description: 'Test',
+        status: 'PENDING_REVIEW',
+        workMode: 'ONSITE',
+      },
+    })
+    return { jobId: job.id, companyId }
+  }
+
+  it('approveJobAction: student → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createStudent(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { approveJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await approveJobAction({ jobId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+
+  it('approveJobAction: employer → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { approveJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await approveJobAction({ jobId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+
+  it('rejectJobAction: student → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createStudent(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { rejectJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await rejectJobAction({ jobId, reviewNote: 'Bad job' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+
+  it('rejectJobAction: employer → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { rejectJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await rejectJobAction({ jobId, reviewNote: 'Bad job' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // resume download ownership (M2-T05)
 // ---------------------------------------------------------------------------
 
