@@ -482,10 +482,11 @@
 验收：一个企业用户只能属于一家企业（MVP）；SSM 注册号唯一
 > 完成 2026-11-06：实现 taxonomy/industries（两级行业码）、company service（createCompany/updateCompany/getMyCompany）、createCompanyAction/updateCompanyAction、/e/onboarding 和 /e/company 页面、CompanyForm 客户端组件、uploads 路由扩展 LOGO/VERIFICATION/PAYMENT_PROOF 支持，全量测试通过（695 tests）
 
-#### [ ] M3-T02 提交认证材料
+#### [x] M3-T02 提交认证材料
 依赖：M3-T01
 做：上传 1–5 个文件（PDF/PNG/JPG，单个 ≤ 10MB），一律经 `/api/uploads/VERIFICATION` 上传；`documentKeys` 只能来自本企业自己的上传记录 → 创建 CompanyVerification（PENDING），企业状态改为 PENDING；被驳回后可以重新提交。
 验收：状态流转正确；企业成员能看到驳回原因；提交别的企业的对象 key 被拒
+> 完成 2026-11-06：verification service（submitVerification/getVerificationInfo，key 前缀校验，状态流转 UNSUBMITTED/REJECTED→PENDING）；verification action；/e/verification 页面（展示状态、驳回原因、VerificationForm 客户端组件）；zh/en i18n；9 个集成测试全部通过（726 tests）
 
 #### [ ] M3-T03 运营审核队列
 依赖：M3-T02
