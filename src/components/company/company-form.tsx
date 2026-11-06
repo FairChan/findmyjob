@@ -131,6 +131,8 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
           setError(tO('errorSsmDuplicate'))
         } else if (result.code === 'ALREADY_MEMBER') {
           setError(tO('errorAlreadyMember'))
+        } else if (result.code === 'IDENTITY_LOCKED') {
+          setError(tO('errorIdentityLocked'))
         } else {
           setError(tO('errorUnknown'))
         }

@@ -229,6 +229,7 @@
     "errorInvalidWebsite": "请输入有效的网址",
     "errorSsmDuplicate": "该 SSM 注册号已被使用",
     "errorAlreadyMember": "您已经属于一家企业",
+    "errorIdentityLocked": "企业认证期间及认证后，法定名称、展示名和 SSM 注册号不可修改。如需更改，请联系运营。",
     "errorFailed": "创建失败，请稍后重试",
     "errorUnknown": "发生未知错误，请稍后重试"
   },

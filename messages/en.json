@@ -229,6 +229,7 @@
     "errorInvalidWebsite": "Please enter a valid URL",
     "errorSsmDuplicate": "This SSM registration number is already in use",
     "errorAlreadyMember": "You are already a member of a company",
+    "errorIdentityLocked": "Legal name, display names, and SSM registration number cannot be changed once verification has been submitted. Contact our team to make changes.",
     "errorFailed": "Creation failed. Please try again.",
     "errorUnknown": "An unexpected error occurred. Please try again."
   },

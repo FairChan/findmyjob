@@ -25,6 +25,10 @@ vi.mock('@/lib/storage', () => ({
   getSignedDownloadUrl: vi.fn(),
 }))
 
+vi.mock('next/headers', () => ({
+  headers: vi.fn().mockResolvedValue(new Headers()),
+}))
+
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createEmployerWithoutCompany } from '../factories'
 import { requireUser, requireStudent, requireEmployer, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
@@ -430,16 +434,60 @@ describe('company service authz (M3-T01)', () => {
     expect(co.legalName).toBe('New Co Sdn Bhd')
   })
 
-  it('updateCompany: companyId must come from member context, not client', async () => {
+  it('updateCompanyAction: companyId comes from requireCompanyMember, not client input', async () => {
+    // empA owns cid1; empB owns cid2.
+    // When empA is logged in, the action must write to cid1 regardless of any client payload.
+    // This test fails if the action starts trusting a client-supplied companyId instead.
     const { userId: uid1, companyId: cid1 } = await createEmployer(testDb)
     const { companyId: cid2 } = await createEmployer(testDb)
-    // uid1 is NOT a member of cid2; using cid2 in ctx directly would bypass requireCompanyMember
-    // Here we verify the service itself checks company existence — no cross-company write occurs
-    await expect(
-      updateCompany({ userId: uid1, companyId: cid2, role: 'OWNER' }, { legalName: 'Hijack' })
-    ).resolves.not.toThrow()
-    // legalName of cid1 should be unchanged
+    mockSession(uid1)
+    const { updateCompanyAction } = await import('@/server/actions/company')
+    const result = await updateCompanyAction({ legalName: 'NewNameFromAction' })
+    expect(result.ok).toBe(true)
+
+    // Write went to cid1 (the authenticated company)
     const co1 = await testDb.company.findUnique({ where: { id: cid1 } })
-    expect(co1?.legalName).not.toBe('Hijack')
+    expect(co1?.legalName).toBe('NewNameFromAction')
+
+    // cid2 was not touched
+    const co2 = await testDb.company.findUnique({ where: { id: cid2 } })
+    expect(co2?.legalName).not.toBe('NewNameFromAction')
+  })
+
+  it('updateCompanyAction: RECRUITER → FORBIDDEN', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    // also re-activate just in case createEmployer set a different status
+    await testDb.company.update({ where: { id: companyId }, data: { isActive: true } })
+    mockSession(userId)
+    const { updateCompanyAction } = await import('@/server/actions/company')
+    const result = await updateCompanyAction({ legalName: 'ShouldBeBlocked' })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('FORBIDDEN')
+  })
+
+  it('submitVerificationAction: RECRUITER → FORBIDDEN', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    await testDb.company.update({ where: { id: companyId }, data: { isActive: true } })
+    mockSession(userId)
+    const { submitVerificationAction } = await import('@/server/actions/verification')
+    const result = await submitVerificationAction({
+      documentKeys: [`verifications/${companyId}/doc.pdf`],
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('FORBIDDEN')
+  })
+
+  it('submitVerificationAction: documentKeys from another company → FORBIDDEN', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    const { companyId: otherId } = await createEmployer(testDb)
+    mockSession(userId)
+    const { submitVerificationAction } = await import('@/server/actions/verification')
+    const result = await submitVerificationAction({
+      documentKeys: [`verifications/${otherId}/doc.pdf`],
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.code).toBe('FORBIDDEN')
   })
 })

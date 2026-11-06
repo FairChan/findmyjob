@@ -3,7 +3,7 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
-import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { getAllIndustryCodes } from '../lib/taxonomy/industries'
 import type { UserCtx, CompanyCtx } from '../authz'
 import { deleteAllVersions } from '@/lib/storage'
@@ -114,9 +114,33 @@ export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) 
 
   const company = await db.company.findUnique({
     where: { id: companyId },
-    select: { id: true, ssmRegNo: true, logoKey: true },
+    select: {
+      id: true,
+      ssmRegNo: true,
+      logoKey: true,
+      verificationStatus: true,
+      legalName: true,
+      displayNameZh: true,
+      displayNameEn: true,
+    },
   })
   if (!company) throw new NotFoundError()
+
+  // Once PENDING or VERIFIED, identity fields are locked to prevent impersonation (TM-006)
+  if (company.verificationStatus === 'PENDING' || company.verificationStatus === 'VERIFIED') {
+    const changed =
+      input.legalName !== company.legalName ||
+      (input.ssmRegNo ?? null) !== (company.ssmRegNo ?? null) ||
+      (input.displayNameZh ?? null) !== (company.displayNameZh ?? null) ||
+      (input.displayNameEn ?? null) !== (company.displayNameEn ?? null)
+    if (changed) {
+      throw new AppError(
+        'Identity fields cannot be changed after verification has been submitted',
+        'IDENTITY_LOCKED',
+        422,
+      )
+    }
+  }
 
   // SSM uniqueness: only check if value changed
   if (input.ssmRegNo && input.ssmRegNo !== company.ssmRegNo) {

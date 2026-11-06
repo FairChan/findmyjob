@@ -149,6 +149,87 @@ describe('isOwnLogoKey', () => {
   })
 })
 
+describe('updateCompany identity lock', () => {
+  async function makeVerifiedCompany() {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({
+      where: { id: companyId },
+      data: { verificationStatus: 'VERIFIED', legalName: 'Verified Co Sdn Bhd', ssmRegNo: 'SSM-V1' },
+    })
+    return { userId, companyId }
+  }
+
+  it('VERIFIED company: changing legalName → AppError IDENTITY_LOCKED', async () => {
+    const { userId, companyId } = await makeVerifiedCompany()
+    const { AppError } = await import('@/server/errors')
+    const err = await updateCompany(
+      { userId, companyId, role: 'OWNER' },
+      { legalName: 'Hijacked Sdn Bhd' },
+    ).catch(e => e)
+    expect(err).toBeInstanceOf(AppError)
+    expect((err as InstanceType<typeof AppError>).code).toBe('IDENTITY_LOCKED')
+  })
+
+  it('VERIFIED company: changing displayNameZh → AppError IDENTITY_LOCKED', async () => {
+    const { userId, companyId } = await makeVerifiedCompany()
+    const { AppError } = await import('@/server/errors')
+    const err = await updateCompany(
+      { userId, companyId, role: 'OWNER' },
+      { legalName: 'Verified Co Sdn Bhd', displayNameZh: '被改了' },
+    ).catch(e => e)
+    expect(err).toBeInstanceOf(AppError)
+    expect((err as InstanceType<typeof AppError>).code).toBe('IDENTITY_LOCKED')
+  })
+
+  it('PENDING company: changing legalName → AppError IDENTITY_LOCKED', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'PENDING', legalName: 'Pending Co Sdn Bhd' } })
+    const { AppError } = await import('@/server/errors')
+    const err = await updateCompany(
+      { userId, companyId, role: 'OWNER' },
+      { legalName: 'Changed Name' },
+    ).catch(e => e)
+    expect(err).toBeInstanceOf(AppError)
+    expect((err as InstanceType<typeof AppError>).code).toBe('IDENTITY_LOCKED')
+  })
+
+  it('VERIFIED company: changing only description (identity fields same) → allowed', async () => {
+    const { userId, companyId } = await makeVerifiedCompany()
+    // Full form submit: include unchanged identity fields
+    await expect(
+      updateCompany(
+        { userId, companyId, role: 'OWNER' },
+        { legalName: 'Verified Co Sdn Bhd', ssmRegNo: 'SSM-V1', description: 'New description' },
+      ),
+    ).resolves.not.toThrow()
+  })
+
+  it('VERIFIED company: same identity fields in full form submit → allowed', async () => {
+    const { userId, companyId } = await makeVerifiedCompany()
+    await expect(
+      updateCompany(
+        { userId, companyId, role: 'OWNER' },
+        { legalName: 'Verified Co Sdn Bhd', ssmRegNo: 'SSM-V1', city: 'Kuala Lumpur' },
+      ),
+    ).resolves.not.toThrow()
+  })
+
+  it('UNSUBMITTED company: can change identity fields', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await expect(
+      updateCompany({ userId, companyId, role: 'OWNER' }, { legalName: 'New Name Sdn Bhd' }),
+    ).resolves.not.toThrow()
+  })
+
+  it('REJECTED company: can change identity fields', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'REJECTED', legalName: 'Old Name Sdn Bhd' } })
+    await expect(
+      updateCompany({ userId, companyId, role: 'OWNER' }, { legalName: 'New Name After Reject' }),
+    ).resolves.not.toThrow()
+  })
+})
+
 describe('concurrent createCompany', () => {
   it('only one succeeds when two requests race for the same user', async () => {
     const { userId } = await createEmployerWithoutCompany(testDb)
