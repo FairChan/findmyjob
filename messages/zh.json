@@ -129,7 +129,23 @@
     "title": "学生工作台"
   },
   "employerDashboard": {
-    "title": "企业工作台"
+    "title": "企业工作台",
+    "creditsBalance": "点数余额",
+    "creditsUnit": "点",
+    "quickLinks": "快捷入口",
+    "linkCompany": "企业资料",
+    "linkVerification": "认证材料",
+    "linkTeam": "团队管理",
+    "bannerUnsubmittedTitle": "企业尚未认证",
+    "bannerUnsubmittedDesc": "提交认证材料后，您可以搜索人才库并解锁联系方式。",
+    "bannerUnsubmittedCta": "立即提交认证",
+    "bannerPendingTitle": "认证审核中",
+    "bannerPendingDesc": "我们正在核实您的企业信息，通常 1–3 个工作日内完成。",
+    "bannerRejectedTitle": "认证未通过",
+    "bannerRejectedDesc": "请查看驳回原因并重新提交认证材料。",
+    "bannerRejectedCta": "重新提交",
+    "bannerVerifiedTitle": "企业已认证",
+    "bannerVerifiedDesc": "您现在可以搜索人才并解锁联系方式。"
   },
   "adminDashboard": {
     "title": "运营后台"
