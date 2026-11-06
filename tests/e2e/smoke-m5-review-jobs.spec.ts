@@ -22,6 +22,8 @@ test.describe('M5-T02 admin job review smoke', () => {
       benefits: `BEN-SENTINEL-${Date.now()}`,
       city: `CITY-SENTINEL-${Date.now()}`,
       skill: `SKILL-SENTINEL-${Date.now()}`,
+      category: `CAT-SENTINEL-${Date.now()}`,
+      language: `LANG-SENTINEL-${Date.now()}`,
       salaryMin: 1234,
       salaryMax: 5678,
     }
@@ -57,6 +59,8 @@ test.describe('M5-T02 admin job review smoke', () => {
         benefits: sentinel.benefits,
         city: sentinel.city,
         skills: [sentinel.skill],
+        category: sentinel.category,
+        languages: [sentinel.language],
         salaryMin: sentinel.salaryMin,
         salaryMax: sentinel.salaryMax,
         salaryVisible: false,
@@ -72,8 +76,12 @@ test.describe('M5-T02 admin job review smoke', () => {
     await expect(page.getByText(sentinel.benefits)).toBeVisible()
     await expect(page.getByText(sentinel.city)).toBeVisible()
     await expect(page.getByText(sentinel.skill)).toBeVisible()
+    // category and languages are free text shown to students, so scam text can hide there too (TM-007)
+    await expect(page.getByText(sentinel.category)).toBeVisible()
+    await expect(page.getByText(sentinel.language)).toBeVisible()
     // Salary visible even when salaryVisible=false, with note
     await expect(page.getByText(`${sentinel.salaryMin} – ${sentinel.salaryMax} MYR`)).toBeVisible()
+    await expect(page.getByText('不对外显示')).toBeVisible()
   })
 
   test('STUDENT: /zh/admin/jobs is redirected away', async ({ page }) => {

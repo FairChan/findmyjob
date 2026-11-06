@@ -450,6 +450,7 @@
     "titleLabel": "Job Title",
     "typeLabel": "Type",
     "workModeLabel": "Work Mode",
+    "categoryLabel": "Category",
     "locationLabel": "Location",
     "salaryLabel": "Salary Range",
     "salaryHiddenNote": "not shown publicly",

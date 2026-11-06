@@ -450,6 +450,7 @@
     "titleLabel": "职位名称",
     "typeLabel": "类型",
     "workModeLabel": "工作方式",
+    "categoryLabel": "职位类别",
     "locationLabel": "工作地点",
     "salaryLabel": "薪资范围",
     "salaryHiddenNote": "不对外显示",

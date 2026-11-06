@@ -660,6 +660,7 @@
 验收：达到阈值后，新职位自动发布
 > 完成 2026-11-07：services/review-jobs.ts（listPendingJobs/approveJob/rejectJob，含 AuditLog + Notification）；admin-jobs.ts Server Actions（admin auth）；/admin/jobs 列表页和 /admin/jobs/[jobId] 详情+ReviewJobForm；zh/en adminJobs i18n；13 个集成测试（含阈值自动发布验收）；4 个 E2E 冒烟测试；authz-matrix 加 4 行。lint/typecheck/860 tests/db:check 全部通过。
 > 修复 2026-11-07：详情页补全所有字段（requirements/benefits/salary/location/workMode/languages/skills/headcount/deadline）；salaryVisible=false 也显示薪资并标注「不对外显示」；approveJob/rejectJob 加 updatedAt 乐观锁（updateMany 版本检查）；并发两次通过只成功一次；ReviewJobForm 传 updatedAt 并处理 stale 错误；新增 4 条集成测试（stale/并发）；E2E 增加哨兵字段断言；919 测试/4 E2E 全部通过
+> 修复 2026-11-07（最终复查）：详情页补上 category（100 字自由文本，学生看得到，TM-007 同一类问题）；冒烟用例加 category、languages 哨兵和「不对外显示」字样的断言，先确认用例失败再修。
 
 #### [ ] M5-T03 公开职位页（白名单输出、额度锁、noindex）
 依赖：M5-T01、M2-T10

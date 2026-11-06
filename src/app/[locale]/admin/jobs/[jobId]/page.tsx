@@ -44,6 +44,13 @@ export default async function AdminJobReviewPage({
           <dt className="text-muted-foreground">{t('workModeLabel')}</dt>
           <dd>{tJobs(`workMode.${job.workMode}`)}</dd>
 
+          {job.category && (
+            <>
+              <dt className="text-muted-foreground">{t('categoryLabel')}</dt>
+              <dd className="break-words">{job.category}</dd>
+            </>
+          )}
+
           {(job.state || job.city) && (
             <>
               <dt className="text-muted-foreground">{t('locationLabel')}</dt>
