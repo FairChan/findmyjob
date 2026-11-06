@@ -515,6 +515,7 @@
 - 被移除的成员下一次操作就被拒；公益期邀请第 4 个成员被拒
 
 > 完成 2026-11-07：`services/team.ts`（inviteMember/acceptInvite/removeMember/changeRole/listTeamMembers/getInviteDetails，token randomBytes(32) base64url + sha256 哈希，7 天过期，审计 company.invite.accept）；`actions/team.ts`（4 个 Server Action，邀请后异步发邮件）；`/e/team` 页面（Server Component + TeamPageClient）；`/e/team/accept` 页面（AcceptInviteClient）；seed 新增 `team.maxInvitesPerDay=3`；`clearSettingsCache()` 供测试隔离；zh/en i18n 新增 team 和 teamAccept 两节；`tests/integration/team.test.ts` 29 个测试（invite/accept/remove/changeRole/getInviteDetails）；authz-matrix 增加 5 个团队越权测试；notifications.ts 修复多余的 eslint-disable 指令；pnpm lint/typecheck/test/db:check 全部通过（765 tests）
+> 修复 2026-11-07：inviteMember 改为计算「现有成员数 + 有效待接受邀请数」≥ maxMembers 时拒绝，解决验收「公益期邀请第 4 个成员被拒」未满足的问题；acceptInvite 在事务内重新计数成员，满员则拒绝且不标记 acceptedAt（并发双重接受暂不加锁，等 lockXact 实装后处理）；新增 3 个集成测试用例（pending invites 计入上限、accept 时满员被拒、过期/已用邀请不占名额）；新建 tests/e2e/smoke-m3-team.spec.ts（/zh/e/team 和 /zh/e/team/accept 冒烟各 1 条）；pnpm lint/typecheck/test（811 tests）/test:e2e smoke-m3-team 全部通过
 
 #### [x] M3-T05 企业公开主页
 依赖：M3-T01
