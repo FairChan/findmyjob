@@ -475,10 +475,11 @@
 
 ## M3 · 企业入驻（约 1.7 天）
 
-#### [ ] M3-T01 创建企业与企业资料
+#### [x] M3-T01 创建企业与企业资料
 依赖：M1-T04、M2-T05
 做：`/e/onboarding` 创建企业（创建者成为 OWNER），行业用两级代码（`lib/taxonomy/industries`）；`/e/company` 编辑资料、上传 Logo（经 uploads 路由）。公司定位标签不在企业侧出现。
 验收：一个企业用户只能属于一家企业（MVP）；SSM 注册号唯一
+> 完成 2026-11-06：实现 taxonomy/industries（两级行业码）、company service（createCompany/updateCompany/getMyCompany）、createCompanyAction/updateCompanyAction、/e/onboarding 和 /e/company 页面、CompanyForm 客户端组件、uploads 路由扩展 LOGO/VERIFICATION/PAYMENT_PROOF 支持，全量测试通过（695 tests）
 
 #### [ ] M3-T02 提交认证材料
 依赖：M3-T01

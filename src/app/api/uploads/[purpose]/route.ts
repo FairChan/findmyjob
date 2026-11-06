@@ -36,7 +36,8 @@ function rejectJson(code: string, status: number): Response {
 
 // Note: this route handler reads formData directly (no route() input schema),
 // because route()'s input parsing only handles JSON bodies.
-export const POST = route({ auth: 'student' }, async (req, ctx) => {
+// auth:'user' is the minimum check; purpose-specific role checks happen below.
+export const POST = route({ auth: 'user' }, async (req, ctx) => {
   await assertUploadsEnabled()
 
   const userId = ctx.userId!
@@ -48,6 +49,25 @@ export const POST = route({ auth: 'student' }, async (req, ctx) => {
   }
   const purpose = rawPurpose as UploadPurpose
   const config = PURPOSE_CONFIGS[purpose]
+
+  // Purpose-specific role checks
+  let companyId: string | undefined
+  if (purpose === 'RESUME') {
+    const { requireStudent } = await import('@/server/authz')
+    try {
+      await requireStudent(req.headers as unknown as Headers)
+    } catch {
+      return rejectJson('FORBIDDEN', 403)
+    }
+  } else if (purpose === 'LOGO' || purpose === 'VERIFICATION' || purpose === 'PAYMENT_PROOF') {
+    const { requireCompanyMember } = await import('@/server/authz')
+    try {
+      const companyCtx = await requireCompanyMember('ADMIN', req.headers as unknown as Headers)
+      companyId = companyCtx.companyId
+    } catch {
+      return rejectJson('FORBIDDEN', 403)
+    }
+  }
 
   // Per-user hourly upload rate limit
   const uploadsPerHour = await getSetting<number>('limits.uploadsPerHour', 20)
@@ -138,7 +158,14 @@ export const POST = route({ auth: 'student' }, async (req, ctx) => {
   }
 
   // Server-generated object key (never trust client input for path)
-  const key = `${purpose.toLowerCase()}/${userId}/${randomUUID()}.${EXT[detectedType]}`
+  // Key rules: resumes/{userId}/, logos/{companyId}/, verifications/{companyId}/
+  let key: string
+  if ((purpose === 'LOGO' || purpose === 'VERIFICATION' || purpose === 'PAYMENT_PROOF') && companyId) {
+    const folder = purpose === 'LOGO' ? 'logos' : purpose === 'VERIFICATION' ? 'verifications' : 'payment_proofs'
+    key = `${folder}/${companyId}/${randomUUID()}.${EXT[detectedType]}`
+  } else {
+    key = `${purpose.toLowerCase()}s/${userId}/${randomUUID()}.${EXT[detectedType]}`
+  }
 
   // All checks passed — upload to object storage
   await putObject(key, buf, MIME_TYPES[detectedType])
