@@ -486,6 +486,35 @@
 
 > 完成 2026-11-07：`src/server/lib/advisory-locks.ts`（lockXact，pg_advisory_xact_lock，LOCK_NS.JOB_VIEW_QUOTA=1001）；`src/server/services/job-view-quota.ts`（getQuota/openJob，quota 公式 base+floor(qualified/tierSize)×tierBonus+grants，unlimitedAt/enabled 判无限，事务内 advisory lock + ON CONFLICT DO NOTHING，已投递/已邀请职位豁免）；`/s/invite` 页（已用/总额进度条、邀请链接复制按钮、里程碑进度、已邀请列表脱敏展示）；i18n zh/en 同步；tests/unit/job-view-quota.test.ts（14 个单元测试）；pnpm lint/typecheck/test/db:check 全部通过（815 tests）；偏差：EMPLOYER 只能看本企业职位的"锁定卡片"逻辑在 M5-T03 职位详情页实现时对接，本任务提供 openJob API，D18 记录在 DECISIONS
 
+
+#### [ ] M2-T11 补修 M2-T01～T04 合并前复查发现的问题
+依赖：M2-T04
+> 总控 2026-11-07 加入：复查时按 81d1b05 读的代码，结论是 BLOCKED。红线文件 contact-access.ts 范围干净：没有提前实现企业侧读取、解锁或扣点。下面 1–6 不修完，M2 不能合并；7 是 PDPA 文案准确性，顺手修。
+做 / 验收：
+1. 选了学校就保存不了（High）：`student-profile.ts` 里的 `schoolId: z.string().cuid()` 改成 `z.string().min(1).max(64)`；saveStep1 在服务端确认学校存在、状态是 active，不满足就抛 ValidationError。测试用种子数据里的 `school-xmum` 走一遍：onboarding 第 1 步和 /s/profile 基本信息都能保存，再用一个不存在的 id 断言被拒。
+2. 「保存并退出」后回到第一个没填的步骤（M2-T01 验收）：保存并退出只保存数据，不推进 onboardingStep；可以给 saveStepN 加一个 advance 参数。`tests/e2e/onboarding.spec.ts` 要做到三点：在步骤 3 保存并退出，重新进入后停在步骤 3；刷新后断言填过的值都还在；375px 那条先登录，再测 `/s/onboarding`，断言没有横向滚动条。完成说明里写明这个 E2E 实际跑过的通过数。
+3. 输入法组字时按 Enter 不加标签（M2-T02 验收）：把标签输入的 keydown 处理提到共用的 helper（例如 `src/lib/tag-input.ts`），ProfileEditor 和 OnboardingWizard 都改成调它，测试直接测这个 helper；或者在 Playwright 里对真实的输入框派发 `KeyboardEvent('keydown', { key: 'Enter', isComposing: true })`。删掉 isImeComposing 判断时，测试必须失败。
+4. 保存联系方式后重算完成度（M2-T03）：从 student-profile 导出 `recalcOwnCompleteness(ctx)`，在 `updateOwnContactAction` 里 upsert 之后调用（放在 action 里调，避免两个 service 互相引用）。测试：完成度 85（没有 PDF、没有联系方式）的学生保存联系方式后，变成 90。`recalcCompleteness` 里对 `hasStudentContact` 的调用改用同一个 tx，不要另外占一个连接。
+5. 手机号校验（M2-T04 验收）：先去掉空格和连字符；国际格式要求 `^\+[1-9]\d{6,14}$`；马来西亚本地 `^01\d{8,9}$` 规范成 +60，中国本地 `^1[3-9]\d{9}$` 规范成 +86。负例测试至少要有 `+60 9 9`、`+1 - - - -`、`+6------`，以及位数超过 15 位的号码。
+6. 文案（红线）：ProfileEditor.tsx 和 OnboardingWizard.tsx 里写死的 `Remove ${skill}`，改成 messages 里的 `removeSkill`（zh 和 en 都要加）。
+7. 隐私提示文案（PDPA）：`contact.privacyNotice` 和 `contact.subtitle` 按 PRD §2.2 改成「只有在你投递，或企业付费解锁后才可见」（中英文都改）。
+- 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
+
+#### [ ] M2-T12 补修 M2-T06～T10 合并前复查发现的问题
+依赖：M2-T11
+> 总控 2026-11-07 加入：复查结论是 BLOCKED（按 908d714 读的代码）。1–3 是 High，4–5 是验收没满足。下面这些不修完，M2 不能合并。
+做 / 验收：
+1. 学校邮箱 OTP 可以被暴力破解（High）：现在的尝试次数是先读 `Verification.value` 再写回一个绝对值，不是原子操作，并发请求会丢更新；而且重新发码会把计数清零。改成：每次比较之前，先按用户（不是按 OTP 记录）原子地消耗一次尝试次数，例如 `hitBucket('school-otp-verify:' + userId, { windowMs: 30 分钟, limit: 5 })`；超过次数就写锁定记录并抛 RateLimitedError；验证成功后清空这个桶；重新发码不能清零计数。用真实测试库写集成测试：并行发 20 个错误猜测，最多只有 5 次真正去比较，第 6 次及以后都返回锁定；锁定期间重新发码，再验证仍然是锁定状态。
+2. 换学校后认证状态还在（High）：saveStep1 在同一个事务里读当前的 schoolId，和输入不同时，把 `schoolVerifiedAt` 和 `schoolEmail` 都清空（或者在已认证期间拒绝改学校，二选一，写进 DECISIONS）。单元测试：在 A 校认证之后改成 B 校，schoolVerifiedAt 变成 null。
+3. `/s/invite` 页面崩溃（High）：页面把 `ctx.userId`（User.id）当成 StudentProfile.id 传给了 `getOrCreateReferralCode`、`getQuota` 和 `referral.findMany`。先由 userId 查出 profile.id，三处都改用它。加一条 E2E 冒烟测试：登录后的学生打开 /s/invite，能看到邀请码和额度。
+4. 企业看他校职位只显示锁定卡片（M2-T10 验收没做到，也没有交接给后面的任务）：二选一。一是在 job-view-quota.ts 里加一个访问判断（企业成员看本公司的职位：开放；看别家公司的：锁定），附单元测试；二是把这条验收原文加进 M5-T03 的「验收」，并在 DECISIONS「开发中决策」里记一行延后的原因。
+5. 补上目前什么都没断言的验收测试：
+   - 只剩 1 次额度时同时打开两个新职位，只有一个成功：用真实测试库写集成测试，不要 mock lockXact 和 $transaction。
+   - 每天第 4 个达标的邀请保持 PENDING，到第二天由定时任务转成有效：用 `vi.useFakeTimers` 越过吉隆坡时间 00:00。
+   - OTP 10 分钟过期、错误 5 次锁 30 分钟：断言 `expiresAt` 约等于 now+600 秒和 now+1800 秒。
+   - 作废的邀请不计入额度：断言额度计数的 where 条件里有 `status: 'QUALIFIED'`。
+- 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
+
 ---
 
 ## M3 · 企业入驻（约 1.7 天）
