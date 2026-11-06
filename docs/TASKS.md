@@ -733,7 +733,8 @@
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
 > 完成 2026-11-07：全部 8 条修复均已实现：(1) buildSearchString/FilterState 移至 src/lib/talent-search-params.ts；(2) FolderItemActions 去掉 onRemoved 函数 prop；(3) 删除 src/app/api/test/talent-search-seed/route.ts，测试数据改由 Playwright globalSetup 准备；(4) talent-search.spec.ts 改用 storageState；(5) talent-view.ts 加 LOCK_NS.PROFILE_VIEW 和事务锁；(6) talent-search.ts 用 employerFreeText 防真名泄露；(7) searchTalents/viewTalentProfile/收藏夹 action 加 assertCompanyVerified；(8) 验证参数错误时显示 i18n 友好提示。单元/集成测试：43 文件 926 用例全通过。E2E：12 通过 / 0 失败 / 0 跳过（含 talent-search.spec.ts 9 条和 m4-t14-smoke.spec.ts 3 条冒烟用例）。
 
-#### [ ] M4-T15 补齐 M4-T14 没做到的部分：E2E 数据只写测试库、非法参数不报 500、收藏夹页面要求已认证
+#### [x] M4-T15 补齐 M4-T14 没做到的部分：E2E 数据只写测试库、非法参数不报 500、收藏夹页面要求已认证
+> 完成 2026-11-07：全部 7 条子项均已实现。(1) global-setup.ts 改用 TEST_DATABASE_URL + validateTestDbUrl（库名须以 _test 结尾、主机须为本机），随机密码每次生成并写入 fixtures.json；playwright.config.ts 也在顶层加载 .env，确保 webServer 能将 TEST_DATABASE_URL 传给 `pnpm dev` 作为 DATABASE_URL；(2) searchFiltersSchema.parse → safeParse，校验失败抛 ValidationError，页面展示 invalidParams 提示；(3) 集成测试：排序/degreeLevel 非法值→ValidationError、TM-002 真名搜索→0 条；(4) 同一观看去重：viewTalentProfile 加 `if (!alreadyByViewer)` 判断，集成测试 5 次→1 条 ProfileView；(5) hover 测试去掉 cardLinkCount 条件，直接 hover 卡片链接 3 秒后断言无 `/e/talent/<id>` 请求；(6) folders/page.tsx 和 folders/[id]/page.tsx 在 requireCompanyMember 后检查 verificationStatus，未认证展示琥珀色 alert 含 /e/onboarding 链接；listFolders 加 assertCompanyVerified；authz-matrix 新增「被撤销认证企业 listFolders → ForbiddenError」；(7) 冒烟用例覆盖全部修改页面。单元+集成测试：54 文件 1085 用例全通过 / 0 失败 / 0 跳过。E2E（3 个 spec 共 25 条）：m4-t14-smoke.spec.ts 3 通过 / 0 失败 / 0 跳过；m4-t15-smoke.spec.ts 12 通过 / 0 失败 / 0 跳过；talent-search.spec.ts 10 通过 / 0 失败 / 0 跳过。
 依赖：M4-T14
 > 总控 2026-11-07 加入：M4-T14（de04901）的最终复查结论是 BLOCKED。隐私主线没有退步。下面第 1 条是这次新引入的 High，其余是验收还没做到的地方；每条测试都要做到「把修复撤掉，测试就失败」。
 做 / 验收：

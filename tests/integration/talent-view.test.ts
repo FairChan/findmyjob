@@ -93,25 +93,24 @@ describe('viewTalentProfile', () => {
     expect(audits).toHaveLength(1)
   })
 
-  it('repeated views by same viewer on same day still create ProfileView but only count once against limit', async () => {
+  it('repeated views by same viewer on same day are deduped to 1 ProfileView record', async () => {
     const { profileId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
     await verifyCompany(emp.companyId)
     await makeStudentVisible(profileId)
 
-    // Set a low limit and view 5 times (setSetting clears the cache)
-    await setSetting('limits.profileViewsPerDay', 2)
+    // Set member limit to 1 and view 5 times; all 5 should succeed since it is the same student
+    await setSetting('limits.profileViewsPerDay', 1)
 
-    // View 5 times; since it's the same student, all 5 should succeed (count=1 unique)
     for (let i = 0; i < 5; i++) {
       await viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId)
     }
 
-    // Should have 5 ProfileView records but only 1 unique student counted
+    // Dedup: only 1 ProfileView row should exist for this viewer+student+day
     const views = await testDb.profileView.findMany({
       where: { studentId: profileId, companyId: emp.companyId },
     })
-    expect(views).toHaveLength(5)
+    expect(views).toHaveLength(1)
   })
 
   it('blocks a new view after member-level limit is hit', async () => {

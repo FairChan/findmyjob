@@ -85,24 +85,22 @@ test.describe('Talent pool search', () => {
     try {
       await page.goto('/zh/e/talent')
 
-      const profileViewRequests: string[] = []
+      const talentDetailRequests: string[] = []
       page.on('request', (req) => {
         const url = req.url()
-        if (/talent\/.+\/view|profile-view|profileView/i.test(url)) {
-          profileViewRequests.push(url)
+        // Match requests to individual talent profile pages (including RSC fetches)
+        if (/\/e\/talent\/[a-zA-Z0-9]+/.test(url)) {
+          talentDetailRequests.push(url)
         }
       })
 
-      // Hover on the first talent card link (if any) but don't click
+      // Hover on the first talent card link and wait 3 seconds — do not click
       const cardLink = page.locator('a[href*="/e/talent/"]').first()
-      const cardLinkCount = await cardLink.count()
-      if (cardLinkCount > 0) {
-        await cardLink.hover()
-      }
+      await cardLink.hover()
       await page.waitForTimeout(3000)
 
-      // No profile-view API calls and still on the list page
-      expect(profileViewRequests).toHaveLength(0)
+      // No requests to individual talent pages, still on the list page
+      expect(talentDetailRequests).toHaveLength(0)
       expect(page.url()).toMatch(/\/e\/talent($|\?)/)
     } finally {
       await ctx.close()

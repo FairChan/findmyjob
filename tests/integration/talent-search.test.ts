@@ -218,6 +218,18 @@ describe('searchTalents', () => {
     ).rejects.toThrow(ValidationError)
   })
 
+  it('invalid sort value throws ValidationError (not 500)', async () => {
+    await expect(
+      searchTalents({ userId: memberId, companyId }, { sort: 'invalid' as never }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('invalid degreeLevel value throws ValidationError (not 500)', async () => {
+    await expect(
+      searchTalents({ userId: memberId, companyId }, { degreeLevel: 'INVALID' as never }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
   it('page = maxPage (25) is allowed', async () => {
     await expect(
       searchTalents({ userId: memberId, companyId }, { page: 25, sort: 'lastActive' }),
@@ -464,6 +476,22 @@ describe('searchTalents', () => {
   })
 
   // ---- TM-002 keyword tests ----
+
+  it('TM-002: student full name in headline is not searchable (redactNameParts)', async () => {
+    // The headline contains the student's full name; searching by name must return 0
+    const { profileId } = await makeVisibleStudent({ headline: '王小明｜计算机大三' })
+    // Set the fullName explicitly
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { fullName: '王小明' },
+    })
+    const result = await searchTalents(
+      { userId: memberId, companyId },
+      { page: 1, sort: 'lastActive', keyword: '王小明' },
+    )
+    // employerFreeText redacts the name from the searchable text, so result.total must be 0
+    expect(result.total).toBe(0)
+  })
 
   it('TM-002: searching WeChat handle in headline returns no match', async () => {
     const { profileId } = await makeVisibleStudent({ headline: '微信 leakwx0420' })

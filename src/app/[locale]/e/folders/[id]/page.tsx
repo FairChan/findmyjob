@@ -7,6 +7,7 @@ import Link from 'next/link'
 import type { DegreeLevel } from '@prisma/client'
 import { requireCompanyMember } from '@/server/authz'
 import { ForbiddenError, NotFoundError } from '@/server/errors'
+import { db } from '@/server/db'
 import { getFolderItems } from '@/server/services/talent-folders'
 import type { FolderItem } from '@/server/services/talent-folders'
 import type { TalentCard } from '@/server/serializers/talent-card'
@@ -132,6 +133,28 @@ export default async function FolderDetailPage({
   } catch (err) {
     if (err instanceof ForbiddenError) redirect(`/${locale}/e/onboarding`)
     throw err
+  }
+
+  const company = await db.company.findUnique({
+    where: { id: ctx.companyId },
+    select: { verificationStatus: true },
+  })
+
+  if (company?.verificationStatus !== 'VERIFIED') {
+    return (
+      <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
+        <div
+          role="alert"
+          className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
+        >
+          <h1 className="text-xl font-semibold text-amber-900">{t('verifyRequired')}</h1>
+          <p className="mt-2 text-sm text-amber-700">{t('verifyDesc')}</p>
+          <Button asChild className="mt-6">
+            <Link href={`/${locale}/e/onboarding`}>{t('verifyAction')}</Link>
+          </Button>
+        </div>
+      </main>
+    )
   }
 
   let result: Awaited<ReturnType<typeof getFolderItems>>

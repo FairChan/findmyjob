@@ -23,6 +23,7 @@ export interface FolderItem {
 export async function listFolders(
   ctx: { userId: string; companyId: string },
 ): Promise<FolderSummary[]> {
+  await assertCompanyVerified(ctx.companyId)
   const folders = await db.talentFolder.findMany({
     where: { companyId: ctx.companyId },
     include: { _count: { select: { items: true } } },

@@ -562,6 +562,11 @@ describe('talent.folders: folder access control', () => {
 
   it('employer can create and list folders for own company', async () => {
     const emp = await createEmployer(testDb)
+    // listFolders requires verified company
+    await testDb.company.update({
+      where: { id: emp.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
     const ctx = { userId: emp.userId, companyId: emp.companyId }
 
     const folder = await createFolder(ctx, { name: 'Test Folder' })
@@ -574,6 +579,15 @@ describe('talent.folders: folder access control', () => {
   it('company A cannot access folders from company B', async () => {
     const empA = await createEmployer(testDb)
     const empB = await createEmployer(testDb)
+    // Both must be verified to test isolation (not the verification gate)
+    await testDb.company.update({
+      where: { id: empA.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
+    await testDb.company.update({
+      where: { id: empB.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
 
     const folderB = await createFolder(
       { userId: empB.userId, companyId: empB.companyId },
@@ -719,6 +733,18 @@ describe('未认证企业查看收藏夹被拒', () => {
     // Need a folder ID; use a fake one (the company check fires first)
     await expect(
       getFolderItems({ userId: emp.userId, companyId: emp.companyId }, 'doesnotexist00000000000000'),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('被撤销认证的企业列出收藏夹被拒 — listFolders → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    // Set status to REJECTED (represents revoked/failed verification)
+    await testDb.company.update({
+      where: { id: emp.companyId },
+      data: { verificationStatus: 'REJECTED' },
+    })
+    await expect(
+      listFolders({ userId: emp.userId, companyId: emp.companyId }),
     ).rejects.toBeInstanceOf(ForbiddenError)
   })
 })

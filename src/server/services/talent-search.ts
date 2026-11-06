@@ -74,7 +74,11 @@ export async function searchTalents(
   ctx: { userId: string; companyId: string },
   raw: SearchFiltersInput,
 ): Promise<TalentSearchResult> {
-  const input = searchFiltersSchema.parse(raw)
+  const parsed = searchFiltersSchema.safeParse(raw)
+  if (!parsed.success) {
+    throw new ValidationError(`Invalid search params: ${parsed.error.issues.map((i) => i.message).join(', ')}`)
+  }
+  const input = parsed.data
   await assertTalentSearchEnabled()
 
   // §5.1: talent operations require verified company

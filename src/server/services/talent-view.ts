@@ -128,9 +128,11 @@ export async function viewTalentProfile(
       },
     })
 
-    await tx.profileView.create({
-      data: { companyId: ctx.companyId, studentId, viewerId: ctx.userId },
-    })
+    if (!alreadyByViewer) {
+      await tx.profileView.create({
+        data: { companyId: ctx.companyId, studentId, viewerId: ctx.userId },
+      })
+    }
 
     return { kind: 'ok', profile }
   })

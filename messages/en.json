@@ -464,7 +464,10 @@
     "degreeLevelDiploma": "Diploma",
     "degreeLevelBachelor": "Bachelor",
     "degreeLevelMaster": "Master",
-    "degreeLevelPhd": "PhD"
+    "degreeLevelPhd": "PhD",
+    "verifyRequired": "Company Verification Required",
+    "verifyDesc": "Only verified companies can use the folders feature. Please submit your verification documents and wait for approval.",
+    "verifyAction": "Get Verified"
   },
   "talentDetail": {
     "verifyRequired": "Company Verification Required",

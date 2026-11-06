@@ -464,7 +464,10 @@
     "degreeLevelDiploma": "文凭",
     "degreeLevelBachelor": "本科",
     "degreeLevelMaster": "硕士",
-    "degreeLevelPhd": "博士"
+    "degreeLevelPhd": "博士",
+    "verifyRequired": "请先完成企业认证",
+    "verifyDesc": "认证企业才可以使用收藏夹功能。请提交认证材料，等待审核通过后即可使用。",
+    "verifyAction": "去认证"
   },
   "talentDetail": {
     "verifyRequired": "请先完成企业认证",
