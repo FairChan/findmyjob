@@ -644,12 +644,13 @@
 
 ## M5 · 职位、搜索与投递（约 3.7 天）
 
-#### [ ] M5-T01 职位管理
+#### [x] M5-T01 职位管理
 依赖：M3-T06
 做：`services/jobs.ts`；`/e/jobs` 列表、新建、编辑、复制、关闭；字段含职位类别；提交时按 `jobs.autoPublishAfter` 规则决定进入 PENDING_REVIEW 还是直接 PUBLISHED（试点期默认 1000，等于全部人工审核）。
 验收：
 - 未认证企业只能保存草稿；状态流转有集成测试
 - 已发布的职位修改标题、描述、要求、福利、薪资或地点后，回到 PENDING_REVIEW，从公开列表和搜索里下线，重新审核通过后才恢复（`approvedJobCount` 未达到 `jobs.autoPublishAfter` 时）；集成测试覆盖（TM-007）
+> 完成 2026-11-07：services/jobs.ts（createJob/updateJob/copyJob/closeJob/list/get）；/e/jobs 列表、/e/jobs/new 新建、/e/jobs/[id]/edit 编辑；JobFormClient + JobListClient 客户端组件；Server Actions；zh/en i18n（jobs 命名空间）；19 个集成测试全部通过（含 TM-007 敏感字段回退逻辑）；3 个 E2E 冒烟测试通过
 
 #### [ ] M5-T02 职位审核
 依赖：M5-T01
