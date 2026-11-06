@@ -1027,6 +1027,53 @@
 - M7-T13 RUNBOOK：去掉「companyId」「单个企业」的旧说法，SQL 模板加上 targetType 过滤。
 - M7-T02 同意：撤回如果记在别的版本号下会被忽略；版本号和正文内容的绑定（例如加内容哈希）。
 - M7-T14 止血开关：等 M4-T07 解锁、M4-T03 人才库搜索、M2-T05 上传实现时接到各自入口（这一项随那几个任务做，在这里核对）。
+- M2-T05 上传（2026-11-07 复查延后的项）：
+  - pdf-lib 的 `load()` 会把对象流和 xref 流全部解开，没有上限，5–10MB 的文件能放大约 1000 倍。要放进有资源上限的 worker，或者加超时和大小上限。**上线前必须处理。**
+  - 加密检测能被绕过：在加密文件末尾追加一个没被引用的 XRef 流，就能覆盖掉 trailer。应再检查是否有 `/Filter /Standard` 加 `/O`、`/U` 的字典。
+  - 0 页的 PDF 会被接受；非简历 PDF 的页数上限 9999 写死在代码里。
+  - 孤儿对象：上传后没写进数据库的对象不会被清理；删除时先删数据库再删 S3，并且吞掉了错误。
+  - 下载响应缺 X-Robots-Tag；Location 头里的签名 URL 会进 Caddy 日志。
+  - 请求体整个读进内存。
+  - 缺 authz-matrix 的行。
+  - PAYMENT_PROOF 允许 ADMIN 上传，但购买只限 OWNER。
+  - key 用 randomUUID 加 userId，ARCHITECTURE 写的是 cuid 加 studentId。
+  - 非法的 purpose 和 id 返回 404，不是 400。
+- M3-T01、T02 企业和认证：
+  - `submitVerification` 的状态检查在事务外，并发提交会生成两条 PENDING。应改为带条件的 updateMany。
+  - SSM 号在服务端没有 trim、没有转大写；并发时的 P2002 会显示成 INTERNAL_ERROR。
+  - 服务端抛的是 VALIDATION_ERROR，前端的 SSM_DUPLICATE、ALREADY_MEMBER 分支走不到，重复的 SSM 号被提示成「此项为必填」。
+  - `getMyCompanyAction` 没有被用到，却返回整行（含 tags）：删掉，或者只选需要的字段。
+  - website 没有校验 URL 和协议，应只允许 http、https。
+  - 行业和州的标签写死在 industries.ts 和 company-form.tsx 里，没进 messages。
+  - 旧 logo 在更新数据库之前就被删掉，并且吞掉了错误；上传了但没保存的 logo 会成为孤儿对象。
+  - documentKeys 可以重复，服务端也不检查对象是否存在。
+- M3-T03、T04 审核和团队：
+  - 审核通过、驳回时，PENDING 检查和钱包检查在事务外，update 也不带条件。应改为带条件的 updateMany（`status: 'PENDING'`）。
+  - logAudit 在事务提交之后才执行。这是全项目的写法，因为 logAudit 不接受 tx。
+  - review-company.ts 整个文件放开了 creditWallet 的 eslint 限制，应改为在 credits.ts 里提供 `createWallet(tx)`。
+  - authz-matrix 的测试缺口：
+    - 「跨企业移除成员」的用例只断言 toThrow，靠 owner 保护就能通过；
+    - 跨企业 changeRole 没有测试。
+  - 「数据库里查不到明文令牌」只断言 `tokenHash !== token`。应改为断言它等于 sha256(token)，并扫描 AuditLog 和 Notification。
+  - 没有测试证明被移除的成员下一次操作会被拒。
+  - 未登录的被邀请人跳转去登录时丢了 token。
+  - 邀请邮件写死英文，并且直接发送、不走队列（M5-T08 统一处理）。
+  - 团队权限：
+    - ADMIN 能移除其他 ADMIN（TM-010 场景 2，等 A-9）；
+    - changeRole 只给 OWNER，比 PRD 更严。
+  - alert.ts 里的 `{ code, ...ctx }`，ctx.code 会覆盖告警码。
+  - 只有空白字符的 verificationResult、reviewNote 能通过 min(1)。
+  - 杂项：
+    - 用了 window.confirm，没用 shadcn Dialog；
+    - ReviewForm.tsx 的文件名不是 kebab-case；
+    - team.maxInvitesPerDay 没在 DECISIONS 或 PRD §5 登记；
+    - 被移除的成员发出的邀请仍然有效。
+  - company.invite.send 审计的 metadata 里带了被邀请人的邮箱。
+- M3-T05、T06 公开主页和控制台：
+  - 公开页没有 generateMetadata（SEO 由 M7-T17 做）。
+  - /e 的 X-Robots-Tag 等 M7-T05。
+  - e/page.tsx 的 `<main>` 套在 layout 的 `<main>` 里。
+  - 公开页的 id 参数没有经过 zod 校验。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
