@@ -394,12 +394,14 @@
 - 375px 宽度下可正常使用
 > 完成 2026-11-06：实现四步向导含 CGPA、workAuth、JobIntent、技能语言和经历；schema 新增 onboardingStep 字段；lint/typecheck/694 个测试全部通过。
 
-#### [ ] M2-T02 档案编辑页
+#### [x] M2-T02 档案编辑页
 依赖：M2-T01
 做：`/s/profile` 分区编辑；教育、经历的增删改和拖拽排序；语言选择器；技能标签输入组件（回车添加、去重、最多 30 个）。标签输入的 onKeyDown 先调用 `isImeComposing(e)`，为真就直接 return，再处理按键。
 验收：
 - 所有字段可编辑并保存；375px 宽度下可正常使用
 - 派发一个 isComposing=true 的 Enter 事件，标签数量不变
+
+> 完成 2026-11-06：/s/profile 页含 4 个分区（基本信息、求职意向、能力、经历），各区独立 Save 按钮；教育/经历支持 HTML5 拖拽排序和上移/下移按钮；技能标签组件回车/逗号添加、去重、上限 30；isImeComposing 检查通过 10 个单元测试验证；i18n zh/en 同步；lint/typecheck/704 个测试全部通过。
 
 #### [ ] M2-T03 档案完成度
 依赖：M2-T01

@@ -224,6 +224,22 @@
     "errorCgpaRange": "GPA 请填 0.00–4.00",
     "errorAtLeastOneIntent": "请至少选择一种求职类型"
   },
+  "profile": {
+    "title": "编辑档案",
+    "sectionBasicInfo": "基本信息",
+    "sectionJobPreferences": "求职意向",
+    "sectionSkills": "能力",
+    "sectionExperience": "经历",
+    "saveSection": "保存",
+    "saving": "保存中…",
+    "saveSuccess": "已保存",
+    "saveError": "保存失败，请重试",
+    "dragHandle": "拖拽排序",
+    "editSection": "编辑",
+    "cancelEdit": "取消",
+    "moveUp": "上移",
+    "moveDown": "下移"
+  },
   "legal": {
     "privacyTitle": "隐私政策",
     "termsTitle": "用户协议",

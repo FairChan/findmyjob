@@ -224,6 +224,22 @@
     "errorCgpaRange": "CGPA must be between 0.00 and 4.00",
     "errorAtLeastOneIntent": "Please select at least one job type"
   },
+  "profile": {
+    "title": "Edit Profile",
+    "sectionBasicInfo": "Basic Information",
+    "sectionJobPreferences": "Job Preferences",
+    "sectionSkills": "Skills & Languages",
+    "sectionExperience": "Experience",
+    "saveSection": "Save",
+    "saving": "Saving…",
+    "saveSuccess": "Saved",
+    "saveError": "Save failed, please try again",
+    "dragHandle": "Drag to reorder",
+    "editSection": "Edit",
+    "cancelEdit": "Cancel",
+    "moveUp": "Move up",
+    "moveDown": "Move down"
+  },
   "legal": {
     "privacyTitle": "Privacy Policy",
     "termsTitle": "Terms of Use",
