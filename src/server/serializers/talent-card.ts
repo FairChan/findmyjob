@@ -159,6 +159,19 @@ function redactNameParts(text: string, fullName: string): string {
   return result
 }
 
+// --- Free-text helper (TM-002 + §5.2) ---
+
+/**
+ * Returns the employer-visible version of a free-text field.
+ * When unlocked=false (most employer views): redacts PII and strips the student's own name.
+ * When unlocked=true: returns the text as-is.
+ * Used for search matching text so the student's name cannot be found by keyword search.
+ */
+export function employerFreeText(text: string, fullName: string, unlocked: boolean): string {
+  if (unlocked) return text
+  return redactNameParts(redact(text), fullName)
+}
+
 // --- Serializers ---
 
 /**

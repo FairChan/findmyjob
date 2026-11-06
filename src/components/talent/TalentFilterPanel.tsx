@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { SlidersHorizontal } from 'lucide-react'
+import { type FilterState, buildSearchString } from '@/lib/talent-search-params'
 
 interface School {
   id: string
@@ -18,17 +19,6 @@ interface School {
 interface Props {
   schools: School[]
   locale: string
-}
-
-interface FilterState {
-  keyword: string
-  sort: string
-  schoolId: string
-  degreeLevel: string
-  gradFrom: string
-  gradTo: string
-  intent: string[]
-  workAuth: string[]
 }
 
 const DEGREE_LEVELS = ['FOUNDATION', 'DIPLOMA', 'BACHELOR', 'MASTER', 'PHD'] as const
@@ -53,21 +43,6 @@ function readFiltersFromParams(params: URLSearchParams): FilterState {
     intent: params.getAll('intent'),
     workAuth: params.getAll('workAuth'),
   }
-}
-
-function buildSearchString(filters: FilterState, page = 1): string {
-  const p = new URLSearchParams()
-  if (filters.keyword) p.set('keyword', filters.keyword)
-  if (filters.sort && filters.sort !== 'lastActive') p.set('sort', filters.sort)
-  if (filters.schoolId) p.set('schoolId', filters.schoolId)
-  if (filters.degreeLevel) p.set('degreeLevel', filters.degreeLevel)
-  if (filters.gradFrom) p.set('gradFrom', filters.gradFrom)
-  if (filters.gradTo) p.set('gradTo', filters.gradTo)
-  filters.intent.forEach((v) => p.append('intent', v))
-  filters.workAuth.forEach((v) => p.append('workAuth', v))
-  if (page > 1) p.set('page', String(page))
-  const str = p.toString()
-  return str ? `?${str}` : ''
 }
 
 function FilterForm({
@@ -344,4 +319,3 @@ export function TalentFilterPanel({ schools, locale }: Props) {
   )
 }
 
-export { buildSearchString }

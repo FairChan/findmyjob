@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 // Mock dependencies before imports
 vi.mock('@/server/db', () => ({ db: { talentFolder: {}, talentFolderItem: {} } }))
+vi.mock('@/server/authz', () => ({
+  assertCompanyVerified: vi.fn().mockResolvedValue(undefined),
+}))
 vi.mock('@/server/services/talent-visibility', () => ({
   isStudentVisibleToCompany: vi.fn(),
 }))

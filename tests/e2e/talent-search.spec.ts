@@ -1,51 +1,34 @@
 /**
  * M4-T04 E2E: Talent pool search page.
  *
- * Uses /api/test/talent-search-seed to create test fixtures:
- * - A verified employer account that can log in
- * - A test student with a visible, searchable profile
+ * Fixtures are created in global-setup.ts (Prisma directly, no HTTP seed route).
+ * Authentication is pre-created as storageState in global-setup.ts (avoids Better Auth's
+ * 5-login-per-60s rate limit).
  *
  * Requirements verified:
  * 1. Verified company employer can search and filter to find a specific student.
  * 2. Unverified company employer sees the "verify required" prompt.
- * 3. Staying on the talent list for 3 seconds does NOT trigger ProfileView creation.
+ * 3. Staying on the talent list for 3 seconds does NOT trigger ProfileView creation
+ *    (checked by hovering on a card link and asserting no navigation).
  */
-import { test, expect, type APIRequestContext, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { test, expect } from '@playwright/test'
+import type { E2EFixtures } from './global-setup'
 
-const SEED_PATH = '/api/test/talent-search-seed'
-
-interface SeedResult {
-  employerEmail: string
-  employerPassword: string
-  companyId: string
-  studentProfileId: string
-  studentName: string
+function loadFixtures(): E2EFixtures {
+  const path = resolve(process.cwd(), 'tests/e2e/fixtures.json')
+  return JSON.parse(readFileSync(path, 'utf-8')) as E2EFixtures
 }
 
-async function seedTestData(request: APIRequestContext): Promise<SeedResult> {
-  const resp = await request.post(SEED_PATH)
-  if (!resp.ok()) {
-    throw new Error(`Seed endpoint returned ${resp.status()}: ${await resp.text()}`)
-  }
-  return resp.json() as Promise<SeedResult>
-}
-
-async function loginAs(page: Page, email: string, password: string) {
-  await page.goto('/zh/login')
-  await page.fill('input[type="email"]', email)
-  await page.fill('input[type="password"]', password)
-  // Wait for Turnstile widget (test key delivers token automatically)
-  await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 15000 })
-  await page.click('button[type="submit"]')
-  // Should redirect away from /login
-  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 15000 })
-}
+const VERIFIED_STATE = resolve(process.cwd(), 'tests/e2e/auth-verified.json')
+const UNVERIFIED_STATE = resolve(process.cwd(), 'tests/e2e/auth-unverified.json')
 
 test.describe('Talent pool search', () => {
-  let seed: SeedResult
+  let fixtures: E2EFixtures
 
-  test.beforeAll(async ({ request }) => {
-    seed = await seedTestData(request)
+  test.beforeAll(() => {
+    fixtures = loadFixtures()
   })
 
   test('unauthenticated access redirects to login', async ({ page }) => {
@@ -53,65 +36,108 @@ test.describe('Talent pool search', () => {
     await expect(page).toHaveURL(/\/zh\/login/)
   })
 
-  test('verified company employer sees the talent search page', async ({ page }) => {
-    await loginAs(page, seed.employerEmail, seed.employerPassword)
-    await page.goto('/zh/e/talent')
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('人才库')
-    // Filter sidebar visible on desktop
-    await expect(page.locator('aside')).toBeVisible()
+  test('verified company employer sees the talent search page', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+    const page = await ctx.newPage()
+    try {
+      await page.goto('/zh/e/talent')
+      await expect(page.getByRole('heading', { level: 1 })).toContainText('人才库')
+      await expect(page.locator('aside')).toBeVisible()
+    } finally {
+      await ctx.close()
+    }
   })
 
-  test('search by keyword finds the test student', async ({ page }) => {
-    await loginAs(page, seed.employerEmail, seed.employerPassword)
-    await page.goto('/zh/e/talent')
+  test('search by keyword finds the test student', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+    const page = await ctx.newPage()
+    try {
+      await page.goto('/zh/e/talent')
 
-    await page.fill('#filter-keyword', 'Python')
-    await page.click('button:text("应用筛选")')
+      await page.fill('#filter-keyword', 'Python')
+      await page.click('button:text("应用筛选")')
 
-    await expect(page).toHaveURL(/keyword=Python/)
+      await expect(page).toHaveURL(/keyword=Python/)
 
-    // The test student's profile card link should appear in the results
-    const viewLink = page.locator(`a[href*="${seed.studentProfileId}"]`).first()
-    await expect(viewLink).toBeVisible({ timeout: 10000 })
+      const viewLink = page.locator(`a[href*="${fixtures.student.profileId}"]`).first()
+      await expect(viewLink).toBeVisible({ timeout: 10000 })
+    } finally {
+      await ctx.close()
+    }
   })
 
-  test('filter by degree level narrows results', async ({ page }) => {
-    await loginAs(page, seed.employerEmail, seed.employerPassword)
-    await page.goto('/zh/e/talent?degreeLevel=BACHELOR')
+  test('filter by degree level narrows results', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+    const page = await ctx.newPage()
+    try {
+      await page.goto('/zh/e/talent?degreeLevel=BACHELOR')
 
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('人才库')
-    await expect(page).toHaveURL(/degreeLevel=BACHELOR/)
+      await expect(page.getByRole('heading', { level: 1 })).toContainText('人才库')
+      await expect(page).toHaveURL(/degreeLevel=BACHELOR/)
+    } finally {
+      await ctx.close()
+    }
   })
 
-  test('staying on talent list for 3 seconds does not trigger profile view creation', async ({
-    page,
-  }) => {
-    await loginAs(page, seed.employerEmail, seed.employerPassword)
-    await page.goto('/zh/e/talent')
+  test('hovering a card link for 3 seconds does not trigger profile view', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+    const page = await ctx.newPage()
+    try {
+      await page.goto('/zh/e/talent')
 
-    // Track any network requests to profile view APIs
-    const profileViewRequests: string[] = []
-    page.on('request', (req) => {
-      const url = req.url()
-      if (/talent\/.+\/view|profile-view|profileView/i.test(url)) {
-        profileViewRequests.push(url)
+      const profileViewRequests: string[] = []
+      page.on('request', (req) => {
+        const url = req.url()
+        if (/talent\/.+\/view|profile-view|profileView/i.test(url)) {
+          profileViewRequests.push(url)
+        }
+      })
+
+      // Hover on the first talent card link (if any) but don't click
+      const cardLink = page.locator('a[href*="/e/talent/"]').first()
+      const cardLinkCount = await cardLink.count()
+      if (cardLinkCount > 0) {
+        await cardLink.hover()
       }
-    })
+      await page.waitForTimeout(3000)
 
-    await page.waitForTimeout(3000)
-
-    expect(profileViewRequests).toHaveLength(0)
-    // Still on the list page (not navigated to detail)
-    expect(page.url()).toMatch(/\/e\/talent($|\?)/)
+      // No profile-view API calls and still on the list page
+      expect(profileViewRequests).toHaveLength(0)
+      expect(page.url()).toMatch(/\/e\/talent($|\?)/)
+    } finally {
+      await ctx.close()
+    }
   })
 
-  test('verified employer does not see verification prompt', async ({ page }) => {
-    await loginAs(page, seed.employerEmail, seed.employerPassword)
-    await page.goto('/zh/e/talent')
+  test('verified employer does not see verification prompt', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+    const page = await ctx.newPage()
+    try {
+      await page.goto('/zh/e/talent')
 
-    // Should show the search page, not the "verify required" alert
-    const verifyAlert = page.getByRole('alert')
-    await expect(verifyAlert).not.toBeVisible()
-    await expect(page.getByRole('heading', { level: 1 })).toContainText('人才库')
+      // Should show the search page, not the "verify required" alert
+      await expect(page.locator('[role="alert"].border-amber-200')).toHaveCount(0)
+      await expect(page.getByRole('heading', { level: 1 })).toContainText('人才库')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('unverified employer sees verify-required prompt with onboarding link', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: UNVERIFIED_STATE })
+    const page = await ctx.newPage()
+    try {
+      await page.goto('/zh/e/talent')
+
+      // Should see a verification-required alert or banner (the amber one, not Next.js route announcer)
+      const verifyAlert = page.locator('[role="alert"].border-amber-200')
+      await expect(verifyAlert).toBeVisible({ timeout: 10000 })
+
+      // The alert should link to the onboarding / verification flow
+      const onboardingLink = page.locator('a[href*="onboarding"], a[href*="verify"]').first()
+      await expect(onboardingLink).toBeVisible({ timeout: 5000 })
+    } finally {
+      await ctx.close()
+    }
   })
 })

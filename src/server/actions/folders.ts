@@ -12,15 +12,17 @@ import {
   getStudentFolderIds,
 } from '@/server/services/talent-folders'
 
+const VERIFIED_COMPANY = { type: 'company', verified: true } as const
+
 export const listFoldersAction = action(
-  { auth: 'company' },
+  { auth: VERIFIED_COMPANY },
   async ({ userId, companyId }) => {
     return listFolders({ userId: userId!, companyId: companyId! })
   },
 )
 
 export const createFolderAction = action(
-  { auth: 'company', input: z.object({ name: z.string().min(1).max(100) }) },
+  { auth: VERIFIED_COMPANY, input: z.object({ name: z.string().min(1).max(100) }) },
   async ({ userId, companyId, input }) => {
     return createFolder({ userId: userId!, companyId: companyId! }, input)
   },
@@ -28,7 +30,7 @@ export const createFolderAction = action(
 
 export const renameFolderAction = action(
   {
-    auth: 'company',
+    auth: VERIFIED_COMPANY,
     input: z.object({ id: z.string().cuid(), name: z.string().min(1).max(100) }),
   },
   async ({ userId, companyId, input }) => {
@@ -38,7 +40,7 @@ export const renameFolderAction = action(
 )
 
 export const deleteFolderAction = action(
-  { auth: 'company', input: z.object({ id: z.string().cuid() }) },
+  { auth: VERIFIED_COMPANY, input: z.object({ id: z.string().cuid() }) },
   async ({ userId, companyId, input }) => {
     await deleteFolder({ userId: userId!, companyId: companyId! }, input)
     return {}
@@ -47,7 +49,7 @@ export const deleteFolderAction = action(
 
 export const addToFolderAction = action(
   {
-    auth: 'company',
+    auth: VERIFIED_COMPANY,
     input: z.object({
       folderId: z.string().cuid(),
       studentId: z.string().cuid(),
@@ -62,7 +64,7 @@ export const addToFolderAction = action(
 
 export const removeFromFolderAction = action(
   {
-    auth: 'company',
+    auth: VERIFIED_COMPANY,
     input: z.object({ folderId: z.string().cuid(), studentId: z.string().cuid() }),
   },
   async ({ userId, companyId, input }) => {
@@ -73,7 +75,7 @@ export const removeFromFolderAction = action(
 
 export const updateNoteAction = action(
   {
-    auth: 'company',
+    auth: VERIFIED_COMPANY,
     input: z.object({
       folderId: z.string().cuid(),
       studentId: z.string().cuid(),
@@ -88,7 +90,7 @@ export const updateNoteAction = action(
 
 export const getStudentFolderIdsAction = action(
   {
-    auth: 'company',
+    auth: VERIFIED_COMPANY,
     input: z.object({ studentId: z.string().cuid() }),
   },
   async ({ userId, companyId, input }) => {

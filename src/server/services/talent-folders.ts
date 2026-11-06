@@ -2,6 +2,7 @@ import 'server-only'
 import { db } from '../db'
 import { isStudentVisibleToCompany } from './talent-visibility'
 import { NotFoundError, ValidationError } from '../errors'
+import { assertCompanyVerified } from '../authz'
 import { toTalentCard } from '../serializers/talent-card'
 import type { TalentCard } from '../serializers/talent-card'
 
@@ -130,6 +131,9 @@ export async function getFolderItems(
   ctx: { userId: string; companyId: string },
   folderId: string,
 ): Promise<{ folder: FolderSummary; items: FolderItem[] }> {
+  // §5.1: talent operations require verified company
+  await assertCompanyVerified(ctx.companyId)
+
   const folder = await db.talentFolder.findUnique({
     where: { id: folderId },
     include: {

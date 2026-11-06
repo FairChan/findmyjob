@@ -369,7 +369,7 @@
     "verifyAction": "去认证",
     "featureDisabled": "人才库搜索暂时关闭，请稍后再试",
     "rateLimited": "今日搜索页数已达上限，请明日再试",
-    "totalResults": "共 {total} 位候选人",
+    "totalResults": "共 '{total}' 位候选人",
     "noResults": "暂无符合条件的候选人",
     "filterTitle": "筛选条件",
     "filterButton": "筛选",
@@ -404,12 +404,13 @@
     "workAuthDependantPass": "家属准证",
     "workAuthNeedsWorkPass": "毕业后需申请工作准证",
     "workAuthOther": "其他",
-    "pageInfo": "第 {page} 页，共 {maxPage} 页",
+    "pageInfo": "第 '{page}' 页，共 '{maxPage}' 页",
     "prevPage": "上一页",
     "nextPage": "下一页",
     "viewDetail": "查看",
     "unlocked": "已解锁",
-    "lastActiveLabel": "{time} 前活跃"
+    "lastActiveLabel": "'{time}' 前活跃",
+    "invalidParams": "请求参数无效，请检查页码或筛选条件后重试"
   },
   "talentFolders": {
     "title": "收藏夹",

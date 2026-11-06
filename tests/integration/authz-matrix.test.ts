@@ -25,6 +25,7 @@ import { requireUser, requireStudent, requireEmployer, requireCompanyMember, req
 import { ForbiddenError, NotFoundError } from '@/server/errors'
 import * as authMod from '@/server/auth'
 import { viewTalentProfile } from '@/server/services/talent-view'
+import { searchTalents } from '@/server/services/talent-search'
 import {
   listFolders,
   createFolder,
@@ -430,6 +431,12 @@ describe('talent.folders: folder access control', () => {
     const empA = await createEmployer(testDb)
     const empB = await createEmployer(testDb)
 
+    // Verify A so the ownership check (not the verification gate) is exercised
+    await testDb.company.update({
+      where: { id: empA.companyId },
+      data: { verificationStatus: 'VERIFIED' },
+    })
+
     const folderB = await createFolder(
       { userId: empB.userId, companyId: empB.companyId },
       { name: 'Company B Folder' },
@@ -531,5 +538,29 @@ describe('talent.folders: folder access control', () => {
       profileId,
     )
     expect(ids).not.toContain(folder.id)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 未认证企业（M4-T14）: verified company gate on talent operations
+// ---------------------------------------------------------------------------
+
+describe('未认证企业搜索人才被拒', () => {
+  it('unverified company calling searchTalents → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    // createEmployer leaves verificationStatus=UNSUBMITTED
+    await expect(
+      searchTalents({ userId: emp.userId, companyId: emp.companyId }, {}),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+describe('未认证企业查看收藏夹被拒', () => {
+  it('unverified company calling getFolderItems → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    // Need a folder ID; use a fake one (the company check fires first)
+    await expect(
+      getFolderItems({ userId: emp.userId, companyId: emp.companyId }, 'doesnotexist00000000000000'),
+    ).rejects.toBeInstanceOf(ForbiddenError)
   })
 })

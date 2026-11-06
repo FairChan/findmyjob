@@ -190,6 +190,13 @@ describe('isStudentVisibleToCompany', () => {
 // searchTalents
 // ============================================================================
 
+async function verifyCompany(id: string) {
+  await testDb.company.update({
+    where: { id },
+    data: { verificationStatus: 'VERIFIED' },
+  })
+}
+
 describe('searchTalents', () => {
   beforeEach(setupMocks)
 
@@ -200,6 +207,7 @@ describe('searchTalents', () => {
     const employer = await createEmployer(testDb)
     companyId = employer.companyId
     memberId = employer.userId
+    await verifyCompany(companyId)
   })
 
   // ---- Page validation ----

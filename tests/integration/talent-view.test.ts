@@ -143,6 +143,26 @@ describe('viewTalentProfile', () => {
     expect(audits.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('concurrent views are serialized by lock — exactly companyLimit succeed', async () => {
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    // Company limit 2, member limit high so it does not interfere
+    await setSetting('limits.companyProfileViewsPerDay', 2)
+    await setSetting('limits.profileViewsPerDay', 999)
+
+    const students = await Promise.all(Array.from({ length: 5 }, () => createStudent(testDb)))
+    for (const s of students) await makeStudentVisible(s.profileId)
+
+    const results = await Promise.allSettled(
+      students.map((s) =>
+        viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, s.profileId),
+      ),
+    )
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length
+    expect(succeeded).toBe(2)
+    expect(results.filter((r) => r.status === 'rejected').length).toBe(3)
+  })
+
   it('blocks after company-level limit when two members together hit the cap', async () => {
     // Create a company with two members
     const ownerEmp = await createEmployer(testDb)

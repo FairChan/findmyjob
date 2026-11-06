@@ -6,9 +6,9 @@ import { getSetting } from './settings'
 import { assertTalentSearchEnabled } from './feature-flags'
 import { logAudit } from './audit'
 import { checkRateLimit } from '../lib/rate-limit'
-import { ValidationError, RateLimitedError } from '../errors'
+import { ValidationError, RateLimitedError, ForbiddenError } from '../errors'
 import { redact } from '@/lib/redact'
-import { toTalentCard } from '../serializers/talent-card'
+import { toTalentCard, employerFreeText } from '../serializers/talent-card'
 import type { TalentCard } from '../serializers/talent-card'
 
 // ---- Language level ordering ----
@@ -76,6 +76,15 @@ export async function searchTalents(
 ): Promise<TalentSearchResult> {
   const input = searchFiltersSchema.parse(raw)
   await assertTalentSearchEnabled()
+
+  // §5.1: talent operations require verified company
+  const company = await db.company.findUnique({
+    where: { id: ctx.companyId },
+    select: { isActive: true, verificationStatus: true },
+  })
+  if (!company || !company.isActive || company.verificationStatus !== 'VERIFIED') {
+    throw new ForbiddenError()
+  }
 
   const [maxPage, searchPagesPerDay, minCompleteness] = await Promise.all([
     getSetting<number>('talentSearch.maxPage', 25),
@@ -229,10 +238,10 @@ export async function searchTalents(
   const kw = effectiveKeyword
   const matched = rows.filter((s) => {
     const searchText = [
-      redact(s.major ?? ''),
-      redact(s.headline ?? ''),
-      ...s.skills.map((sk) => redact(sk)),
-      ...s.experiences.map((e) => redact(e.title)),
+      employerFreeText(s.major ?? '', s.fullName, false),
+      employerFreeText(s.headline ?? '', s.fullName, false),
+      ...s.skills.map((sk) => employerFreeText(sk, s.fullName, false)),
+      ...s.experiences.map((e) => employerFreeText(e.title, s.fullName, false)),
     ]
       .join(' ')
       .toLowerCase()

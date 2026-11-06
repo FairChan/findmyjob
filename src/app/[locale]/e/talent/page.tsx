@@ -12,7 +12,9 @@ import { searchTalents } from '@/server/services/talent-search'
 import type { TalentSearchResult } from '@/server/services/talent-search'
 import type { TalentCard } from '@/server/serializers/talent-card'
 import { Button } from '@/components/ui/button'
-import { TalentFilterPanel, buildSearchString } from '@/components/talent/TalentFilterPanel'
+import { TalentFilterPanel } from '@/components/talent/TalentFilterPanel'
+import { buildSearchString } from '@/lib/talent-search-params'
+import type { FilterState } from '@/lib/talent-search-params'
 import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
 
 // ---- URL param helpers ----
@@ -325,7 +327,7 @@ export default async function TalentSearchPage({
   }
 
   // Filter panel state shape (for pagination URL generation)
-  const filterState = {
+  const filterState: FilterState = {
     keyword: sp_str(sp, 'keyword') ?? '',
     sort: sp_str(sp, 'sort') ?? 'lastActive',
     schoolId: sp_str(sp, 'schoolId') ?? '',
@@ -388,7 +390,7 @@ export default async function TalentSearchPage({
             </div>
           ) : outcome.kind === 'validationError' ? (
             <div className="rounded-lg border p-8 text-center text-muted-foreground">
-              {outcome.message}
+              {t('invalidParams')}
             </div>
           ) : (
             <ResultsList

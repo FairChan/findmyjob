@@ -89,3 +89,14 @@ export async function requireAdmin(headers: Headers): Promise<UserCtx> {
   if (user.role !== 'ADMIN') throw new ForbiddenError()
   return { userId: user.id }
 }
+
+/** Service-layer check: throws ForbiddenError if the company is not active + verified. */
+export async function assertCompanyVerified(companyId: string): Promise<void> {
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { isActive: true, verificationStatus: true },
+  })
+  if (!company || !company.isActive || company.verificationStatus !== 'VERIFIED') {
+    throw new ForbiddenError()
+  }
+}

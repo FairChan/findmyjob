@@ -369,7 +369,7 @@
     "verifyAction": "Get Verified",
     "featureDisabled": "Talent pool search is temporarily unavailable",
     "rateLimited": "You have reached your daily search page limit. Please try again tomorrow.",
-    "totalResults": "{total} candidates found",
+    "totalResults": "'{total}' candidates found",
     "noResults": "No candidates matching your criteria",
     "filterTitle": "Filters",
     "filterButton": "Filter",
@@ -404,12 +404,13 @@
     "workAuthDependantPass": "Dependant Pass",
     "workAuthNeedsWorkPass": "Requires Work Pass after graduation",
     "workAuthOther": "Other",
-    "pageInfo": "Page {page} of {maxPage}",
+    "pageInfo": "Page '{page}' of '{maxPage}'",
     "prevPage": "Previous",
     "nextPage": "Next",
     "viewDetail": "View",
     "unlocked": "Unlocked",
-    "lastActiveLabel": "Active {time} ago"
+    "lastActiveLabel": "Active '{time}' ago",
+    "invalidParams": "Invalid request parameters. Please check the page number or filters and try again."
   },
   "talentFolders": {
     "title": "Saved Folders",

@@ -677,7 +677,7 @@
 做：`tests/e2e/pii-leak.spec.ts`：用未解锁的企业身份访问搜索页和详情页，用 `page.on('response')` 收集所有 HTML、RSC 和 JSON 响应；断言这些响应里都没有测试学生的全名、手机号、邮箱、WhatsApp、微信、LinkedIn 和 storageKey。职位侧的用例放到 M5-T03。
 验收：测试通过并加入 CI；故意让 serializer 漏出 phone 时，测试失败
 
-#### [ ] M4-T14 补修 M4-T03/T04/T05/T11 合并前复查发现的问题
+#### [x] M4-T14 补修 M4-T03/T04/T05/T11 合并前复查发现的问题
 依赖：M4-T11
 > 总控 2026-11-07 加入：复查（按 98262d4 读的代码）结论是 BLOCKED。隐私主线是守住的：企业侧只经过 talent-card.ts，没有解密联系方式，companyId 都来自服务端，收藏夹按公司隔离。但下面几条不修完，M4 不能合并，也不能进 GATE-M4。
 做 / 验收：
@@ -696,6 +696,7 @@
 8. page=26：服务端返回规范的错误（不能是 HTTP 200 加上原始英文报错），页面上显示中英文文案；URL 参数不合法时（sort、枚举值、schoolId、page=0、超长 keyword）显示友好提示，不能报 500。
 - 冒烟用例（总控 2026-11-07 统一要求）：本任务新增或修改的每个页面路由，各加一条 Playwright 用例：以目标角色登录，打开页面，断言状态 200、没有 error boundary 或 Next 错误页、控制台没有 error。
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
+> 完成 2026-11-07：全部 8 条修复均已实现：(1) buildSearchString/FilterState 移至 src/lib/talent-search-params.ts；(2) FolderItemActions 去掉 onRemoved 函数 prop；(3) 删除 src/app/api/test/talent-search-seed/route.ts，测试数据改由 Playwright globalSetup 准备；(4) talent-search.spec.ts 改用 storageState；(5) talent-view.ts 加 LOCK_NS.PROFILE_VIEW 和事务锁；(6) talent-search.ts 用 employerFreeText 防真名泄露；(7) searchTalents/viewTalentProfile/收藏夹 action 加 assertCompanyVerified；(8) 验证参数错误时显示 i18n 友好提示。单元/集成测试：43 文件 926 用例全通过。E2E：12 通过 / 0 失败 / 0 跳过（含 talent-search.spec.ts 9 条和 m4-t14-smoke.spec.ts 3 条冒烟用例）。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 

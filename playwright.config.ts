@@ -5,6 +5,7 @@ const port = Number(process.env.PORT) || 3000
 const baseURL = `http://localhost:${port}`
 
 export default defineConfig({
+  globalSetup: './tests/e2e/global-setup.ts',
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -16,9 +17,17 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   projects: [
+    // Auth setup: runs once, logs in and writes storageState files
+    {
+      name: 'setup',
+      testMatch: /auth\.setup\.ts/,
+      use: { ...devices['Desktop Chrome'] },
+    },
+    // Main chromium tests depend on setup so storageState is ready
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      dependencies: ['setup'],
     },
   ],
   webServer: {

@@ -17,7 +17,6 @@ interface Props {
   folderId: string
   studentId: string
   initialNote: string | null
-  onRemoved: () => void
   labels: {
     editNote: string
     remove: string
@@ -33,7 +32,6 @@ export function FolderItemActions({
   folderId,
   studentId,
   initialNote,
-  onRemoved,
   labels,
 }: Props) {
   const router = useRouter()
@@ -54,7 +52,6 @@ export function FolderItemActions({
       const res = await removeFromFolderAction({ folderId, studentId })
       if (res.ok) {
         setDeleteOpen(false)
-        onRemoved()
         router.refresh()
       }
     })

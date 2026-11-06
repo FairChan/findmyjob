@@ -101,7 +101,6 @@ function FolderCard({
             folderId={folderId}
             studentId={item.studentId}
             initialNote={item.note}
-            onRemoved={() => {}}
             labels={{
               editNote: tLabel('editNote'),
               remove: tLabel('removeFromFolder'),
