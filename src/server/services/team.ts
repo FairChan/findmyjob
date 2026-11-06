@@ -41,9 +41,12 @@ export async function inviteMember(
   const maxMembers = await getSetting<number>('team.maxMembers', 3)
   const maxInvitesPerDay = await getSetting<number>('team.maxInvitesPerDay', 3)
 
-  // Count current active members
+  // Count current members plus valid pending invites to prevent over-inviting
   const memberCount = await db.companyMember.count({ where: { companyId } })
-  if (memberCount >= maxMembers) throw new ValidationError('Team member limit reached')
+  const pendingInviteCount = await db.companyInvite.count({
+    where: { companyId, acceptedAt: null, expiresAt: { gt: new Date() } },
+  })
+  if (memberCount + pendingInviteCount >= maxMembers) throw new ValidationError('Team member limit reached')
 
   // Check if the email is already a member
   const existingMember = await db.companyMember.findFirst({
@@ -130,8 +133,20 @@ export async function acceptInvite(ctx: UserCtx, token: string): Promise<void> {
   })
   if (anyMembership) throw new ValidationError('Already a member of a company')
 
+  // Read maxMembers before the transaction (getSetting uses an in-process cache)
+  const maxMembersForAccept = await getSetting<number>('team.maxMembers', 3)
+
   try {
     await db.$transaction(async tx => {
+      // Re-count members inside the transaction to prevent concurrent over-admission.
+      // Note: true concurrent-accept races require lockXact, deferred to a later task.
+      const currentMemberCount = await tx.companyMember.count({
+        where: { companyId: invite.companyId },
+      })
+      if (currentMemberCount >= maxMembersForAccept) {
+        throw new ValidationError('Team member limit reached')
+      }
+
       await tx.companyInvite.update({
         where: { tokenHash: hash },
         data: { acceptedAt: new Date() },

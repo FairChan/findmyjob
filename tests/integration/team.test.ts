@@ -105,6 +105,55 @@ describe('inviteMember', () => {
     ).rejects.toBeInstanceOf(ValidationError)
   })
 
+  it('pending invites count toward the limit: 1 member + 2 pending at maxMembers=3 → 3rd invite rejected', async () => {
+    await seedSettings({ maxMembers: 3, maxInvitesPerDay: 10 })
+    const { userId } = await createEmployer(testDb)
+    const ctx = await getCtx(userId)
+
+    // invite a and b succeed (1+0, 1+1 pending < 3)
+    await inviteMember(ctx, { email: 'pend-a@example.test', role: 'RECRUITER' })
+    await inviteMember(ctx, { email: 'pend-b@example.test', role: 'RECRUITER' })
+
+    // invite c: 1 member + 2 pending = 3 = maxMembers → reject
+    await expect(
+      inviteMember(ctx, { email: 'pend-c@example.test', role: 'RECRUITER' }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('expired and accepted invites do not count toward the limit', async () => {
+    await seedSettings({ maxMembers: 3, maxInvitesPerDay: 10 })
+    const { userId, companyId } = await createEmployer(testDb)
+    const ctx = await getCtx(userId)
+
+    // Create 2 expired invites and 1 accepted invite directly in DB
+    const expiresAt = new Date(Date.now() - 1000)
+    await testDb.companyInvite.createMany({
+      data: [
+        {
+          companyId,
+          email: 'expired-1@example.test',
+          role: 'RECRUITER',
+          tokenHash: 'deadbeef01',
+          expiresAt,
+          createdById: userId,
+        },
+        {
+          companyId,
+          email: 'expired-2@example.test',
+          role: 'RECRUITER',
+          tokenHash: 'deadbeef02',
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          acceptedAt: new Date(),
+          createdById: userId,
+        },
+      ],
+    })
+
+    // 1 member + 0 valid pending = 1, so invite should succeed
+    const result = await inviteMember(ctx, { email: 'fresh@example.test', role: 'RECRUITER' })
+    expect(result.token).toBeTruthy()
+  })
+
   it('rejects invite to existing member email', async () => {
     await seedSettings()
     const { userId, email } = await createEmployer(testDb)
@@ -225,6 +274,32 @@ describe('acceptInvite', () => {
       data: { name: 'User', email: 'faketoken@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
     })
     await expect(acceptInvite({ userId: user.id }, 'invalid_token')).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('accept when team is full (via direct member insert) → ValidationError', async () => {
+    await seedSettings({ maxMembers: 2, maxInvitesPerDay: 10 })
+    const { userId: ownerUserId, companyId } = await createEmployer(testDb)
+    const ownerCtx = await getCtx(ownerUserId)
+
+    const invitedUser = await testDb.user.create({
+      data: { name: 'Full', email: 'full@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    const { token } = await inviteMember(ownerCtx, { email: 'full@example.test', role: 'ADMIN' })
+
+    // Fill team to maxMembers=2 by directly inserting another member
+    const filler = await testDb.user.create({
+      data: { name: 'Filler', email: 'filler@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await testDb.companyMember.create({ data: { companyId, userId: filler.id, role: 'RECRUITER' } })
+
+    // Now team has 2 members = maxMembers; accepting invite must fail
+    await expect(
+      acceptInvite({ userId: invitedUser.id }, token),
+    ).rejects.toBeInstanceOf(ValidationError)
+
+    // Invite must NOT be marked accepted
+    const invite = await testDb.companyInvite.findFirst({ where: { companyId, email: 'full@example.test' } })
+    expect(invite!.acceptedAt).toBeNull()
   })
 
   it('rejects invite to company B when user already belongs to company A → ValidationError', async () => {
