@@ -409,5 +409,31 @@
     "viewDetail": "查看",
     "unlocked": "已解锁",
     "lastActiveLabel": "{time} 前活跃"
+  },
+  "talentDetail": {
+    "verifyRequired": "请先完成企业认证",
+    "verifyDesc": "认证企业才可以查看候选人档案。",
+    "verifyAction": "去认证",
+    "limitReached": "今日查看次数已达上限",
+    "limitReachedDesc": "每日可查看的候选人数量有限，请明日再试。",
+    "backToSearch": "返回人才库",
+    "unlocked": "已解锁",
+    "unlockHint": "解锁后可查看完整信息和联系方式",
+    "sectionSummary": "个人简介",
+    "sectionEducation": "教育经历",
+    "sectionExperience": "工作与项目经历",
+    "sectionResume": "简历",
+    "resumeLockedHint": "解锁后可查看和下载简历",
+    "resumeUnlockedHint": "已解锁，可在此下载简历",
+    "degreeLevelFoundation": "预科",
+    "degreeLevelDiploma": "文凭",
+    "degreeLevelBachelor": "本科",
+    "degreeLevelMaster": "硕士",
+    "degreeLevelPhd": "博士",
+    "expKindInternship": "实习",
+    "expKindWork": "工作",
+    "expKindProject": "项目",
+    "expKindCampus": "校园活动",
+    "expKindAward": "奖项"
   }
 }

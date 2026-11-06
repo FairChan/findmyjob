@@ -576,7 +576,7 @@
 
 > 完成 2026-11-07：`/e/talent` Server Component（读 searchParams → requireCompanyMember → 验证状态检查 → searchTalents）；未认证企业显示 amber 提示卡 + 认证入口；`TalentFilterPanel`（Client Component，shadcn Sheet 移动端抽屉，URL 双向同步用「派生状态」模式）；talent card 展示姓名/学校/专业/学历/技能/最近活跃；所有 Link 设 prefetch={false}；TalentCard 新增 unlocked 和 lastActiveAt 字段；E2E 测试 5 个（seed 端点、未认证跳转、搜索到指定学生、degree 筛选、3 秒无 ProfileView）；pnpm lint/typecheck/test/db:check 全部通过（853 tests）
 
-#### [ ] M4-T05 人才详情页与查看上限
+#### [x] M4-T05 人才详情页与查看上限
 依赖：M4-T04
 做：
 - `services/talent-view.ts` + `/e/talent/[id]`：未解锁视图；先调 `isStudentVisibleToCompany`，不满足返回 404；每次打开记录 ProfileView 并写审计 `talent.view`。
@@ -585,6 +585,8 @@
 - 超出每日上限后返回友好提示；ProfileView 正确写入
 - 未解锁的企业直接访问一个 HIDDEN 学生的详情页，返回 404
 - 同一企业的两个成员合计查看第 401 个学生时被拒；同一学生当天打开 5 次只计 1 次
+
+> 完成 2026-11-07：`services/talent-view.ts`（isStudentVisibleToCompany 检查 → 成员/企业每日去重上限 → 创建 ProfileView → 写审计 talent.view → toTalentDetail）；`/e/talent/[id]/page.tsx`（requireCompanyMember + 认证状态检查 + 友好的 404/限流提示）；`messages/zh.json` 和 `messages/en.json` 增加 `talentDetail` 命名空间；`tests/integration/talent-view.test.ts`（6 个测试，含成员上限、企业合计上限、去重）；authz-matrix.test.ts 新增 3 行；pnpm lint/typecheck/test/db:check 全部通过（862 tests）
 
 #### [ ] M4-T06 点数服务
 依赖：M3-T03

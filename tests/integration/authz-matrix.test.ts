@@ -22,8 +22,9 @@ vi.mock('@/server/db', async () => {
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer } from '../factories'
 import { requireUser, requireStudent, requireEmployer, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
-import { ForbiddenError } from '@/server/errors'
+import { ForbiddenError, NotFoundError } from '@/server/errors'
 import * as authMod from '@/server/auth'
+import { viewTalentProfile } from '@/server/services/talent-view'
 
 setupTestDb()
 
@@ -331,5 +332,51 @@ describe('requireEmployer (M1-T09)', () => {
     mockSession(user.id)
     const ctx = await requireEmployer(noHeaders)
     expect(ctx.userId).toBe(user.id)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// talent.view (M4-T05): viewTalentProfile authz
+// ---------------------------------------------------------------------------
+
+describe('talent.view: viewTalentProfile authz', () => {
+  async function makeVisible(profileId: string) {
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date(), completeness: 80 },
+    })
+  }
+
+  it('verified employer can view a visible student profile', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await makeVisible(profileId)
+
+    const detail = await viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId)
+    expect(detail.id).toBe(profileId)
+  })
+
+  it('company A cannot view a student blocked from them', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await makeVisible(profileId)
+    await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
+
+    await expect(
+      viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('company B cannot view a HIDDEN student (returns NotFoundError, not data leak)', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    // Student visibility stays HIDDEN
+
+    await expect(
+      viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId),
+    ).rejects.toBeInstanceOf(NotFoundError)
   })
 })

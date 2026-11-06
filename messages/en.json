@@ -409,5 +409,31 @@
     "viewDetail": "View",
     "unlocked": "Unlocked",
     "lastActiveLabel": "Active {time} ago"
+  },
+  "talentDetail": {
+    "verifyRequired": "Company Verification Required",
+    "verifyDesc": "Only verified companies can view candidate profiles.",
+    "verifyAction": "Get Verified",
+    "limitReached": "Daily View Limit Reached",
+    "limitReachedDesc": "You have reached the daily limit for viewing candidate profiles. Please try again tomorrow.",
+    "backToSearch": "Back to Talent Pool",
+    "unlocked": "Unlocked",
+    "unlockHint": "Unlock to view full profile and contact details",
+    "sectionSummary": "Summary",
+    "sectionEducation": "Education",
+    "sectionExperience": "Experience",
+    "sectionResume": "Resume",
+    "resumeLockedHint": "Unlock to view and download the resume",
+    "resumeUnlockedHint": "Unlocked — download resume here",
+    "degreeLevelFoundation": "Foundation",
+    "degreeLevelDiploma": "Diploma",
+    "degreeLevelBachelor": "Bachelor",
+    "degreeLevelMaster": "Master",
+    "degreeLevelPhd": "PhD",
+    "expKindInternship": "Internship",
+    "expKindWork": "Work",
+    "expKindProject": "Project",
+    "expKindCampus": "Campus",
+    "expKindAward": "Award"
   }
 }
