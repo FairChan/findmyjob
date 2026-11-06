@@ -10,6 +10,7 @@ import { db } from '@/server/db'
 import { viewTalentProfile } from '@/server/services/talent-view'
 import type { TalentDetail, TalentEducation, TalentExperience } from '@/server/serializers/talent-card'
 import { Button } from '@/components/ui/button'
+import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
 
 // ---- Label maps ----
 
@@ -131,10 +132,12 @@ function TalentDetailBody({
   detail,
   locale,
   tLabel,
+  tFolders,
 }: {
   detail: TalentDetail
   locale: string
   tLabel: (key: string) => string
+  tFolders: (key: string) => string
 }) {
   return (
     <div className="space-y-6">
@@ -173,12 +176,31 @@ function TalentDetailBody({
             )}
           </div>
 
-          {/* Unlock area (placeholder; M4-T07 will add the button) */}
-          {!detail.unlocked && (
-            <div className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
-              {tLabel('unlockHint')}
-            </div>
-          )}
+          {/* Save to folder button */}
+          <div className="flex flex-col items-end gap-2">
+            <SaveToFolderButton
+              studentId={detail.id}
+              labels={{
+                save: tFolders('saveButton'),
+                saveToFolder: tFolders('saveToFolder'),
+                noFolders: tFolders('noFoldersHint'),
+                createNew: tFolders('createFolder'),
+                folderNamePlaceholder: tFolders('folderNamePlaceholder'),
+                create: tFolders('create'),
+                added: tFolders('added'),
+                remove: tFolders('remove'),
+                close: tFolders('cancel'),
+                loading: tFolders('loading'),
+                errorOccurred: tFolders('errorOccurred'),
+              }}
+            />
+            {/* Unlock area (placeholder; M4-T07 will add the button) */}
+            {!detail.unlocked && (
+              <div className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
+                {tLabel('unlockHint')}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Skills */}
@@ -236,6 +258,8 @@ export default async function TalentDetailPage({
   const { locale, id } = await params
   const t = await getTranslations('talentDetail')
   const tLabel = (key: string) => t(key as Parameters<typeof t>[0])
+  const tFoldersMsg = await getTranslations('talentFolders')
+  const tFolders = (key: string) => tFoldersMsg(key as Parameters<typeof tFoldersMsg>[0])
 
   let ctx: { userId: string; companyId: string }
   try {
@@ -301,7 +325,7 @@ export default async function TalentDetailPage({
         </Button>
       </nav>
 
-      <TalentDetailBody detail={detail} locale={locale} tLabel={tLabel} />
+      <TalentDetailBody detail={detail} locale={locale} tLabel={tLabel} tFolders={tFolders} />
     </main>
   )
 }

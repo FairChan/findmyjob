@@ -625,12 +625,14 @@
 - 同月重复执行不会多发；余额已超过额度的企业不扣减；billing 开启时不发
 - 跑完并发解锁测试后，对账 SQL 返回 0 行
 
-#### [ ] M4-T11 收藏夹
+#### [x] M4-T11 收藏夹
 依赖：M4-T05
 做：`/e/folders`：文件夹增删改；人才卡片 / 详情页「加入收藏」（先调 `isStudentVisibleToCompany`）；备注；企业内共享。
 验收：
 - 其他企业无法访问；同一学生在同一文件夹中不重复
 - 收藏夹每次打开都重新判断：按 `isStudentVisibleToCompany` 过滤，全名和联系方式按 `canSeeIdentity` 显示（TM-003）
+
+> 完成 2026-11-07：`services/talent-folders.ts`（listFolders/createFolder/renameFolder/deleteFolder/addToFolder/removeFromFolder/updateNote/getFolderItems/getStudentFolderIds）；`actions/folders.ts`（9 个 action）；`/e/folders`（FolderManager 客户端组件）；`/e/folders/[id]`（FolderItemActions 客户端组件，每次打开重新判断 isStudentVisibleToCompany 和 unlocked 状态）；`SaveToFolderButton` 加入人才卡片和详情页；`components/ui/dialog.tsx`（@radix-ui/react-dialog）；中英文案；单元测试 14 个；authz-matrix 新增 7 行；pnpm lint/typecheck/test/db:check 全部通过（889 tests）；偏差：canSeeIdentity 由 M4-T08 正式定义，本任务用 `unlocks.length > 0` 实现相同语义
 
 #### [ ] M4-T12 学生端查看记录
 依赖：M4-T07

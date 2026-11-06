@@ -25,6 +25,14 @@ import { requireUser, requireStudent, requireEmployer, requireCompanyMember, req
 import { ForbiddenError, NotFoundError } from '@/server/errors'
 import * as authMod from '@/server/auth'
 import { viewTalentProfile } from '@/server/services/talent-view'
+import {
+  listFolders,
+  createFolder,
+  addToFolder,
+  removeFromFolder,
+  getFolderItems,
+  getStudentFolderIds,
+} from '@/server/services/talent-folders'
 
 setupTestDb()
 
@@ -378,5 +386,150 @@ describe('talent.view: viewTalentProfile authz', () => {
     await expect(
       viewTalentProfile({ userId: emp.userId, companyId: emp.companyId }, profileId),
     ).rejects.toBeInstanceOf(NotFoundError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// talent.folders (M4-T11): folder authz
+// ---------------------------------------------------------------------------
+
+describe('talent.folders: folder access control', () => {
+  async function makeVisible(profileId: string) {
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date(), completeness: 80 },
+    })
+  }
+
+  it('employer can create and list folders for own company', async () => {
+    const emp = await createEmployer(testDb)
+    const ctx = { userId: emp.userId, companyId: emp.companyId }
+
+    const folder = await createFolder(ctx, { name: 'Test Folder' })
+    expect(folder.id).toBeTruthy()
+
+    const folders = await listFolders(ctx)
+    expect(folders.some((f) => f.id === folder.id)).toBe(true)
+  })
+
+  it('company A cannot access folders from company B', async () => {
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+
+    const folderB = await createFolder(
+      { userId: empB.userId, companyId: empB.companyId },
+      { name: 'Company B Folder' },
+    )
+
+    // Company A should not see company B's folders
+    const foldersA = await listFolders({ userId: empA.userId, companyId: empA.companyId })
+    expect(foldersA.some((f) => f.id === folderB.id)).toBe(false)
+  })
+
+  it('company A cannot view folder items from company B', async () => {
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+
+    const folderB = await createFolder(
+      { userId: empB.userId, companyId: empB.companyId },
+      { name: 'Company B Folder' },
+    )
+
+    await expect(
+      getFolderItems({ userId: empA.userId, companyId: empA.companyId }, folderB.id),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('addToFolder checks student visibility — hidden student is rejected', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    // Student stays HIDDEN
+
+    const folder = await createFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { name: 'Folder' },
+    )
+
+    await expect(
+      addToFolder(
+        { userId: emp.userId, companyId: emp.companyId },
+        { folderId: folder.id, studentId: profileId },
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('addToFolder succeeds for a visible student, duplicate upsert is idempotent', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    await makeVisible(profileId)
+
+    const folder = await createFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { name: 'Folder' },
+    )
+
+    await addToFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { folderId: folder.id, studentId: profileId },
+    )
+    // Second call must not throw (upsert, not insert)
+    await expect(
+      addToFolder(
+        { userId: emp.userId, companyId: emp.companyId },
+        { folderId: folder.id, studentId: profileId },
+      ),
+    ).resolves.not.toThrow()
+  })
+
+  it('getStudentFolderIds returns only folders from the requesting company', async () => {
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    await makeVisible(profileId)
+
+    const folderA = await createFolder(
+      { userId: empA.userId, companyId: empA.companyId },
+      { name: 'Folder A' },
+    )
+    await addToFolder(
+      { userId: empA.userId, companyId: empA.companyId },
+      { folderId: folderA.id, studentId: profileId },
+    )
+
+    const idsFromA = await getStudentFolderIds(
+      { userId: empA.userId, companyId: empA.companyId },
+      profileId,
+    )
+    const idsFromB = await getStudentFolderIds(
+      { userId: empB.userId, companyId: empB.companyId },
+      profileId,
+    )
+    expect(idsFromA).toContain(folderA.id)
+    expect(idsFromB).not.toContain(folderA.id)
+  })
+
+  it('removeFromFolder only removes from own company folder', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    await makeVisible(profileId)
+
+    const folder = await createFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { name: 'Folder' },
+    )
+    await addToFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { folderId: folder.id, studentId: profileId },
+    )
+    await removeFromFolder(
+      { userId: emp.userId, companyId: emp.companyId },
+      { folderId: folder.id, studentId: profileId },
+    )
+
+    const ids = await getStudentFolderIds(
+      { userId: emp.userId, companyId: emp.companyId },
+      profileId,
+    )
+    expect(ids).not.toContain(folder.id)
   })
 })

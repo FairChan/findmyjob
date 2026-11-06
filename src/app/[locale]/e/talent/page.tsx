@@ -13,6 +13,7 @@ import type { TalentSearchResult } from '@/server/services/talent-search'
 import type { TalentCard } from '@/server/serializers/talent-card'
 import { Button } from '@/components/ui/button'
 import { TalentFilterPanel, buildSearchString } from '@/components/talent/TalentFilterPanel'
+import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
 
 // ---- URL param helpers ----
 
@@ -72,10 +73,12 @@ function TalentCardItem({
   card,
   locale,
   tLabel,
+  tFolders,
 }: {
   card: TalentCard
   locale: string
   tLabel: (key: string) => string
+  tFolders: (key: string) => string
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition hover:border-primary/30 hover:shadow-sm sm:flex-row">
@@ -141,18 +144,36 @@ function TalentCardItem({
         )}
       </div>
 
-      {/* Right: last active + view button */}
+      {/* Right: last active + action buttons */}
       <div className="flex shrink-0 flex-row items-center justify-between gap-2 sm:flex-col sm:items-end">
         {card.lastActiveAt !== null && (
           <span className="text-xs text-muted-foreground">
             {tLabel('lastActiveLabel').replace('{time}', timeAgo(card.lastActiveAt))}
           </span>
         )}
-        <Button asChild size="sm" variant="outline">
-          <Link href={`/${locale}/e/talent/${card.id}`} prefetch={false}>
-            {tLabel('viewDetail')}
-          </Link>
-        </Button>
+        <div className="flex gap-2">
+          <SaveToFolderButton
+            studentId={card.id}
+            labels={{
+              save: tFolders('saveButton'),
+              saveToFolder: tFolders('saveToFolder'),
+              noFolders: tFolders('noFoldersHint'),
+              createNew: tFolders('createFolder'),
+              folderNamePlaceholder: tFolders('folderNamePlaceholder'),
+              create: tFolders('create'),
+              added: tFolders('added'),
+              remove: tFolders('remove'),
+              close: tFolders('cancel'),
+              loading: tFolders('loading'),
+              errorOccurred: tFolders('errorOccurred'),
+            }}
+          />
+          <Button asChild size="sm" variant="outline">
+            <Link href={`/${locale}/e/talent/${card.id}`} prefetch={false}>
+              {tLabel('viewDetail')}
+            </Link>
+          </Button>
+        </div>
       </div>
     </div>
   )
@@ -165,12 +186,14 @@ function ResultsList({
   locale,
   currentPage,
   tLabel,
+  tFolders,
   paginationUrl,
 }: {
   result: TalentSearchResult
   locale: string
   currentPage: number
   tLabel: (key: string) => string
+  tFolders: (key: string) => string
   paginationUrl: (page: number) => string
 }) {
   const { students, total, maxPage } = result
@@ -197,7 +220,7 @@ function ResultsList({
       ) : (
         <div className="space-y-3">
           {students.map((card) => (
-            <TalentCardItem key={card.id} card={card} locale={locale} tLabel={tLabel} />
+            <TalentCardItem key={card.id} card={card} locale={locale} tLabel={tLabel} tFolders={tFolders} />
           ))}
         </div>
       )}
@@ -250,6 +273,8 @@ export default async function TalentSearchPage({
   const sp = await searchParams
   const t = await getTranslations('talentSearch')
   const tLabel = (key: string) => t(key as Parameters<typeof t>[0])
+  const tFoldersMsg = await getTranslations('talentFolders')
+  const tFolders = (key: string) => tFoldersMsg(key as Parameters<typeof tFoldersMsg>[0])
 
   // Auth: require company membership (layout already checked requireEmployer)
   let ctx: { userId: string; companyId: string }
@@ -371,6 +396,7 @@ export default async function TalentSearchPage({
               locale={locale}
               currentPage={page}
               tLabel={tLabel}
+              tFolders={tFolders}
               paginationUrl={paginationUrl}
             />
           )}
