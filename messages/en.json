@@ -151,5 +151,28 @@
     "reconsentVersionMismatch": "The terms have been updated. Please refresh the page and read again.",
     "lastUpdated": "Last updated: {version}",
     "backToHome": "Back to Home"
+  },
+  "resume": {
+    "title": "My Resume",
+    "uploadButton": "Upload Resume",
+    "uploadHint": "PDF only, max 5 MB, max 20 pages",
+    "setPrimary": "Set as Primary",
+    "delete": "Delete",
+    "preview": "Preview",
+    "primary": "Primary",
+    "pages": "{count} pages",
+    "uploadedAt": "Uploaded {date}",
+    "deleteConfirm": "Are you sure you want to delete this resume?",
+    "empty": "No resumes uploaded yet",
+    "errorFileTooLarge": "File exceeds the 5 MB limit",
+    "errorInvalidType": "Only PDF format is supported",
+    "errorEncryptedPdf": "Encrypted PDFs are not accepted",
+    "errorTooManyPages": "PDF exceeds the 20-page limit",
+    "errorRateLimit": "Too many uploads. Please try again later.",
+    "errorUploadFailed": "Upload failed. Please try again.",
+    "uploading": "Uploading…",
+    "deleteSuccess": "Resume deleted",
+    "setPrimarySuccess": "Set as primary resume",
+    "privacy": "Your resume is only visible to recruiters after you apply or they unlock your profile"
   }
 }

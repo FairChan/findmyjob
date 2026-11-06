@@ -410,7 +410,7 @@
 做：`services/contact-access.ts` 中的 `getOwnContact` / `updateOwnContact`（经 `encryptField` / `decryptField` 加密存储，带 AAD）；`/s/contact` 页面，附隐私提示。
 验收：数据库里的值以 `enc:v` 开头；学生本人读取到明文；手机号格式校验（马来西亚 / 中国 / 国际格式）
 
-#### [ ] M2-T05 文件上传（app 中转）与简历
+#### [x] M2-T05 文件上传（app 中转）与简历
 依赖：M0-T02、M0-T07
 做：
 - `lib/storage.ts`（S3 客户端；PutObject、签名 GET、删除全部版本）。
@@ -424,6 +424,8 @@
 - 把 .exe 改名成 .pdf 上传，被拒；30 页的 PDF 和加密的 PDF 都被拒
 - 单测断言所有签名 GET 的有效期都不超过 300 秒
 - 学生只能访问自己的简历；删除时对象存储里的文件（全部版本）一并删除
+
+> 完成 2026-11-06：src/lib/storage.ts（S3 客户端：PutObject、签名 GET≤300s、deleteAllVersions；@aws-sdk/client-s3@3.1162.0 + @aws-sdk/s3-request-presigner@3.1162.0，MinIO forcePathStyle）；src/server/lib/pdf.ts（detectFileType 检测 PDF/PNG/JPEG 魔数，isPdfEncrypted 检查 /Encrypt，getPdfPageCount 扫描 /Count）；src/app/api/uploads/[purpose]/route.ts（RESUME/VERIFICATION/PAYMENT_PROOF/LOGO 白名单、文件头校验、PDF 加密检查、简历页数检查、每用户小时速率限制、拒收写 upload.reject 审计，全部通过后才 PutObject，RESUME 创建 ResumeFile 记录）；src/app/api/resumes/[id]/route.ts（GET 生成签名 URL 并重定向）；src/server/actions/resume.ts（setPrimaryResume/deleteResume，含越权检查，删除时 deleteAllVersions）；src/app/[locale]/s/resume/page.tsx + resume-client.tsx（上传、设为主简历、删除、预览）；i18n 中英文案；tests/unit/storage.test.ts（13 个用例，涵盖签名 URL≤300s、魔数检测、加密检测、页数解析）；pnpm lint/typecheck/test/db:check 全部通过（680 tests）；偏差：assertUploadsEnabled 在上传路由入口调用；M2-T05 验收中「学生只能访问自己的简历」由 deleteResume/setPrimaryResume 的 studentId 比对保证，authz-matrix 集成测试待 M2-T01 建 StudentProfile 后补充
 
 #### [ ] M2-T06 学校邮箱认证
 依赖：M2-T01
