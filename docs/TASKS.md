@@ -569,10 +569,12 @@
 
 > 完成 2026-11-07：`services/talent-visibility.ts`（isStudentVisibleToCompany，6 条 PRD §0 条件含屏蔽检查）；`services/talent-search.ts`（全部 PRD §3.2 筛选 + 排序 + DB 分页；keyword TM-002 在应用层对学生文本 redact 后匹配，PII 关键词提前拦截）；`tests/integration/talent-search.test.ts`（34 个断言，覆盖全部筛选、排除规则、page=26→ValidationError、TM-002 三种 PII 场景）；853 tests 全通过
 
-#### [ ] M4-T04 人才库搜索页
+#### [x] M4-T04 人才库搜索页
 依赖：M4-T03
 做：`/e/talent`：筛选面板（移动端为抽屉）、卡片列表、筛选条件同步到 URL（可分享、可返回）。指向人才详情的 Link 设 `prefetch={false}`。
 验收：E2E：认证企业搜索并按条件筛到指定学生；未认证企业被引导去认证；在人才列表停 3 秒，ProfileView 数量不变
+
+> 完成 2026-11-07：`/e/talent` Server Component（读 searchParams → requireCompanyMember → 验证状态检查 → searchTalents）；未认证企业显示 amber 提示卡 + 认证入口；`TalentFilterPanel`（Client Component，shadcn Sheet 移动端抽屉，URL 双向同步用「派生状态」模式）；talent card 展示姓名/学校/专业/学历/技能/最近活跃；所有 Link 设 prefetch={false}；TalentCard 新增 unlocked 和 lastActiveAt 字段；E2E 测试 5 个（seed 端点、未认证跳转、搜索到指定学生、degree 筛选、3 秒无 ProfileView）；pnpm lint/typecheck/test/db:check 全部通过（853 tests）
 
 #### [ ] M4-T05 人才详情页与查看上限
 依赖：M4-T04

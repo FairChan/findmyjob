@@ -203,7 +203,10 @@ export async function searchTalents(
     ])
 
     const students = rows.map((s) =>
-      toTalentCard({ ...s, cgpa: s.cgpa }, { unlocked: s.unlocks.length > 0 }),
+      toTalentCard(
+        { ...s, cgpa: s.cgpa, lastActiveAt: s.lastActiveAt },
+        { unlocked: s.unlocks.length > 0 },
+      ),
     )
     return { students, total, page: input.page, pageSize: PAGE_SIZE, maxPage }
   }
@@ -239,7 +242,10 @@ export async function searchTalents(
   const total = matched.length
   const paginated = matched.slice((input.page - 1) * PAGE_SIZE, input.page * PAGE_SIZE)
   const students = paginated.map((s) =>
-    toTalentCard({ ...s, cgpa: s.cgpa }, { unlocked: s.unlocks.length > 0 }),
+    toTalentCard(
+      { ...s, cgpa: s.cgpa, lastActiveAt: s.lastActiveAt },
+      { unlocked: s.unlocks.length > 0 },
+    ),
   )
   return { students, total, page: input.page, pageSize: PAGE_SIZE, maxPage }
 }

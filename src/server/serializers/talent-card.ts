@@ -53,6 +53,7 @@ export interface ProfileCardInput {
   completeness: number
   visibility: Visibility
   school: SchoolSnippet | null
+  lastActiveAt?: Date | null
 }
 
 export interface ProfileDetailInput extends ProfileCardInput {
@@ -75,6 +76,7 @@ export interface ContactInput {
 export interface TalentCard {
   id: string
   name: string
+  unlocked: boolean
   school: { id: string; nameZh: string; nameEn: string } | null
   major: string | null
   degreeLevel: DegreeLevel | null
@@ -84,6 +86,7 @@ export interface TalentCard {
   headline: string | null
   completeness: number
   workAuth: WorkAuth | null
+  lastActiveAt: Date | null
 }
 
 export interface TalentEducation {
@@ -171,6 +174,7 @@ export function toTalentCard(
   return {
     id: profile.id,
     name: unlocked ? profile.fullName : maskName(profile.fullName),
+    unlocked,
     school: profile.school
       ? {
           id: profile.school.id,
@@ -193,6 +197,7 @@ export function toTalentCard(
         : null,
     completeness: profile.completeness,
     workAuth: profile.workAuth,
+    lastActiveAt: profile.lastActiveAt ?? null,
   }
 }
 
