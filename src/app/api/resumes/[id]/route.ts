@@ -1,9 +1,7 @@
-import { z } from 'zod'
 import { route } from '@/server/route'
 import { getSignedDownloadUrl } from '@/lib/storage'
 import { db } from '@/server/db'
-
-const idSchema = z.string().cuid()
+import { idSchema } from '@/server/lib/upload-input'
 
 export const GET = route({ auth: 'student' }, async (req, ctx) => {
   const userId = ctx.userId!
@@ -11,8 +9,8 @@ export const GET = route({ auth: 'student' }, async (req, ctx) => {
   const rawId = new URL(req.url).pathname.split('/').pop() ?? ''
   const parsedId = idSchema.safeParse(rawId)
   if (!parsedId.success) {
-    return new Response(JSON.stringify({ ok: false, code: 'NOT_FOUND' }), {
-      status: 404,
+    return new Response(JSON.stringify({ ok: false, code: 'BAD_REQUEST' }), {
+      status: 400,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
     })
   }
@@ -32,5 +30,12 @@ export const GET = route({ auth: 'student' }, async (req, ctx) => {
 
   const url = await getSignedDownloadUrl(resume.storageKey, resume.fileName)
 
-  return Response.redirect(url, 302)
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: url,
+      'Cache-Control': 'private, no-store',
+      'X-Robots-Tag': 'noindex',
+    },
+  })
 })

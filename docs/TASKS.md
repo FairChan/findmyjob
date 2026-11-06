@@ -1141,6 +1141,7 @@
   - 运营后台还没有代管企业的页面（创建、代发职位、移交），需要总控另排任务。
 - E2E 测试库（fix(M3-T01) e2e-testdb，最终复查）：validateTestDbUrl 把 0.0.0.0 也当成本机。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
+> 进度 2026-11-07 第 1/7 轮（M2-T05 上传 + 第二轮遗留 idSchema）：修掉：pdf-lib 解压炸弹→worker_threads resourceLimits（tests/unit/pdf-check.test.ts，12 条）；加密检测绕过→hasRawEncryptionMarkers 原始字节扫描；0 页 PDF 被接受→checkPdf pageCount<1 拒收；PAYMENT_PROOF 允许 ADMIN→改为 OWNER（tests/unit/upload-authz.test.ts，7 条，含 authz-matrix 新行）；key 用 randomUUID+userId→改用 studentProfileId；非法 purpose/id 返回 404→改为 400；下载响应缺 X-Robots-Tag→已加；idSchema 从 upload-input.ts 导入（route.ts）；deploy/Caddyfile 新增 resp_headers>Location delete 防签名 URL 进日志（需真机验证，见 DECISIONS）。接受的风险：孤儿对象、请求体读进内存（均见 DECISIONS 第 1 轮条目）。转给别的任务：无。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
 
