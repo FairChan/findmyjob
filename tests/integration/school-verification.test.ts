@@ -132,8 +132,13 @@ describe('verifySchoolOtp — concurrent brute-force prevention (M2-T12 fix 1)',
       Array.from({ length: 20 }, () => verifySchoolOtp(ctx, { otp: '000000' }))
     )
 
+    // Only count otp_invalid ValidationErrors (not otp_expired_or_not_found which
+    // happens after the lockout deletes the OTP record — those don't consume a bucket slot)
     const validationErrors = results.filter(
-      (r) => r.status === 'rejected' && r.reason instanceof ValidationError,
+      (r) =>
+        r.status === 'rejected' &&
+        r.reason instanceof ValidationError &&
+        r.reason.message === 'otp_invalid',
     ).length
     const rateLimitErrors = results.filter(
       (r) => r.status === 'rejected' && r.reason instanceof RateLimitedError,
@@ -144,6 +149,40 @@ describe('verifySchoolOtp — concurrent brute-force prevention (M2-T12 fix 1)',
     // The rest were rate-limited
     expect(rateLimitErrors).toBeGreaterThanOrEqual(15)
     expect(validationErrors + rateLimitErrors).toBe(20)
+  })
+
+  it('re-requesting OTP does not reset the attempt counter (M2-T13 item 3)', async () => {
+    setupSettingsMocks()
+    const school = await seedSchool()
+    const student = await createStudent(testDb)
+    const ctx = { userId: student.userId }
+
+    // Create initial OTP record
+    const otp = '555555'
+    await testDb.verification.create({
+      data: {
+        identifier: `school-otp:${student.userId}`,
+        value: JSON.stringify({ hash: hashOtp(otp), schoolId: school.id, schoolEmail: 'student@test.edu.my' }),
+        expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+    })
+
+    // Wrong guess 3 times — each should be ValidationError('otp_invalid')
+    for (let i = 0; i < 3; i++) {
+      await expect(verifySchoolOtp(ctx, { otp: '000000' })).rejects.toThrow(ValidationError)
+    }
+
+    // Re-request OTP (should be allowed; bucket still at count=3, not cleared)
+    await expect(
+      requestSchoolOtp(ctx, { schoolId: school.id, schoolEmail: 'student@test.edu.my' })
+    ).resolves.toBeUndefined()
+
+    // Wrong guess 2 more times (attempt 4 and 5) — still ValidationError
+    await expect(verifySchoolOtp(ctx, { otp: '000000' })).rejects.toThrow(ValidationError)
+    await expect(verifySchoolOtp(ctx, { otp: '000000' })).rejects.toThrow(ValidationError)
+
+    // 6th attempt (count=6, limit=5) must be RateLimitedError — bucket not reset by re-request
+    await expect(verifySchoolOtp(ctx, { otp: '000000' })).rejects.toThrow(RateLimitedError)
   })
 
   it('lockout blocks both requestSchoolOtp and verifySchoolOtp until expiry', async () => {

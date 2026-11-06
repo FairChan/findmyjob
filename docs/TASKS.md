@@ -524,7 +524,8 @@
 > 完成 2026-11-07：Fix1（OTP 原子限速 hitBucket）、Fix2（换校清认证）、Fix3（invite userId→profileId）、Fix4 延后至 M5-T03（DECISIONS 2026-11-07）、Fix5 集成测试覆盖。单元/集成 923 通过 0 失败；E2E m2-t12-smoke 1 通过 0 失败 0 跳过。
 
 
-#### [ ] M2-T13 补齐 M2-T11、M2-T12 的验收测试，修两处 schoolId 校验
+#### [x] M2-T13 补齐 M2-T11、M2-T12 的验收测试，修两处 schoolId 校验
+> 完成 2026-11-07：写了 contact-action 单元测试（item 1）、onboarding 保存并退出持久化 E2E（item 2）、school-verification 重请求不重置桶集成测试（item 3）、/s/invite 和 /s/onboarding 等4个页面冒烟 E2E（items 4&7）、referrals 跨日重算 fake time 单元测试（item 5）、job-view-quota QUALIFIED 过滤断言（item 6）；修了 requestOtpSchema 和 searchFiltersSchema 的 schoolId 从 cuid() 改为 min(1).max(64)（item 9）；E2E: smoke-m2-student-pages.spec.ts 6通过0失败，onboarding.spec.ts 5通过0失败；item 10（DECISIONS 空行）检查后无空行，已在已有格式内。
 依赖：M2-T12
 > 总控 2026-11-07 加入：M2-T11（08f0567）、M2-T12（04cf5d1）最终复查的结论是，代码修复都对了，但下面这些测试要么没写，要么把修复改回去也照样通过。另外，复查发现两处和 M2-T11 第 1 条同样的 cuid 校验问题，会让所有种子学校都完不成学校邮箱认证。除第 9 条外，都只改测试。
 做 / 验收（每一条都要满足：把对应的修复改回去时，测试会失败）：

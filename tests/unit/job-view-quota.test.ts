@@ -121,6 +121,37 @@ describe('getQuota', () => {
   })
 })
 
+describe('getQuota — only counts QUALIFIED referrals by status filter (M2-T13 item 6)', () => {
+  it('referral.count called with status QUALIFIED in getQuota', async () => {
+    mockDb.jobView.count.mockResolvedValue(0)
+    mockDb.referral.count.mockResolvedValue(0)
+    mockDb.jobViewGrant.aggregate.mockResolvedValue({ _sum: { amount: null } })
+
+    await getQuota('s1')
+
+    expect(mockDb.referral.count).toHaveBeenCalledWith({
+      where: { referrerId: 's1', status: 'QUALIFIED' },
+    })
+  })
+})
+
+describe('openJob — only counts QUALIFIED referrals by status filter (M2-T13 item 6)', () => {
+  it('referral.count called with status QUALIFIED inside openJob transaction', async () => {
+    mockDb.jobView.count.mockResolvedValue(0)
+    mockDb.referral.count.mockResolvedValue(0)
+    mockDb.jobViewGrant.aggregate.mockResolvedValue({ _sum: { amount: null } })
+
+    await openJob('s1', 'j1')
+
+    // referral.count should have been called inside the transaction with status: 'QUALIFIED'
+    const referralCountCalls = mockDb.referral.count.mock.calls
+    expect(referralCountCalls.length).toBeGreaterThanOrEqual(1)
+    for (const [args] of referralCountCalls) {
+      expect((args as { where: { status: string } }).where.status).toBe('QUALIFIED')
+    }
+  })
+})
+
 describe('openJob', () => {
   it('allows and does not count for applied jobs', async () => {
     mockDb.application.findFirst.mockResolvedValue({ id: 'app1' })

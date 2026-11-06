@@ -274,6 +274,78 @@ describe('qualifyReferral — daily limit with fake timers (M2-T12)', () => {
   })
 })
 
+describe('requalifyReferrals — cross-day requalification with fake time (M2-T13 item 5)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.resetAllMocks()
+  })
+
+  it('4th referral stays PENDING during KL day, qualifiedAt.gte shifts after KL midnight', async () => {
+    // Fixed dataset: 3 referrals qualified on KL day 2026-11-09
+    // (all between 2026-11-08T16:00Z and 2026-11-09T16:00Z)
+    const klDay9QualifiedAts = [
+      new Date('2026-11-08T18:00:00Z'), // 2026-11-09T02:00+08
+      new Date('2026-11-09T05:00:00Z'), // 2026-11-09T13:00+08
+      new Date('2026-11-09T12:00:00Z'), // 2026-11-09T20:00+08
+    ]
+
+    // Mock referral.count using the actual gte filter against fixed data
+    mockDb.referral.count.mockImplementation((args: any) => {
+      const gte: Date | undefined = args?.where?.qualifiedAt?.gte
+      if (!gte) return Promise.resolve(0)
+      const count = klDay9QualifiedAts.filter((d) => d >= gte).length
+      return Promise.resolve(count)
+    })
+
+    mockGetSetting.mockImplementation((key: string) => {
+      if (key === 'referral.minCompleteness') return Promise.resolve(90)
+      if (key === 'referral.requireSchoolVerified') return Promise.resolve(false)
+      if (key === 'referral.maxQualifiedPerDay') return Promise.resolve(3)
+      return Promise.resolve(undefined)
+    })
+
+    // The 4th pending referral to test
+    mockDb.referral.findMany.mockResolvedValue([
+      {
+        id: 'r4',
+        referrerId: 'sp2',
+        inviteeId: 'sp4',
+        status: 'PENDING',
+        createdAt: new Date(),
+        invitee: { userId: 'u4', completeness: 92, schoolVerifiedAt: null },
+      },
+    ])
+    mockDb.user.findUnique.mockResolvedValue({ emailVerified: true })
+    mockDb.referral.updateMany.mockResolvedValue({ count: 1 })
+
+    // --- At 2026-11-09T15:59:00Z (KL 23:59, still Nov 9 KL) ---
+    // dayStart = 2026-11-08T16:00:00Z, 3 referrals qualify → cap reached → 4th stays PENDING
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-09T15:59:00Z'))
+
+    const result1 = await requalifyReferrals()
+    expect(result1.qualified).toBe(0) // 4th referral still blocked by cap
+
+    // --- At 2026-11-09T16:15:00Z (KL 00:15, now Nov 10 KL — new day) ---
+    // dayStart = 2026-11-09T16:00:00Z, 0 referrals qualify (all 3 were on Nov 9) → cap = 0 → 4th qualifies
+    vi.setSystemTime(new Date('2026-11-09T16:15:00Z'))
+
+    const result2 = await requalifyReferrals()
+    expect(result2.qualified).toBe(1) // 4th referral now qualifies
+
+    // Assert the referral.count was called with qualifiedAt.gte = 2026-11-09T16:00:00Z (KL midnight Nov 10)
+    const countCalls = mockDb.referral.count.mock.calls
+    const lastCall = countCalls[countCalls.length - 1][0] as any
+    const expectedGte = new Date('2026-11-09T16:00:00Z')
+    expect((lastCall.where.qualifiedAt?.gte as Date).getTime()).toBe(expectedGte.getTime())
+
+    expect(mockDb.referral.updateMany).toHaveBeenCalledWith({
+      where: { id: 'r4', status: 'PENDING' },
+      data: expect.objectContaining({ status: 'QUALIFIED' }),
+    })
+  })
+})
+
 describe('voidReferral', () => {
   beforeEach(() => vi.resetAllMocks())
 

@@ -32,7 +32,7 @@ interface StoredOtp {
 }
 
 export const requestOtpSchema = z.object({
-  schoolId: z.string().cuid(),
+  schoolId: z.string().min(1).max(64),
   schoolEmail: z.string().email().max(200),
 })
 

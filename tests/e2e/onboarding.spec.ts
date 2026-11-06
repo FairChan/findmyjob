@@ -76,6 +76,9 @@ test.describe('Student onboarding wizard', () => {
   test('complete 4-step wizard, save-and-exit resumes at correct step, values persist after refresh', async ({ page, request }) => {
     await registerAndLogin(page, request, 'a')
 
+    // Explicit navigation avoids dev-mode error overlays from the login redirect chain
+    await page.goto('/zh/s/onboarding')
+
     // --- Check step 1 progress indicator ---
     await expect(page.getByText(/第 1 \/ 4 步/)).toBeVisible()
 
@@ -118,6 +121,56 @@ test.describe('Student onboarding wizard', () => {
     // After completion, should NOT redirect back to onboarding
     await page.goto('/zh/s/onboarding')
     await expect(page).toHaveURL(/\/s$/)
+  })
+
+  test('save-and-exit persists fullName (step 1) and skill (step 3) after reload (M2-T13 item 2)', async ({
+    page,
+    request,
+  }) => {
+    await registerAndLogin(page, request, 'c')
+
+    // Explicit navigation avoids dev-mode error overlays from the login redirect chain
+    await page.goto('/zh/s/onboarding')
+
+    // Step 1: fill fullName and workAuth
+    const fullName = '测试持久化同学'
+    await page.fill('[id="fullName"]', fullName)
+    await page.selectOption('[id="workAuth"]', 'STUDENT_PASS')
+    await page.click('button:has-text("下一步")')
+    await expect(page.getByText(/第 2 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+
+    // Step 2: select at least one job type (required)
+    const internshipBox = page.locator('label').filter({ hasText: '实习' }).locator('input[type="checkbox"]')
+    if (await internshipBox.count() > 0) await internshipBox.check()
+    await page.click('button:has-text("下一步")')
+    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+
+    // Step 3: add a skill via Enter key
+    const skill = 'Python'
+    await page.fill('input[placeholder*="输入技能"]', skill)
+    await page.keyboard.press('Enter')
+    // Skill tag's delete button should appear (badge renders "Python×" combined, so match by aria-label)
+    await expect(page.getByRole('button', { name: `删除技能 ${skill}` })).toBeVisible({ timeout: 3000 })
+
+    // Save and exit → goes to /s dashboard
+    await page.click('button:has-text("保存并退出")')
+    await page.waitForURL('**/s', { timeout: 10000 })
+
+    // Re-enter onboarding: should resume at step 3
+    await page.goto('/zh/s/onboarding')
+    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+
+    // Reload: still on step 3, skill tag should still be there
+    await page.reload()
+    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('button', { name: `删除技能 ${skill}` })).toBeVisible({ timeout: 3000 })
+
+    // Navigate back to step 1 and check fullName persisted
+    await page.click('button:has-text("上一步")')
+    await expect(page.getByText(/第 2 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await page.click('button:has-text("上一步")')
+    await expect(page.getByText(/第 1 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('[id="fullName"]')).toHaveValue(fullName)
   })
 
   test('375px viewport: onboarding page is usable without horizontal scroll (M2-T11 fix 2)', async ({ page, request }) => {

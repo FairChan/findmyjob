@@ -29,7 +29,7 @@ function getLevelsAtOrAbove(minLevel: LanguageLevel): LanguageLevel[] {
 
 export const searchFiltersSchema = z.object({
   page: z.number().int().min(1).default(1),
-  schoolId: z.string().cuid().optional(),
+  schoolId: z.string().min(1).max(64).optional(),
   majorKeyword: z.string().max(100).optional(),
   degreeLevel: z.nativeEnum(DegreeLevel).optional(),
   graduationYearFrom: z.number().int().optional(),
