@@ -1,17 +1,25 @@
 import { randomUUID } from 'crypto'
+import { z } from 'zod'
 import { route } from '@/server/route'
 import { checkRateLimit } from '@/server/lib/rate-limit'
 import { logAudit } from '@/server/services/audit'
 import { getSetting } from '@/server/services/settings'
 import { assertUploadsEnabled } from '@/server/services/feature-flags'
 import { putObject } from '@/lib/storage'
-import { detectFileType, isPdfEncrypted, getPdfPageCount, MIME_TYPES } from '@/server/lib/pdf'
+import { detectFileType, checkPdf, MIME_TYPES } from '@/server/lib/pdf'
 import { db } from '@/server/db'
 import type { AllowedMimeKey } from '@/server/lib/pdf'
 
 type UploadPurpose = 'RESUME' | 'VERIFICATION' | 'PAYMENT_PROOF' | 'LOGO'
 
-const VALID_PURPOSES = new Set<string>(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO'])
+const purposeSchema = z.enum(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO'])
+
+// Bidi and invisible control characters that must not appear in stored filenames
+const BIDI_RE = /[‪-‮⁦-⁩\u0000-\u001f\u007f]/g
+
+function sanitizeFileName(raw: string): string {
+  return raw.replace(BIDI_RE, '').trim().slice(0, 255) || 'upload'
+}
 
 interface PurposeConfig {
   types: AllowedMimeKey[]
@@ -42,12 +50,13 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
 
   const userId = ctx.userId!
 
-  // Extract purpose from URL path (e.g. /api/uploads/RESUME)
+  // Extract and validate purpose from URL path (e.g. /api/uploads/RESUME)
   const rawPurpose = new URL(req.url).pathname.split('/').pop()?.toUpperCase() ?? ''
-  if (!VALID_PURPOSES.has(rawPurpose)) {
+  const parsedPurpose = purposeSchema.safeParse(rawPurpose)
+  if (!parsedPurpose.success) {
     return rejectJson('NOT_FOUND', 404)
   }
-  const purpose = rawPurpose as UploadPurpose
+  const purpose = parsedPurpose.data
   const config = PURPOSE_CONFIGS[purpose]
 
   // Purpose-specific role checks
@@ -123,37 +132,29 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
     return rejectJson('INVALID_FILE_TYPE', 400)
   }
 
-  // PDF-specific checks
+  // PDF-specific checks (fail closed: parse errors are rejected)
   let pageCount: number | undefined
   if (detectedType === 'pdf') {
-    if (isPdfEncrypted(buf)) {
+    const maxPages = purpose === 'RESUME' ? await getSetting<number>('resume.maxPages', 20) : 9999
+    const pdfResult = await checkPdf(buf, maxPages)
+    if (!pdfResult.ok) {
       await logAudit({
         actorId: userId,
         action: 'upload.reject',
         targetType: 'Upload',
-        metadata: { reason: 'encrypted_pdf', purpose },
+        metadata: { reason: pdfResult.reason, purpose },
       })
-      return rejectJson('ENCRYPTED_PDF', 400)
+      return rejectJson(
+        pdfResult.reason === 'encrypted'
+          ? 'ENCRYPTED_PDF'
+          : pdfResult.reason === 'too_many_pages'
+            ? 'TOO_MANY_PAGES'
+            : 'INVALID_PDF',
+        400,
+      )
     }
-
     if (purpose === 'RESUME') {
-      const maxPages = await getSetting<number>('resume.maxPages', 20)
-      let counted: number
-      try {
-        counted = getPdfPageCount(buf)
-      } catch {
-        counted = 1 // If we can't determine page count, allow it and store null
-      }
-      if (counted > maxPages) {
-        await logAudit({
-          actorId: userId,
-          action: 'upload.reject',
-          targetType: 'Upload',
-          metadata: { reason: 'page_limit_exceeded', pageCount: counted, maxPages, purpose },
-        })
-        return rejectJson('TOO_MANY_PAGES', 400)
-      }
-      pageCount = counted
+      pageCount = pdfResult.pageCount
     }
   }
 
@@ -180,11 +181,12 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
       return rejectJson('NOT_FOUND', 404)
     }
 
+    const safeFileName = sanitizeFileName(file.name)
     const resume = await db.resumeFile.create({
       data: {
         studentId: profile.id,
         storageKey: key,
-        fileName: file.name,
+        fileName: safeFileName,
         mimeType: MIME_TYPES[detectedType],
         sizeBytes: file.size,
         pageCount: pageCount ?? null,

@@ -1,4 +1,5 @@
 import 'server-only'
+import { PDFDocument } from 'pdf-lib'
 
 // Magic bytes for supported file types
 export const MAGIC_PDF = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]) // %PDF-
@@ -21,29 +22,37 @@ export function detectFileType(buf: Buffer): AllowedMimeKey | null {
   return null
 }
 
-/**
- * Returns true if the PDF binary contains an /Encrypt dictionary reference.
- * Checks the trailer area (last 8 KB) first, then the cross-reference section header.
- */
-export function isPdfEncrypted(buf: Buffer): boolean {
-  const tail = buf.subarray(Math.max(0, buf.length - 8192)).toString('latin1')
-  // /Encrypt followed by a space, digit, '<', or reference indicator
-  return /\/Encrypt[\s\d</([]/.test(tail)
-}
+export type PdfCheckResult =
+  | { ok: true; pageCount: number }
+  | { ok: false; reason: 'parse_failed' | 'encrypted' | 'too_many_pages' }
 
 /**
- * Returns the total page count of a PDF by scanning for /Count N entries in
- * the page tree.  The root page tree node has the highest /Count value.
- * Throws if no page count can be determined.
- *
- * Note: this is a heuristic that works for standard PDF structures.
- * Intentionally avoiding a heavy PDF library dependency (A26).
+ * Parse the PDF buffer via pdf-lib and check for encryption and page limit.
+ * Fail closed: any parse error returns reason='parse_failed' instead of allowing the file.
  */
-export function getPdfPageCount(buf: Buffer): number {
-  const str = buf.toString('latin1')
-  const matches = [...str.matchAll(/\/Count\s+(\d+)/g)]
-  if (matches.length === 0) {
-    throw new Error('Could not determine page count from PDF')
+export async function checkPdf(buf: Buffer, maxPages: number): Promise<PdfCheckResult> {
+  let doc: PDFDocument
+  try {
+    // ignoreEncryption: true lets us load encrypted PDFs to inspect isEncrypted rather than throw
+    doc = await PDFDocument.load(buf, { ignoreEncryption: true, updateMetadata: false })
+  } catch {
+    return { ok: false, reason: 'parse_failed' }
   }
-  return Math.max(...matches.map(m => parseInt(m[1]!, 10)))
+
+  if (doc.isEncrypted) {
+    return { ok: false, reason: 'encrypted' }
+  }
+
+  let pageCount: number
+  try {
+    pageCount = doc.getPageCount()
+  } catch {
+    return { ok: false, reason: 'parse_failed' }
+  }
+
+  if (pageCount > maxPages) {
+    return { ok: false, reason: 'too_many_pages' }
+  }
+
+  return { ok: true, pageCount }
 }
