@@ -149,6 +149,30 @@ export async function createEmployerWithoutCompany(
 
 // ---- Job factory --------------------------------------------------------
 
+// ---- Admin factory -------------------------------------------------------
+
+export interface AdminResult {
+  userId: string
+  email: string
+}
+
+export async function createAdmin(
+  db: PrismaClient,
+  overrides?: { email?: string }
+): Promise<AdminResult> {
+  const email = overrides?.email ?? testEmail()
+  const user = await db.user.create({
+    data: {
+      name: faker.person.fullName(),
+      email,
+      emailVerified: true,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    },
+  })
+  return { userId: user.id, email }
+}
+
 export async function createJob(
   db: PrismaClient,
   companyId: string,

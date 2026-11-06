@@ -4,6 +4,23 @@ import {
   type ProfileCardInput,
   type TalentCard,
 } from '@/server/serializers/talent-card'
+export interface NotificationWriter {
+  notification: {
+    create: (args: {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      data: { userId: string; type: string; payload: any }
+    }) => Promise<unknown>
+  }
+}
+
+export async function createNotification(
+  tx: NotificationWriter,
+  userId: string,
+  type: string,
+  payload: Record<string, unknown>,
+): Promise<void> {
+  await tx.notification.create({ data: { userId, type, payload } })
+}
 
 /**
  * Builds the payload for employer-facing notifications about a student.

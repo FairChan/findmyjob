@@ -488,12 +488,14 @@
 验收：状态流转正确；企业成员能看到驳回原因；提交别的企业的对象 key 被拒
 > 完成 2026-11-06：verification service（submitVerification/getVerificationInfo，key 前缀校验，状态流转 UNSUBMITTED/REJECTED→PENDING）；verification action；/e/verification 页面（展示状态、驳回原因、VerificationForm 客户端组件）；zh/en i18n；9 个集成测试全部通过（726 tests）
 
-#### [ ] M3-T03 运营审核队列
+#### [x] M3-T03 运营审核队列
 依赖：M3-T02
 做：`/admin/companies`：待审列表 → 详情（材料用签名 URL 查看）→ 通过 / 驳回（必须填原因）。审核页提示 SOP：通过公开渠道（SSM 记录、官网、公开电话）回拨核实。通过时：设为 VERIFIED、创建 CreditWallet、写审计 `company.verify`、通知 OWNER。`services/notifications.ts` 先实现 `createNotification` + 邮件入队（M5-T08 再完善）；`alert()` 从此同时给 ADMIN 发站内通知。
 验收：
 - 集成测试：通过后钱包存在；非 ADMIN 调用被拒
 - 点「通过」时必须填核实记录：用了哪个公开渠道（SSM 记录、官网、公开电话，至少一项）和核实结果，写进 `CompanyVerification.reviewNote` 和 `company.verify` 审计的 metadata；不填时返回 ValidationError（TM-006）
+
+> 完成 2026-11-06：notifications.ts 增加 createNotification；新建 services/review-company.ts（approveCompany/rejectCompany/listPendingVerifications/getCompanyForReview）；admin-verification.ts actions；/admin/companies 列表页和 [companyId] 详情页（Server Components + ReviewForm 客户端组件，含 SOP 提示）；alert.ts 增加 fire-and-forget 给所有 ADMIN 发站内通知；eslint.config.mjs 增加 review-company.ts 的 creditWallet 豁免；i18n zh/en 增加 adminCompanies 命名空间；factories.ts 增加 createAdmin；12 个集成测试全通过（738 total）；偏差：邮件入队为 stub（logger.info），M5-T08 再接入 sendBoss
 
 #### [ ] M3-T04 团队管理
 依赖：M3-T01
