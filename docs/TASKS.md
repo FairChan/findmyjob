@@ -517,10 +517,11 @@
 验收：未认证企业的主页返回 404
 > 完成 2026-11-07：getPublicCompany service（VERIFIED+isActive 双条件过滤）；`/[locale]/(public)/companies/[id]/page.tsx`（Logo 签名 URL、创始合作伙伴徽章、空职位列表）；getSignedDisplayUrl 加入 storage.ts；zh/en i18n（companyProfile 命名空间）；6 个集成测试全部通过（772 tests）
 
-#### [ ] M3-T06 企业控制台
+#### [x] M3-T06 企业控制台
 依赖：M3-T02
 做：`/e`：认证状态横幅（未提交 / 审核中 / 被驳回 / 已认证）、点数余额、快捷入口。
 验收：每种认证状态都显示正确的横幅和引导
+> 完成 2026-11-07：getWalletBalance 服务（src/server/services/credits.ts，creditWallet 读取）；/e/page.tsx 重写（requireEmployer + getMyCompany，4 种认证状态横幅，点数余额仅 VERIFIED 显示，三个快捷入口）；zh/en i18n 新增 15 个 employerDashboard 键；4 个集成测试全部通过（776 tests）
 
 ---
 
