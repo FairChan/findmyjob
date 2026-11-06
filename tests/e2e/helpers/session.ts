@@ -1,12 +1,9 @@
 /**
  * loginAs — creates a synthetic user in the dev DB and logs in via /zh/login.
  *
- * Rate-limit note: Better Auth caps /sign-in/email at 5 req/min per IP (memory storage in dev).
- * With the current test count (< 5 logins per run) we stay within the limit. If future test
- * expansion pushes past that, switch to storageState: call loginAs once per configuration,
- * save context.storageState() to a temp file, and restore it in each test with
- *   browser.newContext({ storageState: file })
- * rather than logging in again. That avoids repeated logins while keeping per-test DB setup.
+ * Rate-limit note: Better Auth caps /sign-in/email at 5 req/min per IP (memory storage in dev) and keys on
+ * x-real-ip only. The full suite logs in ~20 times, so each loginAs sends its own x-real-ip from
+ * 198.18.0.0/15 (see testClientIp) and behaves like a distinct client; the limit itself is not relaxed.
  */
 import type { Page } from '@playwright/test'
 import { faker } from '@faker-js/faker'
@@ -34,6 +31,12 @@ export type LoginResult = {
   userId: string
   email: string
   companyId?: string
+}
+
+// Random address in 198.18.0.0/15 (RFC 2544 benchmarking range, never a real client).
+function testClientIp(): string {
+  const n = Math.floor(Math.random() * 2 ** 17)
+  return `198.${18 + (n >> 16)}.${(n >> 8) & 255}.${n & 255}`
 }
 
 export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult> {
@@ -82,6 +85,10 @@ export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult>
     companyId = company.id
   }
 
+  // Each loginAs acts as its own client. Better Auth limits /sign-in/email to 5/min per IP and reads the IP only
+  // from x-real-ip (written by Caddy in production; absent in local dev), so without this every test would share
+  // one bucket and the full suite trips the limit. The limit itself is unchanged.
+  await page.setExtraHTTPHeaders({ 'x-real-ip': testClientIp() })
   await stubTurnstile(page)
   await page.goto('/zh/login')
   await page.fill('[name="email"]', email)
