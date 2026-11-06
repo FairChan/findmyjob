@@ -523,6 +523,22 @@
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
 > 完成 2026-11-07：Fix1（OTP 原子限速 hitBucket）、Fix2（换校清认证）、Fix3（invite userId→profileId）、Fix4 延后至 M5-T03（DECISIONS 2026-11-07）、Fix5 集成测试覆盖。单元/集成 923 通过 0 失败；E2E m2-t12-smoke 1 通过 0 失败 0 跳过。
 
+
+#### [ ] M2-T13 补齐 M2-T11、M2-T12 的验收测试，修两处 schoolId 校验
+依赖：M2-T12
+> 总控 2026-11-07 加入：M2-T11（08f0567）、M2-T12（04cf5d1）最终复查的结论是，代码修复都对了，但下面这些测试要么没写，要么把修复改回去也照样通过。另外，复查发现两处和 M2-T11 第 1 条同样的 cuid 校验问题，会让所有种子学校都完不成学校邮箱认证。除第 9 条外，都只改测试。
+做 / 验收（每一条都要满足：把对应的修复改回去时，测试会失败）：
+1. 联系方式保存后重算完成度（M2-T11 第 4 条）：写一个 action 测试，mock 掉 auth 和 service，断言 `updateOwnContactAction` 先调 `updateOwnContact`、再调 `recalcOwnCompleteness`；也可以用真实测试库写集成测试：学生完成度 85，保存联系方式后变成 90。把 `actions/contact.ts` 里调用 recalc 的那一行删掉，测试要失败。
+2. 保存并退出（M2-T11 第 2 条）：在 `tests/e2e/onboarding.spec.ts` 里先填值（第 1 步的 fullName、第 3 步的一个技能），保存并退出，刷新后断言这些值还在。
+3. 学校 OTP 重发不清零（M2-T12 第 1b 条）：`tests/integration/school-verification.test.ts` 里猜错 3 次，然后 `requestSchoolOtp`（这时还允许），再猜错 2 次（ValidationError），下一次必须是 RateLimitedError。20 次并行那条只统计 `otp_invalid`，不统计 `otp_expired_or_not_found`。
+4. /s/invite（M2-T12 第 3 条）：冒烟测试断言 `page.goto` 返回 200，能看到 `progressbar`，邀请链接输入框 `toHaveValue(/\?ref=[\w-]{8}$/)`。
+5. 跨天重新计入（M2-T12 第 5b 条）：`tests/unit/referrals.test.ts` 用 `vi.setSystemTime('2026-11-09T15:59:00Z')`，让 `referral.count` 按 `where.qualifiedAt.gte` 去过滤一组固定的 qualifiedAt（不要手动改返回值）。第 4 个保持 PENDING；然后把时间拨到 `2026-11-09T16:15:00Z`，运行 `requalifyReferrals()`，断言调用了 updateMany，并且 `where.qualifiedAt.gte` 等于 `2026-11-09T16:00:00Z`（吉隆坡 00:00）。
+6. 作废邀请不计入额度（M2-T12 第 5d 条）：`tests/unit/job-view-quota.test.ts` 断言 `referral.count` 是以 `{ where: { referrerId, status: 'QUALIFIED' } }` 调用的：`getQuota` 一次，`openJob` 事务里一次。
+7. 冒烟用例：M2-T11 和 M2-T12 改过的页面（/s/onboarding、/s/profile、/s/contact、/s/invite）都要断言 `page.goto` 返回 200；/s/onboarding 补上控制台报错检查和错误页检查。现在仓库里没有 error.tsx，所以检查错误页时要用 Next 自带错误页的特征（例如 `nextjs-portal`，或者 "Application error" 字样），不能用一个永远匹配不到的正则。
+8. 完成说明要分别写出单元、集成、E2E 三类的通过/失败/跳过数（E2E 必须 0 失败、0 跳过）。E2E 必须真的跑过：Bash 的 timeout 设成 600000。
+9. 两处 schoolId 校验（会让 seed 学校走不通）：`school-verification.ts` 的 `requestOtpSchema` 和 `talent-search.ts` 里的 `schoolId`，都从 `z.string().cuid()` 改成 `z.string().min(1).max(64)`。测试用 `school-xmum` 发起 OTP 请求要能通过，人才库按 `school-xmum` 筛选不能报校验错误。
+10. 顺手：`docs/DECISIONS.md` 在「开发中决策」表里有一行空行，把表格拆成了两段，删掉它。
+
 ---
 
 ## M3 · 企业入驻（约 1.7 天）
@@ -715,6 +731,23 @@
 - 冒烟用例（总控 2026-11-07 统一要求）：本任务新增或修改的每个页面路由，各加一条 Playwright 用例：以目标角色登录，打开页面，断言状态 200、没有 error boundary 或 Next 错误页、控制台没有 error。
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
 > 完成 2026-11-07：全部 8 条修复均已实现：(1) buildSearchString/FilterState 移至 src/lib/talent-search-params.ts；(2) FolderItemActions 去掉 onRemoved 函数 prop；(3) 删除 src/app/api/test/talent-search-seed/route.ts，测试数据改由 Playwright globalSetup 准备；(4) talent-search.spec.ts 改用 storageState；(5) talent-view.ts 加 LOCK_NS.PROFILE_VIEW 和事务锁；(6) talent-search.ts 用 employerFreeText 防真名泄露；(7) searchTalents/viewTalentProfile/收藏夹 action 加 assertCompanyVerified；(8) 验证参数错误时显示 i18n 友好提示。单元/集成测试：43 文件 926 用例全通过。E2E：12 通过 / 0 失败 / 0 跳过（含 talent-search.spec.ts 9 条和 m4-t14-smoke.spec.ts 3 条冒烟用例）。
+
+#### [ ] M4-T15 补齐 M4-T14 没做到的部分：E2E 数据只写测试库、非法参数不报 500、收藏夹页面要求已认证
+依赖：M4-T14
+> 总控 2026-11-07 加入：M4-T14（de04901）的最终复查结论是 BLOCKED。隐私主线没有退步。下面第 1 条是这次新引入的 High，其余是验收还没做到的地方；每条测试都要做到「把修复撤掉，测试就失败」。
+做 / 验收：
+1. E2E 准备数据只能写测试库（High，ARCHITECTURE「测试只用测试库」）：`tests/e2e/global-setup.ts` 现在会写进 `DATABASE_URL` 指向的库，没有设置时还会去读 `.env`，读到的是开发库 findmyjob；它还会建一个 VERIFIED 企业，密码写死成 `TestPass123!`。要改成：
+   - 只读 `TEST_DATABASE_URL`，并复用 `tests/setup/db.ts` 里的 `validateTestDbUrl`：库名必须以 `_test` 结尾，主机必须是本机，否则抛错；
+   - Playwright 的 webServer 也用同一个测试库启动，给 `pnpm dev` 传 `DATABASE_URL=TEST_DATABASE_URL`，也就是 E2E 整个跑在测试库上；
+   - 测试账号的密码每次运行随机生成，写进 Playwright 的 storageState 或者临时文件，不要写死在源码里。
+   测试：DATABASE_URL 指向非 `_test` 库时，global-setup 抛错。开发库里已经存在的这些测试账号，在完成说明里列出来，由总控决定要不要清理，本任务不去删。
+2. 非法 URL 参数不能报 500（M4-T14 第 8 条）：把 `searchFiltersSchema.parse` 改成 safeParse；校验失败时，页面走 invalidParams 的提示。参数解析可以抽出来单独测，也可以写 E2E，覆盖 `?sort=x`、`?degreeLevel=X`、`?schoolId=`（空值）、`?page=0`、`?page=26`、超过 100 字的 keyword，这几种都显示中英文提示，状态码不能是 500。
+3. 真名搜不到（M4-T14 第 6 条）：写一条测试：锁定状态的学生，标题是「王小明｜计算机大三」，用「王小明」搜索，结果数为 0；把匹配文本改回直接用 redact() 时，这条测试要失败。
+4. 同一个学生打开 5 次只算 1 次（M4-T14 第 5c 条）：把成员上限设成 1，同一个学生连续打开 5 次都要成功，并且只记 1 条去重后的查看；去掉查重逻辑时这条测试要失败。
+5. 列表停留 3 秒不计数（M4-T14 第 4c 条）：去掉 `if (cardLinkCount > 0)` 判断，直接 hover 卡片链接，等 3 秒，然后断言没有任何请求打到 `/e/talent/<id>`（含 `_rsc`），或者 ProfileView 行数不变。删掉原来那个永远匹配不到的正则。
+6. 收藏夹页面要求已认证企业（M4-T14 第 7b 条）：`e/folders/page.tsx` 和 `e/folders/[id]/page.tsx` 改用 requireVerifiedCompany；未认证或被撤销认证的企业看到提示和去 /e/onboarding 的链接，不能报 500；`listFolders` 也加上已认证检查。在 authz-matrix 里加一行：「被撤销认证的企业列出收藏夹被拒」。
+7. 冒烟用例：M4-T14 和本任务改动过的页面，都要断言 `page.goto` 返回 200。
+8. 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数；E2E 要按 spec 文件分别列出，并且要跑全部 spec，不只是本任务的。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 
