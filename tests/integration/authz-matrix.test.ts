@@ -640,6 +640,54 @@ describe('admin-jobs actions authz (M5-T02)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// managed-company authz (M6-T07)
+// ---------------------------------------------------------------------------
+
+describe('managed-company authz (M6-T07)', () => {
+  it('createManagedCompany: student → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    const { createManagedCompany } = await import('@/server/services/managed-company')
+    await expect(
+      createManagedCompany({ userId }, { legalName: 'Test MC' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('createManagedCompany: employer → ForbiddenError', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { createManagedCompany } = await import('@/server/services/managed-company')
+    await expect(
+      createManagedCompany({ userId }, { legalName: 'Test MC2' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('postJobAsPlatform: employer on non-managed company → ForbiddenError', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC', email: 'admin-mc-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { userId: empId, companyId } = await createEmployer(testDb)
+    const { postJobAsPlatform } = await import('@/server/services/managed-company')
+    const jobInput = {
+      title: 'Job', type: 'INTERNSHIP' as const, description: 'Desc',
+      workMode: 'ONSITE' as const, submit: false, salaryVisible: true,
+      acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
+    }
+    await expect(postJobAsPlatform({ userId: empId }, companyId, jobInput)).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(postJobAsPlatform({ userId: admin.id }, companyId, jobInput)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('transferCompany: missing verificationRecord → ValidationError', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC2', email: 'admin-mc2-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { createManagedCompany, transferCompany } = await import('@/server/services/managed-company')
+    const company = await createManagedCompany({ userId: admin.id }, { legalName: `MCo-Authz-${Date.now()}` })
+    await expect(
+      transferCompany({ userId: admin.id }, company.id, { ownerEmail: 'x@example.test', verificationRecord: '' }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // resume download ownership (M2-T05)
 // ---------------------------------------------------------------------------
 

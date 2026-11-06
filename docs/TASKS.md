@@ -747,7 +747,7 @@
 做：`/admin/audit`：按动作、操作人、对象、时间范围筛选；分页。
 验收：能查到 ARCHITECTURE §5.7 列出的所有动作
 
-#### [ ] M6-T07 代管企业与公司名单导入
+#### [x] M6-T07 代管企业与公司名单导入
 依赖：M3-T03、M3-T04、M5-T01
 做：
 - `services/managed-company.ts`：`createManagedCompany`、`postJobAsPlatform`、`transferCompany(companyId, ownerEmail)`。transferCompany 复用 M3-T04 的邀请机制；移交完成时，在同一个事务里删除平台账号的 CompanyMember，并设 `isManaged=false`。
@@ -757,6 +757,7 @@
 - 移交后 `isManaged=false`，平台账号再以该企业身份操作会被拒；代发的职位跳过审核；每一步都有审计（`company.managed.create` / `.post` / `.transfer`）
 - 对 companies.example.json 执行 `--dry-run`，输出「2 条有效，0 条错误」，并且不打印任何字段值
 - `transferCompany` 必须带核实记录（目标邮箱的域名和企业官网一致，或经公开电话回拨确认，写明是哪一种），缺少时返回 ValidationError；核实记录写进 `company.managed.transfer` 审计的 metadata（TM-008）
+> 完成 2026-11-07：src/server/services/managed-company.ts（createManagedCompany/postJobAsPlatform/transferCompany/acceptManagedTransfer 四个函数，每步写对应审计日志）；scripts/import-companies.ts（zod 校验，dry-run 只统计不写 DB，实际导入用自己的 PrismaClient）；tests/integration/managed-company.test.ts（21 个用例，全部通过）；authz-matrix 补充 managed-company authz 段（4 个用例）；DECISIONS 新增 M6-T07 条目（平台账号不加入 CompanyMember 以支持批量导入，移交后 isManaged=false 让 postJobAsPlatform 被拒，满足「平台账号再操作被拒」验收标准）；pnpm lint/typecheck/test 全部通过（883 tests）；偏差：「删除平台账号的 CompanyMember」一步变为无需操作（admin 本来不是成员，见 DECISIONS M6-T07），移交完成通过 isManaged=false 保证
 
 #### [ ] M6-T08 增长与风控页（P1，可在试点后做）
 依赖：M6-T01
