@@ -43,9 +43,12 @@ export interface JobFormData {
   sponsorsWorkPass: boolean
   headcount?: number
   deadline?: string
+  updatedAt?: string
 }
 
-type ActionResult = { ok: true; data: { id: string; status: string } } | { ok: false; code: string }
+type ActionResult =
+  | { ok: true; data: { id: string; status: string; updatedAt?: string } }
+  | { ok: false; code: string }
 
 interface Props {
   mode: 'create' | 'edit'
@@ -98,6 +101,7 @@ interface Props {
     errorUnknown: string
     verifiedOnly: string
     back: string
+    removeTagLabel: string
   }
 }
 
@@ -147,6 +151,7 @@ export default function JobFormClient({
   )
   const [titleError, setTitleError] = useState('')
   const [descError, setDescError] = useState('')
+  const [formUpdatedAt, setFormUpdatedAt] = useState(initialData?.updatedAt)
 
   function addTag(
     input: string,
@@ -181,6 +186,7 @@ export default function JobFormClient({
       headcount: headcount ? parseInt(headcount, 10) : undefined,
       deadline: deadline ? new Date(deadline).toISOString() : undefined,
       submit,
+      ...(formUpdatedAt ? { updatedAt: formUpdatedAt } : {}),
     }
   }
 
@@ -212,6 +218,7 @@ export default function JobFormClient({
         else setError(t.errorUnknown)
         return
       }
+      if (result.data.updatedAt) setFormUpdatedAt(result.data.updatedAt)
       setSuccessMsg(submit ? t.submitSuccess : t.saveSuccess)
       if (mode === 'create') {
         router.push(`/e/jobs/${result.data.id}/edit`)
@@ -414,7 +421,7 @@ export default function JobFormClient({
                   type="button"
                   onClick={() => setLanguages(languages.filter(l => l !== lang))}
                   className="ml-1 text-muted-foreground hover:text-foreground"
-                  aria-label={`Remove ${lang}`}
+                  aria-label={`${t.removeTagLabel} ${lang}`}
                 >
                   ×
                 </button>
@@ -456,7 +463,7 @@ export default function JobFormClient({
                   type="button"
                   onClick={() => setSkills(skills.filter(s => s !== skill))}
                   className="ml-1 text-muted-foreground hover:text-foreground"
-                  aria-label={`Remove ${skill}`}
+                  aria-label={`${t.removeTagLabel} ${skill}`}
                 >
                   ×
                 </button>

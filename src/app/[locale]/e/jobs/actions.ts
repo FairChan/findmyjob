@@ -1,5 +1,6 @@
 'use server'
 import { z } from 'zod'
+import { getTranslations } from 'next-intl/server'
 import { action } from '@/server/action'
 import {
   jobFormSchema,
@@ -32,7 +33,7 @@ export const updateJobAction = action(
     const { jobId, ...fields } = input
     const ctx = { userId: userId!, companyId: companyId!, role: companyRole! }
     const job = await updateJob(ctx, jobId, fields)
-    return { id: job.id, status: job.status }
+    return { id: job.id, status: job.status, updatedAt: job.updatedAt.toISOString() }
   },
 )
 
@@ -45,7 +46,8 @@ export const copyJobAction = action(
   },
   async ({ companyId, userId, companyRole, input }) => {
     const ctx = { userId: userId!, companyId: companyId!, role: companyRole! }
-    const job = await copyJob(ctx, input.jobId)
+    const t = await getTranslations('jobs')
+    const job = await copyJob(ctx, input.jobId, t('copySuffix'))
     return { id: job.id }
   },
 )

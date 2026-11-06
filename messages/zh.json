@@ -381,6 +381,7 @@
     "closeButton": "关闭",
     "confirmClose": "确定要关闭此职位吗？关闭后学生将无法查看和投递。",
     "applications": "投递数",
+    "copySuffix": " (复制)",
     "copySuccess": "已复制为草稿",
     "closeSuccess": "职位已关闭",
     "errorForbidden": "权限不足，企业必须通过认证才能提交职位",
@@ -437,7 +438,8 @@
       "submitSuccess": "已提交审核，审核通过后将自动发布",
       "errorRequired": "此项为必填",
       "verifiedOnly": "企业认证通过后才能提交职位审核",
-      "back": "返回列表"
+      "back": "返回列表",
+      "removeTagLabel": "移除"
     }
   },
   "adminJobs": {

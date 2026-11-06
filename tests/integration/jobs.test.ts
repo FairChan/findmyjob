@@ -111,120 +111,149 @@ describe('createJob', () => {
 // updateJob — TM-007: sensitive fields → PENDING_REVIEW
 // ---------------------------------------------------------------------------
 
+// A fully-specified published job fixture — all fields set so each test can
+// change exactly one field while keeping every other field identical.
+const publishedFixtureData = {
+  title: 'Fixed Title',
+  type: 'INTERNSHIP' as const,
+  description: 'Fixed description.',
+  requirements: 'Fixed requirements.',
+  benefits: 'Fixed benefits.',
+  workMode: 'HYBRID' as const,
+  state: 'KUL',
+  city: 'Kuala Lumpur',
+  salaryMin: 2000,
+  salaryMax: 4000,
+  salaryVisible: true,
+  category: 'Technology',
+  languages: ['English', '中文'],
+  skills: ['TypeScript', 'React'],
+  acceptsStudentPass: true,
+  sponsorsWorkPass: false,
+  headcount: 2,
+}
+
+// The matching input (identical values → no sensitive change, stays PUBLISHED).
+const publishedFixtureInput = {
+  ...publishedFixtureData,
+  submit: false,
+}
+
+async function makePublishedJob(ctx: { userId: string; companyId: string }) {
+  return testDb.job.create({
+    data: {
+      companyId: ctx.companyId,
+      createdById: ctx.userId,
+      status: 'PUBLISHED',
+      ...publishedFixtureData,
+    },
+  })
+}
+
 describe('updateJob — TM-007 sensitive field re-review', () => {
-  it('changing title on PUBLISHED job → PENDING_REVIEW', async () => {
-    const ctx = await makeVerifiedCtx()
-    const job = await testDb.job.create({
-      data: {
-        companyId: ctx.companyId,
-        createdById: ctx.userId,
-        title: 'Original Title',
-        type: 'FULL_TIME',
-        description: 'Description',
-        status: 'PUBLISHED',
-        workMode: 'ONSITE',
-      },
-    })
-    const updated = await updateJob(ctx, job.id, {
-      ...baseInput,
-      title: 'New Title',
-      submit: false,
-    })
-    expect(updated.status).toBe('PENDING_REVIEW')
-  })
+  // Each sensitive field gets its own isolated test: only that one field differs.
+  it.each([
+    ['title', { title: 'Changed Title' }],
+    ['description', { description: 'Changed description.' }],
+    ['requirements', { requirements: 'Changed requirements.' }],
+    ['benefits', { benefits: 'Changed benefits.' }],
+    ['salaryMin', { salaryMin: 2500 }],
+    ['salaryMax', { salaryMax: 5000 }],
+    ['salaryVisible', { salaryVisible: false }],
+    ['state', { state: 'SGR' }],
+    ['city', { city: 'Petaling Jaya' }],
+    ['category', { category: 'Finance' }],
+    ['type', { type: 'FULL_TIME' as const }],
+    ['workMode', { workMode: 'REMOTE' as const }],
+    ['skills', { skills: ['Python'] }],
+    ['languages', { languages: ['Bahasa Malaysia'] }],
+  ])(
+    'changing %s on PUBLISHED job → PENDING_REVIEW (TM-007)',
+    async (_, changedField) => {
+      const ctx = await makeVerifiedCtx()
+      const job = await makePublishedJob(ctx)
+      const updated = await updateJob(ctx, job.id, { ...publishedFixtureInput, ...changedField })
+      expect(updated.status).toBe('PENDING_REVIEW')
+    },
+  )
 
-  it('changing description on PUBLISHED job → PENDING_REVIEW', async () => {
-    const ctx = await makeVerifiedCtx()
-    const job = await testDb.job.create({
-      data: {
-        companyId: ctx.companyId,
-        createdById: ctx.userId,
-        title: 'Title',
-        type: 'INTERNSHIP',
-        description: 'Old description',
-        status: 'PUBLISHED',
-        workMode: 'HYBRID',
-      },
-    })
-    const updated = await updateJob(ctx, job.id, {
-      ...baseInput,
-      title: 'Title',
-      description: 'New description',
-      submit: false,
-    })
-    expect(updated.status).toBe('PENDING_REVIEW')
-  })
+  // Whitelist fields: changing them alone must NOT trigger re-review.
+  it.each([
+    ['acceptsStudentPass', { acceptsStudentPass: false }],
+    ['sponsorsWorkPass', { sponsorsWorkPass: true }],
+    ['headcount', { headcount: 5 }],
+  ])(
+    'changing whitelist field %s on PUBLISHED job keeps PUBLISHED',
+    async (_, changedField) => {
+      const ctx = await makeVerifiedCtx()
+      const job = await makePublishedJob(ctx)
+      const updated = await updateJob(ctx, job.id, { ...publishedFixtureInput, ...changedField })
+      expect(updated.status).toBe('PUBLISHED')
+    },
+  )
 
-  it('changing salaryMin on PUBLISHED job → PENDING_REVIEW', async () => {
+  it('PUBLISHED job with high approvedJobCount keeps PUBLISHED after sensitive change', async () => {
     const ctx = await makeVerifiedCtx()
-    const job = await testDb.job.create({
-      data: {
-        companyId: ctx.companyId,
-        createdById: ctx.userId,
-        title: 'Title',
-        type: 'INTERNSHIP',
-        description: 'Description',
-        status: 'PUBLISHED',
-        workMode: 'ONSITE',
-        salaryMin: 1000,
-      },
+    await testDb.company.update({
+      where: { id: ctx.companyId },
+      data: { approvedJobCount: 1000 },
     })
+    await testDb.systemSetting.upsert({
+      where: { key: 'jobs.autoPublishAfter' },
+      update: { value: 1000 },
+      create: { key: 'jobs.autoPublishAfter', value: 1000 },
+    })
+    const job = await makePublishedJob(ctx)
     const updated = await updateJob(ctx, job.id, {
-      ...baseInput,
-      title: 'Title',
-      salaryMin: 1500,
-      submit: false,
-    })
-    expect(updated.status).toBe('PENDING_REVIEW')
-  })
-
-  it('changing state on PUBLISHED job → PENDING_REVIEW', async () => {
-    const ctx = await makeVerifiedCtx()
-    const job = await testDb.job.create({
-      data: {
-        companyId: ctx.companyId,
-        createdById: ctx.userId,
-        title: 'Title',
-        type: 'INTERNSHIP',
-        description: 'Description',
-        status: 'PUBLISHED',
-        workMode: 'ONSITE',
-        state: 'KUL',
-      },
-    })
-    const updated = await updateJob(ctx, job.id, {
-      ...baseInput,
-      title: 'Title',
-      state: 'SGR',
-      submit: false,
-    })
-    expect(updated.status).toBe('PENDING_REVIEW')
-  })
-
-  it('non-sensitive field change on PUBLISHED job keeps PUBLISHED status', async () => {
-    const ctx = await makeVerifiedCtx()
-    const job = await testDb.job.create({
-      data: {
-        companyId: ctx.companyId,
-        createdById: ctx.userId,
-        title: 'Title',
-        type: 'INTERNSHIP',
-        description: 'Description',
-        status: 'PUBLISHED',
-        workMode: 'ONSITE',
-        acceptsStudentPass: false,
-      },
-    })
-    // Only change acceptsStudentPass (non-sensitive); keep all sensitive fields identical
-    const updated = await updateJob(ctx, job.id, {
-      ...baseInput,
-      title: 'Title',
-      description: 'Description',
-      workMode: 'ONSITE',
-      acceptsStudentPass: true,
-      submit: false,
+      ...publishedFixtureInput,
+      title: 'Changed Title',
     })
     expect(updated.status).toBe('PUBLISHED')
+  })
+
+  it('clearing requirements on DRAFT sets it to null in DB', async () => {
+    const ctx = await makeVerifiedCtx()
+    const job = await testDb.job.create({
+      data: {
+        companyId: ctx.companyId,
+        createdById: ctx.userId,
+        title: 'Job',
+        type: 'INTERNSHIP',
+        description: 'Desc',
+        requirements: 'Some requirements',
+        status: 'DRAFT',
+        workMode: 'ONSITE',
+      },
+    })
+    const updated = await updateJob(ctx, job.id, {
+      ...baseInput,
+      title: 'Job',
+      requirements: undefined,
+      submit: false,
+    })
+    expect(updated.requirements).toBeNull()
+  })
+
+  it('stale updatedAt → ValidationError (concurrent save protection)', async () => {
+    const ctx = await makeVerifiedCtx()
+    const job = await testDb.job.create({
+      data: {
+        companyId: ctx.companyId,
+        createdById: ctx.userId,
+        title: 'Job',
+        type: 'INTERNSHIP',
+        description: 'Desc',
+        status: 'DRAFT',
+        workMode: 'ONSITE',
+      },
+    })
+    const staleUpdatedAt = job.updatedAt.toISOString()
+    // First save succeeds and advances updatedAt.
+    await updateJob(ctx, job.id, { ...baseInput, title: 'Job', updatedAt: staleUpdatedAt })
+    // Second save with the original (now stale) updatedAt must fail.
+    await expect(
+      updateJob(ctx, job.id, { ...baseInput, title: 'Job', updatedAt: staleUpdatedAt }),
+    ).rejects.toBeInstanceOf(ValidationError)
   })
 
   it('cannot edit CLOSED job → ValidationError', async () => {

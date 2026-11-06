@@ -26,11 +26,17 @@ export const jobFormSchema = z.object({
   headcount: z.number().int().min(1).max(9999).optional(),
   deadline: z.string().datetime().optional(),
   submit: z.boolean().default(false),
+  updatedAt: z.string().datetime().optional(),
 })
 
 export type JobFormInput = z.infer<typeof jobFormSchema>
 
-function hasSensitiveChange(existing: Job, fields: Omit<JobFormInput, 'submit'>): boolean {
+// Whitelist: headcount, deadline, acceptsStudentPass, sponsorsWorkPass never trigger re-review.
+// Everything else is sensitive and requires re-review when changed on a PUBLISHED job.
+function hasSensitiveChange(
+  existing: Job,
+  fields: Omit<JobFormInput, 'submit' | 'deadline' | 'updatedAt'>,
+): boolean {
   return (
     fields.title !== existing.title ||
     fields.description !== existing.description ||
@@ -40,7 +46,12 @@ function hasSensitiveChange(existing: Job, fields: Omit<JobFormInput, 'submit'>)
     (fields.salaryMax ?? null) !== existing.salaryMax ||
     fields.salaryVisible !== existing.salaryVisible ||
     (fields.state ?? null) !== existing.state ||
-    (fields.city ?? null) !== existing.city
+    (fields.city ?? null) !== existing.city ||
+    (fields.category ?? null) !== existing.category ||
+    fields.type !== existing.type ||
+    fields.workMode !== existing.workMode ||
+    JSON.stringify(fields.skills) !== JSON.stringify(existing.skills) ||
+    JSON.stringify(fields.languages) !== JSON.stringify(existing.languages)
   )
 }
 
@@ -107,52 +118,87 @@ export async function createJob(ctx: CompanyCtx, input: JobFormInput) {
 }
 
 export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormInput) {
-  const existing = await db.job.findFirst({
-    where: { id: jobId, companyId: ctx.companyId },
-  })
-  if (!existing) throw new NotFoundError()
+  return db.$transaction(async tx => {
+    const existing = await tx.job.findFirst({
+      where: { id: jobId, companyId: ctx.companyId },
+    })
+    if (!existing) throw new NotFoundError()
 
-  if (existing.status === 'CLOSED' || existing.status === 'REJECTED') {
-    throw new ValidationError('Cannot edit a closed or rejected job')
-  }
+    if (existing.status === 'CLOSED' || existing.status === 'REJECTED') {
+      throw new ValidationError('Cannot edit a closed or rejected job')
+    }
 
-  const { submit, deadline, ...fields } = input
-  let newStatus = existing.status as JobStatus
+    const { submit, deadline, updatedAt: clientUpdatedAt, ...rawFields } = input
 
-  if (existing.status === 'PUBLISHED') {
-    if (hasSensitiveChange(existing, { ...fields, deadline })) {
-      const autoPublishAfter = await getSetting<number>('jobs.autoPublishAfter', 1000)
-      const company = await db.company.findUnique({
-        where: { id: ctx.companyId },
-        select: { approvedJobCount: true },
-      })
-      if (!company || company.approvedJobCount < autoPublishAfter) {
-        newStatus = 'PENDING_REVIEW'
+    // Explicitly null out cleared optional fields so clearing a value is saved.
+    const fields = {
+      ...rawFields,
+      requirements: rawFields.requirements ?? null,
+      benefits: rawFields.benefits ?? null,
+      state: rawFields.state ?? null,
+      city: rawFields.city ?? null,
+      salaryMin: rawFields.salaryMin ?? null,
+      salaryMax: rawFields.salaryMax ?? null,
+      category: rawFields.category ?? null,
+      headcount: rawFields.headcount ?? null,
+    }
+
+    let newStatus = existing.status as JobStatus
+
+    if (existing.status === 'PUBLISHED') {
+      if (hasSensitiveChange(existing, rawFields)) {
+        const autoPublishAfter = await getSetting<number>('jobs.autoPublishAfter', 1000)
+        const company = await tx.company.findUnique({
+          where: { id: ctx.companyId },
+          select: { approvedJobCount: true },
+        })
+        if (!company || company.approvedJobCount < autoPublishAfter) {
+          newStatus = 'PENDING_REVIEW'
+        }
+      }
+    } else if (existing.status === 'DRAFT' || existing.status === 'PENDING_REVIEW') {
+      if (submit) {
+        const company = await tx.company.findUnique({
+          where: { id: ctx.companyId },
+          select: { verificationStatus: true, approvedJobCount: true },
+        })
+        if (!company) throw new NotFoundError()
+        if (company.verificationStatus !== 'VERIFIED') {
+          throw new ForbiddenError('Company must be verified to submit jobs for review')
+        }
+        const autoPublishAfter = await getSetting<number>('jobs.autoPublishAfter', 1000)
+        newStatus = company.approvedJobCount >= autoPublishAfter ? 'PUBLISHED' : 'PENDING_REVIEW'
       }
     }
-  } else if (existing.status === 'DRAFT' || existing.status === 'PENDING_REVIEW') {
-    if (submit) {
-      newStatus = await resolveSubmitStatus(ctx.companyId)
+
+    const publishedAt =
+      newStatus === 'PUBLISHED' && existing.status !== 'PUBLISHED'
+        ? new Date()
+        : existing.publishedAt
+
+    const updateResult = await tx.job.updateMany({
+      where: {
+        id: jobId,
+        companyId: ctx.companyId,
+        ...(clientUpdatedAt ? { updatedAt: new Date(clientUpdatedAt) } : {}),
+      },
+      data: {
+        ...fields,
+        status: newStatus,
+        publishedAt,
+        deadline: deadline ? new Date(deadline) : null,
+      },
+    })
+
+    if (updateResult.count !== 1) {
+      throw new ValidationError('职位已被修改，请刷新后再改')
     }
-  }
 
-  const publishedAt =
-    newStatus === 'PUBLISHED' && existing.status !== 'PUBLISHED'
-      ? new Date()
-      : existing.publishedAt
-
-  return db.job.update({
-    where: { id: jobId },
-    data: {
-      ...fields,
-      status: newStatus,
-      publishedAt,
-      deadline: deadline ? new Date(deadline) : null,
-    },
+    return tx.job.findUniqueOrThrow({ where: { id: jobId } })
   })
 }
 
-export async function copyJob(ctx: CompanyCtx, jobId: string) {
+export async function copyJob(ctx: CompanyCtx, jobId: string, copySuffix = ' (复制)') {
   const existing = await db.job.findFirst({
     where: { id: jobId, companyId: ctx.companyId },
   })
@@ -170,10 +216,13 @@ export async function copyJob(ctx: CompanyCtx, jobId: string) {
     ...rest
   } = existing
 
+  const maxLen = 200
+  const truncatedBase = existing.title.slice(0, maxLen - copySuffix.length)
+
   return db.job.create({
     data: {
       ...rest,
-      title: `${existing.title} (复制)`,
+      title: `${truncatedBase}${copySuffix}`,
       status: 'DRAFT',
       publishedAt: null,
       closedAt: null,

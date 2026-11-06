@@ -53,6 +53,7 @@ export default async function EditJobPage({
     sponsorsWorkPass: job.sponsorsWorkPass,
     headcount: job.headcount ?? undefined,
     deadline: job.deadline?.toISOString() ?? undefined,
+    updatedAt: job.updatedAt.toISOString(),
   }
 
   const isEditable = job.status !== 'CLOSED' && job.status !== 'REJECTED'
@@ -121,6 +122,7 @@ export default async function EditJobPage({
           errorUnknown: t('errorUnknown'),
           verifiedOnly: t('form.verifiedOnly'),
           back: t('form.back'),
+          removeTagLabel: t('form.removeTagLabel'),
         }}
       />
     </div>

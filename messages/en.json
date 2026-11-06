@@ -374,6 +374,7 @@
     "closeButton": "Close",
     "confirmClose": "Are you sure you want to close this job? Students will no longer be able to view or apply.",
     "applications": "Applications",
+    "copySuffix": " (copy)",
     "copySuccess": "Copied as draft",
     "closeSuccess": "Job closed",
     "errorForbidden": "Permission denied. Your company must be verified to post jobs.",
@@ -430,7 +431,8 @@
       "submitSuccess": "Submitted for review. It will be published after approval.",
       "errorRequired": "This field is required",
       "verifiedOnly": "Your company must be verified before submitting jobs for review.",
-      "back": "Back to list"
+      "back": "Back to list",
+      "removeTagLabel": "Remove"
     }
   },
   "companyProfile": {

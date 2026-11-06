@@ -652,6 +652,7 @@
 - 未认证企业只能保存草稿；状态流转有集成测试
 - 已发布的职位修改标题、描述、要求、福利、薪资或地点后，回到 PENDING_REVIEW，从公开列表和搜索里下线，重新审核通过后才恢复（`approvedJobCount` 未达到 `jobs.autoPublishAfter` 时）；集成测试覆盖（TM-007）
 > 完成 2026-11-07：services/jobs.ts（createJob/updateJob/copyJob/closeJob/list/get）；/e/jobs 列表、/e/jobs/new 新建、/e/jobs/[id]/edit 编辑；JobFormClient + JobListClient 客户端组件；Server Actions；zh/en i18n（jobs 命名空间）；19 个集成测试全部通过（含 TM-007 敏感字段回退逻辑）；3 个 E2E 冒烟测试通过
+> 修复 2026-11-07：hasSensitiveChange 改为白名单（新增 category/skills/languages/type/workMode）；updateJob 用事务+updateMany+updatedAt 并发保护；可选字段清空存 null；copyJob 接受 locale suffix；i18n 修复 aria-label；915 测试（44 文件）全部通过，4 个 E2E 冒烟（含 edit 页面）全部通过
 
 #### [x] M5-T02 职位审核
 依赖：M5-T01

@@ -69,6 +69,7 @@ export default async function NewJobPage({ params }: { params: Promise<{ locale:
           errorUnknown: t('errorUnknown'),
           verifiedOnly: t('form.verifiedOnly'),
           back: t('form.back'),
+          removeTagLabel: t('form.removeTagLabel'),
         }}
       />
     </div>

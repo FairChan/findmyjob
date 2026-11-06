@@ -688,6 +688,88 @@ describe('managed-company authz (M6-T07)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// jobs authz (M5-T01)
+// ---------------------------------------------------------------------------
+
+describe('jobs authz (M5-T01)', () => {
+  async function makeJobForCompany(companyId: string, createdById: string) {
+    return testDb.job.create({
+      data: {
+        companyId,
+        createdById,
+        title: 'Authz Job',
+        type: 'INTERNSHIP',
+        description: 'Test',
+        status: 'PUBLISHED',
+        workMode: 'ONSITE',
+      },
+    })
+  }
+
+  it('cross-company: updateJob by other employer → NotFoundError, job unchanged', async () => {
+    const owner = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: owner.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const attacker = await createEmployer(testDb)
+    const job = await makeJobForCompany(owner.companyId, owner.userId)
+
+    const { updateJob: svcUpdateJob } = await import('@/server/services/jobs')
+    const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
+    await expect(
+      svcUpdateJob(attackerCtx, job.id, {
+        title: 'Hacked', type: 'INTERNSHIP', description: 'Hacked',
+        workMode: 'ONSITE', submit: false, salaryVisible: true,
+        acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
+      }),
+    ).rejects.toThrow()
+
+    const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
+    expect(unchanged?.title).toBe('Authz Job')
+  })
+
+  it('cross-company: closeJob by other employer → NotFoundError, job remains PUBLISHED', async () => {
+    const owner = await createEmployer(testDb)
+    const attacker = await createEmployer(testDb)
+    const job = await makeJobForCompany(owner.companyId, owner.userId)
+
+    const { closeJob: svcCloseJob } = await import('@/server/services/jobs')
+    const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
+    await expect(svcCloseJob(attackerCtx, job.id)).rejects.toThrow()
+
+    const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
+    expect(unchanged?.status).toBe('PUBLISHED')
+  })
+
+  it('RECRUITER can update own company job', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    const job = await makeJobForCompany(companyId, userId)
+
+    const { updateJob: svcUpdateJob } = await import('@/server/services/jobs')
+    const ctx = { userId, companyId, role: 'RECRUITER' as const }
+    const updated = await svcUpdateJob(ctx, job.id, {
+      title: 'Updated by Recruiter', type: 'INTERNSHIP', description: 'Test',
+      workMode: 'ONSITE', submit: false, salaryVisible: true,
+      acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
+    })
+    // PUBLISHED + sensitive change → PENDING_REVIEW (approvedJobCount=0 < 1000)
+    expect(updated.status).toBe('PENDING_REVIEW')
+    expect(updated.title).toBe('Updated by Recruiter')
+  })
+
+  it('RECRUITER can close own company job', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    const job = await makeJobForCompany(companyId, userId)
+
+    const { closeJob: svcCloseJob } = await import('@/server/services/jobs')
+    const ctx = { userId, companyId, role: 'RECRUITER' as const }
+    const closed = await svcCloseJob(ctx, job.id)
+    expect(closed.status).toBe('CLOSED')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // resume download ownership (M2-T05)
 // ---------------------------------------------------------------------------
 
