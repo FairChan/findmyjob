@@ -511,10 +511,11 @@
 
 > 完成 2026-11-07：`services/team.ts`（inviteMember/acceptInvite/removeMember/changeRole/listTeamMembers/getInviteDetails，token randomBytes(32) base64url + sha256 哈希，7 天过期，审计 company.invite.accept）；`actions/team.ts`（4 个 Server Action，邀请后异步发邮件）；`/e/team` 页面（Server Component + TeamPageClient）；`/e/team/accept` 页面（AcceptInviteClient）；seed 新增 `team.maxInvitesPerDay=3`；`clearSettingsCache()` 供测试隔离；zh/en i18n 新增 team 和 teamAccept 两节；`tests/integration/team.test.ts` 29 个测试（invite/accept/remove/changeRole/getInviteDetails）；authz-matrix 增加 5 个团队越权测试；notifications.ts 修复多余的 eslint-disable 指令；pnpm lint/typecheck/test/db:check 全部通过（765 tests）
 
-#### [ ] M3-T05 企业公开主页
+#### [x] M3-T05 企业公开主页
 依赖：M3-T01
 做：`/companies/[id]`：只展示已认证且启用的企业；创始合作伙伴徽章；在招职位列表（M5 之前为空状态）。
 验收：未认证企业的主页返回 404
+> 完成 2026-11-07：getPublicCompany service（VERIFIED+isActive 双条件过滤）；`/[locale]/(public)/companies/[id]/page.tsx`（Logo 签名 URL、创始合作伙伴徽章、空职位列表）；getSignedDisplayUrl 加入 storage.ts；zh/en i18n（companyProfile 命名空间）；6 个集成测试全部通过（772 tests）
 
 #### [ ] M3-T06 企业控制台
 依赖：M3-T02

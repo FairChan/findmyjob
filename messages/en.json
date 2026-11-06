@@ -340,5 +340,12 @@
     "errorAlreadyUsed": "This invitation link has already been used",
     "errorExpired": "This invitation link has expired",
     "errorUnknown": "Action failed. Please try again."
+  },
+  "companyProfile": {
+    "foundingPartner": "Founding Partner",
+    "location": "Location",
+    "website": "Website",
+    "openPositions": "Open Positions",
+    "noJobs": "No open positions at this time"
   }
 }

@@ -161,3 +161,23 @@ export async function getMyCompany(ctx: UserCtx) {
   })
   return member?.company ?? null
 }
+
+export async function getPublicCompany(id: string) {
+  return db.company.findFirst({
+    where: { id, verificationStatus: 'VERIFIED', isActive: true },
+    select: {
+      id: true,
+      legalName: true,
+      displayNameZh: true,
+      displayNameEn: true,
+      description: true,
+      website: true,
+      logoKey: true,
+      state: true,
+      city: true,
+      industryCode: true,
+      size: true,
+      isFoundingPartner: true,
+    },
+  })
+}

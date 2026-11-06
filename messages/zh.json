@@ -340,5 +340,12 @@
     "errorAlreadyUsed": "此邀请链接已被使用",
     "errorExpired": "邀请链接已过期",
     "errorUnknown": "操作失败，请稍后重试"
+  },
+  "companyProfile": {
+    "foundingPartner": "创始合作伙伴",
+    "location": "地点",
+    "website": "官网",
+    "openPositions": "在招职位",
+    "noJobs": "暂无在招职位"
   }
 }

@@ -56,6 +56,15 @@ export async function getSignedDownloadUrl(key: string, fileName: string): Promi
   return awsGetSignedUrl(client, command, { expiresIn: SIGNED_URL_EXPIRES_SECONDS })
 }
 
+export async function getSignedDisplayUrl(key: string): Promise<string> {
+  const client = makeClient()
+  const command = new GetObjectCommand({
+    Bucket: env.S3_BUCKET,
+    Key: key,
+  })
+  return awsGetSignedUrl(client, command, { expiresIn: SIGNED_URL_EXPIRES_SECONDS })
+}
+
 export async function deleteAllVersions(key: string): Promise<void> {
   const client = makeClient()
   const bucket = env.S3_BUCKET
