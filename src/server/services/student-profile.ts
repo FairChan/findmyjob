@@ -170,6 +170,40 @@ async function recalcCompleteness(tx: Prisma.TransactionClient, profileId: strin
   })
 }
 
+// ---- Dashboard ----
+
+export type DashboardData = {
+  completeness: number
+  schoolVerifiedAt: Date | null
+  hasResume: boolean
+  hasContact: boolean
+  talentPoolEnabled: boolean
+}
+
+export async function getDashboardData(ctx: UserCtx): Promise<DashboardData | null> {
+  const profile = await db.studentProfile.findUnique({
+    where: { userId: ctx.userId },
+    select: {
+      id: true,
+      completeness: true,
+      schoolVerifiedAt: true,
+      visibility: true,
+      _count: { select: { resumes: true } },
+    },
+  })
+  if (!profile) return null
+
+  const contactExists = await hasStudentContact(profile.id)
+
+  return {
+    completeness: profile.completeness,
+    schoolVerifiedAt: profile.schoolVerifiedAt,
+    hasResume: profile._count.resumes > 0,
+    hasContact: contactExists,
+    talentPoolEnabled: profile.visibility === 'PUBLIC',
+  }
+}
+
 // ---- Service functions ----
 
 export async function getProfileForOnboarding(ctx: UserCtx): Promise<ProfileForOnboarding | null> {

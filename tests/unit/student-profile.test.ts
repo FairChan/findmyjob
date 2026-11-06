@@ -1,9 +1,72 @@
 /**
- * M2-T01: student-profile service unit tests
- * Tests schema validation and rough completeness logic without DB.
+ * M2-T01/M2-T08: student-profile service unit tests
  */
-import { describe, it, expect } from 'vitest'
-import { step1Schema, step2Schema, step3Schema, step4Schema } from '@/server/services/student-profile'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+vi.mock('@/env', () => ({ env: {} }))
+
+const mockDb = vi.hoisted(() => ({
+  studentProfile: { findUnique: vi.fn() },
+}))
+vi.mock('@/server/db', () => ({ db: mockDb }))
+
+const mockHasStudentContact = vi.hoisted(() => vi.fn())
+vi.mock('@/server/services/contact-access', () => ({ hasStudentContact: mockHasStudentContact }))
+
+import { step1Schema, step2Schema, step3Schema, step4Schema, getDashboardData } from '@/server/services/student-profile'
+
+describe('getDashboardData', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('returns null when profile does not exist', async () => {
+    mockDb.studentProfile.findUnique.mockResolvedValue(null)
+    const result = await getDashboardData({ userId: 'user1' })
+    expect(result).toBeNull()
+  })
+
+  it('returns all false flags for a bare profile', async () => {
+    mockDb.studentProfile.findUnique.mockResolvedValue({
+      id: 'sp1',
+      completeness: 0,
+      schoolVerifiedAt: null,
+      visibility: 'HIDDEN',
+      _count: { resumes: 0 },
+    })
+    mockHasStudentContact.mockResolvedValue(false)
+
+    const result = await getDashboardData({ userId: 'user1' })
+    expect(result).toMatchObject({
+      completeness: 0,
+      schoolVerifiedAt: null,
+      hasResume: false,
+      hasContact: false,
+      talentPoolEnabled: false,
+    })
+  })
+
+  it('reflects verified school, resume, contact, and talent pool', async () => {
+    const verifiedAt = new Date('2026-01-01T00:00:00Z')
+    mockDb.studentProfile.findUnique.mockResolvedValue({
+      id: 'sp2',
+      completeness: 100,
+      schoolVerifiedAt: verifiedAt,
+      visibility: 'PUBLIC',
+      _count: { resumes: 1 },
+    })
+    mockHasStudentContact.mockResolvedValue(true)
+
+    const result = await getDashboardData({ userId: 'user2' })
+    expect(result).toMatchObject({
+      completeness: 100,
+      schoolVerifiedAt: verifiedAt,
+      hasResume: true,
+      hasContact: true,
+      talentPoolEnabled: true,
+    })
+  })
+})
 
 describe('step1Schema', () => {
   it('requires fullName and workAuth', () => {

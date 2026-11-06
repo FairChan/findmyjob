@@ -126,7 +126,22 @@
     "errorSignOutFailed": "退出失败，请重试"
   },
   "studentDashboard": {
-    "title": "学生工作台"
+    "title": "学生工作台",
+    "completeness": "档案完成度",
+    "completenessValue": "{value}%",
+    "todoTitle": "待办事项",
+    "todoVerifySchool": "认证学校邮箱",
+    "todoVerifySchoolDesc": "通过学校邮箱认证，提升曝光和可信度",
+    "todoUploadResume": "上传简历",
+    "todoUploadResumeDesc": "上传 PDF 简历，让企业更全面了解你",
+    "todoFillContact": "填写联系方式",
+    "todoFillContactDesc": "填写手机号等联系方式，企业解锁后可联系你",
+    "todoEnableTalentPool": "开启人才库",
+    "todoEnableTalentPoolDesc": "加入人才库，让认证企业主动找到你",
+    "todoAction": "去完成",
+    "invitesTitle": "最新邀请",
+    "applicationsTitle": "最新投递",
+    "emptyPlaceholder": "暂无记录"
   },
   "employerDashboard": {
     "title": "企业工作台"

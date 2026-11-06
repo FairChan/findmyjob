@@ -452,10 +452,12 @@
 
 > 完成 2026-11-06：`services/privacy.ts`（getLatestTalentPoolConsent/setVisibility/listBlockedCompanies/addBlockedCompany/removeBlockedCompany/searchVerifiedCompanies/getProfileViews/getUnlocks）；`actions/privacy.ts`（四个 student 权限 Server Action）；`/s/privacy` 页面 + `PrivacyCenter` 客户端组件（可见性 toggle、企业搜索屏蔽、谁看过/谁解锁空状态列表）；zh/en i18n 新增 privacy 命名空间；`tests/unit/privacy.test.ts` 19 个用例，776 总测试全部通过；pnpm lint/typecheck/test 全部通过
 
-#### [ ] M2-T08 学生首页
+#### [x] M2-T08 学生首页
 依赖：M2-T03
 做：`/s`：完成度进度条；待办提示（认证学校 / 上传简历 / 填联系方式 / 开启人才库）；最新邀请和投递（暂为占位）。
 验收：待办项随档案状态变化正确显示或隐藏
+
+> 完成 2026-11-06：`getDashboardData`（student-profile.ts，查 completeness/schoolVerifiedAt/resumes._count/hasStudentContact/visibility）；`/s/page.tsx` Server Component（进度条 + 4 条待办 + 两个占位区块）；zh/en i18n 新增 studentDashboard 命名空间 17 条 key；3 个单元测试，779 总测试全部通过；pnpm lint/typecheck/test 全部通过
 
 #### [ ] M2-T09 邀请同学（有效邀请）
 依赖：M2-T03、M1-T02、M0-T11

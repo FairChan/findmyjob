@@ -126,7 +126,22 @@
     "errorSignOutFailed": "Sign-out failed. Please try again."
   },
   "studentDashboard": {
-    "title": "Student Dashboard"
+    "title": "Student Dashboard",
+    "completeness": "Profile Completeness",
+    "completenessValue": "{value}%",
+    "todoTitle": "To-Do",
+    "todoVerifySchool": "Verify School Email",
+    "todoVerifySchoolDesc": "Verify via your school email to boost visibility and credibility",
+    "todoUploadResume": "Upload Resume",
+    "todoUploadResumeDesc": "Upload a PDF resume so employers can learn more about you",
+    "todoFillContact": "Add Contact Info",
+    "todoFillContactDesc": "Add your phone number so employers can reach you after unlocking",
+    "todoEnableTalentPool": "Enable Talent Pool",
+    "todoEnableTalentPoolDesc": "Join the talent pool so verified employers can discover you",
+    "todoAction": "Complete",
+    "invitesTitle": "Recent Invites",
+    "applicationsTitle": "Recent Applications",
+    "emptyPlaceholder": "Nothing here yet"
   },
   "employerDashboard": {
     "title": "Employer Dashboard"
