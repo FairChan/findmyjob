@@ -14,8 +14,20 @@ export type PostJobInput = z.infer<typeof jobFormSchema>
 export const transferInputSchema = z.object({
   ownerEmail: z.string().email().max(255).toLowerCase(),
   verificationRecord: z.string().min(1).max(2000),
+  verificationMethod: z.enum(['DOMAIN_MATCH', 'PHONE_CALLBACK']),
 })
 export type TransferInput = z.infer<typeof transferInputSchema>
+
+function domainsMatch(websiteUrl: string, emailAddress: string): boolean {
+  try {
+    const websiteHostname = new URL(websiteUrl).hostname.toLowerCase()
+    const emailDomain = emailAddress.split('@')[1]?.toLowerCase()
+    if (!emailDomain) return false
+    return websiteHostname === emailDomain || websiteHostname.endsWith('.' + emailDomain)
+  } catch {
+    return false
+  }
+}
 
 async function assertAdmin(userId: string): Promise<void> {
   const user = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
@@ -134,10 +146,19 @@ export async function transferCompany(
 
   const company = await db.company.findUnique({
     where: { id: companyId },
-    select: { id: true, isManaged: true, isActive: true, legalName: true },
+    select: { id: true, isManaged: true, isActive: true, legalName: true, website: true },
   })
   if (!company || !company.isActive) throw new NotFoundError()
   if (!company.isManaged) throw new ForbiddenError('Company is not managed by the platform')
+
+  if (input.verificationMethod === 'DOMAIN_MATCH') {
+    if (!company.website) {
+      throw new ValidationError('Company has no website for domain match verification')
+    }
+    if (!domainsMatch(company.website, input.ownerEmail)) {
+      throw new ValidationError('Owner email domain does not match company website domain')
+    }
+  }
 
   const token = randomBytes(32).toString('base64url')
   const hash = tokenHash(token)
@@ -160,7 +181,7 @@ export async function transferCompany(
     targetType: 'Company',
     targetId: companyId,
     metadata: {
-      ownerEmail: input.ownerEmail,
+      verificationMethod: input.verificationMethod,
       verificationRecord: input.verificationRecord,
       legalName: company.legalName,
     },
@@ -196,6 +217,7 @@ export async function acceptManagedTransfer(ctx: UserCtx, token: string): Promis
   if (invite.expiresAt < new Date()) throw new ValidationError('Invite has expired')
   if (!invite.company.isActive) throw new ValidationError('Company is no longer active')
   if (!invite.company.isManaged) throw new ValidationError('Company has already been transferred')
+  if (invite.role !== 'OWNER') throw new ForbiddenError('Only OWNER transfer invites can be accepted via this flow')
 
   // Email must match (timing-safe comparison)
   const inviteEmailBuf = Buffer.from(invite.email.toLowerCase())
@@ -220,9 +242,36 @@ export async function acceptManagedTransfer(ctx: UserCtx, token: string): Promis
     await tx.companyMember.create({
       data: { companyId: invite.companyId, userId, role: 'OWNER' },
     })
-    await tx.company.update({
-      where: { id: invite.companyId },
+    // Revoke all other pending invites for this company in the same transaction
+    await tx.companyInvite.updateMany({
+      where: {
+        companyId: invite.companyId,
+        tokenHash: { not: hash },
+        acceptedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      data: { expiresAt: new Date(0) },
+    })
+    // Conditional update prevents concurrent double-transfer
+    const { count } = await tx.company.updateMany({
+      where: { id: invite.companyId, isManaged: true },
       data: { isManaged: false },
     })
+    if (count !== 1) throw new ValidationError('Company has already been transferred')
+  })
+
+  await logAudit({
+    actorId: userId,
+    action: 'company.managed.transfer',
+    targetType: 'Company',
+    targetId: invite.companyId,
+    metadata: { phase: 'completed', inviteId: invite.id },
+  })
+  await logAudit({
+    actorId: userId,
+    action: 'company.invite.accept',
+    targetType: 'Company',
+    targetId: invite.companyId,
+    metadata: { role: invite.role },
   })
 }

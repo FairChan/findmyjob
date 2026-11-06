@@ -4,6 +4,18 @@
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
+vi.mock('@/lib/email', () => ({
+  createEmailProvider: vi.fn(() => ({ sendEmail: vi.fn().mockResolvedValue(undefined) })),
+}))
+
+vi.mock('next/server', () => ({
+  after: vi.fn((cb: () => unknown) => { void cb() }),
+}))
+
+vi.mock('next/headers', () => ({
+  headers: vi.fn().mockResolvedValue(new Headers()),
+}))
+
 vi.mock('@/server/auth', () => ({
   getSession: vi.fn(),
   auth: {},
@@ -22,7 +34,10 @@ import {
   transferCompany,
   acceptManagedTransfer,
 } from '@/server/services/managed-company'
+import { acceptInvite } from '@/server/services/team'
 import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
+import { createEmailProvider } from '@/lib/email'
+import * as authMod from '@/server/auth'
 import type { UserCtx } from '@/server/authz'
 
 setupTestDb()
@@ -158,7 +173,8 @@ describe('transferCompany', () => {
     const company = await createManagedCompany(ctx, { legalName: `MCo-Tr-${Date.now()}` })
     const result = await transferCompany(ctx, company.id, {
       ownerEmail: 'newowner@example.test',
-      verificationRecord: 'Domain match: example.test matches company website',
+      verificationRecord: 'Phone callback confirmed per SOP',
+      verificationMethod: 'PHONE_CALLBACK',
     })
     expect(typeof result.token).toBe('string')
     // Invite created
@@ -179,10 +195,10 @@ describe('transferCompany', () => {
     const ctx = await makeAdminCtx()
     const company = await createManagedCompany(ctx, { legalName: `MCo-VR-${Date.now()}` })
     await expect(
-      transferCompany(ctx, company.id, { ownerEmail: 'x@example.test', verificationRecord: '' }),
+      transferCompany(ctx, company.id, { ownerEmail: 'x@example.test', verificationRecord: '', verificationMethod: 'PHONE_CALLBACK' }),
     ).rejects.toBeInstanceOf(ValidationError)
     await expect(
-      transferCompany(ctx, company.id, { ownerEmail: 'x@example.test', verificationRecord: '   ' }),
+      transferCompany(ctx, company.id, { ownerEmail: 'x@example.test', verificationRecord: '   ', verificationMethod: 'PHONE_CALLBACK' }),
     ).rejects.toBeInstanceOf(ValidationError)
   })
 
@@ -193,6 +209,7 @@ describe('transferCompany', () => {
       transferCompany(ctx, companyId, {
         ownerEmail: 'x@example.test',
         verificationRecord: 'verified',
+        verificationMethod: 'PHONE_CALLBACK',
       }),
     ).rejects.toBeInstanceOf(ForbiddenError)
   })
@@ -205,6 +222,7 @@ describe('transferCompany', () => {
       transferCompany({ userId }, company.id, {
         ownerEmail: 'x@example.test',
         verificationRecord: 'verified',
+        verificationMethod: 'PHONE_CALLBACK',
       }),
     ).rejects.toBeInstanceOf(ForbiddenError)
   })
@@ -221,6 +239,7 @@ describe('acceptManagedTransfer', () => {
     const { token } = await transferCompany(adminCtx, company.id, {
       ownerEmail: email,
       verificationRecord: 'Phone callback confirmed per SOP',
+      verificationMethod: 'PHONE_CALLBACK',
     })
     return { company, token, adminCtx }
   }
@@ -300,5 +319,311 @@ describe('acceptManagedTransfer', () => {
       },
     })
     await expect(acceptManagedTransfer({ userId: user.id }, token)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('writes company.managed.transfer (completed) and company.invite.accept audit logs, no email in metadata', async () => {
+    const email = `audit-tr-${Date.now()}@example.test`
+    const { company, token } = await setupTransfer(email)
+    const { userId } = await createEmployerWithoutCompany(testDb, { email })
+    await acceptManagedTransfer({ userId }, token)
+
+    const invite = await testDb.companyInvite.findFirst({ where: { companyId: company.id } })
+    const completedAudit = await testDb.auditLog.findFirst({
+      where: { action: 'company.managed.transfer', targetId: company.id, actorId: userId },
+    })
+    expect(completedAudit).not.toBeNull()
+    const meta = completedAudit!.metadata as Record<string, unknown>
+    expect(meta['phase']).toBe('completed')
+    expect(meta['inviteId']).toBe(invite!.id)
+    expect(meta).not.toHaveProperty('email')
+    expect(meta).not.toHaveProperty('ownerEmail')
+    expect(meta).not.toHaveProperty('token')
+
+    const acceptAudit = await testDb.auditLog.findFirst({
+      where: { action: 'company.invite.accept', targetId: company.id, actorId: userId },
+    })
+    expect(acceptAudit).not.toBeNull()
+    expect((acceptAudit!.metadata as Record<string, unknown>)['role']).toBe('OWNER')
+  })
+
+  it('second pending transfer invite is revoked after first is accepted', async () => {
+    const email1 = `revoke1-${Date.now()}@example.test`
+    const email2 = `revoke2-${Date.now()}@example.test`
+    const adminCtx = await makeAdminCtx()
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-Rev-${Date.now()}` })
+    const { token: token1 } = await transferCompany(adminCtx, company.id, {
+      ownerEmail: email1,
+      verificationRecord: 'Phone callback',
+      verificationMethod: 'PHONE_CALLBACK',
+    })
+    const { token: token2 } = await transferCompany(adminCtx, company.id, {
+      ownerEmail: email2,
+      verificationRecord: 'Phone callback',
+      verificationMethod: 'PHONE_CALLBACK',
+    })
+    const { userId: uid1 } = await createEmployerWithoutCompany(testDb, { email: email1 })
+    const { userId: uid2 } = await createEmployerWithoutCompany(testDb, { email: email2 })
+
+    // First accept succeeds
+    await acceptManagedTransfer({ userId: uid1 }, token1)
+
+    // Second invite was revoked in the same transaction — should not be accepted
+    await expect(acceptManagedTransfer({ userId: uid2 }, token2)).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('via team.acceptInvite: managed company transfer → isManaged=false, becomes OWNER', async () => {
+    const email = `via-team-${Date.now()}@example.test`
+    const adminCtx = await makeAdminCtx()
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-Via-${Date.now()}` })
+    const { token } = await transferCompany(adminCtx, company.id, {
+      ownerEmail: email,
+      verificationRecord: 'Phone callback confirmed',
+      verificationMethod: 'PHONE_CALLBACK',
+    })
+    const { userId } = await createEmployerWithoutCompany(testDb, { email })
+
+    // The user-facing flow uses team.acceptInvite, NOT acceptManagedTransfer directly
+    await acceptInvite({ userId }, token)
+
+    const updated = await testDb.company.findUnique({ where: { id: company.id } })
+    expect(updated!.isManaged).toBe(false)
+    const member = await testDb.companyMember.findFirst({ where: { userId, companyId: company.id } })
+    expect(member).not.toBeNull()
+    expect(member!.role).toBe('OWNER')
+  })
+
+  it('via team.acceptInvite: after transfer, postJobAsPlatform is rejected', async () => {
+    const email = `via-team-rej-${Date.now()}@example.test`
+    const adminCtx = await makeAdminCtx()
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-ViaRej-${Date.now()}` })
+    const { token } = await transferCompany(adminCtx, company.id, {
+      ownerEmail: email,
+      verificationRecord: 'Phone callback',
+      verificationMethod: 'PHONE_CALLBACK',
+    })
+    const { userId } = await createEmployerWithoutCompany(testDb, { email })
+    await acceptInvite({ userId }, token)
+
+    const jobInput = {
+      title: 'Post-transfer job',
+      type: 'FULL_TIME' as const,
+      description: 'Should be rejected',
+      workMode: 'ONSITE' as const,
+      submit: false,
+      salaryVisible: true,
+      acceptsStudentPass: false,
+      sponsorsWorkPass: false,
+      languages: [],
+      skills: [],
+    }
+    await expect(postJobAsPlatform(adminCtx, company.id, jobInput)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('second sequential accept (via updateMany guard) is rejected', async () => {
+    // After the first accept, isManaged=false → updateMany count=0 → ValidationError
+    const email1 = `seq1-${Date.now()}@example.test`
+    const email2 = `seq2-${Date.now()}@example.test`
+    const adminCtx = await makeAdminCtx()
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-Seq-${Date.now()}` })
+    const { token: t1 } = await transferCompany(adminCtx, company.id, {
+      ownerEmail: email1,
+      verificationRecord: 'Phone callback',
+      verificationMethod: 'PHONE_CALLBACK',
+    })
+    // Create a second invite — simulate two legit invites
+    const { token: t2 } = await transferCompany(adminCtx, company.id, {
+      ownerEmail: email2,
+      verificationRecord: 'Phone callback',
+      verificationMethod: 'PHONE_CALLBACK',
+    })
+    // Un-expire the second invite (since first accept revoked it), then try
+    await testDb.companyInvite.updateMany({
+      where: { companyId: company.id, email: email2 },
+      data: { expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
+    })
+
+    const { userId: uid1 } = await createEmployerWithoutCompany(testDb, { email: email1 })
+    const { userId: uid2 } = await createEmployerWithoutCompany(testDb, { email: email2 })
+
+    await acceptManagedTransfer({ userId: uid1 }, t1)
+
+    // After transfer, isManaged=false; updateMany guard catches this
+    await expect(acceptManagedTransfer({ userId: uid2 }, t2)).rejects.toBeInstanceOf(ValidationError)
+
+    // Only uid1 is owner
+    const members = await testDb.companyMember.findMany({ where: { companyId: company.id } })
+    expect(members).toHaveLength(1)
+    expect(members[0].userId).toBe(uid1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// non-managed company OWNER invite rejection
+// ---------------------------------------------------------------------------
+
+describe('team.acceptInvite OWNER invite rejection', () => {
+  it('OWNER invite for non-managed company via acceptInvite → ForbiddenError', async () => {
+    // Insert an OWNER invite directly (bypassing the service guard) to simulate a stale/invalid invite
+    const { userId, companyId } = await createEmployer(testDb)
+    const email = `owner-inv-${Date.now()}@example.test`
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    await testDb.companyInvite.create({
+      data: {
+        companyId,
+        email,
+        role: 'OWNER',
+        tokenHash: hash,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdById: userId,
+      },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// transferCompany verificationMethod
+// ---------------------------------------------------------------------------
+
+describe('transferCompany verificationMethod', () => {
+  it('DOMAIN_MATCH with matching domain → succeeds', async () => {
+    const ctx = await makeAdminCtx()
+    // company.website = 'https://test-managed.example.com' (baseInput)
+    const company = await createManagedCompany(ctx, {
+      legalName: `MCo-DM-${Date.now()}`,
+      website: 'https://corp.example.com',
+    })
+    const result = await transferCompany(ctx, company.id, {
+      ownerEmail: 'owner@example.com',
+      verificationRecord: 'Domain match confirmed',
+      verificationMethod: 'DOMAIN_MATCH',
+    })
+    expect(typeof result.token).toBe('string')
+    // audit contains verificationMethod
+    const audit = await testDb.auditLog.findFirst({
+      where: { action: 'company.managed.transfer', targetId: company.id },
+    })
+    expect((audit!.metadata as Record<string, unknown>)['verificationMethod']).toBe('DOMAIN_MATCH')
+  })
+
+  it('DOMAIN_MATCH with mismatched domain → ValidationError', async () => {
+    const ctx = await makeAdminCtx()
+    const company = await createManagedCompany(ctx, {
+      legalName: `MCo-DM-Fail-${Date.now()}`,
+      website: 'https://corp.example.com',
+    })
+    await expect(
+      transferCompany(ctx, company.id, {
+        ownerEmail: 'owner@other.com',
+        verificationRecord: 'Domain match',
+        verificationMethod: 'DOMAIN_MATCH',
+      }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('DOMAIN_MATCH without website → ValidationError', async () => {
+    const ctx = await makeAdminCtx()
+    const company = await createManagedCompany(ctx, { legalName: `MCo-DM-NoWeb-${Date.now()}` })
+    await expect(
+      transferCompany(ctx, company.id, {
+        ownerEmail: 'owner@example.com',
+        verificationRecord: 'Domain match',
+        verificationMethod: 'DOMAIN_MATCH',
+      }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// transferManagedCompanyAction
+// ---------------------------------------------------------------------------
+
+function mockAdminSession(userId: string) {
+  vi.mocked(authMod.getSession).mockResolvedValue({
+    user: {
+      id: userId,
+      name: '',
+      email: '',
+      emailVerified: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      image: null,
+      role: 'ADMIN',
+      locale: 'zh',
+      status: 'ACTIVE',
+    } as never,
+    session: {
+      id: '',
+      userId,
+      token: '',
+      expiresAt: new Date(Date.now() + 86_400_000),
+      ipAddress: null,
+      userAgent: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  })
+}
+
+describe('transferManagedCompanyAction', () => {
+  it('non-admin is rejected', async () => {
+    const { userId } = await createEmployer(testDb)
+    mockAdminSession(userId) // employer session, but role check inside action will reject
+    // Manually override to employer role since mockAdminSession sets ADMIN
+    vi.mocked(authMod.getSession).mockResolvedValue({
+      user: {
+        id: userId, name: '', email: '', emailVerified: true,
+        createdAt: new Date(), updatedAt: new Date(), image: null,
+        role: 'EMPLOYER', locale: 'zh', status: 'ACTIVE',
+      } as never,
+      session: {
+        id: '', userId, token: '', expiresAt: new Date(Date.now() + 86_400_000),
+        ipAddress: null, userAgent: null, createdAt: new Date(), updatedAt: new Date(),
+      },
+    })
+    const { transferManagedCompanyAction } = await import('@/server/actions/managed-company')
+    const adminCtx = await makeAdminCtx()
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-Act-NAdm-${Date.now()}` })
+    const result = await transferManagedCompanyAction({
+      companyId: company.id,
+      transfer: { ownerEmail: 'x@example.test', verificationRecord: 'rec', verificationMethod: 'PHONE_CALLBACK' },
+    })
+    expect(result.ok).toBe(false)
+  })
+
+  it('admin action returns no token, email mock receives accept URL', async () => {
+    const { userId: adminId } = await createAdmin(testDb)
+    mockAdminSession(adminId)
+    const adminCtx = { userId: adminId }
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-Act-Ok-${Date.now()}` })
+
+    const mockSendEmail = vi.fn().mockResolvedValue(undefined)
+    vi.mocked(createEmailProvider).mockReturnValue({ sendEmail: mockSendEmail })
+
+    const { transferManagedCompanyAction } = await import('@/server/actions/managed-company')
+    const result = await transferManagedCompanyAction({
+      companyId: company.id,
+      transfer: {
+        ownerEmail: 'newowner@example.test',
+        verificationRecord: 'Phone callback confirmed',
+        verificationMethod: 'PHONE_CALLBACK',
+      },
+    })
+
+    expect(result.ok).toBe(true)
+    // token must NOT appear in the response
+    expect(result).not.toHaveProperty('token')
+    expect(result.ok && result.data).not.toHaveProperty('token')
+
+    // email should have been sent with an accept link
+    expect(mockSendEmail).toHaveBeenCalledOnce()
+    const callArgs = mockSendEmail.mock.calls[0][0] as { to: string; html: string }
+    expect(callArgs.to).toBe('newowner@example.test')
+    expect(callArgs.html).toContain('/e/team/accept?token=')
   })
 })

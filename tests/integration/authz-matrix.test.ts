@@ -682,8 +682,58 @@ describe('managed-company authz (M6-T07)', () => {
     const { createManagedCompany, transferCompany } = await import('@/server/services/managed-company')
     const company = await createManagedCompany({ userId: admin.id }, { legalName: `MCo-Authz-${Date.now()}` })
     await expect(
-      transferCompany({ userId: admin.id }, company.id, { ownerEmail: 'x@example.test', verificationRecord: '' }),
+      transferCompany({ userId: admin.id }, company.id, { ownerEmail: 'x@example.test', verificationRecord: '', verificationMethod: 'PHONE_CALLBACK' }),
     ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('acceptManagedTransfer: non-OWNER invite is rejected', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC3', email: 'admin-mc3-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { createManagedCompany, acceptManagedTransfer } = await import('@/server/services/managed-company')
+    const company = await createManagedCompany({ userId: admin.id }, { legalName: `MCo-NOwner-${Date.now()}` })
+    // Insert a non-OWNER invite directly
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    const email = `non-owner-${Date.now()}@example.test`
+    await testDb.companyInvite.create({
+      data: {
+        companyId: company.id,
+        email,
+        role: 'ADMIN',
+        tokenHash: hash,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        createdById: admin.id,
+      },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptManagedTransfer({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('acceptInvite: OWNER invite for non-managed company → ForbiddenError', async () => {
+    const { acceptInvite } = await import('@/server/services/team')
+    const { userId, companyId } = await createEmployer(testDb)
+    const email = `owner-nm-${Date.now()}@example.test`
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    await testDb.companyInvite.create({
+      data: {
+        companyId,
+        email,
+        role: 'OWNER',
+        tokenHash: hash,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        createdById: userId,
+      },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target NM', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
   })
 })
 
