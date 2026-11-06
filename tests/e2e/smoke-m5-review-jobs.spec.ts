@@ -14,10 +14,18 @@ test.describe('M5-T02 admin job review smoke', () => {
     await expectPageHealthy(page, '/zh/admin/jobs')
   })
 
-  test('ADMIN: /zh/admin/jobs/<id> with PENDING_REVIEW job is healthy', async ({ page }) => {
+  test('ADMIN: /zh/admin/jobs/<id> shows all job fields including hidden salary', async ({ page }) => {
     await loginAs(page, { role: 'ADMIN' })
 
-    // Create a VERIFIED company with a PENDING_REVIEW job
+    const sentinel = {
+      requirements: `REQ-SENTINEL-${Date.now()}`,
+      benefits: `BEN-SENTINEL-${Date.now()}`,
+      city: `CITY-SENTINEL-${Date.now()}`,
+      skill: `SKILL-SENTINEL-${Date.now()}`,
+      salaryMin: 1234,
+      salaryMax: 5678,
+    }
+
     const ownerEmail = `e2e-job-owner-${Date.now()}@example.test`
     const owner = await db.user.create({
       data: {
@@ -45,12 +53,27 @@ test.describe('M5-T02 admin job review smoke', () => {
         title: faker.person.jobTitle(),
         type: 'INTERNSHIP',
         description: 'An exciting internship opportunity.',
+        requirements: sentinel.requirements,
+        benefits: sentinel.benefits,
+        city: sentinel.city,
+        skills: [sentinel.skill],
+        salaryMin: sentinel.salaryMin,
+        salaryMax: sentinel.salaryMax,
+        salaryVisible: false,
         status: 'PENDING_REVIEW',
         workMode: 'HYBRID',
       },
     })
 
     await expectPageHealthy(page, `/zh/admin/jobs/${job.id}`)
+
+    // All sentinel content must be visible to the reviewer
+    await expect(page.getByText(sentinel.requirements)).toBeVisible()
+    await expect(page.getByText(sentinel.benefits)).toBeVisible()
+    await expect(page.getByText(sentinel.city)).toBeVisible()
+    await expect(page.getByText(sentinel.skill)).toBeVisible()
+    // Salary visible even when salaryVisible=false, with note
+    await expect(page.getByText(`${sentinel.salaryMin} – ${sentinel.salaryMax} MYR`)).toBeVisible()
   })
 
   test('STUDENT: /zh/admin/jobs is redirected away', async ({ page }) => {

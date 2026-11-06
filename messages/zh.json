@@ -449,6 +449,14 @@
     "companyLabel": "企业",
     "titleLabel": "职位名称",
     "typeLabel": "类型",
+    "workModeLabel": "工作方式",
+    "locationLabel": "工作地点",
+    "salaryLabel": "薪资范围",
+    "salaryHiddenNote": "不对外显示",
+    "headcountLabel": "招聘人数",
+    "deadlineLabel": "截止日期",
+    "languagesLabel": "语言要求",
+    "skillsLabel": "技能要求",
     "submittedAtLabel": "提交时间",
     "reviewAction": "审核",
     "detailTitle": "职位审核详情",
@@ -461,8 +469,11 @@
     "rejectSubmit": "驳回",
     "errorNoteRequired": "请填写驳回原因",
     "errorFailed": "操作失败，请稍后重试",
+    "errorStale": "职位已被修改或已处理，请刷新后再审",
     "noJob": "未找到该职位或已不在待审核状态",
     "statusPending": "待审核",
-    "descriptionLabel": "职位描述"
+    "descriptionLabel": "职位描述",
+    "requirementsLabel": "任职要求",
+    "benefitsLabel": "薪资福利"
   }
 }

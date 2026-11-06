@@ -449,6 +449,14 @@
     "companyLabel": "Company",
     "titleLabel": "Job Title",
     "typeLabel": "Type",
+    "workModeLabel": "Work Mode",
+    "locationLabel": "Location",
+    "salaryLabel": "Salary Range",
+    "salaryHiddenNote": "not shown publicly",
+    "headcountLabel": "Headcount",
+    "deadlineLabel": "Deadline",
+    "languagesLabel": "Language Requirements",
+    "skillsLabel": "Skills Required",
     "submittedAtLabel": "Submitted At",
     "reviewAction": "Review",
     "detailTitle": "Job Review Details",
@@ -461,8 +469,11 @@
     "rejectSubmit": "Reject",
     "errorNoteRequired": "Please enter a rejection reason",
     "errorFailed": "Operation failed. Please try again.",
+    "errorStale": "Job was modified or already processed. Please refresh and try again.",
     "noJob": "Job not found or no longer pending review",
     "statusPending": "Pending",
-    "descriptionLabel": "Job Description"
+    "descriptionLabel": "Job Description",
+    "requirementsLabel": "Requirements",
+    "benefitsLabel": "Benefits"
   }
 }

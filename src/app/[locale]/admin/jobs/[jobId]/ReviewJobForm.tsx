@@ -8,9 +8,10 @@ import { approveJobAction, rejectJobAction } from '@/server/actions/admin-jobs'
 
 interface Props {
   jobId: string
+  updatedAt: string
 }
 
-export function ReviewJobForm({ jobId }: Props) {
+export function ReviewJobForm({ jobId, updatedAt }: Props) {
   const t = useTranslations('adminJobs')
   const router = useRouter()
 
@@ -25,12 +26,12 @@ export function ReviewJobForm({ jobId }: Props) {
     setApproveError('')
     setApproveLoading(true)
     try {
-      const res = await approveJobAction({ jobId })
+      const res = await approveJobAction({ jobId, updatedAt })
       if (res.ok) {
         router.push('.')
         router.refresh()
       } else {
-        setApproveError(t('errorFailed'))
+        setApproveError(res.code === 'VALIDATION_ERROR' ? t('errorStale') : t('errorFailed'))
       }
     } finally {
       setApproveLoading(false)
@@ -46,12 +47,12 @@ export function ReviewJobForm({ jobId }: Props) {
     }
     setRejectLoading(true)
     try {
-      const res = await rejectJobAction({ jobId, reviewNote: rejectNote.trim() })
+      const res = await rejectJobAction({ jobId, reviewNote: rejectNote.trim(), updatedAt })
       if (res.ok) {
         router.push('.')
         router.refresh()
       } else {
-        setRejectError(t('errorFailed'))
+        setRejectError(res.code === 'VALIDATION_ERROR' ? t('errorStale') : t('errorFailed'))
       }
     } finally {
       setRejectLoading(false)

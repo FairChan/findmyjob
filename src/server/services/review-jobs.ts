@@ -8,6 +8,7 @@ import type { UserCtx } from '../authz'
 
 export const approveJobSchema = z.object({
   jobId: z.string().min(1),
+  updatedAt: z.coerce.date(),
 })
 
 export type ApproveJobInput = z.infer<typeof approveJobSchema>
@@ -15,6 +16,7 @@ export type ApproveJobInput = z.infer<typeof approveJobSchema>
 export const rejectJobSchema = z.object({
   jobId: z.string().min(1),
   reviewNote: z.string().min(1).max(2000),
+  updatedAt: z.coerce.date(),
 })
 
 export type RejectJobInput = z.infer<typeof rejectJobSchema>
@@ -49,32 +51,33 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
   const { userId } = ctx
   await assertAdminUser(userId)
 
-  const job = await db.job.findUnique({
+  const jobBase = await db.job.findUnique({
     where: { id: input.jobId },
-    select: { id: true, status: true, companyId: true, createdById: true, publishedAt: true },
+    select: { id: true, companyId: true, createdById: true, publishedAt: true },
   })
-  if (!job) throw new NotFoundError()
-  if (job.status !== 'PENDING_REVIEW') {
-    throw new ValidationError('Job is not in PENDING_REVIEW state')
-  }
+  if (!jobBase) throw new NotFoundError()
 
   await db.$transaction(async tx => {
-    await tx.job.update({
-      where: { id: job.id },
+    const result = await tx.job.updateMany({
+      where: { id: input.jobId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
       data: {
         status: 'PUBLISHED',
-        publishedAt: job.publishedAt ?? new Date(),
+        publishedAt: jobBase.publishedAt ?? new Date(),
         reviewNote: null,
       },
     })
 
+    if (result.count !== 1) {
+      throw new ValidationError('职位已被修改或已处理，请刷新后再审')
+    }
+
     await tx.company.update({
-      where: { id: job.companyId },
+      where: { id: jobBase.companyId },
       data: { approvedJobCount: { increment: 1 } },
     })
 
-    await createNotification(tx, job.createdById, 'job.approved', {
-      jobId: job.id,
+    await createNotification(tx, jobBase.createdById, 'job.approved', {
+      jobId: jobBase.id,
     })
   })
 
@@ -82,7 +85,7 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
     actorId: userId,
     action: 'job.review',
     targetType: 'Job',
-    targetId: job.id,
+    targetId: jobBase.id,
     metadata: { decision: 'approved' },
   })
 }
@@ -91,26 +94,27 @@ export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<vo
   const { userId } = ctx
   await assertAdminUser(userId)
 
-  const job = await db.job.findUnique({
+  const jobBase = await db.job.findUnique({
     where: { id: input.jobId },
-    select: { id: true, status: true, companyId: true, createdById: true },
+    select: { id: true, createdById: true },
   })
-  if (!job) throw new NotFoundError()
-  if (job.status !== 'PENDING_REVIEW') {
-    throw new ValidationError('Job is not in PENDING_REVIEW state')
-  }
+  if (!jobBase) throw new NotFoundError()
 
   await db.$transaction(async tx => {
-    await tx.job.update({
-      where: { id: job.id },
+    const result = await tx.job.updateMany({
+      where: { id: input.jobId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
       data: {
         status: 'REJECTED',
         reviewNote: input.reviewNote,
       },
     })
 
-    await createNotification(tx, job.createdById, 'job.rejected', {
-      jobId: job.id,
+    if (result.count !== 1) {
+      throw new ValidationError('职位已被修改或已处理，请刷新后再审')
+    }
+
+    await createNotification(tx, jobBase.createdById, 'job.rejected', {
+      jobId: jobBase.id,
       reviewNote: input.reviewNote,
     })
   })
@@ -119,7 +123,7 @@ export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<vo
     actorId: userId,
     action: 'job.review',
     targetType: 'Job',
-    targetId: job.id,
+    targetId: jobBase.id,
     metadata: { decision: 'rejected', reviewNote: input.reviewNote },
   })
 }
