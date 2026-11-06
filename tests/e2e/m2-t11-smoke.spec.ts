@@ -9,6 +9,7 @@
  * Requires: dev server + Mailpit (docker compose up -d)
  */
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
+import { E2E_PASSWORD } from './helpers/password'
 import { stubTurnstile } from './helpers/turnstile'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
@@ -27,7 +28,7 @@ async function registerLoginAndCompleteStep1(
   await stubTurnstile(page)
   const unique = `${Date.now()}${suffix}`
   const email = `m2t11-smoke-${unique}@example.test`
-  const password = 'Password123!'
+  const password = E2E_PASSWORD
 
   await page.goto('/zh/register/student')
   await page.fill('[name="name"]', 'Smoke Test Student')

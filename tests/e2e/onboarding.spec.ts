@@ -11,6 +11,7 @@
  *   5. 375px viewport works without horizontal scroll on the actual onboarding page (M2-T11 fix 2)
  */
 import { test, expect } from '@playwright/test'
+import { E2E_PASSWORD } from './helpers/password'
 import { stubTurnstile } from './helpers/turnstile'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
@@ -30,7 +31,7 @@ async function registerAndLogin(
   await stubTurnstile(page)
   const unique = `${Date.now()}${suffix ?? ''}`
   const email = `onboarding-test-${unique}@example.test`
-  const password = 'Password123!'
+  const password = E2E_PASSWORD
 
   await page.goto('/zh/register/student')
   await page.fill('[name="name"]', '测试向导同学')

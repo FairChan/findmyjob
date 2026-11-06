@@ -5,6 +5,7 @@
  * 没有 Mailpit 或收不到邮件时直接失败，不 skip：否则 verify 全绿可能只是跳过了。
  */
 import { test, expect } from '@playwright/test'
+import { E2E_PASSWORD } from './helpers/password'
 import { stubTurnstile } from './helpers/turnstile'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
@@ -39,7 +40,7 @@ test.describe('Turnstile widget UX', () => {
     })
     await page.goto('/zh/login')
     await page.fill('[name="email"]', 'any@example.test')
-    await page.fill('[name="password"]', 'Password123!')
+    await page.fill('[name="password"]', E2E_PASSWORD)
     await expect(page.locator('button[type="submit"]')).toBeEnabled({ timeout: 10000 })
     await page.click('button[type="submit"]')
 
@@ -59,7 +60,7 @@ test.describe('student registration → verification → login → sign-out', ()
 
     const unique = Date.now()
     const email = `e2e-student-${unique}@example.test`
-    const password = 'Password123!'
+    const password = E2E_PASSWORD
 
     await stubTurnstile(page)
 

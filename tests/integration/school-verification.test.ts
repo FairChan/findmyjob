@@ -148,7 +148,8 @@ describe('verifySchoolOtp — concurrent brute-force prevention (M2-T12 fix 1)',
     expect(validationErrors).toBeLessThanOrEqual(5)
     // The rest were rate-limited
     expect(rateLimitErrors).toBeGreaterThanOrEqual(15)
-    expect(validationErrors + rateLimitErrors).toBe(20)
+    // 20 个都必须被拒；OTP 记录被锁定删除后，个别请求会报 otp_expired_or_not_found，也算被拒
+    expect(results.every((r) => r.status === 'rejected')).toBe(true)
   })
 
   it('re-requesting OTP does not reset the attempt counter (M2-T13 item 3)', async () => {
