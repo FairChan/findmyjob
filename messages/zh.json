@@ -274,5 +274,30 @@
     "saveSuccess": "联系方式已保存",
     "saveError": "保存失败，请重试",
     "errorValidation": "请检查输入格式（手机号需含国际区号，如 +60）"
+  },
+  "schoolVerify": {
+    "title": "学校邮箱认证",
+    "subtitle": "认证学校邮箱后，你的档案将进入人才库，让企业发现你。",
+    "schoolLabel": "选择学校",
+    "schoolPlaceholder": "请选择学校",
+    "emailLabel": "学校邮箱",
+    "emailPlaceholder": "例：student@xmu.edu.my",
+    "sendOtpButton": "发送验证码",
+    "sendOtpPending": "发送中…",
+    "otpSent": "验证码已发送至 {email}，请在 10 分钟内输入。",
+    "otpLabel": "验证码",
+    "otpPlaceholder": "6 位数字",
+    "verifyButton": "验证",
+    "verifyPending": "验证中…",
+    "successMessage": "学校邮箱已验证！",
+    "resendOtp": "重新发送",
+    "errorDomainMismatch": "邮箱后缀与所选学校不符，请核实。",
+    "errorAlreadyVerified": "该邮箱已被其他账号认证。",
+    "errorOtpInvalid": "验证码错误，请重新输入。",
+    "errorOtpExpired": "验证码已过期，请重新发送。",
+    "errorRateLimited": "操作过于频繁，请稍后再试。",
+    "errorUnknown": "发生未知错误，请稍后重试。",
+    "alreadyVerified": "你的学校邮箱已通过认证。",
+    "changeEmail": "更换邮箱"
   }
 }

@@ -274,5 +274,30 @@
     "saveSuccess": "Contact details saved",
     "saveError": "Save failed, please try again",
     "errorValidation": "Please check your input format (phone must include country code, e.g. +60)"
+  },
+  "schoolVerify": {
+    "title": "School Email Verification",
+    "subtitle": "Verify your school email to join the talent pool and be discovered by companies.",
+    "schoolLabel": "Select School",
+    "schoolPlaceholder": "Choose your school",
+    "emailLabel": "School Email",
+    "emailPlaceholder": "e.g. student@xmu.edu.my",
+    "sendOtpButton": "Send Verification Code",
+    "sendOtpPending": "Sending…",
+    "otpSent": "A verification code has been sent to {email}. It is valid for 10 minutes.",
+    "otpLabel": "Verification Code",
+    "otpPlaceholder": "6-digit code",
+    "verifyButton": "Verify",
+    "verifyPending": "Verifying…",
+    "successMessage": "School email verified!",
+    "resendOtp": "Resend Code",
+    "errorDomainMismatch": "The email domain does not match the selected school. Please check.",
+    "errorAlreadyVerified": "This email has already been verified by another account.",
+    "errorOtpInvalid": "Invalid verification code. Please try again.",
+    "errorOtpExpired": "Verification code has expired. Please request a new one.",
+    "errorRateLimited": "Too many requests. Please try again later.",
+    "errorUnknown": "An unexpected error occurred. Please try again.",
+    "alreadyVerified": "Your school email has been verified.",
+    "changeEmail": "Change Email"
   }
 }
