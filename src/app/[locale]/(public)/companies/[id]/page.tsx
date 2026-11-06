@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
-import { getPublicCompany } from '@/server/services/company'
+import { getPublicCompany, isOwnLogoKey } from '@/server/services/company'
 import { getSignedDisplayUrl } from '@/lib/storage'
 
 export default async function CompanyPublicPage({
@@ -20,7 +20,7 @@ export default async function CompanyPublicPage({
       : (company.displayNameEn ?? company.legalName)
 
   let logoUrl: string | null = null
-  if (company.logoKey) {
+  if (company.logoKey && isOwnLogoKey(company.id, company.logoKey)) {
     try {
       logoUrl = await getSignedDisplayUrl(company.logoKey)
     } catch {

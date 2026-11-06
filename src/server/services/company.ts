@@ -1,5 +1,6 @@
 import 'server-only'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
@@ -61,29 +62,37 @@ export async function createCompany(ctx: UserCtx, input: CreateCompanyInput) {
     if (dup) throw new ValidationError('SSM registration number already in use')
   }
 
-  const company = await db.$transaction(async tx => {
-    const c = await tx.company.create({
-      data: {
-        legalName: input.legalName,
-        displayNameZh: input.displayNameZh ?? null,
-        displayNameEn: input.displayNameEn ?? null,
-        ssmRegNo: input.ssmRegNo || null,
-        industryCode: input.industryCode || null,
-        size: input.size ?? null,
-        website: input.website || null,
-        state: input.state || null,
-        city: input.city || null,
-        address: input.address || null,
-        description: input.description || null,
-      },
-    })
+  let company: Awaited<ReturnType<typeof db.company.create>>
+  try {
+    company = await db.$transaction(async tx => {
+      const c = await tx.company.create({
+        data: {
+          legalName: input.legalName,
+          displayNameZh: input.displayNameZh ?? null,
+          displayNameEn: input.displayNameEn ?? null,
+          ssmRegNo: input.ssmRegNo || null,
+          industryCode: input.industryCode || null,
+          size: input.size ?? null,
+          website: input.website || null,
+          state: input.state || null,
+          city: input.city || null,
+          address: input.address || null,
+          description: input.description || null,
+        },
+      })
 
-    await tx.companyMember.create({
-      data: { companyId: c.id, userId, role: 'OWNER' },
-    })
+      await tx.companyMember.create({
+        data: { companyId: c.id, userId, role: 'OWNER' },
+      })
 
-    return c
-  })
+      return c
+    })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new ValidationError('Already a member of a company')
+    }
+    throw err
+  }
 
   await logAudit({
     actorId: userId,
@@ -94,6 +103,10 @@ export async function createCompany(ctx: UserCtx, input: CreateCompanyInput) {
   })
 
   return company
+}
+
+export function isOwnLogoKey(companyId: string, key: string): boolean {
+  return key.startsWith(`logos/${companyId}/`)
 }
 
 export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) {
@@ -113,6 +126,13 @@ export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) 
     })
     if (dup && dup.id !== companyId) {
       throw new ValidationError('SSM registration number already in use')
+    }
+  }
+
+  // logoKey must belong to this company (server-generated key prefix)
+  if (input.logoKey) {
+    if (!isOwnLogoKey(companyId, input.logoKey)) {
+      throw new ForbiddenError('Logo key does not belong to this company')
     }
   }
 

@@ -352,7 +352,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
               />
             </label>
             {logoKey && (
-              <span className="text-xs text-muted-foreground">✓ Logo uploaded</span>
+              <span className="text-xs text-muted-foreground">{tEdit('logoUploaded')}</span>
             )}
           </div>
           {logoError && (

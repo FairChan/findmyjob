@@ -23,7 +23,8 @@ vi.mock('@/lib/storage', () => ({
 
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createEmployerWithoutCompany } from '../factories'
-import { createCompany, updateCompany, getMyCompany } from '@/server/services/company'
+import { createCompany, updateCompany, getMyCompany, isOwnLogoKey } from '@/server/services/company'
+import { deleteAllVersions } from '@/lib/storage'
 import { ForbiddenError, ValidationError } from '@/server/errors'
 
 setupTestDb()
@@ -103,6 +104,65 @@ describe('updateCompany', () => {
     await expect(
       updateCompany({ userId, companyId, role: 'OWNER' }, { legalName: 'Co Updated', ssmRegNo: 'SSM-SAME' })
     ).resolves.not.toThrow()
+  })
+})
+
+describe('updateCompany logoKey ownership', () => {
+  it('rejects logoKey belonging to another company → ForbiddenError, deleteAllVersions not called', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    const { companyId: otherCompanyId } = await createEmployer(testDb)
+    const foreignKey = `logos/${otherCompanyId}/some-uuid.png`
+    const mockDelete = vi.mocked(deleteAllVersions)
+    mockDelete.mockClear()
+
+    await expect(
+      updateCompany({ userId, companyId, role: 'OWNER' }, { legalName: 'Co', logoKey: foreignKey })
+    ).rejects.toBeInstanceOf(ForbiddenError)
+
+    expect(mockDelete).not.toHaveBeenCalled()
+  })
+
+  it('accepts logoKey belonging to own company', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    const ownKey = `logos/${companyId}/some-uuid.png`
+    await expect(
+      updateCompany({ userId, companyId, role: 'OWNER' }, { legalName: 'Co', logoKey: ownKey })
+    ).resolves.not.toThrow()
+  })
+})
+
+describe('isOwnLogoKey', () => {
+  it('returns true for key with correct company prefix', () => {
+    expect(isOwnLogoKey('cmp123', 'logos/cmp123/abc.png')).toBe(true)
+  })
+
+  it('returns false for key with different company prefix', () => {
+    expect(isOwnLogoKey('cmp123', 'logos/cmp456/abc.png')).toBe(false)
+  })
+
+  it('returns false for key with no logos prefix', () => {
+    expect(isOwnLogoKey('cmp123', 'verifications/cmp123/doc.pdf')).toBe(false)
+  })
+
+  it('returns false for empty key', () => {
+    expect(isOwnLogoKey('cmp123', '')).toBe(false)
+  })
+})
+
+describe('concurrent createCompany', () => {
+  it('only one succeeds when two requests race for the same user', async () => {
+    const { userId } = await createEmployerWithoutCompany(testDb)
+    const results = await Promise.allSettled([
+      createCompany({ userId }, { legalName: 'Race A Sdn Bhd' }),
+      createCompany({ userId }, { legalName: 'Race B Sdn Bhd' }),
+    ])
+    const successes = results.filter(r => r.status === 'fulfilled')
+    const failures = results.filter(r => r.status === 'rejected')
+    expect(successes).toHaveLength(1)
+    expect(failures).toHaveLength(1)
+    expect((failures[0] as PromiseRejectedResult).reason).toBeInstanceOf(ValidationError)
+    const count = await testDb.companyMember.count({ where: { userId } })
+    expect(count).toBe(1)
   })
 })
 

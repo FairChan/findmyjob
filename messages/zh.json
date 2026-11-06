@@ -313,6 +313,7 @@
     "logoUploadButton": "上传 Logo",
     "logoUploading": "上传中…",
     "logoUploadError": "Logo 上传失败，请重试",
+    "logoUploaded": "✓ Logo 已上传",
     "submit": "保存",
     "submitting": "保存中…",
     "saveSuccess": "企业资料已更新",

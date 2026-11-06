@@ -1,6 +1,7 @@
 import 'server-only'
 import { randomBytes, createHash } from 'crypto'
 import { z } from 'zod'
+import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
 import { getSetting } from './settings'
@@ -122,22 +123,29 @@ export async function acceptInvite(ctx: UserCtx, token: string): Promise<void> {
     throw new ForbiddenError('Email does not match the invite')
   }
 
-  // Check not already a member
-  const alreadyMember = await db.companyMember.findFirst({
-    where: { companyId: invite.companyId, userId },
+  // MVP: one company per user — check membership in any company
+  const anyMembership = await db.companyMember.findFirst({
+    where: { userId },
     select: { id: true },
   })
-  if (alreadyMember) throw new ValidationError('Already a member of this company')
+  if (anyMembership) throw new ValidationError('Already a member of a company')
 
-  await db.$transaction(async tx => {
-    await tx.companyInvite.update({
-      where: { tokenHash: hash },
-      data: { acceptedAt: new Date() },
+  try {
+    await db.$transaction(async tx => {
+      await tx.companyInvite.update({
+        where: { tokenHash: hash },
+        data: { acceptedAt: new Date() },
+      })
+      await tx.companyMember.create({
+        data: { companyId: invite.companyId, userId, role: invite.role },
+      })
     })
-    await tx.companyMember.create({
-      data: { companyId: invite.companyId, userId, role: invite.role },
-    })
-  })
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      throw new ValidationError('Already a member of a company')
+    }
+    throw err
+  }
 
   await logAudit({
     actorId: userId,

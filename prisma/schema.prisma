@@ -554,7 +554,7 @@ model CompanyMember {
   createdAt DateTime          @default(now()) @db.Timestamptz(3)
 
   @@unique([companyId, userId])
-  @@index([userId])
+  @@unique([userId])
 }
 
 model CompanyInvite {

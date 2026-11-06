@@ -482,6 +482,7 @@
 做：`/e/onboarding` 创建企业（创建者成为 OWNER），行业用两级代码（`lib/taxonomy/industries`）；`/e/company` 编辑资料、上传 Logo（经 uploads 路由）。公司定位标签不在企业侧出现。
 验收：一个企业用户只能属于一家企业（MVP）；SSM 注册号唯一
 > 完成 2026-11-06：实现 taxonomy/industries（两级行业码）、company service（createCompany/updateCompany/getMyCompany）、createCompanyAction/updateCompanyAction、/e/onboarding 和 /e/company 页面、CompanyForm 客户端组件、uploads 路由扩展 LOGO/VERIFICATION/PAYMENT_PROOF 支持，全量测试通过（695 tests）
+> 修复 2026-11-07：logoKey 归属校验（非 `logos/<companyId>/` 前缀抛 ForbiddenError，公开页同样校验）；CompanyMember.userId 加唯一约束（迁移 20261107000000）防并发建双企业，acceptInvite 加跨企业预检查；company-form.tsx 中「✓ Logo uploaded」挪入 i18n（zh/en）
 
 #### [x] M3-T02 提交认证材料
 依赖：M3-T01

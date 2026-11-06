@@ -313,6 +313,7 @@
     "logoUploadButton": "Upload Logo",
     "logoUploading": "Uploading…",
     "logoUploadError": "Logo upload failed. Please try again.",
+    "logoUploaded": "✓ Logo uploaded",
     "submit": "Save",
     "submitting": "Saving…",
     "saveSuccess": "Company profile updated",

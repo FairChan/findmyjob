@@ -226,6 +226,29 @@ describe('acceptInvite', () => {
     })
     await expect(acceptInvite({ userId: user.id }, 'invalid_token')).rejects.toBeInstanceOf(NotFoundError)
   })
+
+  it('rejects invite to company B when user already belongs to company A → ValidationError', async () => {
+    await seedSettings({ maxMembers: 10, maxInvitesPerDay: 10 })
+
+    // Company A owner invites userInA
+    const { userId: ownerA } = await createEmployer(testDb)
+    const ctxA = await getCtx(ownerA)
+    const userInA = await testDb.user.create({
+      data: { name: 'InA', email: 'ina@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    const { token: tokenA } = await inviteMember(ctxA, { email: 'ina@example.test', role: 'ADMIN' })
+    await acceptInvite({ userId: userInA.id }, tokenA)
+
+    // Company B owner tries to invite the same user
+    const { userId: ownerB } = await createEmployer(testDb)
+    const ctxB = await getCtx(ownerB)
+    const { token: tokenB } = await inviteMember(ctxB, { email: 'ina@example.test', role: 'RECRUITER' })
+
+    // userInA accepting company B invite must be rejected
+    await expect(
+      acceptInvite({ userId: userInA.id }, tokenB)
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
 })
 
 describe('removeMember', () => {
