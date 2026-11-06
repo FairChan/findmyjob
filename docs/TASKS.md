@@ -485,6 +485,7 @@
 > 完成 2026-11-06：实现 taxonomy/industries（两级行业码）、company service（createCompany/updateCompany/getMyCompany）、createCompanyAction/updateCompanyAction、/e/onboarding 和 /e/company 页面、CompanyForm 客户端组件、uploads 路由扩展 LOGO/VERIFICATION/PAYMENT_PROOF 支持，全量测试通过（695 tests）
 > 修复 2026-11-07：logoKey 归属校验（非 `logos/<companyId>/` 前缀抛 ForbiddenError，公开页同样校验）；CompanyMember.userId 加唯一约束（迁移 20261107000000）防并发建双企业，acceptInvite 加跨企业预检查；company-form.tsx 中「✓ Logo uploaded」挪入 i18n（zh/en）
 > 修复 2026-11-07：补页面冒烟用例（总控要求）；新增 tests/e2e/helpers/session.ts（loginAs）和 smoke.ts（expectPageHealthy），smoke-m3-company.spec.ts（/e/onboarding 健康、/e 重定向、/e/company zh/en 健康）和 smoke-m2-resume.spec.ts（/s/resume 健康），3 条用例全通过；crashtest 验证：临时在 /e/company 加 throw 后用例报 500 失败，确认冒烟有效
+> 修复 2026-11-07：E2E 数据隔离（High）——新建 tests/lib/validate-test-db-url.ts 纯函数（主线 M4-T15 复用）；tests/e2e/helpers/db.ts 导出 e2eDb/createE2eDb，只认 TEST_DATABASE_URL，拒绝 DATABASE_URL 回退；playwright.config.ts 从 .env 读 TEST_DATABASE_URL（util.parseEnv，不污染 process.env），webServer.env 注入 DATABASE_URL=TEST_DATABASE_URL，reuseExistingServer: false；session.ts 改用随机密码（crypto.randomBytes），移除固定 TestPassword123!；所有 spec 改用 e2eDb；CI e2e job 改用 findmyjob_test 库，设 TEST_DATABASE_URL；单元测试 e2e-db-guard.test.ts 全通过（13 tests），E2E 全通过（37 tests，0 失败，0 跳过）：auth-redirect 4 条、example 1、locale 5、smoke-m2-resume 1、smoke-m3-admin 4、smoke-m3-company 2、smoke-m3-console 7、smoke-m3-team 2、smoke-m3-verification 3、smoke-m5-jobs 3、smoke-m5-review-jobs 4、smoke-m5-review-jobs 1；开发库 findmyjob_laneb 中已存在之前 E2E 轮次留下的测试账号（用固定密码建立），本轮不清理，由总控决定。
 
 #### [x] M3-T02 提交认证材料
 依赖：M3-T01

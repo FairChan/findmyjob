@@ -5,10 +5,8 @@
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
-import { PrismaClient } from '@prisma/client'
+import { e2eDb as db } from './helpers/db'
 import { faker } from '@faker-js/faker'
-
-const db = new PrismaClient()
 
 test.describe('M5-T02 admin job review smoke', () => {
   test('ADMIN: /zh/admin/jobs is healthy', async ({ page }) => {

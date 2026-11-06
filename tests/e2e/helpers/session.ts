@@ -1,20 +1,21 @@
 /**
- * loginAs — creates a synthetic user in the dev DB and logs in via /zh/login.
+ * loginAs — creates a synthetic user in the test DB and logs in via /zh/login.
+ *
+ * Why no fixed password: a fixed password combined with a recognisable email pattern
+ * (`e2e-*@example.test`) creates a persistent reachable credential in any database
+ * the helper writes to. Per-user random passwords mean each account is inaccessible
+ * the moment the browser session ends, even if the row is never deleted.
  *
  * Rate-limit note: Better Auth caps /sign-in/email at 5 req/min per IP (memory storage in dev) and keys on
  * x-real-ip only. The full suite logs in ~20 times, so each loginAs sends its own x-real-ip from
  * 198.18.0.0/15 (see testClientIp) and behaves like a distinct client; the limit itself is not relaxed.
  */
+import { randomBytes } from 'crypto'
 import type { Page } from '@playwright/test'
 import { faker } from '@faker-js/faker'
-import { PrismaClient } from '@prisma/client'
 import { hashPassword } from 'better-auth/crypto'
 import { stubTurnstile } from './turnstile'
-
-// Prisma 6 auto-loads .env from project root; do NOT read or log the connection string here.
-const db = new PrismaClient()
-
-const TEST_PASSWORD = 'TestPassword123!'
+import { e2eDb as db } from './db'
 
 export type EmployerCompanyOpts = {
   verificationStatus?: 'UNSUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED'
@@ -42,7 +43,10 @@ function testClientIp(): string {
 export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult> {
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
   const email = `e2e-${opts.role.toLowerCase()}-${unique}@example.test`
-  const hashedPwd = await hashPassword(TEST_PASSWORD)
+  // Random per-user password: each account has a unique credential that cannot be reused
+  // across runs even if the row persists in the database.
+  const password = randomBytes(16).toString('hex')
+  const hashedPwd = await hashPassword(password)
 
   const user = await db.user.create({
     data: {
@@ -92,7 +96,7 @@ export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult>
   await stubTurnstile(page)
   await page.goto('/zh/login')
   await page.fill('[name="email"]', email)
-  await page.fill('[name="password"]', TEST_PASSWORD)
+  await page.fill('[name="password"]', password)
 
   // Wait for Turnstile stub to fire and enable submit
   await page.waitForFunction(
