@@ -668,9 +668,10 @@
 
 > 完成 2026-11-07：`services/credits.ts` 实现 `applyLedgerEntry`（lockXact CREDIT 锁、余额不足抛 InsufficientCreditsError、在事务外调用抛错）、`getBalance`（`getWalletBalance` 保留为向后兼容别名）、`adminAdjust`（note 必填、ADMIN_ADJUST reason、写 credits.adjust 审计）、`reconcileWallet`（返回 ok/expected/actual）；`advisory-locks.ts` 新增 LOCK_NS.CREDIT=1003；`tests/integration/credits.test.ts` 17 个集成测试全部通过（balanceAfter 连续、事务外抛错、余额不足、reconcile 不一致检测）；单元 832 通过；无新页面路由故无 E2E 冒烟用例（E2E：0 passed / 0 failed / 0 skipped）；pnpm lint/typecheck/db:check 全部通过
 
-#### [ ] M4-T07 解锁
+#### [x] M4-T07 解锁
 依赖：M4-T06、M4-T05
 做：`services/unlock.ts`，严格按 ARCHITECTURE §5.3；先调 `isStudentVisibleToCompany`；按 `limits.unlocksPerDay` 限流；扣点数取 `unlock.costCredits`；详情页的解锁按钮 + 二次确认弹窗。加 authz-matrix 行。
+> 完成 2026-11-07：`services/unlock.ts`（lockXact CREDIT 锁、幂等重复解锁、按日限流、isStudentVisibleToCompany 先行检查、applyLedgerEntry 扣点数、事务外 logAudit + createNotification）；`actions/unlock.ts`（action() 包装、verified company 认证）；`components/talent/UnlockButton.tsx`（shadcn Dialog 确认弹窗、router.refresh）；详情页集成 unlock.costCredits；中英文案；9 个集成测试（含并发 10 解锁余额 3）全通过；authz-matrix 新增 4 行；E2E smoke 3 passed / 0 failed / 0 skipped；pnpm lint/typecheck 全部通过；偏差：tLabel 扩展为支持 values 参数以传递 {cost} 插值
 验收：
 - 并发测试：余额 3、并发解锁 10 个学生 → 恰好 3 个成功
 - 同一学生并发重复解锁 → 只扣 1 次

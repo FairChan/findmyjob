@@ -195,6 +195,15 @@ export default async function globalSetup() {
       })
     }
 
+    // ---- Ensure CreditWallet for verified employer (M4-T07: unlock) ----
+    await prisma.creditWallet.upsert({
+      where: { companyId: verifiedEmp.companyId },
+      create: { companyId: verifiedEmp.companyId, balance: 100 },
+      update: { balance: 100 },
+    })
+    // Clear any TalentUnlock records so the unlock button is always visible each run
+    await prisma.talentUnlock.deleteMany({ where: { companyId: verifiedEmp.companyId } })
+
     // ---- Create/update a folder with the student added ----
     let folder = await prisma.talentFolder.findFirst({
       where: { companyId: verifiedEmp.companyId, name: 'E2E Test Folder' },

@@ -7,6 +7,7 @@
  * Session is mocked; the DB is real (findmyjob_test via TEST_DATABASE_URL).
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { clearSettingsCache } from '@/server/services/settings'
 
 // Mock must be declared before any imports that transitively pull in the module.
 vi.mock('@/server/auth', () => ({
@@ -1073,6 +1074,95 @@ describe('jobs authz (M5-T01)', () => {
     const ctx = { userId, companyId, role: 'RECRUITER' as const }
     const closed = await svcCloseJob(ctx, job.id)
     expect(closed.status).toBe('CLOSED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// talent.unlock (M4-T07): unlock service authz
+// ---------------------------------------------------------------------------
+
+describe('talent.unlock: unlockStudent authz', () => {
+  async function setupUnlockSettings() {
+    for (const [k, v] of [
+      ['unlock.enabled', true],
+      ['unlock.costCredits', 1],
+      ['limits.unlocksPerDay', 50],
+      ['talentPool.minCompleteness', 60],
+    ] as const) {
+      await testDb.systemSetting.upsert({
+        where: { key: k },
+        create: { key: k, value: v as Parameters<typeof testDb.systemSetting.create>[0]['data']['value'] },
+        update: { value: v as Parameters<typeof testDb.systemSetting.create>[0]['data']['value'] },
+      })
+    }
+    clearSettingsCache()
+  }
+
+  it('verified employer can unlock a visible student', async () => {
+    await setupUnlockSettings()
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.creditWallet.create({ data: { companyId: emp.companyId, balance: 5 } })
+    const { profileId } = await createStudent(testDb, { completeness: 80 })
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() },
+    })
+    const { unlockStudent } = await import('@/server/services/unlock')
+    const result = await unlockStudent({ userId: emp.userId, companyId: emp.companyId }, profileId)
+    expect(result.alreadyUnlocked).toBe(false)
+  })
+
+  it('company A cannot unlock student by passing company B id — companyId fixed by authz', async () => {
+    await setupUnlockSettings()
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: empA.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.creditWallet.create({ data: { companyId: empA.companyId, balance: 5 } })
+    const { profileId } = await createStudent(testDb, { completeness: 80 })
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() },
+    })
+    // empA's unlock uses empA.companyId, cannot pass empB.companyId via action
+    const { unlockStudent } = await import('@/server/services/unlock')
+    const result = await unlockStudent({ userId: empA.userId, companyId: empA.companyId }, profileId)
+    expect(result.alreadyUnlocked).toBe(false)
+    const unlock = await testDb.talentUnlock.findFirst({ where: { studentId: profileId } })
+    expect(unlock?.companyId).toBe(empA.companyId)
+    expect(unlock?.companyId).not.toBe(empB.companyId)
+  })
+
+  it('blocked student → NotFoundError (TM-003)', async () => {
+    await setupUnlockSettings()
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.creditWallet.create({ data: { companyId: emp.companyId, balance: 5 } })
+    const { profileId } = await createStudent(testDb, { completeness: 80 })
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() },
+    })
+    await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
+    const { unlockStudent } = await import('@/server/services/unlock')
+    await expect(
+      unlockStudent({ userId: emp.userId, companyId: emp.companyId }, profileId),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('hidden student → NotFoundError, no charge', async () => {
+    await setupUnlockSettings()
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.creditWallet.create({ data: { companyId: emp.companyId, balance: 5 } })
+    const { profileId } = await createStudent(testDb, { completeness: 80 })
+    // Profile stays HIDDEN
+    const { unlockStudent } = await import('@/server/services/unlock')
+    await expect(
+      unlockStudent({ userId: emp.userId, companyId: emp.companyId }, profileId),
+    ).rejects.toBeInstanceOf(NotFoundError)
+    const wallet = await testDb.creditWallet.findUnique({ where: { companyId: emp.companyId } })
+    expect(wallet?.balance).toBe(5)
   })
 })
 
