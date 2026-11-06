@@ -13,12 +13,17 @@ export type ContactData = {
   linkedinUrl: string | null
 }
 
-// E.164-ish: must start with +, followed by 7-15 digits (spaces and dashes allowed as separators)
-const phoneSchema = z
-  .string()
-  .min(1)
-  .max(30)
-  .regex(/^\+[1-9][\d\s\-]{5,25}$/, 'invalid_phone_format')
+// Normalize then validate E.164: strip spaces/dashes, expand MY/CN local formats, then require +[1-9]\d{6,14}
+const phoneSchema = z.preprocess(
+  (val) => {
+    if (typeof val !== 'string') return val
+    const stripped = val.replace(/[\s\-]/g, '')
+    if (/^01\d{8,9}$/.test(stripped)) return `+60${stripped.slice(1)}`
+    if (/^1[3-9]\d{9}$/.test(stripped)) return `+86${stripped}`
+    return stripped
+  },
+  z.string().min(1).max(16).regex(/^\+[1-9]\d{6,14}$/, 'invalid_phone_format'),
+)
 
 export const updateContactSchema = z.object({
   phone: phoneSchema.nullable().optional(),
@@ -36,6 +41,10 @@ export const updateContactSchema = z.object({
 
 export type UpdateContactInput = z.infer<typeof updateContactSchema>
 
+function contactRowHasData(row: { phone: unknown; email: unknown; whatsapp: unknown; wechat: unknown; linkedinUrl: unknown }): boolean {
+  return row.phone != null || row.email != null || row.whatsapp != null || row.wechat != null || row.linkedinUrl != null
+}
+
 /** Returns true when the student has at least one non-null contact field. */
 export async function hasStudentContact(studentId: string): Promise<boolean> {
   const contact = await db.studentContact.findUnique({
@@ -43,13 +52,20 @@ export async function hasStudentContact(studentId: string): Promise<boolean> {
     select: { phone: true, email: true, whatsapp: true, wechat: true, linkedinUrl: true },
   })
   if (contact == null) return false
-  return (
-    contact.phone != null ||
-    contact.email != null ||
-    contact.whatsapp != null ||
-    contact.wechat != null ||
-    contact.linkedinUrl != null
-  )
+  return contactRowHasData(contact)
+}
+
+/** Transaction-aware version for use inside a Prisma $transaction. */
+export async function hasStudentContactTx(
+  tx: import('@prisma/client').Prisma.TransactionClient,
+  studentId: string,
+): Promise<boolean> {
+  const contact = await tx.studentContact.findUnique({
+    where: { studentId },
+    select: { phone: true, email: true, whatsapp: true, wechat: true, linkedinUrl: true },
+  })
+  if (contact == null) return false
+  return contactRowHasData(contact)
 }
 
 async function getStudentId(ctx: UserCtx): Promise<string> {

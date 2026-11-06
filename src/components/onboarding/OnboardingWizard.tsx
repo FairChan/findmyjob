@@ -5,12 +5,16 @@ import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { isImeComposing } from '@/lib/ime'
+import { handleTagKeyDown } from '@/lib/tag-input'
 import {
   saveStep1Action,
   saveStep2Action,
   saveStep3Action,
   saveStep4Action,
+  saveStep1DraftAction,
+  saveStep2DraftAction,
+  saveStep3DraftAction,
+  saveStep4DraftAction,
 } from '@/server/actions/onboarding'
 import type { ProfileForOnboarding, Step1Data } from '@/server/services/student-profile'
 import { MY_STATES, COMMON_INDUSTRIES } from '@/lib/malaysia'
@@ -120,14 +124,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
   }
 
   function handleSkillKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (isImeComposing(e as unknown as React.KeyboardEvent)) return
-    if (e.key !== 'Enter' && e.key !== ',') return
-    e.preventDefault()
-    const val = skillInput.trim()
-    if (val && !skills.includes(val) && skills.length < 30) {
-      setSkills([...skills, val])
-    }
-    setSkillInput('')
+    handleTagKeyDown(e, skillInput, skills, 30, (tag) => setSkills([...skills, tag]), () => setSkillInput(''))
   }
 
   function buildStep1Payload() {
@@ -192,7 +189,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
     }
   }
 
-  async function saveCurrentStep(): Promise<boolean> {
+  async function saveCurrentStep(draft = false): Promise<boolean> {
     setError(null)
     let result: { ok: boolean; code?: string } | null = null
 
@@ -201,17 +198,25 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
         setError(t('errorRequired'))
         return false
       }
-      result = await saveStep1Action(buildStep1Payload())
+      result = draft
+        ? await saveStep1DraftAction(buildStep1Payload())
+        : await saveStep1Action(buildStep1Payload())
     } else if (currentStep === 2) {
       if (intents.length === 0) {
         setError(t('errorAtLeastOneIntent'))
         return false
       }
-      result = await saveStep2Action(buildStep2Payload())
+      result = draft
+        ? await saveStep2DraftAction(buildStep2Payload())
+        : await saveStep2Action(buildStep2Payload())
     } else if (currentStep === 3) {
-      result = await saveStep3Action(buildStep3Payload())
+      result = draft
+        ? await saveStep3DraftAction(buildStep3Payload())
+        : await saveStep3Action(buildStep3Payload())
     } else if (currentStep === 4) {
-      result = await saveStep4Action(buildStep4Payload())
+      result = draft
+        ? await saveStep4DraftAction(buildStep4Payload())
+        : await saveStep4Action(buildStep4Payload())
     }
 
     if (result && !result.ok) {
@@ -223,7 +228,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
   function handleNext() {
     startTransition(async () => {
-      const ok = await saveCurrentStep()
+      const ok = await saveCurrentStep(false)
       if (!ok) return
       if (currentStep < TOTAL_STEPS) {
         setCurrentStep(currentStep + 1)
@@ -240,7 +245,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
   function handleSaveAndExit() {
     startTransition(async () => {
-      await saveCurrentStep()
+      await saveCurrentStep(true)
       router.push('/s')
     })
   }
@@ -606,7 +611,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                       type="button"
                       onClick={() => setSkills(skills.filter((s) => s !== skill))}
                       className="ml-0.5 text-primary/70 hover:text-primary"
-                      aria-label={`Remove ${skill}`}
+                      aria-label={t('removeSkill', { skill })}
                     >
                       ×
                     </button>

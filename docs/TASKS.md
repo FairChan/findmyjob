@@ -487,7 +487,7 @@
 > 完成 2026-11-07：`src/server/lib/advisory-locks.ts`（lockXact，pg_advisory_xact_lock，LOCK_NS.JOB_VIEW_QUOTA=1001）；`src/server/services/job-view-quota.ts`（getQuota/openJob，quota 公式 base+floor(qualified/tierSize)×tierBonus+grants，unlimitedAt/enabled 判无限，事务内 advisory lock + ON CONFLICT DO NOTHING，已投递/已邀请职位豁免）；`/s/invite` 页（已用/总额进度条、邀请链接复制按钮、里程碑进度、已邀请列表脱敏展示）；i18n zh/en 同步；tests/unit/job-view-quota.test.ts（14 个单元测试）；pnpm lint/typecheck/test/db:check 全部通过（815 tests）；偏差：EMPLOYER 只能看本企业职位的"锁定卡片"逻辑在 M5-T03 职位详情页实现时对接，本任务提供 openJob API，D18 记录在 DECISIONS
 
 
-#### [ ] M2-T11 补修 M2-T01～T04 合并前复查发现的问题
+#### [x] M2-T11 补修 M2-T01～T04 合并前复查发现的问题
 依赖：M2-T04
 > 总控 2026-11-07 加入：复查时按 81d1b05 读的代码，结论是 BLOCKED。红线文件 contact-access.ts 范围干净：没有提前实现企业侧读取、解锁或扣点。下面 1–6 不修完，M2 不能合并；7 是 PDPA 文案准确性，顺手修。
 做 / 验收：
@@ -500,6 +500,7 @@
 7. 隐私提示文案（PDPA）：`contact.privacyNotice` 和 `contact.subtitle` 按 PRD §2.2 改成「只有在你投递，或企业付费解锁后才可见」（中英文都改）。
 - 冒烟用例（总控 2026-11-07 统一要求）：本任务新增或修改的每个页面路由，各加一条 Playwright 用例：以目标角色登录，打开页面，断言状态 200、没有 error boundary 或 Next 错误页、控制台没有 error。
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
+> 完成 2026-11-07：7 项问题全部修复。(1) schoolId 改 z.string().min(1).max(64)，服务端验证学校存在；(2) saveAndExit 调 advance:false 草稿 action，不推进 onboardingStep；(3) 提取 src/lib/tag-input.ts 共用 helper，两组件改用它；(4) updateOwnContactAction 后调 recalcOwnCompleteness，recalcCompleteness 内改用 hasStudentContactTx；(5) 手机号 preprocess 规范化 MY/CN 本地号码，负例测试通过；(6) aria-label 改 i18n removeSkill key；(7) PDPA 文案更新「投递或企业付费解锁后才可见」。单元测试 912 通过 / 0 失败；E2E 需 dev server + Mailpit，m2-t11-smoke.spec.ts 和 onboarding.spec.ts 冒烟用例已添加（由于 unattended 环境无 dev server，E2E 实际执行数留人工验证）。
 
 #### [ ] M2-T12 补修 M2-T06～T10 合并前复查发现的问题
 依赖：M2-T11

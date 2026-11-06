@@ -2,10 +2,10 @@ import 'server-only'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
-import { NotFoundError } from '../errors'
+import { NotFoundError, ValidationError } from '../errors'
 import type { UserCtx } from '../authz'
 import { computeCompleteness } from '../lib/completeness'
-import { hasStudentContact } from './contact-access'
+import { hasStudentContact, hasStudentContactTx } from './contact-access'
 import { qualifyReferral } from './referrals'
 
 // ---- Enums (mirror Prisma enums for Zod) ----
@@ -28,7 +28,7 @@ const ExperienceKindEnum = z.enum(['INTERNSHIP', 'WORK', 'PROJECT', 'CAMPUS', 'A
 
 export const step1Schema = z.object({
   fullName: z.string().min(1).max(100),
-  schoolId: z.string().cuid().nullable().optional(),
+  schoolId: z.string().min(1).max(64).nullable().optional(),
   degreeLevel: DegreeLevelEnum.nullable().optional(),
   major: z.string().max(100).nullable().optional(),
   graduationYear: z.number().int().min(2000).max(2040).nullable().optional(),
@@ -150,7 +150,8 @@ async function recalcCompleteness(tx: Prisma.TransactionClient, profileId: strin
   const eduCount = await tx.education.count({ where: { studentId: profileId } })
   const expCount = await tx.experience.count({ where: { studentId: profileId } })
   const resumeCount = await tx.resumeFile.count({ where: { studentId: profileId } })
-  const hasContact = await hasStudentContact(profileId)
+
+  const hasContact = await hasStudentContactTx(tx, profileId)
 
   const completeness = computeCompleteness({
     workAuth: profile.workAuth,
@@ -168,6 +169,18 @@ async function recalcCompleteness(tx: Prisma.TransactionClient, profileId: strin
   await tx.studentProfile.update({
     where: { id: profileId },
     data: { completeness },
+  })
+}
+
+/** Recalculate and persist completeness for the calling student. Called from actions after contact upsert. */
+export async function recalcOwnCompleteness(ctx: UserCtx): Promise<void> {
+  const profile = await db.studentProfile.findUnique({
+    where: { userId: ctx.userId },
+    select: { id: true },
+  })
+  if (!profile) return
+  await db.$transaction(async (tx) => {
+    await recalcCompleteness(tx, profile.id)
   })
 }
 
@@ -263,7 +276,8 @@ export async function getProfileForOnboarding(ctx: UserCtx): Promise<ProfileForO
   })
 }
 
-export async function saveStep1(ctx: UserCtx, input: Step1Data): Promise<void> {
+export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { advance?: boolean }): Promise<void> {
+  const advance = options?.advance ?? true
   let profileId: string | undefined
   await db.$transaction(async (tx) => {
     const profile = await tx.studentProfile.findUnique({
@@ -272,6 +286,11 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data): Promise<void> {
     })
     if (!profile) throw new NotFoundError()
     profileId = profile.id
+
+    if (input.schoolId) {
+      const school = await tx.school.findFirst({ where: { id: input.schoolId, active: true }, select: { id: true } })
+      if (!school) throw new ValidationError('School not found or not active')
+    }
 
     await tx.studentProfile.update({
       where: { id: profile.id },
@@ -285,7 +304,7 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data): Promise<void> {
         cgpa: input.cgpa != null ? new Prisma.Decimal(input.cgpa) : null,
         nationality: input.nationality ? input.nationality.toUpperCase() : null,
         workAuth: input.workAuth,
-        onboardingStep: Math.max(profile.onboardingStep, 2),
+        ...(advance ? { onboardingStep: Math.max(profile.onboardingStep, 2) } : {}),
         lastActiveAt: new Date(),
       },
     })
@@ -295,7 +314,8 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data): Promise<void> {
   if (profileId) await qualifyReferral(profileId)
 }
 
-export async function saveStep2(ctx: UserCtx, input: Step2Data): Promise<void> {
+export async function saveStep2(ctx: UserCtx, input: Step2Data, options?: { advance?: boolean }): Promise<void> {
+  const advance = options?.advance ?? true
   let profileId: string | undefined
   await db.$transaction(async (tx) => {
     const profile = await tx.studentProfile.findUnique({
@@ -314,7 +334,7 @@ export async function saveStep2(ctx: UserCtx, input: Step2Data): Promise<void> {
         preferredIndustries: input.preferredIndustries ?? [],
         expectedSalaryMin: input.expectedSalaryMin ?? null,
         expectedSalaryMax: input.expectedSalaryMax ?? null,
-        onboardingStep: Math.max(profile.onboardingStep, 3),
+        ...(advance ? { onboardingStep: Math.max(profile.onboardingStep, 3) } : {}),
         lastActiveAt: new Date(),
       },
     })
@@ -324,7 +344,8 @@ export async function saveStep2(ctx: UserCtx, input: Step2Data): Promise<void> {
   if (profileId) await qualifyReferral(profileId)
 }
 
-export async function saveStep3(ctx: UserCtx, input: Step3Data): Promise<void> {
+export async function saveStep3(ctx: UserCtx, input: Step3Data, options?: { advance?: boolean }): Promise<void> {
+  const advance = options?.advance ?? true
   const profile = await db.studentProfile.findUnique({
     where: { userId: ctx.userId },
     select: { id: true, onboardingStep: true },
@@ -351,7 +372,7 @@ export async function saveStep3(ctx: UserCtx, input: Step3Data): Promise<void> {
         skills: input.skills,
         headline: input.headline ?? null,
         summary: input.summary ?? null,
-        onboardingStep: Math.max(profile.onboardingStep, 4),
+        ...(advance ? { onboardingStep: Math.max(profile.onboardingStep, 4) } : {}),
         lastActiveAt: new Date(),
       },
     })
@@ -361,10 +382,11 @@ export async function saveStep3(ctx: UserCtx, input: Step3Data): Promise<void> {
   await qualifyReferral(profile.id)
 }
 
-export async function saveStep4(ctx: UserCtx, input: Step4Data): Promise<void> {
+export async function saveStep4(ctx: UserCtx, input: Step4Data, options?: { advance?: boolean }): Promise<void> {
+  const advance = options?.advance ?? true
   const profile = await db.studentProfile.findUnique({
     where: { userId: ctx.userId },
-    select: { id: true },
+    select: { id: true, onboardingStep: true },
   })
   if (!profile) throw new NotFoundError()
 
@@ -406,7 +428,7 @@ export async function saveStep4(ctx: UserCtx, input: Step4Data): Promise<void> {
     await tx.studentProfile.update({
       where: { id: profile.id },
       data: {
-        onboardingStep: 5,
+        ...(advance ? { onboardingStep: 5 } : {}),
         lastActiveAt: new Date(),
       },
     })

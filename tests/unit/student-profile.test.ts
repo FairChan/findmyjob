@@ -1,19 +1,36 @@
 /**
- * M2-T01/M2-T08: student-profile service unit tests
+ * M2-T01/M2-T08/M2-T11: student-profile service unit tests
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 vi.mock('@/env', () => ({ env: {} }))
 
+const mockTx = vi.hoisted(() => ({
+  studentProfile: { findUnique: vi.fn(), update: vi.fn() },
+  studentLanguage: { count: vi.fn().mockResolvedValue(0), deleteMany: vi.fn(), createMany: vi.fn() },
+  education: { count: vi.fn().mockResolvedValue(0) },
+  experience: { count: vi.fn().mockResolvedValue(0) },
+  resumeFile: { count: vi.fn().mockResolvedValue(0) },
+  studentContact: { findUnique: vi.fn().mockResolvedValue(null) },
+  school: { findFirst: vi.fn() },
+}))
+
 const mockDb = vi.hoisted(() => ({
   studentProfile: { findUnique: vi.fn() },
+  $transaction: vi.fn(),
 }))
 vi.mock('@/server/db', () => ({ db: mockDb }))
+vi.mock('@/server/services/referrals', () => ({ qualifyReferral: vi.fn() }))
+
+import { step1Schema, step2Schema, step3Schema, step4Schema, getDashboardData, recalcOwnCompleteness, saveStep1 } from '@/server/services/student-profile'
+import { ValidationError } from '@/server/errors'
 
 const mockHasStudentContact = vi.hoisted(() => vi.fn())
-vi.mock('@/server/services/contact-access', () => ({ hasStudentContact: mockHasStudentContact }))
-
-import { step1Schema, step2Schema, step3Schema, step4Schema, getDashboardData } from '@/server/services/student-profile'
+const mockHasStudentContactTx = vi.hoisted(() => vi.fn())
+vi.mock('@/server/services/contact-access', () => ({
+  hasStudentContact: mockHasStudentContact,
+  hasStudentContactTx: mockHasStudentContactTx,
+}))
 
 describe('getDashboardData', () => {
   beforeEach(() => {
@@ -239,5 +256,103 @@ describe('step4Schema', () => {
       })
       expect(result.success).toBe(true)
     }
+  })
+})
+
+// M2-T11 fix 1: schoolId schema change (cuid → min(1).max(64))
+describe('step1Schema — schoolId validation (M2-T11)', () => {
+  it('accepts non-cuid school ID like "school-xmum"', () => {
+    const result = step1Schema.safeParse({ fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'school-xmum' })
+    expect(result.success).toBe(true)
+  })
+
+  it('rejects empty string as schoolId', () => {
+    const result = step1Schema.safeParse({ fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: '' })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects schoolId longer than 64 chars', () => {
+    const result = step1Schema.safeParse({ fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'a'.repeat(65) })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts null schoolId (optional)', () => {
+    const result = step1Schema.safeParse({ fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: null })
+    expect(result.success).toBe(true)
+  })
+})
+
+// M2-T11 fix 1: server-side school existence validation
+describe('saveStep1 — school validation (M2-T11)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
+    // First call: saveStep1 fetches id+onboardingStep; second call: recalcCompleteness fetches workAuth+intents+…
+    mockTx.studentProfile.findUnique
+      .mockResolvedValueOnce({ id: 'sp1', onboardingStep: 1 })
+      .mockResolvedValueOnce({ workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'], skills: [], headline: null, summary: null })
+    mockTx.studentProfile.update.mockResolvedValue({})
+    mockHasStudentContactTx.mockResolvedValue(false)
+    mockTx.studentLanguage.count.mockResolvedValue(0)
+    mockTx.education.count.mockResolvedValue(0)
+    mockTx.experience.count.mockResolvedValue(0)
+    mockTx.resumeFile.count.mockResolvedValue(0)
+  })
+
+  it('succeeds when schoolId is valid and active', async () => {
+    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 1 })
+    mockTx.school.findFirst.mockResolvedValue({ id: 'school-xmum' })
+    await expect(
+      saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'school-xmum' }),
+    ).resolves.not.toThrow()
+  })
+
+  it('throws ValidationError when schoolId does not exist', async () => {
+    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 1 })
+    mockTx.school.findFirst.mockResolvedValue(null)
+    await expect(
+      saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'nonexistent' }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('skips school check when schoolId is omitted', async () => {
+    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 1 })
+    await expect(
+      saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS' }),
+    ).resolves.not.toThrow()
+    expect(mockTx.school.findFirst).not.toHaveBeenCalled()
+  })
+})
+
+// M2-T11 fix 4: recalcOwnCompleteness updates completeness after contact save
+describe('recalcOwnCompleteness (M2-T11)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
+  })
+
+  it('recalculates completeness to 90 when contact is added to an 85-score profile', async () => {
+    // Profile: workAuth(30) + intents(15) + skills(20) + edu/exp(20) = 85, no PDF, no contact
+    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1' })
+    mockTx.studentProfile.findUnique.mockResolvedValue({
+      workAuth: 'STUDENT_PASS',
+      intents: ['INTERNSHIP'],
+      skills: ['React'],
+      headline: null,
+      summary: null,
+    })
+    mockTx.studentLanguage.count.mockResolvedValue(0)
+    mockTx.education.count.mockResolvedValue(1)
+    mockTx.experience.count.mockResolvedValue(0)
+    mockTx.resumeFile.count.mockResolvedValue(0)
+    // Contact row now exists with a phone — hasStudentContactTx returns true
+    mockHasStudentContactTx.mockResolvedValue(true)
+    mockTx.studentProfile.update.mockResolvedValue({})
+
+    await recalcOwnCompleteness({ userId: 'user1' })
+
+    expect(mockTx.studentProfile.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { completeness: 90 } }),
+    )
   })
 })

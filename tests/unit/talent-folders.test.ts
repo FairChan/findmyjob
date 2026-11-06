@@ -166,7 +166,6 @@ describe('addToFolder', () => {
     mockDb.talentFolderItem.upsert = vi.fn().mockResolvedValue({})
 
     await addToFolder(ctx, { folderId: 'f1', studentId: 's1', note: '  Good candidate  ' })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const call = (mockDb.talentFolderItem.upsert as any).mock.calls[0][0]
     expect(call.create.note).toBe('Good candidate')
   })
@@ -210,7 +209,6 @@ describe('updateNote', () => {
     mockDb.talentFolderItem.updateMany = vi.fn().mockResolvedValue({})
 
     await updateNote(ctx, { folderId: 'f1', studentId: 's1', note: null })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const call = (mockDb.talentFolderItem.updateMany as any).mock.calls[0][0]
     expect(call.data.note).toBeNull()
   })

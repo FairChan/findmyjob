@@ -234,6 +234,7 @@
     "kindProject": "Project",
     "kindCampus": "Campus Activity",
     "kindAward": "Award",
+    "removeSkill": "Remove skill {skill}",
     "skipStep4Hint": "You can add experience and resume later on your profile page.",
     "errorRequired": "This field is required",
     "errorCgpaRange": "CGPA must be between 0.00 and 4.00",
@@ -272,8 +273,8 @@
   },
   "contact": {
     "title": "Contact Details",
-    "subtitle": "Your contact details are only visible to companies that have unlocked your profile. They are stored encrypted and never shown publicly.",
-    "privacyNotice": "Your contact details are encrypted and protected. They will only be shared with a company after they successfully unlock your profile. FindMYJob does not sell or share your personal information.",
+    "subtitle": "Your contact details are only visible after you apply for a job, or after a company pays to unlock your profile. They are stored encrypted and never shown publicly.",
+    "privacyNotice": "Your contact details are encrypted and protected. They are only shared with a company after you apply for their role, or after the company pays to unlock your profile. FindMYJob does not sell or share your personal information.",
     "phoneLabel": "Phone Number",
     "phonePlaceholder": "e.g. +60 12-345 6789",
     "emailLabel": "Contact Email",

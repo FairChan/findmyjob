@@ -113,19 +113,22 @@ describe('updateOwnContact', () => {
 
 describe('updateContactSchema — phone validation', () => {
   const valid = [
-    '+60 12-000 0420',   // Malaysian
+    '+60 12-000 0420',   // Malaysian with spaces/dashes → normalized
     '+601234567890',      // Malaysian compact
     '+8613800138000',     // Chinese
     '+447911123456',      // UK
-    '+1 555 123 4567',    // US
-    '+65 9123 4567',      // Singapore
+    '+1 555 123 4567',    // US with spaces → normalized
+    '+65 9123 4567',      // Singapore with spaces → normalized
   ]
   const invalid = [
-    '0123456789',         // missing +
     '+',                  // too short
-    '12345',              // no +
+    '12345',              // no + and not a local format (1 not followed by [3-9])
     '+0123456789',        // starts with +0 (invalid country)
     'not-a-number',
+    '+60 9 9',            // M2-T11: too short after stripping (+6099)
+    '+1 - - - -',         // M2-T11: only +1 after stripping
+    '+6------',           // M2-T11: only +6 after stripping
+    '+1234567890123456',  // M2-T11: 16 digits — over 15 total
   ]
 
   for (const phone of valid) {
@@ -135,8 +138,25 @@ describe('updateContactSchema — phone validation', () => {
   }
 
   for (const phone of invalid) {
-    it(`rejects ${phone}`, () => {
+    it(`rejects "${phone}"`, () => {
       expect(updateContactSchema.safeParse({ phone }).success).toBe(false)
     })
   }
+})
+
+describe('updateContactSchema — phone normalization (M2-T11)', () => {
+  it('normalizes Malaysian local 01x to +601x', () => {
+    const parsed = updateContactSchema.parse({ phone: '0123456789' })
+    expect(parsed.phone).toBe('+60123456789')
+  })
+
+  it('normalizes Chinese local 13x to +8613x', () => {
+    const parsed = updateContactSchema.parse({ phone: '13800138000' })
+    expect(parsed.phone).toBe('+8613800138000')
+  })
+
+  it('strips spaces and dashes from international numbers', () => {
+    const parsed = updateContactSchema.parse({ phone: '+60 12-000 0420' })
+    expect(parsed.phone).toBe('+60120000420')
+  })
 })

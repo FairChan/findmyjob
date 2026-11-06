@@ -234,7 +234,8 @@
     "kindProject": "项目",
     "kindCampus": "校园活动",
     "kindAward": "奖项",
-    "skipStep4Hint": "经历和简历可以稍后在档案页补充。",
+    "removeSkill": "删除技能 {skill}",
+    "skipStep4Hint":"经历和简历可以稍后在档案页补充。",
     "errorRequired": "此项为必填",
     "errorCgpaRange": "GPA 请填 0.00–4.00",
     "errorAtLeastOneIntent": "请至少选择一种求职类型"
@@ -272,8 +273,8 @@
   },
   "contact": {
     "title": "联系方式",
-    "subtitle": "你的联系方式仅在企业解锁后可见，加密存储，不会公开展示。",
-    "privacyNotice": "你的联系方式受加密保护，仅在企业成功解锁你的档案后，才会向该企业展示。FindMYJob 不会主动出售或分享你的个人信息。",
+    "subtitle": "你的联系方式只有在你投递，或企业付费解锁后才可见，加密存储，不会公开展示。",
+    "privacyNotice": "你的联系方式受加密保护，只有在你主动投递职位，或企业付费解锁你的档案后，才会向该企业展示。FindMYJob 不会主动出售或分享你的个人信息。",
     "phoneLabel": "手机号码",
     "phonePlaceholder": "例：+60 12-345 6789",
     "emailLabel": "联系邮箱",

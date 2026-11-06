@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { isImeComposing } from '@/lib/ime'
+import { handleTagKeyDown } from '@/lib/tag-input'
 import {
   saveBasicInfoAction,
   saveJobPreferencesAction,
@@ -198,14 +198,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
   const skillsSec = useSectionSave()
 
   function handleSkillKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (isImeComposing(e as unknown as React.KeyboardEvent)) return
-    if (e.key !== 'Enter' && e.key !== ',') return
-    e.preventDefault()
-    const val = skillInput.trim()
-    if (val && !skills.includes(val) && skills.length < 30) {
-      setSkills([...skills, val])
-    }
-    setSkillInput('')
+    handleTagKeyDown(e, skillInput, skills, 30, (tag) => setSkills([...skills, tag]), () => setSkillInput(''))
   }
 
   function saveSkills() {
@@ -619,7 +612,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                     type="button"
                     onClick={() => setSkills(skills.filter((s) => s !== skill))}
                     className="ml-0.5 text-primary/70 hover:text-primary min-w-[24px] min-h-[24px] flex items-center justify-center"
-                    aria-label={`Remove ${skill}`}
+                    aria-label={tOb('removeSkill', { skill })}
                   >
                     ×
                   </button>

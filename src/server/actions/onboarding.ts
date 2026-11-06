@@ -48,3 +48,36 @@ export const saveStep4Action = action(
     return {}
   },
 )
+
+// Draft variants: save data without advancing onboardingStep (used by "Save and exit")
+export const saveStep1DraftAction = action(
+  { auth: 'student', input: step1Schema },
+  async ({ userId, input }) => {
+    await saveStep1({ userId: userId! }, input, { advance: false })
+    return {}
+  },
+)
+
+export const saveStep2DraftAction = action(
+  { auth: 'student', input: step2Schema },
+  async ({ userId, input }) => {
+    await saveStep2({ userId: userId! }, input, { advance: false })
+    return {}
+  },
+)
+
+export const saveStep3DraftAction = action(
+  { auth: 'student', input: step3Schema },
+  async ({ userId, input }) => {
+    await saveStep3({ userId: userId! }, input, { advance: false })
+    return {}
+  },
+)
+
+export const saveStep4DraftAction = action(
+  { auth: 'student', input: step4Schema },
+  async ({ userId, input }) => {
+    await saveStep4({ userId: userId! }, input, { advance: false })
+    return {}
+  },
+)
