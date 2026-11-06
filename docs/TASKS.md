@@ -459,7 +459,7 @@
 
 > 完成 2026-11-06：`getDashboardData`（student-profile.ts，查 completeness/schoolVerifiedAt/resumes._count/hasStudentContact/visibility）；`/s/page.tsx` Server Component（进度条 + 4 条待办 + 两个占位区块）；zh/en i18n 新增 studentDashboard 命名空间 17 条 key；3 个单元测试，779 总测试全部通过；pnpm lint/typecheck/test 全部通过
 
-#### [ ] M2-T09 邀请同学（有效邀请）
+#### [x] M2-T09 邀请同学（有效邀请）
 依赖：M2-T03、M1-T02、M0-T11
 做：
 - `services/referrals.ts`：`getOrCreateReferralCode(studentId)`、`attachReferral(inviteeStudentId, code)`、`qualifyReferral(inviteeStudentId)`（每次保存档案后调用）、`voidReferral(id, reason)`（运营用，写审计 `referral.void`）。
@@ -470,6 +470,8 @@
 - 完成度从 89 变到 90 时，PENDING 变 QUALIFIED，且只变一次；邮箱未验证时不生效；用自己的邀请码不生效；同一被邀请人第二次 attach 被忽略；并发保存两次只生效一次；作废的不计数
 - 同一邀请人当天第 4 个达标的被邀请人保持 PENDING；用假时钟推进到次日，任务运行后变为 QUALIFIED
 - `a.b+x@gmail.com` 邀请 `ab@gmail.com`，不算有效邀请
+
+> 完成 2026-11-06：`services/referrals.ts`（getOrCreateReferralCode/attachReferral/qualifyReferral/voidReferral/requalifyReferrals，gmail 邮箱规范化，KL 时区日均上限，条件 updateMany 保证并发幂等）；`jobs/requalify-referrals.ts`（runRequalifyReferrals）；registry.ts 注册 requalify-referrals 定时任务（cron 15 16 * * * = 00:15 KL）；register.ts 在学生注册后调用 attachReferral；student-profile.ts 四个 save* 函数各在事务外调用 qualifyReferral；tests/unit/referrals.test.ts（22 个单元测试）；801 个测试全部通过
 
 #### [ ] M2-T10 职位查看额度
 依赖：M2-T09

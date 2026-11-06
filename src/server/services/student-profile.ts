@@ -6,6 +6,7 @@ import { NotFoundError } from '../errors'
 import type { UserCtx } from '../authz'
 import { computeCompleteness } from '../lib/completeness'
 import { hasStudentContact } from './contact-access'
+import { qualifyReferral } from './referrals'
 
 // ---- Enums (mirror Prisma enums for Zod) ----
 
@@ -263,12 +264,14 @@ export async function getProfileForOnboarding(ctx: UserCtx): Promise<ProfileForO
 }
 
 export async function saveStep1(ctx: UserCtx, input: Step1Data): Promise<void> {
+  let profileId: string | undefined
   await db.$transaction(async (tx) => {
     const profile = await tx.studentProfile.findUnique({
       where: { userId: ctx.userId },
       select: { id: true, onboardingStep: true },
     })
     if (!profile) throw new NotFoundError()
+    profileId = profile.id
 
     await tx.studentProfile.update({
       where: { id: profile.id },
@@ -289,15 +292,18 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data): Promise<void> {
 
     await recalcCompleteness(tx, profile.id)
   })
+  if (profileId) await qualifyReferral(profileId)
 }
 
 export async function saveStep2(ctx: UserCtx, input: Step2Data): Promise<void> {
+  let profileId: string | undefined
   await db.$transaction(async (tx) => {
     const profile = await tx.studentProfile.findUnique({
       where: { userId: ctx.userId },
       select: { id: true, onboardingStep: true },
     })
     if (!profile) throw new NotFoundError()
+    profileId = profile.id
 
     await tx.studentProfile.update({
       where: { id: profile.id },
@@ -315,6 +321,7 @@ export async function saveStep2(ctx: UserCtx, input: Step2Data): Promise<void> {
 
     await recalcCompleteness(tx, profile.id)
   })
+  if (profileId) await qualifyReferral(profileId)
 }
 
 export async function saveStep3(ctx: UserCtx, input: Step3Data): Promise<void> {
@@ -351,6 +358,7 @@ export async function saveStep3(ctx: UserCtx, input: Step3Data): Promise<void> {
 
     await recalcCompleteness(tx, profile.id)
   })
+  await qualifyReferral(profile.id)
 }
 
 export async function saveStep4(ctx: UserCtx, input: Step4Data): Promise<void> {
@@ -405,4 +413,5 @@ export async function saveStep4(ctx: UserCtx, input: Step4Data): Promise<void> {
 
     await recalcCompleteness(tx, profile.id)
   })
+  await qualifyReferral(profile.id)
 }

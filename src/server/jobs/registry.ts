@@ -5,6 +5,7 @@ import type { Job } from 'pg-boss'
 import { db } from '../db'
 import { logger } from '../lib/logger'
 import { runPurgeUnverified } from './purge-unverified'
+import { runRequalifyReferrals } from './requalify-referrals'
 import { pingHealthcheck } from '../lib/healthchecks'
 
 export async function registerJobs(boss: PgBoss): Promise<void> {
@@ -45,6 +46,20 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
   await boss.schedule('purge-unverified', '0 * * * *', {})
   await boss.work('purge-unverified', async () => {
     await runPurgeUnverified()
+  })
+
+  // ── requalify-referrals ───────────────────────────────────────────────────
+  // Re-evaluates PENDING referrals daily at 00:15 Asia/Kuala_Lumpur (16:15 UTC).
+  await boss.createQueue('requalify-referrals')
+  await boss.schedule('requalify-referrals', '15 16 * * *', {})
+  await boss.work('requalify-referrals', async () => {
+    try {
+      await runRequalifyReferrals()
+      pingHealthcheck('requalify-referrals')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
   })
 
   logger.info('jobs registered')
