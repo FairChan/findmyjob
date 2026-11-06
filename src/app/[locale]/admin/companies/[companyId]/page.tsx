@@ -1,6 +1,8 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
+import { headers } from 'next/headers'
+import { requireAdmin } from '@/server/authz'
 import { getCompanyForReview } from '@/server/services/review-company'
 import { getSignedDownloadUrl } from '@/lib/storage'
 import { ReviewForm } from './ReviewForm'
@@ -11,9 +13,10 @@ export default async function AdminCompanyReviewPage({
   params: Promise<{ locale: string; companyId: string }>
 }) {
   const { locale, companyId } = await params
+  const ctx = await requireAdmin(await headers())
   const t = await getTranslations('adminCompanies')
 
-  const company = await getCompanyForReview(companyId)
+  const company = await getCompanyForReview(ctx, companyId)
   if (!company) return notFound()
 
   const cv = company.verifications[0] ?? null
@@ -104,7 +107,7 @@ export default async function AdminCompanyReviewPage({
         )}
         {cv?.note && (
           <p className="mt-3 text-sm text-muted-foreground">
-            <span className="font-medium">Note:</span> {cv.note}
+            <span className="font-medium">{t('noteLabel')}:</span> {cv.note}
           </p>
         )}
       </section>

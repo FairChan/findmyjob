@@ -1,5 +1,7 @@
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
+import { headers } from 'next/headers'
+import { requireAdmin } from '@/server/authz'
 import { listPendingVerifications } from '@/server/services/review-company'
 
 export default async function AdminCompaniesPage({
@@ -8,8 +10,9 @@ export default async function AdminCompaniesPage({
   params: Promise<{ locale: string }>
 }) {
   const { locale } = await params
+  const ctx = await requireAdmin(await headers())
   const t = await getTranslations('adminCompanies')
-  const companies = await listPendingVerifications()
+  const companies = await listPendingVerifications(ctx)
 
   return (
     <main id="main-content" className="p-6 max-w-5xl mx-auto">

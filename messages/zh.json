@@ -304,7 +304,8 @@
     "errorFailed": "操作失败，请重试",
     "back": "返回列表",
     "statusPending": "待审核",
-    "noVerification": "该企业暂无待审材料"
+    "noVerification": "该企业暂无待审材料",
+    "noteLabel": "备注"
   },
   "companyEdit": {
     "title": "企业资料",

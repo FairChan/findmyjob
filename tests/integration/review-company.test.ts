@@ -1,7 +1,7 @@
 /**
  * Integration tests for the company review service (M3-T03).
  */
-import { vi, describe, it, expect } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/server/auth', () => ({
   getSession: vi.fn(),
@@ -14,8 +14,13 @@ vi.mock('@/server/db', async () => {
 })
 
 import { setupTestDb, testDb } from '../setup/db'
-import { createAdmin, createEmployer } from '../factories'
-import { approveCompany, rejectCompany } from '@/server/services/review-company'
+import { createAdmin, createStudent, createEmployer } from '../factories'
+import {
+  approveCompany,
+  rejectCompany,
+  listPendingVerifications,
+  getCompanyForReview,
+} from '@/server/services/review-company'
 import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
 import { requireAdmin } from '@/server/authz'
 
@@ -203,14 +208,14 @@ describe('rejectCompany', () => {
     expect(notif).not.toBeNull()
   })
 
-  it('writes company.verification.reject audit log', async () => {
+  it('writes company.reject audit log', async () => {
     const adminCtx = await makeAdminCtx()
     const { companyId, verificationId } = await makeEmployerWithPending()
 
     await rejectCompany(adminCtx, { verificationId, reviewNote: 'Unclear docs' })
 
     const audit = await testDb.auditLog.findFirst({
-      where: { action: 'company.verification.reject', targetId: companyId },
+      where: { action: 'company.reject', targetId: companyId },
     })
     expect(audit).not.toBeNull()
     const meta = audit?.metadata as Record<string, unknown>
@@ -227,10 +232,8 @@ describe('rejectCompany', () => {
 })
 
 describe('authz: non-ADMIN cannot call review functions', () => {
-  it('action() with auth=admin throws when session is a student', async () => {
-    // requireAdmin is used in the action wrapper - test it directly
+  it('requireAdmin throws ForbiddenError for student session', async () => {
     const { getSession } = await import('@/server/auth')
-    const { createStudent } = await import('../factories')
 
     const { userId } = await createStudent(testDb)
     vi.mocked(getSession).mockResolvedValueOnce({
@@ -240,5 +243,41 @@ describe('authz: non-ADMIN cannot call review functions', () => {
 
     const headers = new Headers()
     await expect(requireAdmin(headers)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('listPendingVerifications: student ctx → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    await expect(listPendingVerifications({ userId })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('listPendingVerifications: employer ctx → ForbiddenError', async () => {
+    const { userId } = await createEmployer(testDb)
+    await expect(listPendingVerifications({ userId })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('listPendingVerifications: admin ctx → returns results', async () => {
+    const adminCtx = await makeAdminCtx()
+    const result = await listPendingVerifications(adminCtx)
+    expect(Array.isArray(result)).toBe(true)
+  })
+
+  it('getCompanyForReview: student ctx → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    const { companyId } = await makeEmployerWithPending()
+    await expect(getCompanyForReview({ userId }, companyId)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('getCompanyForReview: employer ctx → ForbiddenError', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { companyId } = await makeEmployerWithPending()
+    await expect(getCompanyForReview({ userId }, companyId)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('getCompanyForReview: admin ctx → returns company data', async () => {
+    const adminCtx = await makeAdminCtx()
+    const { companyId } = await makeEmployerWithPending()
+    const company = await getCompanyForReview(adminCtx, companyId)
+    expect(company).not.toBeNull()
+    expect(company?.id).toBe(companyId)
   })
 })

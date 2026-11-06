@@ -2,9 +2,14 @@ import 'server-only'
 import { z } from 'zod'
 import { db } from '../db'
 import { logAudit } from './audit'
-import { NotFoundError, ValidationError } from '../errors'
+import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createNotification } from './notifications'
 import type { UserCtx } from '../authz'
+
+async function assertAdminUser(userId: string): Promise<void> {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
+  if (!user || user.role !== 'ADMIN') throw new ForbiddenError()
+}
 
 export const REVIEW_CHANNELS = ['SSM', 'WEBSITE', 'PHONE'] as const
 export type ReviewChannel = (typeof REVIEW_CHANNELS)[number]
@@ -143,7 +148,7 @@ export async function rejectCompany(ctx: UserCtx, input: RejectCompanyInput): Pr
 
   await logAudit({
     actorId: userId,
-    action: 'company.verification.reject',
+    action: 'company.reject',
     targetType: 'Company',
     targetId: cv.companyId,
     metadata: {
@@ -157,7 +162,8 @@ export async function rejectCompany(ctx: UserCtx, input: RejectCompanyInput): Pr
   }
 }
 
-export async function listPendingVerifications() {
+export async function listPendingVerifications(ctx: UserCtx) {
+  await assertAdminUser(ctx.userId)
   return db.company.findMany({
     where: { verificationStatus: 'PENDING' },
     include: {
@@ -171,7 +177,8 @@ export async function listPendingVerifications() {
   })
 }
 
-export async function getCompanyForReview(companyId: string) {
+export async function getCompanyForReview(ctx: UserCtx, companyId: string) {
+  await assertAdminUser(ctx.userId)
   return db.company.findUnique({
     where: { id: companyId },
     include: {
