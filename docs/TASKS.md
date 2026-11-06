@@ -403,10 +403,12 @@
 
 > 完成 2026-11-06：/s/profile 页含 4 个分区（基本信息、求职意向、能力、经历），各区独立 Save 按钮；教育/经历支持 HTML5 拖拽排序和上移/下移按钮；技能标签组件回车/逗号添加、去重、上限 30；isImeComposing 检查通过 10 个单元测试验证；i18n zh/en 同步；lint/typecheck/704 个测试全部通过。
 
-#### [ ] M2-T03 档案完成度
+#### [x] M2-T03 档案完成度
 依赖：M2-T01
 做：纯函数 `computeCompleteness(profile)`（权重见 PRD §2.2），每次保存档案时重算并写入。
 验收：单元测试覆盖每个分项的得分和边界值；空档案 = 0，除 PDF 外全部填满 = 90，全部填满 = 100
+
+> 完成 2026-11-06：`src/server/lib/completeness.ts` 实现 `computeCompleteness` 纯函数（权重 30/15/20/20/10/5）；`recalcCompleteness` 在 student-profile.ts 的每个 saveStepN 事务内调用；修复 WIP 中 `studentContact` 直接访问违规，改用 `hasStudentContact(profileId)`；tests/unit/completeness.test.ts 20 个用例全部通过（empty=0, full=100, no-pdf=90, 各分项及不重复计分）；pnpm lint/typecheck/test 全部通过（725 tests）。
 
 #### [ ] M2-T04 联系方式
 依赖：M0-T10、M2-T01

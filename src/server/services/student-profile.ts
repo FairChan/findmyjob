@@ -149,18 +149,7 @@ async function recalcCompleteness(tx: Prisma.TransactionClient, profileId: strin
   const eduCount = await tx.education.count({ where: { studentId: profileId } })
   const expCount = await tx.experience.count({ where: { studentId: profileId } })
   const resumeCount = await tx.resumeFile.count({ where: { studentId: profileId } })
-  const contact = await tx.studentContact.findUnique({
-    where: { studentId: profileId },
-    select: { phone: true, email: true, whatsapp: true, wechat: true, linkedin: true },
-  })
-
-  const hasContact =
-    contact != null &&
-    (contact.phone != null ||
-      contact.email != null ||
-      contact.whatsapp != null ||
-      contact.wechat != null ||
-      contact.linkedin != null)
+  const hasContact = await hasStudentContact(profileId)
 
   const completeness = computeCompleteness({
     workAuth: profile.workAuth,
