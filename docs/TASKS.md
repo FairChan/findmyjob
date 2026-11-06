@@ -673,6 +673,24 @@
 做：`tests/e2e/pii-leak.spec.ts`：用未解锁的企业身份访问搜索页和详情页，用 `page.on('response')` 收集所有 HTML、RSC 和 JSON 响应；断言这些响应里都没有测试学生的全名、手机号、邮箱、WhatsApp、微信、LinkedIn 和 storageKey。职位侧的用例放到 M5-T03。
 验收：测试通过并加入 CI；故意让 serializer 漏出 phone 时，测试失败
 
+#### [ ] M4-T14 补修 M4-T03/T04/T05/T11 合并前复查发现的问题
+依赖：M4-T11
+> 总控 2026-11-07 加入：复查（按 98262d4 读的代码）结论是 BLOCKED。隐私主线是守住的：企业侧只经过 talent-card.ts，没有解密联系方式，companyId 都来自服务端，收藏夹按公司隔离。但下面几条不修完，M4 不能合并，也不能进 GATE-M4。
+做 / 验收：
+1. 人才库搜索页一搜就崩（High）：`e/talent/page.tsx` 这个服务端页面从 `'use client'` 模块 TalentFilterPanel.tsx 引入并调用了 `buildSearchString`。把 `buildSearchString` 和 `FilterState` 移到普通的共享模块（例如 `src/lib/talent-search-params.ts`），两边都从这里引入。
+2. 收藏夹详情页一打开就崩（High）：`e/folders/[id]/page.tsx` 给客户端组件 FolderItemActions 传了 `onRemoved={() => {}}`，函数不能跨 RSC 边界传递。去掉这个 prop，靠 `router.refresh()` 刷新。
+3. 测试用种子接口会进生产包（High，违反 CLAUDE.md 安全规则）：`src/app/api/test/talent-search-seed/route.ts` 直接导出 POST，没有用 route() 包装，只靠「不是 production 或 staging」来挡；而 env.ts 默认的 APP_ENV 是 development，漏配 APP_ENV 时任何人都能拿到一个 VERIFIED 企业账号和它的密码。删掉这个 route，E2E 的数据改由 Playwright 的 globalSetup 用 tsx 和 Prisma 直接写测试库。
+4. 人才库 E2E（M4-T04 验收）：`tests/e2e/talent-search.spec.ts` 改用 globalSetup 准备数据。必须做到：
+   - 认证企业能按关键词搜到并筛出指定学生；
+   - 新增「未认证企业访问人才库，看到提示和去 /e/onboarding 的链接」；
+   - 「在列表停留 3 秒，ProfileView 不变」这条要真的悬停在卡片链接上，等待，然后数 ProfileView 行数（或者断言没有请求打到 `/e/talent/<id>`），去掉那个永远匹配不到的 URL 正则。
+   - 完成说明写明这个 E2E 实际跑过的通过数。
+5. 每日查看上限可以并发绕过（High，违反 CLAUDE.md 加锁规则）：`talent-view.ts` 的查重、两次计数和 create 分在几条语句里，没有事务也没有锁。新增 `LOCK_NS.PROFILE_VIEW`，在 `db.$transaction(async tx => { await lockXact(tx, LOCK_NS.PROFILE_VIEW, ctx.companyId); … })` 里依次做查重、成员计数、公司计数和 create；`talent.limit.hit` 的审计放在事务外。用真实测试库写集成测试：公司上限设为 2，用 Promise.all 并发查看 5 个不同学生，恰好 2 个成功；同一个学生打开 5 次只算 1 次（这条要在去掉查重逻辑时失败）。
+6. 关键词搜索会泄露真名（High，隐私）：`talent-search.ts` 生成匹配文本时只调用了 redact()，卡片和详情页另外还用 `redactNameParts` 去掉了学生本人的名字。从 talent-card.ts 导出同一个 helper（例如 `employerFreeText(text, fullName, unlocked)`），专业、标题、技能、经历标题的匹配文本都用它生成。测试：锁定学生「王小明」的标题是「王小明｜计算机大三」，搜「王小明」时结果数为 0。
+7. 已认证企业的门槛（ARCHITECTURE §5.1；安全钩子也报了这一条）：`searchTalents`、`viewTalentProfile` 和收藏夹的全部 action 及页面，都改为要求已认证企业。action 用 `auth: { type: 'company', verified: true }`，页面和 service 用 requireVerifiedCompany。认证被撤销的企业不能再通过收藏夹看到人才卡片。在 authz-matrix 里加两行：「未认证企业搜索人才被拒」「未认证企业查看收藏夹被拒」。
+8. page=26：服务端返回规范的错误（不能是 HTTP 200 加上原始英文报错），页面上显示中英文文案；URL 参数不合法时（sort、枚举值、schoolId、page=0、超长 keyword）显示友好提示，不能报 500。
+- 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
+
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 
 ---
