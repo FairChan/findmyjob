@@ -341,6 +341,78 @@ describe('requireEmployer (M1-T09)', () => {
   })
 })
 
+// ---------------------------------------------------------------------------
+// Team management authz (M3-T04)
+// ---------------------------------------------------------------------------
+
+describe('team management authz (M3-T04)', () => {
+  async function seedTeamSettings() {
+    for (const [key, val] of [['team.maxMembers', 3], ['team.maxInvitesPerDay', 3]] as const) {
+      await testDb.systemSetting.upsert({
+        where: { key },
+        create: { key, value: JSON.stringify(val) },
+        update: { value: JSON.stringify(val) },
+      })
+    }
+  }
+
+  it('RECRUITER cannot invite members', async () => {
+    await seedTeamSettings()
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    const { inviteMember } = await import('@/server/services/team')
+    await expect(
+      inviteMember({ userId, companyId, role: 'RECRUITER' }, { email: 'x@example.test', role: 'RECRUITER' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('OWNER cannot be removed', async () => {
+    await seedTeamSettings()
+    const { userId, companyId } = await createEmployer(testDb)
+    const ownerMember = await testDb.companyMember.findFirst({ where: { userId, companyId } })
+    const { removeMember } = await import('@/server/services/team')
+    await expect(
+      removeMember({ userId, companyId, role: 'OWNER' }, { memberId: ownerMember!.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('OWNER cannot be demoted', async () => {
+    await seedTeamSettings()
+    const { userId, companyId } = await createEmployer(testDb)
+    const ownerMember = await testDb.companyMember.findFirst({ where: { userId, companyId } })
+    const { changeRole } = await import('@/server/services/team')
+    await expect(
+      changeRole({ userId, companyId, role: 'OWNER' }, { memberId: ownerMember!.id, role: 'ADMIN' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('cross-company: cannot remove member of a different company', async () => {
+    await seedTeamSettings()
+    const { userId: ownerA, companyId: companyA } = await createEmployer(testDb)
+    const { userId: ownerB, companyId: companyB } = await createEmployer(testDb)
+    const memberB = await testDb.companyMember.findFirst({ where: { companyId: companyB } })
+    const { removeMember } = await import('@/server/services/team')
+    await expect(
+      removeMember({ userId: ownerA, companyId: companyA, role: 'OWNER' }, { memberId: memberB!.id }),
+    ).rejects.toThrow()
+  })
+
+  it('invite email mismatch → ForbiddenError on accept', async () => {
+    await seedTeamSettings()
+    const { userId: ownerUserId } = await createEmployer(testDb)
+    const ownerMember = await testDb.companyMember.findFirst({ where: { userId: ownerUserId } })
+    const { inviteMember, acceptInvite } = await import('@/server/services/team')
+    const { token } = await inviteMember(
+      { userId: ownerUserId, companyId: ownerMember!.companyId, role: 'OWNER' },
+      { email: 'right@example.test', role: 'RECRUITER' },
+    )
+    const wrongUser = await testDb.user.create({
+      data: { name: 'Wrong', email: 'wrong@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: wrongUser.id }, token)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
 describe('company service authz (M3-T01)', () => {
   it('createCompany: student → ForbiddenError', async () => {
     const { userId } = await createStudent(testDb)

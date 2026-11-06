@@ -303,5 +303,42 @@
     "errorFailed": "Save failed. Please try again.",
     "errorSsmDuplicate": "This SSM registration number is already in use",
     "errorUnknown": "An unexpected error occurred. Please try again."
+  },
+  "team": {
+    "title": "Team Management",
+    "subtitle": "Invite colleagues and manage team member permissions",
+    "invite": "Invite Member",
+    "emailLabel": "Email",
+    "emailPlaceholder": "colleague@example.com",
+    "roleLabel": "Role",
+    "roleOwner": "Owner",
+    "roleAdmin": "Admin",
+    "roleRecruiter": "Recruiter",
+    "inviteSubmit": "Send Invite",
+    "inviteSent": "Invite sent — waiting for the recipient to accept",
+    "memberName": "Name",
+    "memberEmail": "Email",
+    "memberRole": "Role",
+    "removeButton": "Remove",
+    "changeRoleButton": "Change Role",
+    "confirmRemove": "Are you sure you want to remove this member?",
+    "errorForbidden": "You do not have permission to perform this action",
+    "errorLimitReached": "Limit reached (member count or daily invite quota)",
+    "errorAlreadyMember": "This user is already a member of the company",
+    "errorUnknown": "Action failed. Please try again."
+  },
+  "teamAccept": {
+    "title": "Accept Team Invitation",
+    "companyLabel": "Company",
+    "roleLabel": "Role",
+    "roleAdmin": "Admin",
+    "roleRecruiter": "Recruiter",
+    "acceptButton": "Accept Invitation",
+    "successMessage": "You have joined the team. Redirecting…",
+    "invalidOrExpired": "This invitation link is invalid or has expired",
+    "errorForbidden": "Your email does not match the invitation, or your account does not meet the requirements",
+    "errorAlreadyUsed": "This invitation link has already been used",
+    "errorExpired": "This invitation link has expired",
+    "errorUnknown": "Action failed. Please try again."
   }
 }

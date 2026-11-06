@@ -6,10 +6,7 @@ import {
 } from '@/server/serializers/talent-card'
 export interface NotificationWriter {
   notification: {
-    create: (args: {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      data: { userId: string; type: string; payload: any }
-    }) => Promise<unknown>
+    create: (args: { data: { userId: string; type: string; payload: any } }) => Promise<unknown>
   }
 }
 

@@ -303,5 +303,42 @@
     "errorFailed": "保存失败，请稍后重试",
     "errorSsmDuplicate": "该 SSM 注册号已被使用",
     "errorUnknown": "发生未知错误，请稍后重试"
+  },
+  "team": {
+    "title": "团队管理",
+    "subtitle": "邀请同事加入，管理团队成员权限",
+    "invite": "邀请成员",
+    "emailLabel": "邮箱",
+    "emailPlaceholder": "colleague@example.com",
+    "roleLabel": "角色",
+    "roleOwner": "所有者",
+    "roleAdmin": "管理员",
+    "roleRecruiter": "招聘专员",
+    "inviteSubmit": "发送邀请",
+    "inviteSent": "邀请已发送，请等待对方接受",
+    "memberName": "姓名",
+    "memberEmail": "邮箱",
+    "memberRole": "角色",
+    "removeButton": "移除",
+    "changeRoleButton": "更改角色",
+    "confirmRemove": "确定要移除该成员吗？",
+    "errorForbidden": "权限不足，无法执行此操作",
+    "errorLimitReached": "已达上限（成员数量或每日邀请次数）",
+    "errorAlreadyMember": "该用户已是本企业成员",
+    "errorUnknown": "操作失败，请稍后重试"
+  },
+  "teamAccept": {
+    "title": "接受团队邀请",
+    "companyLabel": "邀请企业",
+    "roleLabel": "角色",
+    "roleAdmin": "管理员",
+    "roleRecruiter": "招聘专员",
+    "acceptButton": "接受邀请",
+    "successMessage": "已成功加入团队，正在跳转…",
+    "invalidOrExpired": "邀请链接无效或已过期",
+    "errorForbidden": "您的邮箱与邀请不匹配，或账号未满足要求",
+    "errorAlreadyUsed": "此邀请链接已被使用",
+    "errorExpired": "邀请链接已过期",
+    "errorUnknown": "操作失败，请稍后重试"
   }
 }

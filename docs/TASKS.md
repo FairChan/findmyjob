@@ -497,7 +497,7 @@
 
 > 完成 2026-11-06：notifications.ts 增加 createNotification；新建 services/review-company.ts（approveCompany/rejectCompany/listPendingVerifications/getCompanyForReview）；admin-verification.ts actions；/admin/companies 列表页和 [companyId] 详情页（Server Components + ReviewForm 客户端组件，含 SOP 提示）；alert.ts 增加 fire-and-forget 给所有 ADMIN 发站内通知；eslint.config.mjs 增加 review-company.ts 的 creditWallet 豁免；i18n zh/en 增加 adminCompanies 命名空间；factories.ts 增加 createAdmin；12 个集成测试全通过（738 total）；偏差：邮件入队为 stub（logger.info），M5-T08 再接入 sendBoss
 
-#### [ ] M3-T04 团队管理
+#### [x] M3-T04 团队管理
 依赖：M3-T01
 做：
 - `/e/team`：邀请成员、接受邀请加入、移除成员、修改角色。OWNER 不可被移除或降级；RECRUITER 无权管理团队。
@@ -508,6 +508,8 @@
 - 过期 token 被拒；越权操作被拒（集成测试，加进 authz-matrix）
 - 换一个账号打开邀请链接，被拒；同一个链接第二次使用，被拒；数据库里查不到明文令牌
 - 被移除的成员下一次操作就被拒；公益期邀请第 4 个成员被拒
+
+> 完成 2026-11-07：`services/team.ts`（inviteMember/acceptInvite/removeMember/changeRole/listTeamMembers/getInviteDetails，token randomBytes(32) base64url + sha256 哈希，7 天过期，审计 company.invite.accept）；`actions/team.ts`（4 个 Server Action，邀请后异步发邮件）；`/e/team` 页面（Server Component + TeamPageClient）；`/e/team/accept` 页面（AcceptInviteClient）；seed 新增 `team.maxInvitesPerDay=3`；`clearSettingsCache()` 供测试隔离；zh/en i18n 新增 team 和 teamAccept 两节；`tests/integration/team.test.ts` 29 个测试（invite/accept/remove/changeRole/getInviteDetails）；authz-matrix 增加 5 个团队越权测试；notifications.ts 修复多余的 eslint-disable 指令；pnpm lint/typecheck/test/db:check 全部通过（765 tests）
 
 #### [ ] M3-T05 企业公开主页
 依赖：M3-T01
