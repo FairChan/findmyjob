@@ -275,6 +275,28 @@
     "saveError": "Save failed, please try again",
     "errorValidation": "Please check your input format (phone must include country code, e.g. +60)"
   },
+  "privacy": {
+    "title": "Privacy Centre",
+    "subtitle": "Manage your talent pool visibility, blocked companies, and who has viewed your profile.",
+    "visibilityTitle": "Talent Pool Visibility",
+    "visibilityDesc": "When enabled, verified companies can see your anonymous profile in the talent pool and unlock your contact details.",
+    "visibilityOn": "Enabled (visible to companies)",
+    "visibilityOff": "Disabled (only visible to you)",
+    "blockTitle": "Blocked Companies",
+    "blockDesc": "Blocked companies cannot find you in the talent pool, and can no longer view your contact details even if previously unlocked.",
+    "blockSearchPlaceholder": "Search verified company name…",
+    "blockSearchResults": "Search results",
+    "blockAlreadyBlocked": "Already blocked",
+    "blockEmpty": "No blocked companies.",
+    "blockRemove": "Remove",
+    "viewsTitle": "Who Viewed Me",
+    "viewsDesc": "Companies that viewed your profile in the last 90 days.",
+    "viewsEmpty": "No profile views in the last 90 days.",
+    "unlocksTitle": "Who Unlocked Me",
+    "unlocksDesc": "Companies that have unlocked your contact details.",
+    "unlocksEmpty": "No unlocks yet.",
+    "errorGeneric": "Something went wrong. Please try again."
+  },
   "schoolVerify": {
     "title": "School Email Verification",
     "subtitle": "Verify your school email to join the talent pool and be discovered by companies.",

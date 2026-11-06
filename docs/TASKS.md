@@ -445,10 +445,12 @@
 
 > 完成 2026-11-06：`services/school-verification.ts`（精确域名匹配、OTP sha256 哈希存储于 Verification 表带命名空间 `school-otp:{userId}`、timingSafeEqual 比较、5 次失败锁定 30 分钟 `school-otp-lock:{userId}`、每用户每小时 / 每邮箱每天发送限额）；`actions/school-verification.ts`（三个 student 权限 Server Action）；`/s/school-verify` 页面 + `SchoolVerifyForm` 客户端组件（三步流程）；`messages/zh.json` + `messages/en.json` 新增 schoolVerify 命名空间；`tests/unit/school-verification.test.ts` 15 个用例，757 总测试全部通过；pnpm lint/typecheck/test 全部通过
 
-#### [ ] M2-T07 隐私中心
+#### [x] M2-T07 隐私中心
 依赖：M2-T01
 做：`/s/privacy`：人才库可见性开关（同步写 Consent，审计 `student.visibility.change`）；屏蔽企业（搜索已认证企业后加入列表）；「谁看过我」「谁解锁了我」列表（暂无数据时显示空状态）。
 验收：开关状态与最新一条 TALENT_POOL Consent 一致；可添加、移除屏蔽企业
+
+> 完成 2026-11-06：`services/privacy.ts`（getLatestTalentPoolConsent/setVisibility/listBlockedCompanies/addBlockedCompany/removeBlockedCompany/searchVerifiedCompanies/getProfileViews/getUnlocks）；`actions/privacy.ts`（四个 student 权限 Server Action）；`/s/privacy` 页面 + `PrivacyCenter` 客户端组件（可见性 toggle、企业搜索屏蔽、谁看过/谁解锁空状态列表）；zh/en i18n 新增 privacy 命名空间；`tests/unit/privacy.test.ts` 19 个用例，776 总测试全部通过；pnpm lint/typecheck/test 全部通过
 
 #### [ ] M2-T08 学生首页
 依赖：M2-T03

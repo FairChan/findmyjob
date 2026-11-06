@@ -275,6 +275,28 @@
     "saveError": "保存失败，请重试",
     "errorValidation": "请检查输入格式（手机号需含国际区号，如 +60）"
   },
+  "privacy": {
+    "title": "隐私中心",
+    "subtitle": "管理你的人才库可见性、屏蔽的企业，以及谁查看过你的档案。",
+    "visibilityTitle": "人才库可见性",
+    "visibilityDesc": "开启后，认证企业可以在人才库中看到你的匿名档案，付费解锁后可查看联系方式。",
+    "visibilityOn": "已开启（企业可见）",
+    "visibilityOff": "已关闭（仅自己可见）",
+    "blockTitle": "屏蔽企业",
+    "blockDesc": "被屏蔽的企业将无法搜索到你，即使已解锁也不再显示联系方式。",
+    "blockSearchPlaceholder": "搜索认证企业名称…",
+    "blockSearchResults": "搜索结果",
+    "blockAlreadyBlocked": "已屏蔽",
+    "blockEmpty": "暂无屏蔽的企业。",
+    "blockRemove": "移除",
+    "viewsTitle": "谁看过我",
+    "viewsDesc": "最近 90 天内查看过你档案的企业。",
+    "viewsEmpty": "最近 90 天内暂无企业查看记录。",
+    "unlocksTitle": "谁解锁了我",
+    "unlocksDesc": "解锁了你联系方式的企业列表。",
+    "unlocksEmpty": "暂无企业解锁记录。",
+    "errorGeneric": "操作失败，请稍后再试。"
+  },
   "schoolVerify": {
     "title": "学校邮箱认证",
     "subtitle": "认证学校邮箱后，你的档案将进入人才库，让企业发现你。",
