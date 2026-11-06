@@ -4,11 +4,9 @@
  */
 import { test } from '@playwright/test'
 import { createHash } from 'crypto'
-import { PrismaClient } from '@prisma/client'
 import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
-
-const db = new PrismaClient()
+import { e2eDb as db } from './helpers/db'
 
 test.describe('M3-T04 team management smoke', () => {
   test('OWNER: /zh/e/team is healthy', async ({ page }) => {

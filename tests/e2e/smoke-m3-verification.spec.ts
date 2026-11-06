@@ -5,9 +5,7 @@
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
-import { PrismaClient } from '@prisma/client'
-
-const db = new PrismaClient()
+import { e2eDb as db } from './helpers/db'
 
 test.describe('M3 verification page smoke', () => {
   test('OWNER of UNSUBMITTED company: /zh/e/verification is healthy', async ({ page }) => {

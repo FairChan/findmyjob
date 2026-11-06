@@ -567,3 +567,280 @@ describe('admin-verification actions authz (M3-T03)', () => {
     expect(co?.verificationStatus).toBe('PENDING')
   })
 })
+
+// ---------------------------------------------------------------------------
+// admin-jobs actions authz (M5-T02)
+// ---------------------------------------------------------------------------
+
+describe('admin-jobs actions authz (M5-T02)', () => {
+  async function makePendingJobFixture() {
+    const { userId: ownerId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const job = await testDb.job.create({
+      data: {
+        companyId,
+        createdById: ownerId,
+        title: 'Authz Test Job',
+        type: 'INTERNSHIP',
+        description: 'Test',
+        status: 'PENDING_REVIEW',
+        workMode: 'ONSITE',
+      },
+    })
+    return { jobId: job.id, companyId }
+  }
+
+  it('approveJobAction: student → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createStudent(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { approveJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await approveJobAction({ jobId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+
+  it('approveJobAction: employer → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { approveJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await approveJobAction({ jobId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+
+  it('rejectJobAction: student → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createStudent(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { rejectJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await rejectJobAction({ jobId, reviewNote: 'Bad job' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+
+  it('rejectJobAction: employer → FORBIDDEN, job status unchanged', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { jobId } = await makePendingJobFixture()
+    mockSession(userId)
+    const { rejectJobAction } = await import('@/server/actions/admin-jobs')
+    const result = await rejectJobAction({ jobId, reviewNote: 'Bad job' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const job = await testDb.job.findUnique({ where: { id: jobId } })
+    expect(job?.status).toBe('PENDING_REVIEW')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// managed-company authz (M6-T07)
+// ---------------------------------------------------------------------------
+
+describe('managed-company authz (M6-T07)', () => {
+  it('createManagedCompany: student → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    const { createManagedCompany } = await import('@/server/services/managed-company')
+    await expect(
+      createManagedCompany({ userId }, { legalName: 'Test MC' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('createManagedCompany: employer → ForbiddenError', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { createManagedCompany } = await import('@/server/services/managed-company')
+    await expect(
+      createManagedCompany({ userId }, { legalName: 'Test MC2' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('postJobAsPlatform: employer on non-managed company → ForbiddenError', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC', email: 'admin-mc-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { userId: empId, companyId } = await createEmployer(testDb)
+    const { postJobAsPlatform } = await import('@/server/services/managed-company')
+    const jobInput = {
+      title: 'Job', type: 'INTERNSHIP' as const, description: 'Desc',
+      workMode: 'ONSITE' as const, submit: false, salaryVisible: true,
+      acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
+    }
+    await expect(postJobAsPlatform({ userId: empId }, companyId, jobInput)).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(postJobAsPlatform({ userId: admin.id }, companyId, jobInput)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('transferCompany: missing verificationRecord → ValidationError', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC2', email: 'admin-mc2-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { createManagedCompany, transferCompany } = await import('@/server/services/managed-company')
+    const company = await createManagedCompany({ userId: admin.id }, { legalName: `MCo-Authz-${Date.now()}` })
+    await expect(
+      transferCompany({ userId: admin.id }, company.id, { ownerEmail: 'x@example.test', verificationRecord: '', verificationMethod: 'PHONE_CALLBACK' }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('acceptManagedTransfer: non-OWNER invite is rejected', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC3', email: 'admin-mc3-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { createManagedCompany, acceptManagedTransfer } = await import('@/server/services/managed-company')
+    const company = await createManagedCompany({ userId: admin.id }, { legalName: `MCo-NOwner-${Date.now()}` })
+    // Insert a non-OWNER invite directly
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    const email = `non-owner-${Date.now()}@example.test`
+    await testDb.companyInvite.create({
+      data: {
+        companyId: company.id,
+        email,
+        role: 'ADMIN',
+        tokenHash: hash,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        createdById: admin.id,
+      },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptManagedTransfer({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('acceptInvite: OWNER invite for non-managed company → ForbiddenError', async () => {
+    const { acceptInvite } = await import('@/server/services/team')
+    const { userId, companyId } = await createEmployer(testDb)
+    const email = `owner-nm-${Date.now()}@example.test`
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    await testDb.companyInvite.create({
+      data: {
+        companyId,
+        email,
+        role: 'OWNER',
+        tokenHash: hash,
+        expiresAt: new Date(Date.now() + 86_400_000),
+        createdById: userId,
+      },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target NM', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// jobs authz (M5-T01)
+// ---------------------------------------------------------------------------
+
+describe('jobs authz (M5-T01)', () => {
+  async function makeJobForCompany(companyId: string, createdById: string) {
+    return testDb.job.create({
+      data: {
+        companyId,
+        createdById,
+        title: 'Authz Job',
+        type: 'INTERNSHIP',
+        description: 'Test',
+        status: 'PUBLISHED',
+        workMode: 'ONSITE',
+      },
+    })
+  }
+
+  it('cross-company: updateJob by other employer → NotFoundError, job unchanged', async () => {
+    const owner = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: owner.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const attacker = await createEmployer(testDb)
+    const job = await makeJobForCompany(owner.companyId, owner.userId)
+
+    const { updateJob: svcUpdateJob } = await import('@/server/services/jobs')
+    const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
+    await expect(
+      svcUpdateJob(attackerCtx, job.id, {
+        title: 'Hacked', type: 'INTERNSHIP', description: 'Hacked',
+        workMode: 'ONSITE', submit: false, salaryVisible: true,
+        acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
+      }),
+    ).rejects.toThrow()
+
+    const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
+    expect(unchanged?.title).toBe('Authz Job')
+  })
+
+  it('cross-company: closeJob by other employer → NotFoundError, job remains PUBLISHED', async () => {
+    const owner = await createEmployer(testDb)
+    const attacker = await createEmployer(testDb)
+    const job = await makeJobForCompany(owner.companyId, owner.userId)
+
+    const { closeJob: svcCloseJob } = await import('@/server/services/jobs')
+    const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
+    await expect(svcCloseJob(attackerCtx, job.id)).rejects.toThrow()
+
+    const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
+    expect(unchanged?.status).toBe('PUBLISHED')
+  })
+
+  it('RECRUITER can update own company job', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    const job = await makeJobForCompany(companyId, userId)
+
+    const { updateJob: svcUpdateJob } = await import('@/server/services/jobs')
+    const ctx = { userId, companyId, role: 'RECRUITER' as const }
+    const updated = await svcUpdateJob(ctx, job.id, {
+      title: 'Updated by Recruiter', type: 'INTERNSHIP', description: 'Test',
+      workMode: 'ONSITE', submit: false, salaryVisible: true,
+      acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
+    })
+    // PUBLISHED + sensitive change → PENDING_REVIEW (approvedJobCount=0 < 1000)
+    expect(updated.status).toBe('PENDING_REVIEW')
+    expect(updated.title).toBe('Updated by Recruiter')
+  })
+
+  it('RECRUITER can close own company job', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    const job = await makeJobForCompany(companyId, userId)
+
+    const { closeJob: svcCloseJob } = await import('@/server/services/jobs')
+    const ctx = { userId, companyId, role: 'RECRUITER' as const }
+    const closed = await svcCloseJob(ctx, job.id)
+    expect(closed.status).toBe('CLOSED')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resume download ownership (M2-T05)
+// ---------------------------------------------------------------------------
+
+describe('resume download ownership (M2-T05)', () => {
+  it('student B downloading student A resume → 404, getSignedDownloadUrl not called', async () => {
+    const a = await createStudent(testDb)
+    const b = await createStudent(testDb)
+    const resume = await testDb.resumeFile.create({
+      data: {
+        studentId: a.profileId,
+        storageKey: 'resumes/authz-a/cv.pdf',
+        fileName: 'cv.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+      },
+    })
+    const { getSignedDownloadUrl } = await import('@/lib/storage')
+    mockSession(b.userId)
+    const { GET } = await import('@/app/api/resumes/[id]/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resume.id}`))
+    expect(res.status).toBe(404)
+    expect(vi.mocked(getSignedDownloadUrl)).not.toHaveBeenCalled()
+  })
+})

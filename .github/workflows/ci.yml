@@ -268,9 +268,15 @@ jobs:
           psql -h 127.0.0.1 -U postgres -d findmyjob \
             -f docker/postgres/db-setup.sql
 
+          psql -h 127.0.0.1 -U postgres \
+            -c "CREATE DATABASE findmyjob_test OWNER findmyjob_owner;"
+          psql -h 127.0.0.1 -U postgres -d findmyjob_test \
+            -f docker/postgres/db-setup.sql
+
           {
-            echo "MIGRATE_DATABASE_URL=postgresql://findmyjob_owner:$DB_OWNER_PASS@127.0.0.1:5432/findmyjob"
-            echo "DATABASE_URL=postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob?connection_limit=5"
+            echo "MIGRATE_DATABASE_URL=postgresql://findmyjob_owner:$DB_OWNER_PASS@127.0.0.1:5432/findmyjob_test"
+            echo "DATABASE_URL=postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob_test?connection_limit=5"
+            echo "TEST_DATABASE_URL=postgresql://findmyjob_app:$DB_APP_PASS@127.0.0.1:5432/findmyjob_test?connection_limit=12"
           } >> "$GITHUB_ENV"
 
       - name: Migrate

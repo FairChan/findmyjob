@@ -428,6 +428,7 @@
 > 完成 2026-11-06：src/lib/storage.ts（S3 客户端：PutObject、签名 GET≤300s、deleteAllVersions；@aws-sdk/client-s3@3.1162.0 + @aws-sdk/s3-request-presigner@3.1162.0，MinIO forcePathStyle）；src/server/lib/pdf.ts（detectFileType 检测 PDF/PNG/JPEG 魔数，isPdfEncrypted 检查 /Encrypt，getPdfPageCount 扫描 /Count）；src/app/api/uploads/[purpose]/route.ts（RESUME/VERIFICATION/PAYMENT_PROOF/LOGO 白名单、文件头校验、PDF 加密检查、简历页数检查、每用户小时速率限制、拒收写 upload.reject 审计，全部通过后才 PutObject，RESUME 创建 ResumeFile 记录）；src/app/api/resumes/[id]/route.ts（GET 生成签名 URL 并重定向）；src/server/actions/resume.ts（setPrimaryResume/deleteResume，含越权检查，删除时 deleteAllVersions）；src/app/[locale]/s/resume/page.tsx + resume-client.tsx（上传、设为主简历、删除、预览）；i18n 中英文案；tests/unit/storage.test.ts（13 个用例，涵盖签名 URL≤300s、魔数检测、加密检测、页数解析）；pnpm lint/typecheck/test/db:check 全部通过（680 tests）；偏差：assertUploadsEnabled 在上传路由入口调用；M2-T05 验收中「学生只能访问自己的简历」由 deleteResume/setPrimaryResume 的 studentId 比对保证，authz-matrix 集成测试待 M2-T01 建 StudentProfile 后补充
 > 修复 2026-11-06：(1) pdf.ts 换用 pdf-lib 1.17.1 的 checkPdf()（PDFDocument.load + isEncrypted + getPageCount），fail closed，解决对象流 PDF 页数漏检和线性化加密 PDF 漏检；(2) uploads route 的 purpose 改 z.enum 校验，resumes route 的 id 改 z.string().cuid() 校验，filename 去除 bidi/控制字符并截到 255 字符；(3) TTL 测试改为实际调用 getSignedDownloadUrl 并解析 URL，断言 X-Amz-Expires ≤ 300 且 Content-Disposition 以 attachment 开头；新增 tests/unit/upload-validation.test.ts（21 个用例）；全量 716 tests 通过
 > 修复 2026-11-07：将 purposeSchema、validateFileName 提取到 src/server/lib/upload-input.ts；文件名改用 zod 校验（trim+min(1)+max(255)），超长/空名字返回 400 并写 upload.reject 审计，不再截断或填默认名；文件名校验移至 putObject 之前；upload-validation.test.ts 改为 import 生产代码（删除内联副本）；新增 tests/unit/upload-route-filename.test.ts（route 级测试，断言超长名 → 400、putObject 不调用、写 audit）；全量 780 tests 通过
+> 修复 2026-11-07：补「只能下载自己的简历」集成测试（tests/integration/resume-download.test.ts，5 个用例覆盖跨学生越权→404/签名 URL 不调用、自己下载→302/storageKey 正确、非法 id→404、企业账号→403、未登录→403）；authz-matrix.test.ts 新增「resume download ownership (M2-T05)」describe；临时去掉 route 归属检查确认 B 下载 A 测试失败后复原；全量 822 tests 通过
 
 #### [ ] M2-T06 学校邮箱认证
 依赖：M2-T01
@@ -484,6 +485,7 @@
 > 完成 2026-11-06：实现 taxonomy/industries（两级行业码）、company service（createCompany/updateCompany/getMyCompany）、createCompanyAction/updateCompanyAction、/e/onboarding 和 /e/company 页面、CompanyForm 客户端组件、uploads 路由扩展 LOGO/VERIFICATION/PAYMENT_PROOF 支持，全量测试通过（695 tests）
 > 修复 2026-11-07：logoKey 归属校验（非 `logos/<companyId>/` 前缀抛 ForbiddenError，公开页同样校验）；CompanyMember.userId 加唯一约束（迁移 20261107000000）防并发建双企业，acceptInvite 加跨企业预检查；company-form.tsx 中「✓ Logo uploaded」挪入 i18n（zh/en）
 > 修复 2026-11-07：补页面冒烟用例（总控要求）；新增 tests/e2e/helpers/session.ts（loginAs）和 smoke.ts（expectPageHealthy），smoke-m3-company.spec.ts（/e/onboarding 健康、/e 重定向、/e/company zh/en 健康）和 smoke-m2-resume.spec.ts（/s/resume 健康），3 条用例全通过；crashtest 验证：临时在 /e/company 加 throw 后用例报 500 失败，确认冒烟有效
+> 修复 2026-11-07：E2E 数据隔离（High）——新建 tests/lib/validate-test-db-url.ts 纯函数（主线 M4-T15 复用）；tests/e2e/helpers/db.ts 导出 e2eDb/createE2eDb，只认 TEST_DATABASE_URL，拒绝 DATABASE_URL 回退；playwright.config.ts 从 .env 读 TEST_DATABASE_URL（util.parseEnv，不污染 process.env），webServer.env 注入 DATABASE_URL=TEST_DATABASE_URL，reuseExistingServer: false；session.ts 改用随机密码（crypto.randomBytes），移除固定 TestPassword123!；所有 spec 改用 e2eDb；CI e2e job 改用 findmyjob_test 库，设 TEST_DATABASE_URL；单元测试 e2e-db-guard.test.ts 全通过（13 tests），E2E 全通过（37 tests，0 失败，0 跳过）：auth-redirect 4 条、example 1、locale 5、smoke-m2-resume 1、smoke-m3-admin 4、smoke-m3-company 2、smoke-m3-console 7、smoke-m3-team 2、smoke-m3-verification 3、smoke-m5-jobs 3、smoke-m5-review-jobs 4、smoke-m5-review-jobs 1；开发库 findmyjob_laneb 中已存在之前 E2E 轮次留下的测试账号（用固定密码建立），本轮不清理，由总控决定。
 
 #### [x] M3-T02 提交认证材料
 依赖：M3-T01
@@ -643,17 +645,22 @@
 
 ## M5 · 职位、搜索与投递（约 3.7 天）
 
-#### [ ] M5-T01 职位管理
+#### [x] M5-T01 职位管理
 依赖：M3-T06
 做：`services/jobs.ts`；`/e/jobs` 列表、新建、编辑、复制、关闭；字段含职位类别；提交时按 `jobs.autoPublishAfter` 规则决定进入 PENDING_REVIEW 还是直接 PUBLISHED（试点期默认 1000，等于全部人工审核）。
 验收：
 - 未认证企业只能保存草稿；状态流转有集成测试
 - 已发布的职位修改标题、描述、要求、福利、薪资或地点后，回到 PENDING_REVIEW，从公开列表和搜索里下线，重新审核通过后才恢复（`approvedJobCount` 未达到 `jobs.autoPublishAfter` 时）；集成测试覆盖（TM-007）
+> 完成 2026-11-07：services/jobs.ts（createJob/updateJob/copyJob/closeJob/list/get）；/e/jobs 列表、/e/jobs/new 新建、/e/jobs/[id]/edit 编辑；JobFormClient + JobListClient 客户端组件；Server Actions；zh/en i18n（jobs 命名空间）；19 个集成测试全部通过（含 TM-007 敏感字段回退逻辑）；3 个 E2E 冒烟测试通过
+> 修复 2026-11-07：hasSensitiveChange 改为白名单（新增 category/skills/languages/type/workMode）；updateJob 用事务+updateMany+updatedAt 并发保护；可选字段清空存 null；copyJob 接受 locale suffix；i18n 修复 aria-label；915 测试（44 文件）全部通过，4 个 E2E 冒烟（含 edit 页面）全部通过
 
-#### [ ] M5-T02 职位审核
+#### [x] M5-T02 职位审核
 依赖：M5-T01
 做：`/admin/jobs` 待审队列：通过（PUBLISHED，`approvedJobCount + 1`）/ 驳回（填原因）；审计 `job.review`；通知创建者。
 验收：达到阈值后，新职位自动发布
+> 完成 2026-11-07：services/review-jobs.ts（listPendingJobs/approveJob/rejectJob，含 AuditLog + Notification）；admin-jobs.ts Server Actions（admin auth）；/admin/jobs 列表页和 /admin/jobs/[jobId] 详情+ReviewJobForm；zh/en adminJobs i18n；13 个集成测试（含阈值自动发布验收）；4 个 E2E 冒烟测试；authz-matrix 加 4 行。lint/typecheck/860 tests/db:check 全部通过。
+> 修复 2026-11-07：详情页补全所有字段（requirements/benefits/salary/location/workMode/languages/skills/headcount/deadline）；salaryVisible=false 也显示薪资并标注「不对外显示」；approveJob/rejectJob 加 updatedAt 乐观锁（updateMany 版本检查）；并发两次通过只成功一次；ReviewJobForm 传 updatedAt 并处理 stale 错误；新增 4 条集成测试（stale/并发）；E2E 增加哨兵字段断言；919 测试/4 E2E 全部通过
+> 修复 2026-11-07（最终复查）：详情页补上 category（100 字自由文本，学生看得到，TM-007 同一类问题）；冒烟用例加 category、languages 哨兵和「不对外显示」字样的断言，先确认用例失败再修。
 
 #### [ ] M5-T03 公开职位页（白名单输出、额度锁、noindex）
 依赖：M5-T01、M2-T10
@@ -744,7 +751,7 @@
 做：`/admin/audit`：按动作、操作人、对象、时间范围筛选；分页。
 验收：能查到 ARCHITECTURE §5.7 列出的所有动作
 
-#### [ ] M6-T07 代管企业与公司名单导入
+#### [x] M6-T07 代管企业与公司名单导入
 依赖：M3-T03、M3-T04、M5-T01
 做：
 - `services/managed-company.ts`：`createManagedCompany`、`postJobAsPlatform`、`transferCompany(companyId, ownerEmail)`。transferCompany 复用 M3-T04 的邀请机制；移交完成时，在同一个事务里删除平台账号的 CompanyMember，并设 `isManaged=false`。
@@ -754,6 +761,8 @@
 - 移交后 `isManaged=false`，平台账号再以该企业身份操作会被拒；代发的职位跳过审核；每一步都有审计（`company.managed.create` / `.post` / `.transfer`）
 - 对 companies.example.json 执行 `--dry-run`，输出「2 条有效，0 条错误」，并且不打印任何字段值
 - `transferCompany` 必须带核实记录（目标邮箱的域名和企业官网一致，或经公开电话回拨确认，写明是哪一种），缺少时返回 ValidationError；核实记录写进 `company.managed.transfer` 审计的 metadata（TM-008）
+> 完成 2026-11-07：src/server/services/managed-company.ts（createManagedCompany/postJobAsPlatform/transferCompany/acceptManagedTransfer 四个函数，每步写对应审计日志）；scripts/import-companies.ts（zod 校验，dry-run 只统计不写 DB，实际导入用自己的 PrismaClient）；tests/integration/managed-company.test.ts（21 个用例，全部通过）；authz-matrix 补充 managed-company authz 段（4 个用例）；DECISIONS 新增 M6-T07 条目（平台账号不加入 CompanyMember 以支持批量导入，移交后 isManaged=false 让 postJobAsPlatform 被拒，满足「平台账号再操作被拒」验收标准）；pnpm lint/typecheck/test 全部通过（883 tests）；偏差：「删除平台账号的 CompanyMember」一步变为无需操作（admin 本来不是成员，见 DECISIONS M6-T07），移交完成通过 isManaged=false 保证
+> 修复 2026-11-07：修正完成说明里「每步写对应审计日志」的不实表述——原始代码的 acceptManagedTransfer 没有写审计。本轮补全：(1) acceptManagedTransfer 在事务后写 company.managed.transfer（phase:completed）和 company.invite.accept 两条审计，metadata 不含邮箱；(2) transferInputSchema 新增 verificationMethod 字段（DOMAIN_MATCH/PHONE_CALLBACK），DOMAIN_MATCH 时在服务端验证邮箱域名与官网域名一致，记入审计 metadata（TM-008）；(3) team.acceptInvite 遇到 isManaged=true 的 OWNER 邀请时改走 acceptManagedTransfer，非代管企业的 OWNER 邀请直接拒绝；(4) acceptManagedTransfer 事务内用带条件的 updateMany 防并发双移交，同时撤销其他待接受邀请；(5) 新增 src/server/actions/managed-company.ts 的 transferManagedCompanyAction（admin-only，token 不回传客户端，邮件 fire-and-forget）；运营后台暂无代管企业页面，待后续任务排入。pnpm lint/typecheck/test（managed-company + authz-matrix + team 共 146 tests）全部通过。
 
 #### [ ] M6-T08 增长与风控页（P1，可在试点后做）
 依赖：M6-T01
@@ -1081,6 +1090,13 @@
   - /e 的 X-Robots-Tag 等 M7-T05。
   - e/page.tsx 的 `<main>` 套在 layout 的 `<main>` 里。
   - 公开页的 id 参数没有经过 zod 校验。
+- 第二轮修复后最终复核的遗留项（2026-11-07）：
+  - `/api/resumes/[id]` 的 idSchema 还是自己定义的，没有从 `src/server/lib/upload-input.ts` 导入。归属检查的测试由单独的 fix(M2-T05) 补，不在本任务里。
+  - 公开主页的 logo 归属只给 `isOwnLogoKey` 写了单测，页面层没有测试。
+  - 重写后的 authz-matrix「Hijack」用例没在输入里塞别家的 companyId，抓不住 `input.companyId ?? ctx.companyId` 这类回退。
+  - `tests/e2e/helpers/smoke.ts` 检查错误浮层和错误页的字符串，在 Next 16.4.5 上对不上：global-error 显示的是「A server error occurred」。崩溃目前靠 200 状态码和 console、pageerror 检查抓到；改成和 Next 实际显示的文案一致。
+  - 控制台冒烟只断言 RECRUITER 看不到「认证材料」链接，没断言横幅 CTA 和提示文案。
+  - 「过期邀请不占名额」的测试，要两个过滤条件都去掉才会失败。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——

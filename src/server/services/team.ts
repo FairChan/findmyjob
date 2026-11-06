@@ -6,6 +6,7 @@ import { db } from '../db'
 import { logAudit } from './audit'
 import { getSetting } from './settings'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { acceptManagedTransfer } from './managed-company'
 import type { CompanyCtx, UserCtx } from '../authz'
 
 export const inviteMemberSchema = z.object({
@@ -106,13 +107,22 @@ export async function acceptInvite(ctx: UserCtx, token: string): Promise<void> {
   const hash = tokenHash(token)
   const invite = await db.companyInvite.findUnique({
     where: { tokenHash: hash },
-    include: { company: { select: { id: true, legalName: true, isActive: true } } },
+    include: { company: { select: { id: true, legalName: true, isActive: true, isManaged: true } } },
   })
 
   if (!invite) throw new NotFoundError('Invite not found')
   if (invite.acceptedAt) throw new ValidationError('Invite already used')
   if (invite.expiresAt < new Date()) throw new ValidationError('Invite has expired')
   if (!invite.company.isActive) throw new ValidationError('Company is no longer active')
+
+  // Managed company OWNER invites are handled by the transfer flow
+  if (invite.company.isManaged && invite.role === 'OWNER') {
+    return acceptManagedTransfer(ctx, token)
+  }
+  // OWNER role invites are not issued for non-managed companies
+  if (invite.role === 'OWNER') {
+    throw new ForbiddenError('OWNER can only be assigned via managed company transfer')
+  }
 
   // Email must match (case-insensitive)
   const user = await db.user.findUnique({
