@@ -500,6 +500,7 @@
 - 点「通过」时必须填核实记录：用了哪个公开渠道（SSM 记录、官网、公开电话，至少一项）和核实结果，写进 `CompanyVerification.reviewNote` 和 `company.verify` 审计的 metadata；不填时返回 ValidationError（TM-006）
 
 > 完成 2026-11-06：notifications.ts 增加 createNotification；新建 services/review-company.ts（approveCompany/rejectCompany/listPendingVerifications/getCompanyForReview）；admin-verification.ts actions；/admin/companies 列表页和 [companyId] 详情页（Server Components + ReviewForm 客户端组件，含 SOP 提示）；alert.ts 增加 fire-and-forget 给所有 ADMIN 发站内通知；eslint.config.mjs 增加 review-company.ts 的 creditWallet 豁免；i18n zh/en 增加 adminCompanies 命名空间；factories.ts 增加 createAdmin；12 个集成测试全通过（738 total）；偏差：邮件入队为 stub（logger.info），M5-T08 再接入 sendBoss
+> 修复 2026-11-07：(1) listPendingVerifications/getCompanyForReview 加 ctx 参数并在 DB 层断言 ADMIN 角色；两个 admin 页面均调用 requireAdmin(headers) 获取 ctx 并传给 service，确保 App Router 局部渲染时权限不被跳过；(2) authz-matrix 新增 4 个 action 级 authz 测试（student/employer 调 approveCompanyAction/rejectCompanyAction 均返回 FORBIDDEN 且公司状态不变）；review-company.test.ts 新增 6 个 service 层 authz 测试；修复存量 conditional-expect lint 违规；(3) 审计动作名 company.verification.reject → company.reject（符合 ARCHITECTURE §5.7）；(4) 页面硬编码 "Note:" 移入 i18n noteLabel（zh: 备注，en: Note）；(5) 新增 tests/e2e/smoke-m3-admin.spec.ts（ADMIN 两个页面健康，STUDENT/EMPLOYER 被跳走且 owner 邮箱不可见）；808 tests 全绿，4 E2E 全通过。其余 admin/page.tsx 只靠 layout，属后续任务，记入 M7-T19
 
 #### [x] M3-T04 团队管理
 依赖：M3-T01
