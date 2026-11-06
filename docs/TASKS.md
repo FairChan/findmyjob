@@ -483,6 +483,7 @@
 验收：一个企业用户只能属于一家企业（MVP）；SSM 注册号唯一
 > 完成 2026-11-06：实现 taxonomy/industries（两级行业码）、company service（createCompany/updateCompany/getMyCompany）、createCompanyAction/updateCompanyAction、/e/onboarding 和 /e/company 页面、CompanyForm 客户端组件、uploads 路由扩展 LOGO/VERIFICATION/PAYMENT_PROOF 支持，全量测试通过（695 tests）
 > 修复 2026-11-07：logoKey 归属校验（非 `logos/<companyId>/` 前缀抛 ForbiddenError，公开页同样校验）；CompanyMember.userId 加唯一约束（迁移 20261107000000）防并发建双企业，acceptInvite 加跨企业预检查；company-form.tsx 中「✓ Logo uploaded」挪入 i18n（zh/en）
+> 修复 2026-11-07：补页面冒烟用例（总控要求）；新增 tests/e2e/helpers/session.ts（loginAs）和 smoke.ts（expectPageHealthy），smoke-m3-company.spec.ts（/e/onboarding 健康、/e 重定向、/e/company zh/en 健康）和 smoke-m2-resume.spec.ts（/s/resume 健康），3 条用例全通过；crashtest 验证：临时在 /e/company 加 throw 后用例报 500 失败，确认冒烟有效
 
 #### [x] M3-T02 提交认证材料
 依赖：M3-T01
