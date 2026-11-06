@@ -386,12 +386,13 @@
 
 ## M2 · 学生档案、额度与邀请（约 3.6 天）
 
-#### [ ] M2-T01 档案 service 与 Onboarding 向导
+#### [x] M2-T01 档案 service 与 Onboarding 向导
 依赖：M1-T04
 做：`services/student-profile.ts` + zod schemas；`/s/onboarding` 四步向导（PRD §2.2），改为必经流程：顶部显示「第 n / 4 步」进度，每步可保存后退出，进度保存在服务端，下次回到第一个没填完的步骤；第 1 步加 CGPA（可选，0.00–4.00）。
 验收：
 - E2E 走完向导，数据正确入库；保存退出后再进来，停在第一个没填完的步骤
 - 375px 宽度下可正常使用
+> 完成 2026-11-06：实现四步向导含 CGPA、workAuth、JobIntent、技能语言和经历；schema 新增 onboardingStep 字段；lint/typecheck/694 个测试全部通过。
 
 #### [ ] M2-T02 档案编辑页
 依赖：M2-T01
