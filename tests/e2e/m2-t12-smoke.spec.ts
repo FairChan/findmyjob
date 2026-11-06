@@ -9,6 +9,7 @@
 import { test, expect, type Page, type APIRequestContext } from '@playwright/test'
 import { E2E_PASSWORD } from './helpers/password'
 import { stubTurnstile } from './helpers/turnstile'
+import { uniqueClientIp } from './helpers/client-ip'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
 
@@ -79,6 +80,12 @@ async function registerLoginAndCompleteStep1(
   await page.click('button:has-text("保存并退出")')
   await page.waitForURL('**/s', { timeout: 10000 })
 }
+
+
+// 每条用例一个独立的 x-real-ip，避免并行注册、登录共用一个限流桶（见 helpers/client-ip.ts）
+test.beforeEach(async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'x-real-ip': uniqueClientIp() })
+})
 
 test.describe('M2-T12 smoke: /s/invite', () => {
   test('smoke /s/invite: loads without error boundary or console errors', async ({ page, request }) => {

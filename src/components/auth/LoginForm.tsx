@@ -1,7 +1,8 @@
 'use client'
 import { useState, useCallback, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
-import { useRouter } from '@/i18n/navigation'
+// 用 Next 原生 router：跳转目标已经带了 /<locale> 前缀；next-intl 的 router 会再加一次，变成 /zh/zh/… 的 404（2026-11-07 E2E 实测）
+import { useRouter } from 'next/navigation'
 import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { authClient } from '@/lib/auth-client'

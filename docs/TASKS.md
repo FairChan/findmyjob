@@ -540,6 +540,7 @@
 8. 完成说明要分别写出单元、集成、E2E 三类的通过/失败/跳过数（E2E 必须 0 失败、0 跳过）。E2E 必须真的跑过：Bash 的 timeout 设成 600000。
 9. 两处 schoolId 校验（会让 seed 学校走不通）：`school-verification.ts` 的 `requestOtpSchema` 和 `talent-search.ts` 里的 `schoolId`，都从 `z.string().cuid()` 改成 `z.string().min(1).max(64)`。测试用 `school-xmum` 发起 OTP 请求要能通过，人才库按 `school-xmum` 筛选不能报校验错误。
 10. 顺手：`docs/DECISIONS.md` 在「开发中决策」表里有一行空行，把表格拆成了两段，删掉它。
+> 总控补充 2026-11-07：第 9 条的回归测试由总控补在 tests/unit/school-id-schemas.test.ts（改回 cuid 时失败，已实测）；第 8 条的数字：单元 40 个文件 832 个用例、集成 20 个文件 372 个用例、E2E 19 个文件 73 个用例（auth.setup 2、m4-t15-smoke 13、smoke-m3-console 8、talent-search 7、locale 5、smoke-m5-review-jobs 4、smoke-m5-jobs 4、smoke-m3-admin 4、smoke-m2-student-pages 4、auth-redirect 4、smoke-m3-verification 3、onboarding 3、m4-t14-smoke 3、smoke-m3-team 2、smoke-m3-company 2、m2-t11-smoke 2、smoke-m2-resume 1、m2-t12-smoke 1、example 1），全部通过，0 失败 0 跳过（2026-11-07 05:58，milestone/M2 合入 lane B 第三轮之后，总控在主会话实际运行）。
 
 ---
 
@@ -752,6 +753,7 @@
 6. 收藏夹页面要求已认证企业（M4-T14 第 7b 条）：`e/folders/page.tsx` 和 `e/folders/[id]/page.tsx` 改用 requireVerifiedCompany；未认证或被撤销认证的企业看到提示和去 /e/onboarding 的链接，不能报 500；`listFolders` 也加上已认证检查。在 authz-matrix 里加一行：「被撤销认证的企业列出收藏夹被拒」。
 7. 冒烟用例：M4-T14 和本任务改动过的页面，都要断言 `page.goto` 返回 200。
 8. 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数；E2E 要按 spec 文件分别列出，并且要跑全部 spec，不只是本任务的。
+> 总控补充 2026-11-07：第 1 条：E2E 全部改走测试库——合入 lane B 的 e2eDb / validateTestDbUrl 后，global-setup 改用 createE2eDb()，smoke-m2-student-pages 改用 e2eDb，tests/e2e 下除 helpers/db.ts 外不再 new PrismaClient()；playwright.config 以 lane B 版本为底，补回 globalSetup、setup 项目，默认端口 3000，reuseExistingServer:false。开发库里此前 E2E 留下的测试账号共 53 个（e2e-student 31、e2e-employer 9、m2t12-smoke 3、m2t11-smoke 2、e2e-admin 2，以及 e2e-verified/unverified/hidden/owner/emp/talent 各 1；都是 example.test 合成邮箱），本任务不删，是否清理由总控和用户决定。第 8 条的数字：单元 40 个文件 832 个用例、集成 20 个文件 372 个用例、E2E 19 个文件 73 个用例（auth.setup 2、m4-t15-smoke 13、smoke-m3-console 8、talent-search 7、locale 5、smoke-m5-review-jobs 4、smoke-m5-jobs 4、smoke-m3-admin 4、smoke-m2-student-pages 4、auth-redirect 4、smoke-m3-verification 3、onboarding 3、m4-t14-smoke 3、smoke-m3-team 2、smoke-m3-company 2、m2-t11-smoke 2、smoke-m2-resume 1、m2-t12-smoke 1、example 1），全部通过，0 失败 0 跳过（2026-11-07 05:58，milestone/M2 合入 lane B 第三轮之后，总控在主会话实际运行）。另：跑全量时发现并修了真实 bug——LoginForm、ResetPasswordForm 用 next-intl 的 router 去 push 已带 /<locale> 的路径，登录后跳到 /zh/zh/s/onboarding（404）；改用 next/navigation，auth-redirect E2E 改为精确匹配 URL 并断言 fullName 输入框可见。注册/登录类 E2E 每条用例设独立 x-real-ip（helpers/client-ip.ts），避免共用限流桶。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 

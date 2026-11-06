@@ -13,6 +13,7 @@
 import { test, expect } from '@playwright/test'
 import { E2E_PASSWORD } from './helpers/password'
 import { stubTurnstile } from './helpers/turnstile'
+import { uniqueClientIp } from './helpers/client-ip'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
 
@@ -72,6 +73,12 @@ async function registerAndLogin(
   await page.click('button[type="submit"]')
   await page.waitForURL('**/s/onboarding', { timeout: 10000 })
 }
+
+
+// 每条用例一个独立的 x-real-ip，避免并行注册、登录共用一个限流桶（见 helpers/client-ip.ts）
+test.beforeEach(async ({ page }) => {
+  await page.setExtraHTTPHeaders({ 'x-real-ip': uniqueClientIp() })
+})
 
 test.describe('Student onboarding wizard', () => {
   test('complete 4-step wizard, save-and-exit resumes at correct step, values persist after refresh', async ({ page, request }) => {
