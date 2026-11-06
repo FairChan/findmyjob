@@ -336,5 +336,29 @@
     "errorUnknown": "发生未知错误，请稍后重试。",
     "alreadyVerified": "你的学校邮箱已通过认证。",
     "changeEmail": "更换邮箱"
+  },
+  "invite": {
+    "title": "邀请与查看额度",
+    "quotaUsed": "已用",
+    "quotaLimit": "总额",
+    "quotaUnlimited": "不限",
+    "quotaProgress": "已使用 {used} / {limit} 次",
+    "quotaProgressUnlimited": "已使用 {used} 次（无限额）",
+    "nextTier": "再邀请 {count} 位同学可多看 {bonus} 个职位",
+    "nextUnlimited": "再邀请 {count} 位同学即可解锁无限查看",
+    "alreadyUnlimited": "你已解锁无限查看职位详情",
+    "inviteLinkLabel": "你的邀请链接",
+    "copyLink": "复制链接",
+    "copied": "已复制",
+    "milestoneLabel": "邀请进度",
+    "milestoneUnlimited": "无限",
+    "referralsTitle": "已邀请的同学",
+    "referralsEmpty": "还没有邀请记录",
+    "colName": "姓名",
+    "colCompleteness": "完成度",
+    "colStatus": "状态",
+    "statusPending": "待生效",
+    "statusQualified": "已生效",
+    "statusVoid": "已作废"
   }
 }

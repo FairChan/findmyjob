@@ -473,7 +473,7 @@
 
 > 完成 2026-11-06：`services/referrals.ts`（getOrCreateReferralCode/attachReferral/qualifyReferral/voidReferral/requalifyReferrals，gmail 邮箱规范化，KL 时区日均上限，条件 updateMany 保证并发幂等）；`jobs/requalify-referrals.ts`（runRequalifyReferrals）；registry.ts 注册 requalify-referrals 定时任务（cron 15 16 * * * = 00:15 KL）；register.ts 在学生注册后调用 attachReferral；student-profile.ts 四个 save* 函数各在事务外调用 qualifyReferral；tests/unit/referrals.test.ts（22 个单元测试）；801 个测试全部通过
 
-#### [ ] M2-T10 职位查看额度
+#### [x] M2-T10 职位查看额度
 依赖：M2-T09
 做：
 - `services/job-view-quota.ts`：`getQuota(studentId)` 返回 `{ used, limit: number | null, next }`；`openJob(studentId, jobId)` 返回 `{ allowed, quota }`，实现 ARCHITECTURE §5.9。
@@ -483,6 +483,8 @@
 验收：
 - 已投递、被邀请的职位总是允许打开；重复打开不计数；只剩 1 次时并发打开 2 个新职位，只有 1 个成功；关闭开关后不限；PURCHASE 和 ADMIN_GRANT 会增加额度
 - 企业账号打开其他企业的职位详情，只能看到锁定卡片
+
+> 完成 2026-11-07：`src/server/lib/advisory-locks.ts`（lockXact，pg_advisory_xact_lock，LOCK_NS.JOB_VIEW_QUOTA=1001）；`src/server/services/job-view-quota.ts`（getQuota/openJob，quota 公式 base+floor(qualified/tierSize)×tierBonus+grants，unlimitedAt/enabled 判无限，事务内 advisory lock + ON CONFLICT DO NOTHING，已投递/已邀请职位豁免）；`/s/invite` 页（已用/总额进度条、邀请链接复制按钮、里程碑进度、已邀请列表脱敏展示）；i18n zh/en 同步；tests/unit/job-view-quota.test.ts（14 个单元测试）；pnpm lint/typecheck/test/db:check 全部通过（815 tests）；偏差：EMPLOYER 只能看本企业职位的"锁定卡片"逻辑在 M5-T03 职位详情页实现时对接，本任务提供 openJob API，D18 记录在 DECISIONS
 
 ---
 

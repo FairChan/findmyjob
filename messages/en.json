@@ -336,5 +336,29 @@
     "errorUnknown": "An unexpected error occurred. Please try again.",
     "alreadyVerified": "Your school email has been verified.",
     "changeEmail": "Change Email"
+  },
+  "invite": {
+    "title": "Invite & View Quota",
+    "quotaUsed": "Used",
+    "quotaLimit": "Total",
+    "quotaUnlimited": "Unlimited",
+    "quotaProgress": "{used} / {limit} used",
+    "quotaProgressUnlimited": "{used} used (unlimited)",
+    "nextTier": "Invite {count} more to unlock {bonus} extra views",
+    "nextUnlimited": "Invite {count} more to unlock unlimited views",
+    "alreadyUnlimited": "You have unlimited job detail views",
+    "inviteLinkLabel": "Your invite link",
+    "copyLink": "Copy Link",
+    "copied": "Copied",
+    "milestoneLabel": "Invite progress",
+    "milestoneUnlimited": "Unlimited",
+    "referralsTitle": "People You've Invited",
+    "referralsEmpty": "No invitations yet",
+    "colName": "Name",
+    "colCompleteness": "Completeness",
+    "colStatus": "Status",
+    "statusPending": "Pending",
+    "statusQualified": "Qualified",
+    "statusVoid": "Voided"
   }
 }
