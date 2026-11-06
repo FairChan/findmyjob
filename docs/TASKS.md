@@ -558,7 +558,7 @@
 > 完成 2026-11-05：src/lib/mask-name.ts（12 种复姓 + 单姓 + 非中文首字母）；src/server/serializers/talent-card.ts（toTalentCard / toTalentDetail，TM-002 school/major 始终经 redact，contact 仅 unlocked=true 时输出，storageKey 不出现在输出）；src/server/services/notifications.ts（buildEmployerStudentPayload，仅 isUnlocked||hasApplied 时传 unlocked=true）；tests/unit/mask-name.test.ts（22 个断言，含 12 种复姓、单姓、非中文、边界）；tests/unit/talent-card.test.ts（防泄漏测试 + TM-002 + notifications，30 个断言）；pnpm lint / typecheck / test / db:check 全部通过
 > 修复 2026-11-05：mask-name 复姓改为至少 3 字才按复姓处理、首字符改码点安全取法；serializer 未解锁时对全部自由文本字段追加姓名遮蔽；notifications 签名改为 canSeeName，payload 始终 unlocked=false；补全 experience.description / resumePreview parsedJson / education.major / school.nameEn / WhatsApp 和 LinkedIn 链接的防泄漏测试；pnpm lint / typecheck / test 全部通过（466 个断言）
 
-#### [ ] M4-T03 人才库搜索 service
+#### [x] M4-T03 人才库搜索 service
 依赖：M4-T02、M2-T07
 做：
 - `services/talent-visibility.ts`：唯一的判断函数 `isStudentVisibleToCompany`（人才库条件见 PRD §0，加上未屏蔽本企业、账号正常）；搜索、详情、解锁、收藏、邀请都调用它。
@@ -566,6 +566,8 @@
 验收：
 - 集成测试覆盖每个筛选条件，以及每条排除规则（HIDDEN、学校未认证、完成度不足、已屏蔽、账号停用）；page=26 返回 400
 - 关键词只匹配脱敏后的文本：测试学生的一句话介绍写「微信 leakwx0420」、一个技能写「wx leakwx0420」、一条经历标题写「+60 12-000 0420」后，用 `leakwx0420` 或 `12-000 0420` 搜索，结果里都没有这个学生（TM-002）
+
+> 完成 2026-11-07：`services/talent-visibility.ts`（isStudentVisibleToCompany，6 条 PRD §0 条件含屏蔽检查）；`services/talent-search.ts`（全部 PRD §3.2 筛选 + 排序 + DB 分页；keyword TM-002 在应用层对学生文本 redact 后匹配，PII 关键词提前拦截）；`tests/integration/talent-search.test.ts`（34 个断言，覆盖全部筛选、排除规则、page=26→ValidationError、TM-002 三种 PII 场景）；853 tests 全通过
 
 #### [ ] M4-T04 人才库搜索页
 依赖：M4-T03
