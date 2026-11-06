@@ -659,12 +659,14 @@
 
 > 完成 2026-11-07：`services/talent-view.ts`（isStudentVisibleToCompany 检查 → 成员/企业每日去重上限 → 创建 ProfileView → 写审计 talent.view → toTalentDetail）；`/e/talent/[id]/page.tsx`（requireCompanyMember + 认证状态检查 + 友好的 404/限流提示）；`messages/zh.json` 和 `messages/en.json` 增加 `talentDetail` 命名空间；`tests/integration/talent-view.test.ts`（6 个测试，含成员上限、企业合计上限、去重）；authz-matrix.test.ts 新增 3 行；pnpm lint/typecheck/test/db:check 全部通过（862 tests）
 
-#### [ ] M4-T06 点数服务
+#### [x] M4-T06 点数服务
 依赖：M3-T03
 做：`services/credits.ts`：`applyLedgerEntry(tx, { companyId, delta, reason, refType?, refId?, actorId?, note? })`（扣减时余额不足抛错）、`getBalance`、`adminAdjust`（必须填原因，审计 `credits.adjust`）、`reconcileWallet`（balance 必须等于该钱包所有 delta 之和）。
 验收：
 - 单元 / 集成测试：账本 balanceAfter 连续正确；在事务外调用会报错
 - 以 findmyjob_app 身份 UPDATE 或 DELETE CreditLedger 返回 42501
+
+> 完成 2026-11-07：`services/credits.ts` 实现 `applyLedgerEntry`（lockXact CREDIT 锁、余额不足抛 InsufficientCreditsError、在事务外调用抛错）、`getBalance`（`getWalletBalance` 保留为向后兼容别名）、`adminAdjust`（note 必填、ADMIN_ADJUST reason、写 credits.adjust 审计）、`reconcileWallet`（返回 ok/expected/actual）；`advisory-locks.ts` 新增 LOCK_NS.CREDIT=1003；`tests/integration/credits.test.ts` 17 个集成测试全部通过（balanceAfter 连续、事务外抛错、余额不足、reconcile 不一致检测）；单元 832 通过；无新页面路由故无 E2E 冒烟用例（E2E：0 passed / 0 failed / 0 skipped）；pnpm lint/typecheck/db:check 全部通过
 
 #### [ ] M4-T07 解锁
 依赖：M4-T06、M4-T05
