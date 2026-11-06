@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { NotFoundError } from '../errors'
 import type { UserCtx } from '../authz'
+import { computeCompleteness } from '../lib/completeness'
+import { hasStudentContact } from './contact-access'
 
 // ---- Enums (mirror Prisma enums for Zod) ----
 
@@ -134,20 +136,49 @@ export type ProfileForOnboarding = {
   }[]
 }
 
-// ---- Completeness (rough, used until M2-T03 implements computeCompleteness) ----
+// ---- Completeness helpers ----
 
-function roughCompleteness(
-  workAuth: string | null,
-  intents: string[],
-  hasLanguagesOrAbilities: boolean,
-  hasExperiences: boolean,
-): number {
-  let score = 0
-  if (workAuth) score += 30
-  if (intents.length > 0) score += 15
-  if (hasLanguagesOrAbilities) score += 20
-  if (hasExperiences) score += 20
-  return score
+async function recalcCompleteness(tx: Prisma.TransactionClient, profileId: string): Promise<void> {
+  const profile = await tx.studentProfile.findUnique({
+    where: { id: profileId },
+    select: { workAuth: true, intents: true, skills: true, headline: true, summary: true },
+  })
+  if (!profile) return
+
+  const langCount = await tx.studentLanguage.count({ where: { studentId: profileId } })
+  const eduCount = await tx.education.count({ where: { studentId: profileId } })
+  const expCount = await tx.experience.count({ where: { studentId: profileId } })
+  const resumeCount = await tx.resumeFile.count({ where: { studentId: profileId } })
+  const contact = await tx.studentContact.findUnique({
+    where: { studentId: profileId },
+    select: { phone: true, email: true, whatsapp: true, wechat: true, linkedin: true },
+  })
+
+  const hasContact =
+    contact != null &&
+    (contact.phone != null ||
+      contact.email != null ||
+      contact.whatsapp != null ||
+      contact.wechat != null ||
+      contact.linkedin != null)
+
+  const completeness = computeCompleteness({
+    workAuth: profile.workAuth,
+    intents: profile.intents,
+    languages: Array(langCount).fill(null),
+    skills: profile.skills,
+    headline: profile.headline,
+    summary: profile.summary,
+    educations: Array(eduCount).fill(null),
+    experiences: Array(expCount).fill(null),
+    resumes: Array(resumeCount).fill(null),
+    hasContact,
+  })
+
+  await tx.studentProfile.update({
+    where: { id: profileId },
+    data: { completeness },
+  })
 }
 
 // ---- Service functions ----
@@ -209,49 +240,57 @@ export async function getProfileForOnboarding(ctx: UserCtx): Promise<ProfileForO
 }
 
 export async function saveStep1(ctx: UserCtx, input: Step1Data): Promise<void> {
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true, onboardingStep: true },
-  })
-  if (!profile) throw new NotFoundError()
+  await db.$transaction(async (tx) => {
+    const profile = await tx.studentProfile.findUnique({
+      where: { userId: ctx.userId },
+      select: { id: true, onboardingStep: true },
+    })
+    if (!profile) throw new NotFoundError()
 
-  await db.studentProfile.update({
-    where: { id: profile.id },
-    data: {
-      fullName: input.fullName,
-      schoolId: input.schoolId ?? null,
-      degreeLevel: input.degreeLevel ?? null,
-      major: input.major ?? null,
-      graduationYear: input.graduationYear ?? null,
-      graduationMonth: input.graduationMonth ?? null,
-      cgpa: input.cgpa != null ? new Prisma.Decimal(input.cgpa) : null,
-      nationality: input.nationality ? input.nationality.toUpperCase() : null,
-      workAuth: input.workAuth,
-      onboardingStep: Math.max(profile.onboardingStep, 2),
-      lastActiveAt: new Date(),
-    },
+    await tx.studentProfile.update({
+      where: { id: profile.id },
+      data: {
+        fullName: input.fullName,
+        schoolId: input.schoolId ?? null,
+        degreeLevel: input.degreeLevel ?? null,
+        major: input.major ?? null,
+        graduationYear: input.graduationYear ?? null,
+        graduationMonth: input.graduationMonth ?? null,
+        cgpa: input.cgpa != null ? new Prisma.Decimal(input.cgpa) : null,
+        nationality: input.nationality ? input.nationality.toUpperCase() : null,
+        workAuth: input.workAuth,
+        onboardingStep: Math.max(profile.onboardingStep, 2),
+        lastActiveAt: new Date(),
+      },
+    })
+
+    await recalcCompleteness(tx, profile.id)
   })
 }
 
 export async function saveStep2(ctx: UserCtx, input: Step2Data): Promise<void> {
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true, onboardingStep: true },
-  })
-  if (!profile) throw new NotFoundError()
+  await db.$transaction(async (tx) => {
+    const profile = await tx.studentProfile.findUnique({
+      where: { userId: ctx.userId },
+      select: { id: true, onboardingStep: true },
+    })
+    if (!profile) throw new NotFoundError()
 
-  await db.studentProfile.update({
-    where: { id: profile.id },
-    data: {
-      intents: input.intents,
-      availableFrom: input.availableFrom ? new Date(input.availableFrom) : null,
-      preferredStates: input.preferredStates ?? [],
-      preferredIndustries: input.preferredIndustries ?? [],
-      expectedSalaryMin: input.expectedSalaryMin ?? null,
-      expectedSalaryMax: input.expectedSalaryMax ?? null,
-      onboardingStep: Math.max(profile.onboardingStep, 3),
-      lastActiveAt: new Date(),
-    },
+    await tx.studentProfile.update({
+      where: { id: profile.id },
+      data: {
+        intents: input.intents,
+        availableFrom: input.availableFrom ? new Date(input.availableFrom) : null,
+        preferredStates: input.preferredStates ?? [],
+        preferredIndustries: input.preferredIndustries ?? [],
+        expectedSalaryMin: input.expectedSalaryMin ?? null,
+        expectedSalaryMax: input.expectedSalaryMax ?? null,
+        onboardingStep: Math.max(profile.onboardingStep, 3),
+        lastActiveAt: new Date(),
+      },
+    })
+
+    await recalcCompleteness(tx, profile.id)
   })
 }
 
@@ -286,20 +325,15 @@ export async function saveStep3(ctx: UserCtx, input: Step3Data): Promise<void> {
         lastActiveAt: new Date(),
       },
     })
+
+    await recalcCompleteness(tx, profile.id)
   })
 }
 
 export async function saveStep4(ctx: UserCtx, input: Step4Data): Promise<void> {
   const profile = await db.studentProfile.findUnique({
     where: { userId: ctx.userId },
-    select: {
-      id: true,
-      workAuth: true,
-      intents: true,
-      skills: true,
-      headline: true,
-      summary: true,
-    },
+    select: { id: true },
   })
   if (!profile) throw new NotFoundError()
 
@@ -338,28 +372,14 @@ export async function saveStep4(ctx: UserCtx, input: Step4Data): Promise<void> {
       })
     }
 
-    // Count languages for rough completeness
-    const langCount = await tx.studentLanguage.count({ where: { studentId: profile.id } })
-    const hasAbilities =
-      langCount > 0 ||
-      (profile.skills && profile.skills.length > 0) ||
-      !!profile.headline ||
-      !!profile.summary
-    const hasExperiences = input.educations.length > 0 || input.experiences.length > 0
-    const completeness = roughCompleteness(
-      profile.workAuth,
-      profile.intents,
-      hasAbilities,
-      hasExperiences,
-    )
-
     await tx.studentProfile.update({
       where: { id: profile.id },
       data: {
         onboardingStep: 5,
-        completeness: Math.max(1, completeness),
         lastActiveAt: new Date(),
       },
     })
+
+    await recalcCompleteness(tx, profile.id)
   })
 }
