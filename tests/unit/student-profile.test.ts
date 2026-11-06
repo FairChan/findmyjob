@@ -287,9 +287,9 @@ describe('saveStep1 — school validation (M2-T11)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
-    // First call: saveStep1 fetches id+onboardingStep; second call: recalcCompleteness fetches workAuth+intents+…
+    // First call: saveStep1 fetches id+onboardingStep+schoolId+schoolVerifiedAt; second call: recalcCompleteness
     mockTx.studentProfile.findUnique
-      .mockResolvedValueOnce({ id: 'sp1', onboardingStep: 1 })
+      .mockResolvedValueOnce({ id: 'sp1', onboardingStep: 1, schoolId: null, schoolVerifiedAt: null })
       .mockResolvedValueOnce({ workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'], skills: [], headline: null, summary: null })
     mockTx.studentProfile.update.mockResolvedValue({})
     mockHasStudentContactTx.mockResolvedValue(false)
@@ -300,7 +300,6 @@ describe('saveStep1 — school validation (M2-T11)', () => {
   })
 
   it('succeeds when schoolId is valid and active', async () => {
-    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 1 })
     mockTx.school.findFirst.mockResolvedValue({ id: 'school-xmum' })
     await expect(
       saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'school-xmum' }),
@@ -308,7 +307,6 @@ describe('saveStep1 — school validation (M2-T11)', () => {
   })
 
   it('throws ValidationError when schoolId does not exist', async () => {
-    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 1 })
     mockTx.school.findFirst.mockResolvedValue(null)
     await expect(
       saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'nonexistent' }),
@@ -316,11 +314,79 @@ describe('saveStep1 — school validation (M2-T11)', () => {
   })
 
   it('skips school check when schoolId is omitted', async () => {
-    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 1 })
     await expect(
       saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS' }),
     ).resolves.not.toThrow()
     expect(mockTx.school.findFirst).not.toHaveBeenCalled()
+  })
+})
+
+// M2-T12 fix 2: changing school clears schoolVerifiedAt and schoolEmail
+describe('saveStep1 — school change clears verification (M2-T12)', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
+    mockTx.studentProfile.update.mockResolvedValue({})
+    mockHasStudentContactTx.mockResolvedValue(false)
+    mockTx.studentLanguage.count.mockResolvedValue(0)
+    mockTx.education.count.mockResolvedValue(0)
+    mockTx.experience.count.mockResolvedValue(0)
+    mockTx.resumeFile.count.mockResolvedValue(0)
+  })
+
+  it('clears schoolVerifiedAt and schoolEmail when school changes from verified school A to school B', async () => {
+    // Profile is verified with school-a
+    mockTx.studentProfile.findUnique
+      .mockResolvedValueOnce({
+        id: 'sp1',
+        onboardingStep: 2,
+        schoolId: 'school-a',
+        schoolVerifiedAt: new Date('2026-01-01T00:00:00Z'),
+      })
+      .mockResolvedValueOnce({ workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'], skills: [], headline: null, summary: null })
+    mockTx.school.findFirst.mockResolvedValue({ id: 'school-b' })
+
+    await saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'school-b' })
+
+    const updateCall = mockTx.studentProfile.update.mock.calls[0][0]
+    expect(updateCall.data.schoolVerifiedAt).toBeNull()
+    expect(updateCall.data.schoolEmail).toBeNull()
+  })
+
+  it('does NOT clear verification when school stays the same', async () => {
+    mockTx.studentProfile.findUnique
+      .mockResolvedValueOnce({
+        id: 'sp1',
+        onboardingStep: 2,
+        schoolId: 'school-a',
+        schoolVerifiedAt: new Date('2026-01-01T00:00:00Z'),
+      })
+      .mockResolvedValueOnce({ workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'], skills: [], headline: null, summary: null })
+    mockTx.school.findFirst.mockResolvedValue({ id: 'school-a' })
+
+    await saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'school-a' })
+
+    const updateCall = mockTx.studentProfile.update.mock.calls[0][0]
+    expect(updateCall.data).not.toHaveProperty('schoolVerifiedAt')
+    expect(updateCall.data).not.toHaveProperty('schoolEmail')
+  })
+
+  it('does NOT clear verification when profile was not yet verified', async () => {
+    mockTx.studentProfile.findUnique
+      .mockResolvedValueOnce({
+        id: 'sp1',
+        onboardingStep: 1,
+        schoolId: 'school-a',
+        schoolVerifiedAt: null,
+      })
+      .mockResolvedValueOnce({ workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'], skills: [], headline: null, summary: null })
+    mockTx.school.findFirst.mockResolvedValue({ id: 'school-b' })
+
+    await saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'school-b' })
+
+    const updateCall = mockTx.studentProfile.update.mock.calls[0][0]
+    expect(updateCall.data).not.toHaveProperty('schoolVerifiedAt')
+    expect(updateCall.data).not.toHaveProperty('schoolEmail')
   })
 })
 

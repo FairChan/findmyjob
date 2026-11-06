@@ -282,7 +282,7 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { adva
   await db.$transaction(async (tx) => {
     const profile = await tx.studentProfile.findUnique({
       where: { userId: ctx.userId },
-      select: { id: true, onboardingStep: true },
+      select: { id: true, onboardingStep: true, schoolId: true, schoolVerifiedAt: true },
     })
     if (!profile) throw new NotFoundError()
     profileId = profile.id
@@ -292,11 +292,15 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { adva
       if (!school) throw new ValidationError('School not found or not active')
     }
 
+    // If school changes, clear verification so the student must re-verify the new school email
+    const newSchoolId = input.schoolId ?? null
+    const schoolChanged = profile.schoolVerifiedAt !== null && newSchoolId !== profile.schoolId
+
     await tx.studentProfile.update({
       where: { id: profile.id },
       data: {
         fullName: input.fullName,
-        schoolId: input.schoolId ?? null,
+        schoolId: newSchoolId,
         degreeLevel: input.degreeLevel ?? null,
         major: input.major ?? null,
         graduationYear: input.graduationYear ?? null,
@@ -305,6 +309,7 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { adva
         nationality: input.nationality ? input.nationality.toUpperCase() : null,
         workAuth: input.workAuth,
         ...(advance ? { onboardingStep: Math.max(profile.onboardingStep, 2) } : {}),
+        ...(schoolChanged ? { schoolVerifiedAt: null, schoolEmail: null } : {}),
         lastActiveAt: new Date(),
       },
     })

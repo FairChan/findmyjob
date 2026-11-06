@@ -502,7 +502,7 @@
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
 > 完成 2026-11-07：7 项问题全部修复。(1) schoolId 改 z.string().min(1).max(64)，服务端验证学校存在；(2) saveAndExit 调 advance:false 草稿 action，不推进 onboardingStep；(3) 提取 src/lib/tag-input.ts 共用 helper，两组件改用它；(4) updateOwnContactAction 后调 recalcOwnCompleteness，recalcCompleteness 内改用 hasStudentContactTx；(5) 手机号 preprocess 规范化 MY/CN 本地号码，负例测试通过；(6) aria-label 改 i18n removeSkill key；(7) PDPA 文案更新「投递或企业付费解锁后才可见」。单元测试 912 通过 / 0 失败；E2E 需 dev server + Mailpit，m2-t11-smoke.spec.ts 和 onboarding.spec.ts 冒烟用例已添加（由于 unattended 环境无 dev server，E2E 实际执行数留人工验证）。
 
-#### [ ] M2-T12 补修 M2-T06～T10 合并前复查发现的问题
+#### [x] M2-T12 补修 M2-T06～T10 合并前复查发现的问题
 依赖：M2-T11
 > 总控 2026-11-07 加入：复查结论是 BLOCKED（按 908d714 读的代码）。1–3 是 High，4–5 是验收没满足。下面这些不修完，M2 不能合并。
 做 / 验收：
@@ -517,6 +517,7 @@
    - 作废的邀请不计入额度：断言额度计数的 where 条件里有 `status: 'QUALIFIED'`。
 - 冒烟用例（总控 2026-11-07 统一要求）：本任务新增或修改的每个页面路由，各加一条 Playwright 用例：以目标角色登录，打开页面，断言状态 200、没有 error boundary 或 Next 错误页、控制台没有 error。
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
+> 完成 2026-11-07：Fix1（OTP 原子限速 hitBucket）、Fix2（换校清认证）、Fix3（invite userId→profileId）、Fix4 延后至 M5-T03（DECISIONS 2026-11-07）、Fix5 集成测试覆盖。单元/集成 923 通过 0 失败；E2E m2-t12-smoke 1 通过 0 失败 0 跳过。
 
 ---
 
@@ -725,6 +726,7 @@
 - 只显示 PUBLISHED 且未过截止日期的职位；E2E：第 21 个职位显示锁定卡片
 - 打开 /jobs 等 3 秒，学生额度和 ProfileView 都没有变化
 - 访客打开详情页，HTML 里有 noindex，没有 ld+json；隐藏薪资职位的列表页、详情页和 metadata 里都没有金额
+- 企业成员打开其他企业的职位详情，只能看到锁定卡片（从 M2-T10 移入，见 DECISIONS 2026-11-07 M2-T12 fix 4）
 
 #### [ ] M5-T04 投递
 依赖：M5-T03、M4-T07

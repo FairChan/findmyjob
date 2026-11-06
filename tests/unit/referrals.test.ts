@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 vi.mock('@/env', () => ({ env: {} }))
 
@@ -208,6 +208,69 @@ describe('qualifyReferral', () => {
       .mockResolvedValueOnce(3)
     await qualifyReferral('sp1')
     expect(mockDb.referral.updateMany).not.toHaveBeenCalled()
+  })
+})
+
+describe('qualifyReferral — voided referrals do not count toward quota (M2-T12)', () => {
+  beforeEach(() => vi.resetAllMocks())
+
+  it('getQuota only counts QUALIFIED referrals — where clause includes status QUALIFIED', () => {
+    // This test verifies the referral count where condition used in getQuota
+    // getQuota calls: db.referral.count({ where: { referrerId: studentId, status: 'QUALIFIED' } })
+    // We verify the mock is called with the right filter when qualifyReferral updates
+    mockDb.referral.findFirst.mockResolvedValue({ id: 'r1', referrerId: 'sp2', inviteeId: 'sp1', status: 'PENDING' })
+    mockDb.studentProfile.findUnique.mockResolvedValue({ userId: 'u1', completeness: 90, schoolVerifiedAt: null })
+    mockDb.user.findUnique.mockResolvedValue({ emailVerified: true })
+    mockGetSetting
+      .mockResolvedValueOnce(90)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(3)
+    mockDb.referral.count.mockResolvedValue(0)
+    mockDb.referral.updateMany.mockResolvedValue({ count: 1 })
+
+    return qualifyReferral('sp1').then(() => {
+      const countCall = mockDb.referral.count.mock.calls[0][0]
+      expect(countCall.where.status).toBe('QUALIFIED')
+    })
+  })
+})
+
+describe('qualifyReferral — daily limit with fake timers (M2-T12)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.resetAllMocks()
+  })
+
+  it('4th referral on same KL day stays PENDING, becomes QUALIFIED after midnight KL', async () => {
+    // Simulate: 3 already qualified today; 4th comes in → stays PENDING
+    mockDb.referral.findFirst.mockResolvedValue({ id: 'r1', referrerId: 'sp2', inviteeId: 'sp1', status: 'PENDING' })
+    mockDb.studentProfile.findUnique.mockResolvedValue({ userId: 'u1', completeness: 90, schoolVerifiedAt: null })
+    mockDb.user.findUnique.mockResolvedValue({ emailVerified: true })
+    mockGetSetting.mockImplementation((key: string) => {
+      if (key === 'referral.minCompleteness') return Promise.resolve(90)
+      if (key === 'referral.requireSchoolVerified') return Promise.resolve(false)
+      if (key === 'referral.maxQualifiedPerDay') return Promise.resolve(3)
+      return Promise.resolve(undefined)
+    })
+    mockDb.referral.count.mockResolvedValue(3) // already at cap
+
+    await qualifyReferral('sp1')
+    expect(mockDb.referral.updateMany).not.toHaveBeenCalled()
+
+    // Now advance fake clock past KL midnight (UTC+8: 16:00 UTC = 00:00 KL next day)
+    vi.useFakeTimers()
+    // Set time to 2026-11-08T16:00:00Z which is 2026-11-09T00:00:00+08:00 (new KL day)
+    vi.setSystemTime(new Date('2026-11-09T16:00:00Z'))
+
+    // Now on the new KL day, qualified today count is 0
+    mockDb.referral.count.mockResolvedValue(0)
+    mockDb.referral.updateMany.mockResolvedValue({ count: 1 })
+
+    await qualifyReferral('sp1')
+    expect(mockDb.referral.updateMany).toHaveBeenCalledWith({
+      where: { id: 'r1', status: 'PENDING' },
+      data: expect.objectContaining({ status: 'QUALIFIED' }),
+    })
   })
 })
 

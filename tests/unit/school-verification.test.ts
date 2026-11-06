@@ -22,9 +22,17 @@ const mockDb = vi.hoisted(() => ({
 }))
 vi.mock('@/server/db', () => ({ db: mockDb }))
 
-// ---- Mock rate-limit ----
+// ---- Mock rate-limit (send limits) ----
 const mockCheckRateLimit = vi.hoisted(() => vi.fn())
-vi.mock('@/server/lib/rate-limit', () => ({ checkRateLimit: mockCheckRateLimit }))
+const mockClearRateLimit = vi.hoisted(() => vi.fn())
+vi.mock('@/server/lib/rate-limit', () => ({
+  checkRateLimit: mockCheckRateLimit,
+  clearRateLimit: mockClearRateLimit,
+}))
+
+// ---- Mock db-rate-limit (verify attempts, atomic) ----
+const mockHitBucket = vi.hoisted(() => vi.fn())
+vi.mock('@/server/lib/db-rate-limit', () => ({ hitBucket: mockHitBucket }))
 
 // ---- Mock settings ----
 const mockGetSetting = vi.hoisted(() => vi.fn())
@@ -65,6 +73,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   mockGetSetting.mockResolvedValue(5)
   mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4, resetAt: 0, count: 1 })
+  mockHitBucket.mockResolvedValue({ allowed: true, remaining: 4, resetAt: 0, count: 1 })
+  mockClearRateLimit.mockResolvedValue(undefined)
   mockDb.school.findUnique.mockResolvedValue(activeSchool)
   mockDb.studentProfile.findFirst.mockResolvedValue(null)
   mockDb.verification.findFirst.mockResolvedValue(null)
@@ -156,13 +166,12 @@ describe('requestSchoolOtp', () => {
 
 // ---- verifySchoolOtp ----
 
-function makeOtpRow(otp: string, attempts = 0, expiresOffset = 10 * 60 * 1000) {
+function makeOtpRow(otp: string, expiresOffset = 10 * 60 * 1000) {
   return {
     id: 'ver1',
     identifier: otpIdentifier(USER_ID),
     value: JSON.stringify({
       hash: hashOtp(otp),
-      attempts,
       schoolId: SCHOOL_ID,
       schoolEmail: 'student@xmu.edu.my',
     }),
@@ -183,6 +192,7 @@ describe('verifySchoolOtp', () => {
     const call = mockDb.studentProfile.update.mock.calls[0][0]
     expect(call.data.schoolVerifiedAt).toBeInstanceOf(Date)
     expect(call.data.schoolEmail).toBe('student@xmu.edu.my')
+    expect(mockClearRateLimit).toHaveBeenCalledOnce()
   })
 
   it('throws ValidationError for wrong OTP', async () => {
@@ -190,7 +200,8 @@ describe('verifySchoolOtp', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(makeOtpRow(CORRECT_OTP))
     await expect(verifySchoolOtp(ctx, { otp: '000000' })).rejects.toThrow(ValidationError)
-    expect(mockDb.verification.update).toHaveBeenCalledOnce()
+    // No longer increments attempts in JSON — hitBucket handles it
+    expect(mockDb.verification.update).not.toHaveBeenCalled()
   })
 
   it('throws ValidationError when OTP record does not exist or is expired', async () => {
@@ -199,20 +210,27 @@ describe('verifySchoolOtp', () => {
     await expect(verifySchoolOtp(ctx, { otp: CORRECT_OTP })).rejects.toThrow(ValidationError)
   })
 
-  it('locks the user after 5 consecutive wrong attempts', async () => {
-    // attempt 4 already in DB (needs one more to lock)
+  it('locks the user and throws RateLimitedError when bucket is exhausted (6th attempt)', async () => {
     mockDb.verification.findFirst
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(makeOtpRow(CORRECT_OTP, 4))
-    await expect(verifySchoolOtp(ctx, { otp: '000000' })).rejects.toThrow(ValidationError)
-    // Should create a lock record and delete the OTP
+      .mockResolvedValueOnce(null)   // lockout check: not locked
+      .mockResolvedValueOnce(makeOtpRow(CORRECT_OTP))  // OTP lookup
+    // hitBucket returns not-allowed (6th attempt)
+    mockHitBucket.mockResolvedValueOnce({ allowed: false, remaining: 0, resetAt: 0, count: 6 })
+
+    await expect(verifySchoolOtp(ctx, { otp: '000000' })).rejects.toThrow(RateLimitedError)
+    // Should delete OTP and create a lock record
     expect(mockDb.verification.deleteMany).toHaveBeenCalled()
     expect(mockDb.verification.create).toHaveBeenCalledOnce()
     const createCall = mockDb.verification.create.mock.calls[0][0]
     expect(createCall.data.identifier).toBe(lockIdentifier(USER_ID))
+    expect(createCall.data.expiresAt).toBeInstanceOf(Date)
+    // Lock expiry should be ~30 minutes from now
+    const lockExpiry = createCall.data.expiresAt.getTime()
+    expect(lockExpiry).toBeGreaterThan(Date.now() + 29 * 60 * 1000)
+    expect(lockExpiry).toBeLessThan(Date.now() + 31 * 60 * 1000)
   })
 
-  it('throws RateLimitedError when user is locked out', async () => {
+  it('throws RateLimitedError when user is locked out (existing lock record)', async () => {
     // first findFirst call (lockout check) returns a lock row
     mockDb.verification.findFirst.mockResolvedValueOnce({
       id: 'lock1',
@@ -231,5 +249,15 @@ describe('verifySchoolOtp', () => {
     const prismaErr = Object.assign(new Error('Unique constraint'), { code: 'P2002' })
     mockDb.studentProfile.update.mockRejectedValue(prismaErr)
     await expect(verifySchoolOtp(ctx, { otp: CORRECT_OTP })).rejects.toThrow(ValidationError)
+  })
+
+  it('requestSchoolOtp expiresAt is ~10 minutes from now', async () => {
+    const before = Date.now()
+    await requestSchoolOtp(ctx, { schoolId: SCHOOL_ID, schoolEmail: 'student@xmu.edu.my' })
+    const createCall = mockDb.verification.create.mock.calls[0][0]
+    const expiresAt: Date = createCall.data.expiresAt
+    expect(expiresAt).toBeInstanceOf(Date)
+    expect(expiresAt.getTime()).toBeGreaterThan(before + 9 * 60 * 1000)
+    expect(expiresAt.getTime()).toBeLessThan(before + 11 * 60 * 1000)
   })
 })

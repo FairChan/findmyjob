@@ -1,4 +1,5 @@
 import { headers } from 'next/headers'
+import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { requireStudent } from '@/server/authz'
 import { getQuota } from '@/server/services/job-view-quota'
@@ -17,9 +18,19 @@ export default async function InvitePage({
   const t = await getTranslations('invite')
   const ctx = await requireStudent(await headers())
 
+  // Resolve the StudentProfile id from the authenticated User id
+  const profile = await db.studentProfile.findUnique({
+    where: { userId: ctx.userId },
+    select: { id: true },
+  })
+  if (!profile) {
+    redirect(`/${locale}/s/onboarding`)
+  }
+  const profileId = profile.id
+
   const [quota, referralCode, tierSize, unlimitedAt, tierBonus] = await Promise.all([
-    getQuota(ctx.userId),
-    getOrCreateReferralCode(ctx.userId),
+    getQuota(profileId),
+    getOrCreateReferralCode(profileId),
     getSetting<number>('studentQuota.tierSize', 3),
     getSetting<number>('studentQuota.unlimitedAt', 12),
     getSetting<number>('studentQuota.tierBonus', 10),
@@ -33,7 +44,7 @@ export default async function InvitePage({
 
   // Load referrals with invitee details
   const referrals = await db.referral.findMany({
-    where: { referrerId: ctx.userId },
+    where: { referrerId: profileId },
     orderBy: { createdAt: 'desc' },
     select: {
       id: true,

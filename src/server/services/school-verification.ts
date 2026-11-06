@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { db } from '../db'
 import { NotFoundError, ValidationError, RateLimitedError } from '../errors'
 import { getSetting } from './settings'
-import { checkRateLimit } from '../lib/rate-limit'
+import { checkRateLimit, clearRateLimit } from '../lib/rate-limit'
+import { hitBucket } from '../lib/db-rate-limit'
 import { createEmailProvider } from '../../lib/email'
 import type { UserCtx } from '../authz'
 
@@ -26,7 +27,6 @@ function lockIdentifier(userId: string): string {
 
 interface StoredOtp {
   hash: string
-  attempts: number
   schoolId: string
   schoolEmail: string
 }
@@ -105,7 +105,7 @@ export async function requestSchoolOtp(ctx: UserCtx, input: RequestOtpInput): Pr
   const otp = String(crypto.randomInt(0, 1_000_000)).padStart(6, '0')
   const hash = hashOtp(otp)
   const expiresAt = new Date(Date.now() + OTP_EXPIRY_MS)
-  const stored: StoredOtp = { hash, attempts: 0, schoolId, schoolEmail: normalizedEmail }
+  const stored: StoredOtp = { hash, schoolId, schoolEmail: normalizedEmail }
 
   // Replace any existing pending OTP
   const identifier = otpIdentifier(ctx.userId)
@@ -128,7 +128,7 @@ export async function requestSchoolOtp(ctx: UserCtx, input: RequestOtpInput): Pr
 export async function verifySchoolOtp(ctx: UserCtx, input: VerifyOtpInput): Promise<void> {
   const { otp } = verifyOtpSchema.parse(input)
 
-  // Check lockout first
+  // Check lockout first (fast-path: existing lock record from prior exhaustion)
   await assertNotLocked(ctx.userId)
 
   const identifier = otpIdentifier(ctx.userId)
@@ -136,6 +136,24 @@ export async function verifySchoolOtp(ctx: UserCtx, input: VerifyOtpInput): Prom
     where: { identifier, expiresAt: { gt: new Date() } },
   })
   if (!row) throw new ValidationError('otp_expired_or_not_found')
+
+  // Atomically consume one attempt from the per-user bucket (prevents concurrent brute-force).
+  // The bucket window matches the lock duration; resending OTP does NOT clear this bucket.
+  const bucketKey = `school-otp-verify:${ctx.userId}`
+  const bucket = await hitBucket(bucketKey, { windowMs: LOCK_EXPIRY_MS, limit: MAX_ATTEMPTS })
+
+  if (!bucket.allowed) {
+    // Lock the user and clear the OTP record so they must resend
+    await db.verification.deleteMany({ where: { identifier } })
+    await db.verification.create({
+      data: {
+        identifier: lockIdentifier(ctx.userId),
+        value: 'locked',
+        expiresAt: new Date(Date.now() + LOCK_EXPIRY_MS),
+      },
+    })
+    throw new RateLimitedError('Too many failed attempts; try again later')
+  }
 
   const stored = JSON.parse(row.value) as StoredOtp
   const inputHash = hashOtp(otp)
@@ -147,28 +165,11 @@ export async function verifySchoolOtp(ctx: UserCtx, input: VerifyOtpInput): Prom
     storedBuf.length === inputBuf.length && crypto.timingSafeEqual(storedBuf, inputBuf)
 
   if (!match) {
-    const newAttempts = stored.attempts + 1
-    if (newAttempts >= MAX_ATTEMPTS) {
-      // Lock the user for 30 minutes and clear the OTP record
-      await db.verification.deleteMany({ where: { identifier } })
-      await db.verification.create({
-        data: {
-          identifier: lockIdentifier(ctx.userId),
-          value: 'locked',
-          expiresAt: new Date(Date.now() + LOCK_EXPIRY_MS),
-        },
-      })
-    } else {
-      // Increment attempt counter
-      await db.verification.update({
-        where: { id: row.id },
-        data: { value: JSON.stringify({ ...stored, attempts: newAttempts }) },
-      })
-    }
     throw new ValidationError('otp_invalid')
   }
 
-  // OTP correct — clear verification records
+  // OTP correct — clear rate-limit bucket and verification records
+  await clearRateLimit(bucketKey)
   await db.verification.deleteMany({
     where: { identifier: { in: [identifier, lockIdentifier(ctx.userId)] } },
   })
