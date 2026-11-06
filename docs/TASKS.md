@@ -677,12 +677,14 @@
 - 同一学生并发重复解锁 → 只扣 1 次
 - 学生已屏蔽本企业或已 HIDDEN → 拒绝解锁
 
-#### [ ] M4-T08 联系方式访问
+#### [x] M4-T08 联系方式访问
 依赖：M4-T07、M2-T04
 做：`contact-access.getContactForCompany(companyId, studentId)`；详情页在已解锁时显示全名和联系方式。加 authz-matrix 行。
 验收：
 - 集成测试：未解锁 → 拒绝；已解锁 → 返回明文；学生屏蔽该企业后 → 拒绝；账号删除后 → 拒绝
 - `contact-access.ts` 提供唯一的 `canSeeIdentity(companyId, studentId)`（存在 TalentUnlock、学生没有屏蔽该企业、账号 ACTIVE），企业侧所有调用 `toTalentCard` / `toTalentDetail` 的地方都用它计算 `unlocked`；集成测试：解锁后学生屏蔽该企业、被停用或申请删号，详情页不再返回全名和联系方式（TM-003）
+
+> 完成 2026-11-07：`contact-access.ts` 新增 `canSeeIdentity(companyId, studentId)` 和 `getContactForCompany(companyId, studentId)`；`talent-view.ts` 解锁时调 `getContactForCompany` 获取明文联系方式；详情页新增 Contact 段落（已解锁时显示）；中英文案各加 6 个 key；`tests/integration/contact-access.test.ts`（12 个用例，含 TM-003 三种场景）；`authz-matrix.test.ts` 新增 5 行；E2E：m4-t08-smoke.spec.ts（1 条冒烟用例，1 通过 / 0 失败 / 0 跳过）。单元+集成测试：62 文件 1247 用例全通过；m4-t14-smoke 和 m4-t08-smoke 共 6 条 E2E 全通过。
 
 #### [ ] M4-T09 简历下载水印
 依赖：M4-T08

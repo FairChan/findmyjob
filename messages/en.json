@@ -502,7 +502,13 @@
     "expKindWork": "Work",
     "expKindProject": "Project",
     "expKindCampus": "Campus",
-    "expKindAward": "Award"
+    "expKindAward": "Award",
+    "sectionContact": "Contact Details",
+    "contactPhone": "Phone",
+    "contactEmail": "Email",
+    "contactWhatsapp": "WhatsApp",
+    "contactWechat": "WeChat",
+    "contactLinkedin": "LinkedIn"
   },
   "resume": {
     "title": "My Resume",

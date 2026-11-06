@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import { db } from '../db'
-import { NotFoundError } from '../errors'
+import { NotFoundError, ForbiddenError } from '../errors'
 import { encryptField, decryptField } from '../lib/crypto'
 import type { UserCtx } from '../authz'
 
@@ -98,6 +98,61 @@ export async function getOwnContact(ctx: UserCtx): Promise<ContactData> {
   if (!row) {
     return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
   }
+  return {
+    phone: decryptIfPresent(row.phone, 'phone', studentId),
+    email: decryptIfPresent(row.email, 'email', studentId),
+    whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
+    wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
+    linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
+  }
+}
+
+/**
+ * Returns true when a company can see a student's full identity (name + contact):
+ * - TalentUnlock exists for this company+student
+ * - Student has NOT blocked this company
+ * - Student account is ACTIVE
+ */
+export async function canSeeIdentity(companyId: string, studentId: string): Promise<boolean> {
+  const [unlock, blocked, profile] = await Promise.all([
+    db.talentUnlock.findUnique({
+      where: { companyId_studentId: { companyId, studentId } },
+      select: { id: true },
+    }),
+    db.blockedCompany.findUnique({
+      where: { studentId_companyId: { studentId, companyId } },
+      select: { studentId: true },
+    }),
+    db.studentProfile.findUnique({
+      where: { id: studentId },
+      select: { user: { select: { status: true } } },
+    }),
+  ])
+
+  if (!unlock) return false
+  if (blocked !== null) return false
+  if (!profile || profile.user.status !== 'ACTIVE') return false
+
+  return true
+}
+
+/**
+ * Returns decrypted contact data for a student, gated by canSeeIdentity.
+ * Throws ForbiddenError if the company is not allowed to see the contact.
+ * This is the ONLY function that may read and decrypt student contact fields.
+ */
+export async function getContactForCompany(
+  companyId: string,
+  studentId: string,
+): Promise<ContactData> {
+  const canSee = await canSeeIdentity(companyId, studentId)
+  if (!canSee) throw new ForbiddenError()
+
+  const row = await db.studentContact.findUnique({ where: { studentId } })
+  if (!row) {
+    return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
+  }
+
   return {
     phone: decryptIfPresent(row.phone, 'phone', studentId),
     email: decryptIfPresent(row.email, 'email', studentId),

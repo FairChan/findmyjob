@@ -246,6 +246,56 @@ function TalentDetailBody({
       <EducationList educations={detail.educations} tLabel={tLabel} />
       <ExperienceList experiences={detail.experiences} tLabel={tLabel} />
 
+      {/* Contact details — only shown when unlocked */}
+      {detail.unlocked && detail.contact && (
+        <section aria-labelledby="contact-heading">
+          <h2 id="contact-heading" className="mb-3 text-base font-semibold">
+            {tLabel('sectionContact')}
+          </h2>
+          <div className="rounded-lg border bg-card p-4 space-y-2 text-sm">
+            {detail.contact.phone && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactPhone')}</span>
+                <span className="font-medium">{detail.contact.phone}</span>
+              </div>
+            )}
+            {detail.contact.email && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactEmail')}</span>
+                <a href={`mailto:${detail.contact.email}`} className="font-medium underline underline-offset-2">
+                  {detail.contact.email}
+                </a>
+              </div>
+            )}
+            {detail.contact.whatsapp && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactWhatsapp')}</span>
+                <span className="font-medium">{detail.contact.whatsapp}</span>
+              </div>
+            )}
+            {detail.contact.wechat && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactWechat')}</span>
+                <span className="font-medium">{detail.contact.wechat}</span>
+              </div>
+            )}
+            {detail.contact.linkedinUrl && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactLinkedin')}</span>
+                <a
+                  href={detail.contact.linkedinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline underline-offset-2"
+                >
+                  {detail.contact.linkedinUrl}
+                </a>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* Resume count */}
       {detail.resumeCount > 0 && (
         <section aria-labelledby="resume-heading">

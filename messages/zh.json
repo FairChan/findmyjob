@@ -502,7 +502,13 @@
     "expKindWork": "工作",
     "expKindProject": "项目",
     "expKindCampus": "校园活动",
-    "expKindAward": "奖项"
+    "expKindAward": "奖项",
+    "sectionContact": "联系方式",
+    "contactPhone": "手机",
+    "contactEmail": "邮箱",
+    "contactWhatsapp": "WhatsApp",
+    "contactWechat": "微信",
+    "contactLinkedin": "LinkedIn"
   },
   "resume": {
     "title": "我的简历",

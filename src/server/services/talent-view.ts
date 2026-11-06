@@ -8,6 +8,7 @@ import { NotFoundError, RateLimitedError, ForbiddenError } from '../errors'
 import { toTalentDetail } from '../serializers/talent-card'
 import type { TalentDetail } from '../serializers/talent-card'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { getContactForCompany } from './contact-access'
 
 function todayUTCStart(): Date {
   const d = new Date()
@@ -159,6 +160,12 @@ export async function viewTalentProfile(
 
   if (!profile) throw new NotFoundError('Student profile not found')
 
+  // unlocked: TalentUnlock exists AND student is visible (ACTIVE + not blocked) — the
+  // visibility check above already guarantees ACTIVE + not blocked, so unlocks.length > 0
+  // is equivalent to canSeeIdentity here.
+  const unlocked = profile.unlocks.length > 0
+  const contact = unlocked ? await getContactForCompany(ctx.companyId, studentId) : null
+
   return toTalentDetail(
     {
       id: profile.id,
@@ -179,6 +186,6 @@ export async function viewTalentProfile(
       experiences: profile.experiences,
       resumes: profile.resumes,
     },
-    { unlocked: profile.unlocks.length > 0, contact: null },
+    { unlocked, contact },
   )
 }

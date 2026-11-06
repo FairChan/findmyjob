@@ -46,6 +46,7 @@ import {
   getFolderItems,
   getStudentFolderIds,
 } from '@/server/services/talent-folders'
+import { getContactForCompany } from '@/server/services/contact-access'
 
 setupTestDb()
 
@@ -747,6 +748,78 @@ describe('未认证企业查看收藏夹被拒', () => {
     await expect(
       listFolders({ userId: emp.userId, companyId: emp.companyId }),
     ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// contact-access authz (M4-T08)
+// ---------------------------------------------------------------------------
+
+describe('contact-access: getContactForCompany authz', () => {
+  async function makeVisible(profileId: string) {
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date(), completeness: 80 },
+    })
+  }
+
+  async function createUnlock(companyId: string, studentId: string, userId: string) {
+    await testDb.creditWallet.upsert({
+      where: { companyId },
+      create: { companyId, balance: 10 },
+      update: {},
+    })
+    return testDb.talentUnlock.create({
+      data: { companyId, studentId, unlockedById: userId, source: 'CREDIT', creditsSpent: 1 },
+    })
+  }
+
+  it('not unlocked → ForbiddenError', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await makeVisible(profileId)
+
+    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('unlocked → returns contact (even if null fields)', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+
+    const contact = await getContactForCompany(emp.companyId, profileId)
+    expect(contact).toMatchObject({ phone: null, email: null })
+  })
+
+  it('student blocks company after unlock → ForbiddenError (TM-003)', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
+
+    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('student suspended after unlock → ForbiddenError (TM-003)', async () => {
+    const { profileId, userId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    await testDb.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } })
+
+    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('cross-company: company B cannot access student unlocked by company A', async () => {
+    const { profileId } = await createStudent(testDb)
+    const empA = await createEmployer(testDb)
+    const empB = await createEmployer(testDb)
+    await makeVisible(profileId)
+    await createUnlock(empA.companyId, profileId, empA.userId)
+
+    await expect(getContactForCompany(empB.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
   })
 })
 
