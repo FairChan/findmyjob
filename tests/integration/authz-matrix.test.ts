@@ -567,3 +567,29 @@ describe('admin-verification actions authz (M3-T03)', () => {
     expect(co?.verificationStatus).toBe('PENDING')
   })
 })
+
+// ---------------------------------------------------------------------------
+// resume download ownership (M2-T05)
+// ---------------------------------------------------------------------------
+
+describe('resume download ownership (M2-T05)', () => {
+  it('student B downloading student A resume → 404, getSignedDownloadUrl not called', async () => {
+    const a = await createStudent(testDb)
+    const b = await createStudent(testDb)
+    const resume = await testDb.resumeFile.create({
+      data: {
+        studentId: a.profileId,
+        storageKey: 'resumes/authz-a/cv.pdf',
+        fileName: 'cv.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+      },
+    })
+    const { getSignedDownloadUrl } = await import('@/lib/storage')
+    mockSession(b.userId)
+    const { GET } = await import('@/app/api/resumes/[id]/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resume.id}`))
+    expect(res.status).toBe(404)
+    expect(vi.mocked(getSignedDownloadUrl)).not.toHaveBeenCalled()
+  })
+})
