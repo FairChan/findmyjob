@@ -19,10 +19,21 @@ vi.mock('@/server/db', async () => {
   return { db: testDb }
 })
 
+vi.mock('@/lib/storage', () => ({
+  deleteAllVersions: vi.fn().mockResolvedValue(undefined),
+  getSignedUploadUrl: vi.fn(),
+  getSignedDownloadUrl: vi.fn(),
+}))
+
+vi.mock('next/headers', () => ({
+  headers: vi.fn().mockResolvedValue(new Headers()),
+}))
+
 import { setupTestDb, testDb } from '../setup/db'
-import { createStudent, createEmployer } from '../factories'
+import { createStudent, createEmployer, createEmployerWithoutCompany } from '../factories'
 import { requireUser, requireStudent, requireEmployer, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
-import { ForbiddenError, NotFoundError } from '@/server/errors'
+import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
+import { createCompany, updateCompany } from '@/server/services/company'
 import * as authMod from '@/server/auth'
 import { viewTalentProfile } from '@/server/services/talent-view'
 import { searchTalents } from '@/server/services/talent-search'
@@ -391,6 +402,153 @@ describe('talent.view: viewTalentProfile authz', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Team management authz (M3-T04)
+// ---------------------------------------------------------------------------
+
+describe('team management authz (M3-T04)', () => {
+  async function seedTeamSettings() {
+    for (const [key, val] of [['team.maxMembers', 3], ['team.maxInvitesPerDay', 3]] as const) {
+      await testDb.systemSetting.upsert({
+        where: { key },
+        create: { key, value: JSON.stringify(val) },
+        update: { value: JSON.stringify(val) },
+      })
+    }
+  }
+
+  it('RECRUITER cannot invite members', async () => {
+    await seedTeamSettings()
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    const { inviteMember } = await import('@/server/services/team')
+    await expect(
+      inviteMember({ userId, companyId, role: 'RECRUITER' }, { email: 'x@example.test', role: 'RECRUITER' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('OWNER cannot be removed', async () => {
+    await seedTeamSettings()
+    const { userId, companyId } = await createEmployer(testDb)
+    const ownerMember = await testDb.companyMember.findFirst({ where: { userId, companyId } })
+    const { removeMember } = await import('@/server/services/team')
+    await expect(
+      removeMember({ userId, companyId, role: 'OWNER' }, { memberId: ownerMember!.id }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('OWNER cannot be demoted', async () => {
+    await seedTeamSettings()
+    const { userId, companyId } = await createEmployer(testDb)
+    const ownerMember = await testDb.companyMember.findFirst({ where: { userId, companyId } })
+    const { changeRole } = await import('@/server/services/team')
+    await expect(
+      changeRole({ userId, companyId, role: 'OWNER' }, { memberId: ownerMember!.id, role: 'ADMIN' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('cross-company: cannot remove member of a different company', async () => {
+    await seedTeamSettings()
+    const { userId: ownerA, companyId: companyA } = await createEmployer(testDb)
+    const { userId: ownerB, companyId: companyB } = await createEmployer(testDb)
+    const memberB = await testDb.companyMember.findFirst({ where: { companyId: companyB } })
+    const { removeMember } = await import('@/server/services/team')
+    await expect(
+      removeMember({ userId: ownerA, companyId: companyA, role: 'OWNER' }, { memberId: memberB!.id }),
+    ).rejects.toThrow()
+  })
+
+  it('invite email mismatch → ForbiddenError on accept', async () => {
+    await seedTeamSettings()
+    const { userId: ownerUserId } = await createEmployer(testDb)
+    const ownerMember = await testDb.companyMember.findFirst({ where: { userId: ownerUserId } })
+    const { inviteMember, acceptInvite } = await import('@/server/services/team')
+    const { token } = await inviteMember(
+      { userId: ownerUserId, companyId: ownerMember!.companyId, role: 'OWNER' },
+      { email: 'right@example.test', role: 'RECRUITER' },
+    )
+    const wrongUser = await testDb.user.create({
+      data: { name: 'Wrong', email: 'wrong@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: wrongUser.id }, token)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+describe('company service authz (M3-T01)', () => {
+  it('createCompany: student → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    await expect(createCompany({ userId }, { legalName: 'No Co' })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('createCompany: employer already member → ValidationError', async () => {
+    const { userId } = await createEmployer(testDb)
+    await expect(createCompany({ userId }, { legalName: 'Second Co' })).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('createCompany: employer without company → creates company', async () => {
+    const { userId } = await createEmployerWithoutCompany(testDb)
+    const co = await createCompany({ userId }, { legalName: 'New Co Sdn Bhd' })
+    expect(co.legalName).toBe('New Co Sdn Bhd')
+  })
+
+  it('updateCompanyAction: companyId comes from requireCompanyMember, not client input', async () => {
+    // empA owns cid1; empB owns cid2.
+    // When empA is logged in, the action must write to cid1 regardless of any client payload.
+    // This test fails if the action starts trusting a client-supplied companyId instead.
+    const { userId: uid1, companyId: cid1 } = await createEmployer(testDb)
+    const { companyId: cid2 } = await createEmployer(testDb)
+    mockSession(uid1)
+    const { updateCompanyAction } = await import('@/server/actions/company')
+    const result = await updateCompanyAction({ legalName: 'NewNameFromAction' })
+    expect(result.ok).toBe(true)
+
+    // Write went to cid1 (the authenticated company)
+    const co1 = await testDb.company.findUnique({ where: { id: cid1 } })
+    expect(co1?.legalName).toBe('NewNameFromAction')
+
+    // cid2 was not touched
+    const co2 = await testDb.company.findUnique({ where: { id: cid2 } })
+    expect(co2?.legalName).not.toBe('NewNameFromAction')
+  })
+
+  it('updateCompanyAction: RECRUITER → FORBIDDEN', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    // also re-activate just in case createEmployer set a different status
+    await testDb.company.update({ where: { id: companyId }, data: { isActive: true } })
+    mockSession(userId)
+    const { updateCompanyAction } = await import('@/server/actions/company')
+    const result = await updateCompanyAction({ legalName: 'ShouldBeBlocked' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('submitVerificationAction: RECRUITER → FORBIDDEN', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.companyMember.updateMany({ where: { userId }, data: { role: 'RECRUITER' } })
+    await testDb.company.update({ where: { id: companyId }, data: { isActive: true } })
+    mockSession(userId)
+    const { submitVerificationAction } = await import('@/server/actions/verification')
+    const result = await submitVerificationAction({
+      documentKeys: [`verifications/${companyId}/doc.pdf`],
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('submitVerificationAction: documentKeys from another company → FORBIDDEN', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    const { companyId: otherId } = await createEmployer(testDb)
+    mockSession(userId)
+    const { submitVerificationAction } = await import('@/server/actions/verification')
+    const result = await submitVerificationAction({
+      documentKeys: [`verifications/${otherId}/doc.pdf`],
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // talent.folders (M4-T11): folder authz
 // ---------------------------------------------------------------------------
 
@@ -562,5 +720,81 @@ describe('未认证企业查看收藏夹被拒', () => {
     await expect(
       getFolderItems({ userId: emp.userId, companyId: emp.companyId }, 'doesnotexist00000000000000'),
     ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// admin-verification actions authz (M3-T03)
+// ---------------------------------------------------------------------------
+
+describe('admin-verification actions authz (M3-T03)', () => {
+  async function makeVerification() {
+    const { userId: ownerId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'PENDING' } })
+    const cv = await testDb.companyVerification.create({
+      data: {
+        companyId,
+        documentKeys: [`verifications/${companyId}/ssm.pdf`],
+        status: 'PENDING',
+        submittedById: ownerId,
+      },
+    })
+    return { companyId, verificationId: cv.id }
+  }
+
+  it('approveCompanyAction: student → FORBIDDEN, company status unchanged', async () => {
+    const { userId } = await createStudent(testDb)
+    const { companyId, verificationId } = await makeVerification()
+    mockSession(userId)
+    const { approveCompanyAction } = await import('@/server/actions/admin-verification')
+    const result = await approveCompanyAction({
+      verificationId,
+      verifiedChannels: ['SSM'],
+      verificationResult: 'Confirmed',
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const co = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(co?.verificationStatus).toBe('PENDING')
+  })
+
+  it('approveCompanyAction: employer → FORBIDDEN, company status unchanged', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { companyId, verificationId } = await makeVerification()
+    mockSession(userId)
+    const { approveCompanyAction } = await import('@/server/actions/admin-verification')
+    const result = await approveCompanyAction({
+      verificationId,
+      verifiedChannels: ['SSM'],
+      verificationResult: 'Confirmed',
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const co = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(co?.verificationStatus).toBe('PENDING')
+  })
+
+  it('rejectCompanyAction: student → FORBIDDEN, company status unchanged', async () => {
+    const { userId } = await createStudent(testDb)
+    const { companyId, verificationId } = await makeVerification()
+    mockSession(userId)
+    const { rejectCompanyAction } = await import('@/server/actions/admin-verification')
+    const result = await rejectCompanyAction({ verificationId, reviewNote: 'Bad docs' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const co = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(co?.verificationStatus).toBe('PENDING')
+  })
+
+  it('rejectCompanyAction: employer → FORBIDDEN, company status unchanged', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { companyId, verificationId } = await makeVerification()
+    mockSession(userId)
+    const { rejectCompanyAction } = await import('@/server/actions/admin-verification')
+    const result = await rejectCompanyAction({ verificationId, reviewNote: 'Bad docs' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const co = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(co?.verificationStatus).toBe('PENDING')
   })
 })

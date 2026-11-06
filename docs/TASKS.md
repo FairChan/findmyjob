@@ -417,7 +417,7 @@
 
 > 完成 2026-11-06：`services/contact-access.ts` 新增 `getOwnContact`/`updateOwnContact`（AES-256-GCM 加密，AAD=`StudentContact.<field>:<studentId>`）；`updateContactSchema` 含手机号国际格式校验（`+[1-9][\\d\\s\\-]{5,25}`，覆盖马来西亚/中国/国际）；`actions/contact.ts` 包装两个 server action；`/s/contact` 页面含隐私提示（服务端组件）；`components/contact/ContactForm.tsx` 客户端表单；zh/en i18n 新增 contact 命名空间；`tests/unit/contact-access.test.ts` 23 个用例（加密存储、解密还原、手机号格式、NotFoundError、enc:v 前缀）；pnpm lint/typecheck/test 全部通过（742 tests）
 
-#### [ ] M2-T05 文件上传（app 中转）与简历
+#### [x] M2-T05 文件上传（app 中转）与简历
 依赖：M0-T02、M0-T07
 做：
 - `lib/storage.ts`（S3 客户端；PutObject、签名 GET、删除全部版本）。
@@ -431,6 +431,10 @@
 - 把 .exe 改名成 .pdf 上传，被拒；30 页的 PDF 和加密的 PDF 都被拒
 - 单测断言所有签名 GET 的有效期都不超过 300 秒
 - 学生只能访问自己的简历；删除时对象存储里的文件（全部版本）一并删除
+
+> 完成 2026-11-06：src/lib/storage.ts（S3 客户端：PutObject、签名 GET≤300s、deleteAllVersions；@aws-sdk/client-s3@3.1162.0 + @aws-sdk/s3-request-presigner@3.1162.0，MinIO forcePathStyle）；src/server/lib/pdf.ts（detectFileType 检测 PDF/PNG/JPEG 魔数，isPdfEncrypted 检查 /Encrypt，getPdfPageCount 扫描 /Count）；src/app/api/uploads/[purpose]/route.ts（RESUME/VERIFICATION/PAYMENT_PROOF/LOGO 白名单、文件头校验、PDF 加密检查、简历页数检查、每用户小时速率限制、拒收写 upload.reject 审计，全部通过后才 PutObject，RESUME 创建 ResumeFile 记录）；src/app/api/resumes/[id]/route.ts（GET 生成签名 URL 并重定向）；src/server/actions/resume.ts（setPrimaryResume/deleteResume，含越权检查，删除时 deleteAllVersions）；src/app/[locale]/s/resume/page.tsx + resume-client.tsx（上传、设为主简历、删除、预览）；i18n 中英文案；tests/unit/storage.test.ts（13 个用例，涵盖签名 URL≤300s、魔数检测、加密检测、页数解析）；pnpm lint/typecheck/test/db:check 全部通过（680 tests）；偏差：assertUploadsEnabled 在上传路由入口调用；M2-T05 验收中「学生只能访问自己的简历」由 deleteResume/setPrimaryResume 的 studentId 比对保证，authz-matrix 集成测试待 M2-T01 建 StudentProfile 后补充
+> 修复 2026-11-06：(1) pdf.ts 换用 pdf-lib 1.17.1 的 checkPdf()（PDFDocument.load + isEncrypted + getPageCount），fail closed，解决对象流 PDF 页数漏检和线性化加密 PDF 漏检；(2) uploads route 的 purpose 改 z.enum 校验，resumes route 的 id 改 z.string().cuid() 校验，filename 去除 bidi/控制字符并截到 255 字符；(3) TTL 测试改为实际调用 getSignedDownloadUrl 并解析 URL，断言 X-Amz-Expires ≤ 300 且 Content-Disposition 以 attachment 开头；新增 tests/unit/upload-validation.test.ts（21 个用例）；全量 716 tests 通过
+> 修复 2026-11-07：将 purposeSchema、validateFileName 提取到 src/server/lib/upload-input.ts；文件名改用 zod 校验（trim+min(1)+max(255)），超长/空名字返回 400 并写 upload.reject 审计，不再截断或填默认名；文件名校验移至 putObject 之前；upload-validation.test.ts 改为 import 生产代码（删除内联副本）；新增 tests/unit/upload-route-filename.test.ts（route 级测试，断言超长名 → 400、putObject 不调用、写 audit）；全量 780 tests 通过
 
 #### [x] M2-T06 学校邮箱认证
 依赖：M2-T01
@@ -523,24 +527,32 @@
 
 ## M3 · 企业入驻（约 1.7 天）
 
-#### [ ] M3-T01 创建企业与企业资料
+#### [x] M3-T01 创建企业与企业资料
 依赖：M1-T04、M2-T05
 做：`/e/onboarding` 创建企业（创建者成为 OWNER），行业用两级代码（`lib/taxonomy/industries`）；`/e/company` 编辑资料、上传 Logo（经 uploads 路由）。公司定位标签不在企业侧出现。
 验收：一个企业用户只能属于一家企业（MVP）；SSM 注册号唯一
+> 完成 2026-11-06：实现 taxonomy/industries（两级行业码）、company service（createCompany/updateCompany/getMyCompany）、createCompanyAction/updateCompanyAction、/e/onboarding 和 /e/company 页面、CompanyForm 客户端组件、uploads 路由扩展 LOGO/VERIFICATION/PAYMENT_PROOF 支持，全量测试通过（695 tests）
+> 修复 2026-11-07：logoKey 归属校验（非 `logos/<companyId>/` 前缀抛 ForbiddenError，公开页同样校验）；CompanyMember.userId 加唯一约束（迁移 20261107000000）防并发建双企业，acceptInvite 加跨企业预检查；company-form.tsx 中「✓ Logo uploaded」挪入 i18n（zh/en）
+> 修复 2026-11-07：补页面冒烟用例（总控要求）；新增 tests/e2e/helpers/session.ts（loginAs）和 smoke.ts（expectPageHealthy），smoke-m3-company.spec.ts（/e/onboarding 健康、/e 重定向、/e/company zh/en 健康）和 smoke-m2-resume.spec.ts（/s/resume 健康），3 条用例全通过；crashtest 验证：临时在 /e/company 加 throw 后用例报 500 失败，确认冒烟有效
 
-#### [ ] M3-T02 提交认证材料
+#### [x] M3-T02 提交认证材料
 依赖：M3-T01
 做：上传 1–5 个文件（PDF/PNG/JPG，单个 ≤ 10MB），一律经 `/api/uploads/VERIFICATION` 上传；`documentKeys` 只能来自本企业自己的上传记录 → 创建 CompanyVerification（PENDING），企业状态改为 PENDING；被驳回后可以重新提交。
 验收：状态流转正确；企业成员能看到驳回原因；提交别的企业的对象 key 被拒
+> 完成 2026-11-06：verification service（submitVerification/getVerificationInfo，key 前缀校验，状态流转 UNSUBMITTED/REJECTED→PENDING）；verification action；/e/verification 页面（展示状态、驳回原因、VerificationForm 客户端组件）；zh/en i18n；9 个集成测试全部通过（726 tests）
+> 修复 2026-11-07：(1) PENDING/VERIFIED 状态下锁定 legalName/ssmRegNo/displayNameZh/displayNameEn（AppError IDENTITY_LOCKED），company.ts 加锁校验，zh/en i18n 加 errorIdentityLocked，company-form.tsx 加对应提示；(2) 改写 Hijack 越权测试为 action 级（authz-matrix 新增 4 行：Hijack/RECRUITER×2/documentKeys），补 vi.mock('next/headers')；(3) 新增 tests/e2e/smoke-m3-verification.spec.ts（UNSUBMITTED/REJECTED/PENDING 三种状态冒烟，3 条全通过）；798 tests 全绿
 
-#### [ ] M3-T03 运营审核队列
+#### [x] M3-T03 运营审核队列
 依赖：M3-T02
 做：`/admin/companies`：待审列表 → 详情（材料用签名 URL 查看）→ 通过 / 驳回（必须填原因）。审核页提示 SOP：通过公开渠道（SSM 记录、官网、公开电话）回拨核实。通过时：设为 VERIFIED、创建 CreditWallet、写审计 `company.verify`、通知 OWNER。`services/notifications.ts` 先实现 `createNotification` + 邮件入队（M5-T08 再完善）；`alert()` 从此同时给 ADMIN 发站内通知。
 验收：
 - 集成测试：通过后钱包存在；非 ADMIN 调用被拒
 - 点「通过」时必须填核实记录：用了哪个公开渠道（SSM 记录、官网、公开电话，至少一项）和核实结果，写进 `CompanyVerification.reviewNote` 和 `company.verify` 审计的 metadata；不填时返回 ValidationError（TM-006）
 
-#### [ ] M3-T04 团队管理
+> 完成 2026-11-06：notifications.ts 增加 createNotification；新建 services/review-company.ts（approveCompany/rejectCompany/listPendingVerifications/getCompanyForReview）；admin-verification.ts actions；/admin/companies 列表页和 [companyId] 详情页（Server Components + ReviewForm 客户端组件，含 SOP 提示）；alert.ts 增加 fire-and-forget 给所有 ADMIN 发站内通知；eslint.config.mjs 增加 review-company.ts 的 creditWallet 豁免；i18n zh/en 增加 adminCompanies 命名空间；factories.ts 增加 createAdmin；12 个集成测试全通过（738 total）；偏差：邮件入队为 stub（logger.info），M5-T08 再接入 sendBoss
+> 修复 2026-11-07：(1) listPendingVerifications/getCompanyForReview 加 ctx 参数并在 DB 层断言 ADMIN 角色；两个 admin 页面均调用 requireAdmin(headers) 获取 ctx 并传给 service，确保 App Router 局部渲染时权限不被跳过；(2) authz-matrix 新增 4 个 action 级 authz 测试（student/employer 调 approveCompanyAction/rejectCompanyAction 均返回 FORBIDDEN 且公司状态不变）；review-company.test.ts 新增 6 个 service 层 authz 测试；修复存量 conditional-expect lint 违规；(3) 审计动作名 company.verification.reject → company.reject（符合 ARCHITECTURE §5.7）；(4) 页面硬编码 "Note:" 移入 i18n noteLabel（zh: 备注，en: Note）；(5) 新增 tests/e2e/smoke-m3-admin.spec.ts（ADMIN 两个页面健康，STUDENT/EMPLOYER 被跳走且 owner 邮箱不可见）；808 tests 全绿，4 E2E 全通过。其余 admin/page.tsx 只靠 layout，属后续任务，记入 M7-T19
+
+#### [x] M3-T04 团队管理
 依赖：M3-T01
 做：
 - `/e/team`：邀请成员、接受邀请加入、移除成员、修改角色。OWNER 不可被移除或降级；RECRUITER 无权管理团队。
@@ -552,15 +564,21 @@
 - 换一个账号打开邀请链接，被拒；同一个链接第二次使用，被拒；数据库里查不到明文令牌
 - 被移除的成员下一次操作就被拒；公益期邀请第 4 个成员被拒
 
-#### [ ] M3-T05 企业公开主页
+> 完成 2026-11-07：`services/team.ts`（inviteMember/acceptInvite/removeMember/changeRole/listTeamMembers/getInviteDetails，token randomBytes(32) base64url + sha256 哈希，7 天过期，审计 company.invite.accept）；`actions/team.ts`（4 个 Server Action，邀请后异步发邮件）；`/e/team` 页面（Server Component + TeamPageClient）；`/e/team/accept` 页面（AcceptInviteClient）；seed 新增 `team.maxInvitesPerDay=3`；`clearSettingsCache()` 供测试隔离；zh/en i18n 新增 team 和 teamAccept 两节；`tests/integration/team.test.ts` 29 个测试（invite/accept/remove/changeRole/getInviteDetails）；authz-matrix 增加 5 个团队越权测试；notifications.ts 修复多余的 eslint-disable 指令；pnpm lint/typecheck/test/db:check 全部通过（765 tests）
+> 修复 2026-11-07：inviteMember 改为计算「现有成员数 + 有效待接受邀请数」≥ maxMembers 时拒绝，解决验收「公益期邀请第 4 个成员被拒」未满足的问题；acceptInvite 在事务内重新计数成员，满员则拒绝且不标记 acceptedAt（并发双重接受暂不加锁，等 lockXact 实装后处理）；新增 3 个集成测试用例（pending invites 计入上限、accept 时满员被拒、过期/已用邀请不占名额）；新建 tests/e2e/smoke-m3-team.spec.ts（/zh/e/team 和 /zh/e/team/accept 冒烟各 1 条）；pnpm lint/typecheck/test（811 tests）/test:e2e smoke-m3-team 全部通过
+
+#### [x] M3-T05 企业公开主页
 依赖：M3-T01
 做：`/companies/[id]`：只展示已认证且启用的企业；创始合作伙伴徽章；在招职位列表（M5 之前为空状态）。
 验收：未认证企业的主页返回 404
+> 完成 2026-11-07：getPublicCompany service（VERIFIED+isActive 双条件过滤）；`/[locale]/(public)/companies/[id]/page.tsx`（Logo 签名 URL、创始合作伙伴徽章、空职位列表）；getSignedDisplayUrl 加入 storage.ts；zh/en i18n（companyProfile 命名空间）；6 个集成测试全部通过（772 tests）
 
-#### [ ] M3-T06 企业控制台
+#### [x] M3-T06 企业控制台
 依赖：M3-T02
 做：`/e`：认证状态横幅（未提交 / 审核中 / 被驳回 / 已认证）、点数余额、快捷入口。
 验收：每种认证状态都显示正确的横幅和引导
+> 完成 2026-11-07：getWalletBalance 服务（src/server/services/credits.ts，creditWallet 读取）；/e/page.tsx 重写（requireEmployer + getMyCompany，4 种认证状态横幅，点数余额仅 VERIFIED 显示，三个快捷入口）；zh/en i18n 新增 15 个 employerDashboard 键；4 个集成测试全部通过（776 tests）
+> 修复 2026-11-07：(1) /e 改用 requireCompanyMember('RECRUITER') 替代 requireEmployer+getMyCompany，停用企业成员立即被拒；无企业成员时跳转 onboarding；getWalletBalance 签名改为 ctx 对象，credits.test.ts 同步更新；(2) UNSUBMITTED/REJECTED 横幅 CTA 仅 OWNER/ADMIN 可见，RECRUITER 显示「请联系企业管理员」提示，zh/en i18n 新增 bannerAdminActionRequired / bannerRejectedReason；快捷链接 /e/company 和 /e/verification 对 RECRUITER 隐藏；(3) REJECTED 横幅对所有成员显示最近驳回原因（reviewNote），getVerificationInfo 复用；新增集成测试 employer-dashboard.test.ts（6 个用例）和 E2E 冒烟 smoke-m3-console.spec.ts（8 条全通过，storageState 复用 OWNER 会话规避速率限制）；816 tests 全绿
 
 ---
 
@@ -1096,6 +1114,53 @@
 - M7-T13 RUNBOOK：去掉「companyId」「单个企业」的旧说法，SQL 模板加上 targetType 过滤。
 - M7-T02 同意：撤回如果记在别的版本号下会被忽略；版本号和正文内容的绑定（例如加内容哈希）。
 - M7-T14 止血开关：等 M4-T07 解锁、M4-T03 人才库搜索、M2-T05 上传实现时接到各自入口（这一项随那几个任务做，在这里核对）。
+- M2-T05 上传（2026-11-07 复查延后的项）：
+  - pdf-lib 的 `load()` 会把对象流和 xref 流全部解开，没有上限，5–10MB 的文件能放大约 1000 倍。要放进有资源上限的 worker，或者加超时和大小上限。**上线前必须处理。**
+  - 加密检测能被绕过：在加密文件末尾追加一个没被引用的 XRef 流，就能覆盖掉 trailer。应再检查是否有 `/Filter /Standard` 加 `/O`、`/U` 的字典。
+  - 0 页的 PDF 会被接受；非简历 PDF 的页数上限 9999 写死在代码里。
+  - 孤儿对象：上传后没写进数据库的对象不会被清理；删除时先删数据库再删 S3，并且吞掉了错误。
+  - 下载响应缺 X-Robots-Tag；Location 头里的签名 URL 会进 Caddy 日志。
+  - 请求体整个读进内存。
+  - 缺 authz-matrix 的行。
+  - PAYMENT_PROOF 允许 ADMIN 上传，但购买只限 OWNER。
+  - key 用 randomUUID 加 userId，ARCHITECTURE 写的是 cuid 加 studentId。
+  - 非法的 purpose 和 id 返回 404，不是 400。
+- M3-T01、T02 企业和认证：
+  - `submitVerification` 的状态检查在事务外，并发提交会生成两条 PENDING。应改为带条件的 updateMany。
+  - SSM 号在服务端没有 trim、没有转大写；并发时的 P2002 会显示成 INTERNAL_ERROR。
+  - 服务端抛的是 VALIDATION_ERROR，前端的 SSM_DUPLICATE、ALREADY_MEMBER 分支走不到，重复的 SSM 号被提示成「此项为必填」。
+  - `getMyCompanyAction` 没有被用到，却返回整行（含 tags）：删掉，或者只选需要的字段。
+  - website 没有校验 URL 和协议，应只允许 http、https。
+  - 行业和州的标签写死在 industries.ts 和 company-form.tsx 里，没进 messages。
+  - 旧 logo 在更新数据库之前就被删掉，并且吞掉了错误；上传了但没保存的 logo 会成为孤儿对象。
+  - documentKeys 可以重复，服务端也不检查对象是否存在。
+- M3-T03、T04 审核和团队：
+  - 审核通过、驳回时，PENDING 检查和钱包检查在事务外，update 也不带条件。应改为带条件的 updateMany（`status: 'PENDING'`）。
+  - logAudit 在事务提交之后才执行。这是全项目的写法，因为 logAudit 不接受 tx。
+  - review-company.ts 整个文件放开了 creditWallet 的 eslint 限制，应改为在 credits.ts 里提供 `createWallet(tx)`。
+  - authz-matrix 的测试缺口：
+    - 「跨企业移除成员」的用例只断言 toThrow，靠 owner 保护就能通过；
+    - 跨企业 changeRole 没有测试。
+  - 「数据库里查不到明文令牌」只断言 `tokenHash !== token`。应改为断言它等于 sha256(token)，并扫描 AuditLog 和 Notification。
+  - 没有测试证明被移除的成员下一次操作会被拒。
+  - 未登录的被邀请人跳转去登录时丢了 token。
+  - 邀请邮件写死英文，并且直接发送、不走队列（M5-T08 统一处理）。
+  - 团队权限：
+    - ADMIN 能移除其他 ADMIN（TM-010 场景 2，等 A-9）；
+    - changeRole 只给 OWNER，比 PRD 更严。
+  - alert.ts 里的 `{ code, ...ctx }`，ctx.code 会覆盖告警码。
+  - 只有空白字符的 verificationResult、reviewNote 能通过 min(1)。
+  - 杂项：
+    - 用了 window.confirm，没用 shadcn Dialog；
+    - ReviewForm.tsx 的文件名不是 kebab-case；
+    - team.maxInvitesPerDay 没在 DECISIONS 或 PRD §5 登记；
+    - 被移除的成员发出的邀请仍然有效。
+  - company.invite.send 审计的 metadata 里带了被邀请人的邮箱。
+- M3-T05、T06 公开主页和控制台：
+  - 公开页没有 generateMetadata（SEO 由 M7-T17 做）。
+  - /e 的 X-Robots-Tag 等 M7-T05。
+  - e/page.tsx 的 `<main>` 套在 layout 的 `<main>` 里。
+  - 公开页的 id 参数没有经过 zod 校验。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
