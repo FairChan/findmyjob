@@ -432,7 +432,7 @@
 - 单测断言所有签名 GET 的有效期都不超过 300 秒
 - 学生只能访问自己的简历；删除时对象存储里的文件（全部版本）一并删除
 
-#### [ ] M2-T06 学校邮箱认证
+#### [x] M2-T06 学校邮箱认证
 依赖：M2-T01
 做：`services/school-verification.ts`：选学校 → 输入学校邮箱 → 发 OTP → 验证后写入 `schoolVerifiedAt`。
 - 域名必须按 `@` 后面的整段精确匹配 `School.emailDomains`；schoolEmail 统一转小写，并且唯一。
@@ -442,6 +442,8 @@
 - 后缀不匹配被拒，`x@xmu.edu.my.evil.com` 被拒；OTP 10 分钟过期；连续 5 次输错锁定 30 分钟
 - 第 6 次发送返回 429
 - 两个账号同时认证同一个学校邮箱，只有一个能成功
+
+> 完成 2026-11-06：`services/school-verification.ts`（精确域名匹配、OTP sha256 哈希存储于 Verification 表带命名空间 `school-otp:{userId}`、timingSafeEqual 比较、5 次失败锁定 30 分钟 `school-otp-lock:{userId}`、每用户每小时 / 每邮箱每天发送限额）；`actions/school-verification.ts`（三个 student 权限 Server Action）；`/s/school-verify` 页面 + `SchoolVerifyForm` 客户端组件（三步流程）；`messages/zh.json` + `messages/en.json` 新增 schoolVerify 命名空间；`tests/unit/school-verification.test.ts` 15 个用例，757 总测试全部通过；pnpm lint/typecheck/test 全部通过
 
 #### [ ] M2-T07 隐私中心
 依赖：M2-T01
