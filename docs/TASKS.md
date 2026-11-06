@@ -498,6 +498,7 @@
 5. 手机号校验（M2-T04 验收）：先去掉空格和连字符；国际格式要求 `^\+[1-9]\d{6,14}$`；马来西亚本地 `^01\d{8,9}$` 规范成 +60，中国本地 `^1[3-9]\d{9}$` 规范成 +86。负例测试至少要有 `+60 9 9`、`+1 - - - -`、`+6------`，以及位数超过 15 位的号码。
 6. 文案（红线）：ProfileEditor.tsx 和 OnboardingWizard.tsx 里写死的 `Remove ${skill}`，改成 messages 里的 `removeSkill`（zh 和 en 都要加）。
 7. 隐私提示文案（PDPA）：`contact.privacyNotice` 和 `contact.subtitle` 按 PRD §2.2 改成「只有在你投递，或企业付费解锁后才可见」（中英文都改）。
+- 冒烟用例（总控 2026-11-07 统一要求）：本任务新增或修改的每个页面路由，各加一条 Playwright 用例：以目标角色登录，打开页面，断言状态 200、没有 error boundary 或 Next 错误页、控制台没有 error。
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
 
 #### [ ] M2-T12 补修 M2-T06～T10 合并前复查发现的问题
@@ -513,6 +514,7 @@
    - 每天第 4 个达标的邀请保持 PENDING，到第二天由定时任务转成有效：用 `vi.useFakeTimers` 越过吉隆坡时间 00:00。
    - OTP 10 分钟过期、错误 5 次锁 30 分钟：断言 `expiresAt` 约等于 now+600 秒和 now+1800 秒。
    - 作废的邀请不计入额度：断言额度计数的 where 条件里有 `status: 'QUALIFIED'`。
+- 冒烟用例（总控 2026-11-07 统一要求）：本任务新增或修改的每个页面路由，各加一条 Playwright 用例：以目标角色登录，打开页面，断言状态 200、没有 error boundary 或 Next 错误页、控制台没有 error。
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
 
 ---
@@ -685,10 +687,12 @@
    - 新增「未认证企业访问人才库，看到提示和去 /e/onboarding 的链接」；
    - 「在列表停留 3 秒，ProfileView 不变」这条要真的悬停在卡片链接上，等待，然后数 ProfileView 行数（或者断言没有请求打到 `/e/talent/<id>`），去掉那个永远匹配不到的 URL 正则。
    - 完成说明写明这个 E2E 实际跑过的通过数。
+   - 构建产物检查：`SKIP_ENV_VALIDATION=1 pnpm build` 之后，`.next/server/app` 下不能有任何 `api/test` 路由（autopilot 的 verify 已经加了这一步）。
 5. 每日查看上限可以并发绕过（High，违反 CLAUDE.md 加锁规则）：`talent-view.ts` 的查重、两次计数和 create 分在几条语句里，没有事务也没有锁。新增 `LOCK_NS.PROFILE_VIEW`，在 `db.$transaction(async tx => { await lockXact(tx, LOCK_NS.PROFILE_VIEW, ctx.companyId); … })` 里依次做查重、成员计数、公司计数和 create；`talent.limit.hit` 的审计放在事务外。用真实测试库写集成测试：公司上限设为 2，用 Promise.all 并发查看 5 个不同学生，恰好 2 个成功；同一个学生打开 5 次只算 1 次（这条要在去掉查重逻辑时失败）。
 6. 关键词搜索会泄露真名（High，隐私）：`talent-search.ts` 生成匹配文本时只调用了 redact()，卡片和详情页另外还用 `redactNameParts` 去掉了学生本人的名字。从 talent-card.ts 导出同一个 helper（例如 `employerFreeText(text, fullName, unlocked)`），专业、标题、技能、经历标题的匹配文本都用它生成。测试：锁定学生「王小明」的标题是「王小明｜计算机大三」，搜「王小明」时结果数为 0。
 7. 已认证企业的门槛（ARCHITECTURE §5.1；安全钩子也报了这一条）：`searchTalents`、`viewTalentProfile` 和收藏夹的全部 action 及页面，都改为要求已认证企业。action 用 `auth: { type: 'company', verified: true }`，页面和 service 用 requireVerifiedCompany。认证被撤销的企业不能再通过收藏夹看到人才卡片。在 authz-matrix 里加两行：「未认证企业搜索人才被拒」「未认证企业查看收藏夹被拒」。
 8. page=26：服务端返回规范的错误（不能是 HTTP 200 加上原始英文报错），页面上显示中英文文案；URL 参数不合法时（sort、枚举值、schoolId、page=0、超长 keyword）显示友好提示，不能报 500。
+- 冒烟用例（总控 2026-11-07 统一要求）：本任务新增或修改的每个页面路由，各加一条 Playwright 用例：以目标角色登录，打开页面，断言状态 200、没有 error boundary 或 Next 错误页、控制台没有 error。
 - 完成说明写明单元/集成测试的用例数，以及 E2E 通过、失败、跳过各多少（要求 0 失败、0 跳过）。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
