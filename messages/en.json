@@ -801,5 +801,26 @@
     "descriptionLabel": "Job Description",
     "requirementsLabel": "Requirements",
     "benefitsLabel": "Benefits"
+  },
+  "publicJobs": {
+    "title": "Job Listings",
+    "empty": "No open positions at the moment",
+    "backToList": "Back to job listings",
+    "descriptionLabel": "Job Description",
+    "requirementsLabel": "Requirements",
+    "benefitsLabel": "Benefits",
+    "lockedTitle": "Job view quota exhausted",
+    "lockedDesc": "Invite friends to sign up for FindMYJob to unlock more job details",
+    "inviteButton": "Invite to Unlock",
+    "type": {
+      "INTERNSHIP": "Internship",
+      "FULL_TIME": "Full-time",
+      "PART_TIME": "Part-time"
+    },
+    "workMode": {
+      "ONSITE": "On-site",
+      "HYBRID": "Hybrid",
+      "REMOTE": "Remote"
+    }
   }
 }

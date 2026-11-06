@@ -778,7 +778,7 @@
 > 修复 2026-11-07：详情页补全所有字段（requirements/benefits/salary/location/workMode/languages/skills/headcount/deadline）；salaryVisible=false 也显示薪资并标注「不对外显示」；approveJob/rejectJob 加 updatedAt 乐观锁（updateMany 版本检查）；并发两次通过只成功一次；ReviewJobForm 传 updatedAt 并处理 stale 错误；新增 4 条集成测试（stale/并发）；E2E 增加哨兵字段断言；919 测试/4 E2E 全部通过
 > 修复 2026-11-07（最终复查）：详情页补上 category（100 字自由文本，学生看得到，TM-007 同一类问题）；冒烟用例加 category、languages 哨兵和「不对外显示」字样的断言，先确认用例失败再修。
 
-#### [ ] M5-T03 公开职位页（白名单输出、额度锁、noindex）
+#### [x] M5-T03 公开职位页（白名单输出、额度锁、noindex）
 依赖：M5-T01、M2-T10
 做：
 - `/jobs` 列表（PRD §2.4 的筛选）：只经 `serializers/job.ts` 的 `toJobListItem()` 输出，不含 description、requirements、benefits；`salaryVisible=false` 时也不含 salaryMin 和 salaryMax。指向职位详情的 Link 设 `prefetch={false}`。
@@ -790,6 +790,7 @@
 - 打开 /jobs 等 3 秒，学生额度和 ProfileView 都没有变化
 - 访客打开详情页，HTML 里有 noindex，没有 ld+json；隐藏薪资职位的列表页、详情页和 metadata 里都没有金额
 - 企业成员打开其他企业的职位详情，只能看到锁定卡片（从 M2-T10 移入，见 DECISIONS 2026-11-07 M2-T12 fix 4）
+> 完成 2026-11-07：serializers/job.ts（toJobListItem/toJobDetail 白名单）；/jobs 列表（PUBLISHED+未过期，salaryVisible=false 不输出薪资，带筛选参数设 noindex,follow）；/jobs/[id] 详情（访客重定向登录，学生走 openJob，额度耗尽/跨企业 employer 显示 LockedJobCard，viewCount +1）；robots noindex；E2E smoke-m5-t03 8/8 通过，pii-leak 4/4 通过；lint/typecheck/db:check 全部通过；单元 1223/1224 通过（1 条 pre-existing team.test.ts）。
 
 #### [ ] M5-T04 投递
 依赖：M5-T03、M4-T07
