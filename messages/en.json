@@ -145,7 +145,9 @@
     "bannerRejectedDesc": "Please review the rejection reason and resubmit your verification documents.",
     "bannerRejectedCta": "Resubmit",
     "bannerVerifiedTitle": "Company Verified",
-    "bannerVerifiedDesc": "You can now search the talent pool and unlock contact details."
+    "bannerVerifiedDesc": "You can now search the talent pool and unlock contact details.",
+    "bannerAdminActionRequired": "Please ask your company admin to handle verification.",
+    "bannerRejectedReason": "Rejection Reason"
   },
   "adminDashboard": {
     "title": "Admin Dashboard"

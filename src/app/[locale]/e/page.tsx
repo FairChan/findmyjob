@@ -2,9 +2,12 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
-import { requireEmployer } from '@/server/authz'
-import { getMyCompany } from '@/server/services/company'
+import { requireCompanyMember } from '@/server/authz'
+import { ForbiddenError } from '@/server/errors'
+import { getSession } from '@/server/auth'
+import { db } from '@/server/db'
 import { getWalletBalance } from '@/server/services/credits'
+import { getVerificationInfo } from '@/server/services/verification'
 import type { VerificationStatus } from '@prisma/client'
 
 interface BannerConfig {
@@ -21,19 +24,48 @@ export default async function EmployerDashboardPage({
   params: Promise<{ locale: string }>
 }) {
   const { locale } = await params
+  const h = await headers()
   const t = await getTranslations('employerDashboard')
 
-  const { userId } = await requireEmployer(await headers())
-  const company = await getMyCompany({ userId })
-
-  if (!company) {
-    redirect(`/${locale}/e/onboarding`)
+  let ctx: Awaited<ReturnType<typeof requireCompanyMember>>
+  try {
+    ctx = await requireCompanyMember('RECRUITER', h)
+  } catch (err) {
+    if (err instanceof ForbiddenError) {
+      // If the user has no company membership at all, send them to onboarding.
+      // Any other ForbiddenError (inactive company, role check) must propagate.
+      const session = await getSession(h)
+      if (session?.user?.id) {
+        const member = await db.companyMember.findFirst({
+          where: { userId: session.user.id },
+          select: { id: true },
+        })
+        if (!member) redirect(`/${locale}/e/onboarding`)
+      }
+    }
+    throw err
   }
+
+  const { companyId, role } = ctx
+  const isAdminOrOwner = role === 'OWNER' || role === 'ADMIN'
+
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { verificationStatus: true },
+  })
+  if (!company) throw new ForbiddenError()
 
   const balance =
     company.verificationStatus === 'VERIFIED'
-      ? await getWalletBalance(company.id)
+      ? await getWalletBalance(ctx)
       : null
+
+  // All members see the rejection reason in the REJECTED banner (M3-T02 acceptance criterion)
+  let rejectionNote: string | null = null
+  if (company.verificationStatus === 'REJECTED') {
+    const info = await getVerificationInfo(ctx)
+    rejectionNote = info.latest?.reviewNote ?? null
+  }
 
   const bannerMap: Record<VerificationStatus, BannerConfig> = {
     UNSUBMITTED: {
@@ -41,7 +73,9 @@ export default async function EmployerDashboardPage({
       textColor: 'text-blue-800',
       title: t('bannerUnsubmittedTitle'),
       desc: t('bannerUnsubmittedDesc'),
-      cta: { label: t('bannerUnsubmittedCta'), href: '/e/verification' },
+      cta: isAdminOrOwner
+        ? { label: t('bannerUnsubmittedCta'), href: '/e/verification' }
+        : null,
     },
     PENDING: {
       bg: 'bg-yellow-50 border-yellow-200',
@@ -55,7 +89,9 @@ export default async function EmployerDashboardPage({
       textColor: 'text-red-800',
       title: t('bannerRejectedTitle'),
       desc: t('bannerRejectedDesc'),
-      cta: { label: t('bannerRejectedCta'), href: '/e/verification' },
+      cta: isAdminOrOwner
+        ? { label: t('bannerRejectedCta'), href: '/e/verification' }
+        : null,
     },
     VERIFIED: {
       bg: 'bg-green-50 border-green-200',
@@ -68,11 +104,20 @@ export default async function EmployerDashboardPage({
 
   const banner = bannerMap[company.verificationStatus]
 
+  // /e/company and /e/verification require ADMIN; /e/team is accessible to RECRUITER
   const quickLinks = [
-    { href: '/e/company' as const, label: t('linkCompany') },
-    { href: '/e/verification' as const, label: t('linkVerification') },
+    ...(isAdminOrOwner
+      ? [
+          { href: '/e/company' as const, label: t('linkCompany') },
+          { href: '/e/verification' as const, label: t('linkVerification') },
+        ]
+      : []),
     { href: '/e/team' as const, label: t('linkTeam') },
   ]
+
+  const showAdminNote =
+    !isAdminOrOwner &&
+    (company.verificationStatus === 'UNSUBMITTED' || company.verificationStatus === 'REJECTED')
 
   return (
     <main className="container mx-auto max-w-4xl px-4 py-12">
@@ -82,6 +127,12 @@ export default async function EmployerDashboardPage({
       <div className={`mb-8 rounded-lg border p-4 ${banner.bg}`}>
         <p className={`font-medium ${banner.textColor}`}>{banner.title}</p>
         <p className={`mt-1 text-sm ${banner.textColor}`}>{banner.desc}</p>
+        {company.verificationStatus === 'REJECTED' && rejectionNote && (
+          <p className={`mt-2 text-sm ${banner.textColor}`}>
+            <span className="font-medium">{t('bannerRejectedReason')}：</span>
+            {rejectionNote}
+          </p>
+        )}
         {banner.cta && (
           <Link
             href={banner.cta.href}
@@ -89,6 +140,9 @@ export default async function EmployerDashboardPage({
           >
             {banner.cta.label}
           </Link>
+        )}
+        {showAdminNote && (
+          <p className={`mt-3 text-sm ${banner.textColor}`}>{t('bannerAdminActionRequired')}</p>
         )}
       </div>
 

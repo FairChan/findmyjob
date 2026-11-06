@@ -6,9 +6,9 @@ import { db } from '../db'
  * CreditWallet is created when a company is first verified (see review-company.ts).
  * Balance changes must go through applyLedgerEntry (not implemented in this task).
  */
-export async function getWalletBalance(companyId: string): Promise<number | null> {
+export async function getWalletBalance(ctx: { userId: string; companyId: string }): Promise<number | null> {
   const wallet = await db.creditWallet.findUnique({
-    where: { companyId },
+    where: { companyId: ctx.companyId },
     select: { balance: true },
   })
   return wallet?.balance ?? null

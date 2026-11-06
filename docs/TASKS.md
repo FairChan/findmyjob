@@ -528,6 +528,7 @@
 做：`/e`：认证状态横幅（未提交 / 审核中 / 被驳回 / 已认证）、点数余额、快捷入口。
 验收：每种认证状态都显示正确的横幅和引导
 > 完成 2026-11-07：getWalletBalance 服务（src/server/services/credits.ts，creditWallet 读取）；/e/page.tsx 重写（requireEmployer + getMyCompany，4 种认证状态横幅，点数余额仅 VERIFIED 显示，三个快捷入口）；zh/en i18n 新增 15 个 employerDashboard 键；4 个集成测试全部通过（776 tests）
+> 修复 2026-11-07：(1) /e 改用 requireCompanyMember('RECRUITER') 替代 requireEmployer+getMyCompany，停用企业成员立即被拒；无企业成员时跳转 onboarding；getWalletBalance 签名改为 ctx 对象，credits.test.ts 同步更新；(2) UNSUBMITTED/REJECTED 横幅 CTA 仅 OWNER/ADMIN 可见，RECRUITER 显示「请联系企业管理员」提示，zh/en i18n 新增 bannerAdminActionRequired / bannerRejectedReason；快捷链接 /e/company 和 /e/verification 对 RECRUITER 隐藏；(3) REJECTED 横幅对所有成员显示最近驳回原因（reviewNote），getVerificationInfo 复用；新增集成测试 employer-dashboard.test.ts（6 个用例）和 E2E 冒烟 smoke-m3-console.spec.ts（8 条全通过，storageState 复用 OWNER 会话规避速率限制）；816 tests 全绿
 
 ---
 
