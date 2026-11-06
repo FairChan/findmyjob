@@ -1,28 +1,49 @@
 import { defineConfig, devices } from '@playwright/test'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { readFileSync } from 'fs'
+import { parseEnv } from 'util'
+import { validateTestDbUrl } from './tests/lib/validate-test-db-url'
 
-// Bootstrap TEST_DATABASE_URL from .env when not already in the shell environment (local dev).
-// CI exports this via the environment; local dev relies on .env.
-if (!process.env.TEST_DATABASE_URL) {
+// Convention:
+//  - Every E2E run spawns its own dev server (reuseExistingServer: false).
+//  - Lane B uses port 3001; mainline uses port 3000. The two never share a server.
+//  - If port 3001 is already in use (e.g. a manual `pnpm dev` session), Playwright
+//    will fail to start. Stop the dev server first.
+//  - TEST_DATABASE_URL must end with _test and point to localhost.
+//    The dev server is started with DATABASE_URL=TEST_DATABASE_URL so the entire
+//    E2E run (browser + server + test workers) uses the same test database.
+
+// Resolve TEST_DATABASE_URL: use process.env if already set (CI), else read .env.
+let testDatabaseUrl: string
+if (process.env.TEST_DATABASE_URL) {
+  testDatabaseUrl = process.env.TEST_DATABASE_URL
+} else {
+  // Parse .env and extract only TEST_DATABASE_URL — do not dump the whole file into
+  // process.env. The value is never printed.
   try {
-    const env = readFileSync(resolve(__dirname, '.env'), 'utf-8')
-    for (const line of env.split('\n')) {
-      const eq = line.indexOf('=')
-      if (eq <= 0 || line.trimStart().startsWith('#')) continue
-      const k = line.slice(0, eq).trim()
-      let v = line.slice(eq + 1).trim()
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1)
-      if (k && !(k in process.env)) process.env[k] = v
+    const envContent = readFileSync('.env', 'utf8')
+    const parsed = parseEnv(envContent)
+    if (!parsed.TEST_DATABASE_URL) {
+      throw new Error('TEST_DATABASE_URL not found in .env')
     }
-  } catch {}
+    testDatabaseUrl = parsed.TEST_DATABASE_URL
+    // Make it visible to Playwright worker processes (they fork after this runs).
+    process.env.TEST_DATABASE_URL = testDatabaseUrl
+  } catch (err) {
+    throw new Error(
+      `[playwright.config] Cannot resolve TEST_DATABASE_URL: ${(err as Error).message}\n` +
+        '  Add TEST_DATABASE_URL=postgresql://...@127.0.0.1:5432/<findmyjob_test|findmyjob_laneb_test> to .env',
+    )
+  }
 }
 
-// 并行车道（git worktree）设 PORT 换端口：reuseExistingServer 否则会连上另一条车道已经起着的 dev server
+// Validate before we start anything — a bad URL means we stop right here.
+validateTestDbUrl(testDatabaseUrl)
+
+// 主线默认 3000；线 B 的 lane-auto.sh 设 PORT=3001。两条线各自起 dev server，互不复用
 const port = Number(process.env.PORT) || 3000
-const baseURL = `http://localhost:${port}`
 
 export default defineConfig({
+  // M4-T14/T15：准备人才库的企业、学生、收藏夹（只写测试库，密码每次随机）
   globalSetup: './tests/e2e/global-setup.ts',
   testDir: './tests/e2e',
   fullyParallel: true,
@@ -31,17 +52,16 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   reporter: 'html',
   use: {
-    baseURL,
+    baseURL: `http://localhost:${port}`,
     trace: 'on-first-retry',
   },
   projects: [
-    // Auth setup: runs once, logs in and writes storageState files
+    // 先登录一次、写出 storageState（auth.setup.ts），其余用例依赖它
     {
       name: 'setup',
       testMatch: /auth\.setup\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
-    // Main chromium tests depend on setup so storageState is ready
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
@@ -50,11 +70,13 @@ export default defineConfig({
   ],
   webServer: {
     command: `pnpm dev --port ${port}`,
-    url: baseURL,
-    reuseExistingServer: !process.env.CI,
-    // E2E tests run entirely against the test database; propagate TEST_DATABASE_URL as DATABASE_URL
-    env: process.env.TEST_DATABASE_URL
-      ? { DATABASE_URL: process.env.TEST_DATABASE_URL }
-      : undefined,
+    url: `http://localhost:${port}`,
+    // Always start a fresh server so it uses the test database — never reuse an
+    // existing server that might be connected to the development database.
+    reuseExistingServer: false,
+    env: {
+      DATABASE_URL: testDatabaseUrl,
+      PORT: String(port),
+    },
   },
 })

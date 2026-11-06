@@ -5,6 +5,7 @@
  * SAFETY: only writes to TEST_DATABASE_URL. Validates that the URL points to
  * a *_test database on localhost (same rules as tests/setup/db.ts).
  */
+import { createE2eDb } from './helpers/db'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { randomBytes, scrypt } from 'node:crypto'
@@ -29,36 +30,6 @@ if (!process.env.TEST_DATABASE_URL) {
 
 // Also set SKIP_ENV_VALIDATION so the env.ts module doesn't fail during setup
 process.env.SKIP_ENV_VALIDATION = '1'
-
-function validateTestDbUrl(raw: string | undefined): void {
-  if (!raw) {
-    throw new Error(
-      '[global-setup] TEST_DATABASE_URL is not set.\n' +
-        '  Set TEST_DATABASE_URL=postgresql://...@127.0.0.1:5432/findmyjob_test'
-    )
-  }
-  let url: URL
-  try {
-    url = new URL(raw)
-  } catch {
-    throw new Error(
-      `[global-setup] Cannot parse TEST_DATABASE_URL: "${raw}"\n` +
-        '  Set TEST_DATABASE_URL=postgresql://...@127.0.0.1:5432/findmyjob_test'
-    )
-  }
-  const dbName = decodeURIComponent(url.pathname.replace(/^\//, ''))
-  const host = url.hostname
-  const isLocal =
-    host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '0.0.0.0'
-
-  if (!dbName.endsWith('_test') || !isLocal) {
-    throw new Error(
-      `[global-setup] Safety check failed: E2E tests must use a *_test database on localhost.\n` +
-        `  Got: host=${host}, db=${dbName}\n` +
-        '  Set TEST_DATABASE_URL=postgresql://...@127.0.0.1:5432/findmyjob_test'
-    )
-  }
-}
 
 async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString('hex')
@@ -86,13 +57,8 @@ const UNVERIFIED_EMAIL = 'e2e-unverified-employer@example.test'
 const STUDENT_EMAIL = 'e2e-talent-student@example.test'
 
 export default async function globalSetup() {
-  validateTestDbUrl(process.env.TEST_DATABASE_URL)
-
-  // Use TEST_DATABASE_URL for all E2E data setup
-  const { PrismaClient } = await import('@prisma/client')
-  const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.TEST_DATABASE_URL } },
-  })
+  // 与 helpers/db.ts 同一个工厂：库名必须以 _test 结尾、主机必须是本机，APP_ENV=production/staging 直接拒绝
+  const prisma = createE2eDb()
 
   // Generate random passwords each run; stored in fixtures.json read by auth.setup.ts
   const verifiedPassword = randomBytes(16).toString('base64url') + 'Aa1!'

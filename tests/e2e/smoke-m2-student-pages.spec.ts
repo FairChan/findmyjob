@@ -8,12 +8,10 @@
  *  - /s/invite: 200, has progressbar, invite link input has correct ref= param (items 4 and 7)
  */
 import { test, expect } from '@playwright/test'
-import { PrismaClient } from '@prisma/client'
+import { e2eDb as db } from './helpers/db'
 import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
 
-// PrismaClient for creating test data (Prisma 6 auto-loads .env from project root)
-const db = new PrismaClient()
 
 test.describe('M2 student pages smoke (M2-T13)', () => {
   test('STUDENT: /zh/s/onboarding is healthy (200, no console errors, no error page)', async ({

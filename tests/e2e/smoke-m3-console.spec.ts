@@ -10,12 +10,10 @@
 import { test, expect } from '@playwright/test'
 import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
-import { PrismaClient } from '@prisma/client'
+import { e2eDb as db } from './helpers/db'
 import os from 'os'
 import path from 'path'
 import fs from 'fs'
-
-const db = new PrismaClient()
 
 // Run all tests in this file serially so the shared owner company state is modified safely.
 test.describe.configure({ mode: 'serial' })
