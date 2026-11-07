@@ -89,6 +89,15 @@ export const GET = route({ auth: 'admin' }, async (req, ctx) => {
     })
   }
 
+  // Size guard: verification docs are capped at 10 MB at upload time; refuse to proxy oversized objects
+  const VERIFICATION_MAX_BYTES = 10 * 1024 * 1024
+  if (s3Response.ContentLength != null && s3Response.ContentLength > VERIFICATION_MAX_BYTES) {
+    return new Response(null, {
+      status: 502,
+      headers: { 'Cache-Control': 'private, no-store' },
+    })
+  }
+
   const fileName = key.split('/').pop() ?? `document-${index + 1}`
   const responseHeaders = new Headers({
     'Content-Type': s3Response.ContentType ?? 'application/octet-stream',

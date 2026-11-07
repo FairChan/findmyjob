@@ -21,8 +21,13 @@ vi.mock('next/headers', () => ({
 // Mock S3 client
 const mockS3Send = vi.fn()
 vi.mock('@aws-sdk/client-s3', () => ({
-  S3Client: vi.fn().mockImplementation(() => ({ send: mockS3Send })),
-  GetObjectCommand: vi.fn().mockImplementation((input) => input),
+  // Regular functions required: arrow functions cannot be used as constructors with `new`
+  S3Client: vi.fn().mockImplementation(function () {
+    return { send: mockS3Send }
+  }),
+  GetObjectCommand: vi.fn().mockImplementation(function (input: unknown) {
+    return input
+  }),
 }))
 
 import { setupTestDb, testDb } from '../setup/db'
@@ -126,11 +131,11 @@ async function createVerification(documentKeys: string[] = ['verifications/cv1/d
 }
 
 describe('GET /api/admin/verification-docs/[verificationId]/[index]', () => {
-  it('unauthenticated → 401', async () => {
+  it('unauthenticated → 403 (project convention: route() returns 403 for unauthenticated)', async () => {
     mockSession(null)
     const { cv } = await createVerification()
     const res = await GET(makeRequest(cv.id, 0))
-    expect(res.status).toBe(401)
+    expect(res.status).toBe(403)
   })
 
   it('STUDENT → 403', async () => {
@@ -174,6 +179,19 @@ describe('GET /api/admin/verification-docs/[verificationId]/[index]', () => {
     const { cv } = await createVerification(['verifications/cv1/doc.pdf'])
     const res = await GET(makeRequest(cv.id, 5))
     expect(res.status).toBe(404)
+  })
+
+  it('ContentLength > 10 MB → 502', async () => {
+    const admin = await createAdminUser()
+    mockSession(admin.id)
+    const { cv } = await createVerification()
+    mockS3Send.mockResolvedValueOnce({
+      Body: makeS3Stream(),
+      ContentType: 'application/pdf',
+      ContentLength: 10 * 1024 * 1024 + 1, // 1 byte over the 10 MB limit
+    })
+    const res = await GET(makeRequest(cv.id, 0))
+    expect(res.status).toBe(502)
   })
 
   it('S3 error → 502, body has no raw error', async () => {
