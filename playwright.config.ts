@@ -2,6 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 import { readFileSync } from 'fs'
 import { parseEnv } from 'util'
 import { validateTestDbUrl } from './tests/lib/validate-test-db-url'
+import { SERVER_LOG_PATH } from './tests/e2e/helpers/server-log-path'
 
 // Convention:
 //  - Every E2E run spawns its own dev server (reuseExistingServer: false).
@@ -45,6 +46,8 @@ const port = Number(process.env.PORT) || 3000
 export default defineConfig({
   // M4-T14/T15：准备人才库的企业、学生、收藏夹（只写测试库，密码每次随机）
   globalSetup: './tests/e2e/global-setup.ts',
+  // M4-T26：在全部 spec 结束后检查服务端日志没有 PII 哨兵
+  globalTeardown: './tests/e2e/global-teardown.ts',
   testDir: './tests/e2e',
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
@@ -69,14 +72,18 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `pnpm dev --port ${port}`,
+    // Wrapper tees dev server output to SERVER_LOG_PATH for the PII log check in globalTeardown.
+    command: `node tests/e2e/start-dev-server.mjs`,
     url: `http://localhost:${port}`,
     // Always start a fresh server so it uses the test database — never reuse an
     // existing server that might be connected to the development database.
     reuseExistingServer: false,
+    stdout: 'pipe',
+    stderr: 'pipe',
     env: {
       DATABASE_URL: testDatabaseUrl,
       PORT: String(port),
+      SERVER_LOG_PATH,
     },
   },
 })

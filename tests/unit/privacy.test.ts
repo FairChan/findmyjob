@@ -62,9 +62,13 @@ beforeEach(() => {
   mockDb.studentProfile.update.mockResolvedValue({})
   mockDb.consent.create.mockResolvedValue({})
   mockDb.auditLog.create.mockResolvedValue({})
-  mockDb.$transaction.mockImplementation(
-    (ops: unknown) => Promise.all(ops as Promise<unknown>[]),
-  )
+  // Support both array form (setVisibility) and callback form (addBlocked/removeBlocked)
+  mockDb.$transaction.mockImplementation((ops: unknown) => {
+    if (typeof ops === 'function') {
+      return (ops as (tx: typeof mockDb) => Promise<unknown>)(mockDb) as Promise<unknown[]>
+    }
+    return Promise.all(ops as Promise<unknown>[])
+  })
 })
 
 describe('getLatestTalentPoolConsent', () => {
@@ -173,6 +177,25 @@ describe('addBlockedCompany', () => {
     )
   })
 
+  it('creates student.block_company audit with actorId = userId and targetId = companyId', async () => {
+    mockDb.company.findUnique.mockResolvedValue({ id: COMPANY_ID, verificationStatus: 'VERIFIED' })
+    mockDb.blockedCompany.upsert.mockResolvedValue({})
+
+    await addBlockedCompany(ctx, { companyId: COMPANY_ID })
+
+    expect(mockDb.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: USER_ID,
+          action: 'student.block_company',
+          targetType: 'Company',
+          targetId: COMPANY_ID,
+          metadata: expect.objectContaining({ studentId: PROFILE_ID }),
+        }),
+      }),
+    )
+  })
+
   it('throws NotFoundError for non-verified company', async () => {
     mockDb.company.findUnique.mockResolvedValue({ id: COMPANY_ID, verificationStatus: 'PENDING' })
     await expect(addBlockedCompany(ctx, { companyId: COMPANY_ID })).rejects.toBeInstanceOf(
@@ -195,6 +218,24 @@ describe('removeBlockedCompany', () => {
     expect(mockDb.blockedCompany.deleteMany).toHaveBeenCalledWith({
       where: { studentId: PROFILE_ID, companyId: COMPANY_ID },
     })
+  })
+
+  it('creates student.unblock_company audit with actorId = userId and targetId = companyId', async () => {
+    mockDb.blockedCompany.deleteMany.mockResolvedValue({ count: 1 })
+
+    await removeBlockedCompany(ctx, { companyId: COMPANY_ID })
+
+    expect(mockDb.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          actorId: USER_ID,
+          action: 'student.unblock_company',
+          targetType: 'Company',
+          targetId: COMPANY_ID,
+          metadata: expect.objectContaining({ studentId: PROFILE_ID }),
+        }),
+      }),
+    )
   })
 })
 

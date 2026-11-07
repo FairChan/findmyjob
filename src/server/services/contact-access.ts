@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '../db'
 import { NotFoundError, ForbiddenError } from '../errors'
 import { encryptField, decryptField } from '../lib/crypto'
+import { logAudit } from './audit'
 import type { UserCtx } from '../authz'
 
 export type ContactData = {
@@ -217,26 +218,42 @@ export async function canSeeIdentity(companyId: string, studentId: string): Prom
  * Returns decrypted contact data for a student, gated by canSeeIdentity.
  * Throws ForbiddenError if the company is not allowed to see the contact.
  * This is the ONLY function that may read and decrypt student contact fields.
+ *
+ * Writes a contact.read audit record in the same transaction as the read (fail closed).
+ * The audit metadata never contains decrypted values — only internal IDs.
  */
 export async function getContactForCompany(
   companyId: string,
   studentId: string,
+  ctx: { userId: string },
 ): Promise<ContactData> {
   const canSee = await canSeeIdentity(companyId, studentId)
   if (!canSee) throw new ForbiddenError()
 
-  const row = await db.studentContact.findUnique({ where: { studentId } })
-  if (!row) {
-    return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
-  }
+  return db.$transaction(async (tx) => {
+    const row = await tx.studentContact.findUnique({ where: { studentId } })
 
-  return {
-    phone: decryptIfPresent(row.phone, 'phone', studentId),
-    email: decryptIfPresent(row.email, 'email', studentId),
-    whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
-    wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
-    linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
-  }
+    // Audit before returning; fail closed — if this throws the read does not land.
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'contact.read',
+      targetType: 'StudentContact',
+      targetId: studentId,
+      metadata: { companyId, studentId },
+    }, tx)
+
+    if (!row) {
+      return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
+    }
+
+    return {
+      phone: decryptIfPresent(row.phone, 'phone', studentId),
+      email: decryptIfPresent(row.email, 'email', studentId),
+      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
+      wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
+      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
+    }
+  })
 }
 
 /** Encrypts and upserts the student's own contact info. */

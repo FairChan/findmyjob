@@ -326,12 +326,8 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
   }, 15_000)
 
   it('blocked student → 404 (TM-003 gone)', async () => {
-    const minPdf = Buffer.from(
-      await (await PDFDocument.create().then(d => { d.addPage([612, 792]); return d })).save(),
-    )
     const { profileId, resumeId, emp } = await setupFixture()
     await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
-    mockGetObjectBytes.mockResolvedValueOnce(minPdf)
     mockSession(emp.userId, 'EMPLOYER')
 
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
@@ -417,11 +413,15 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
   }, 30_000)
 
   it('watermark content-stream guard: specific latin1-hex watermark text in decoded content stream', async () => {
-    // Blank PDF has no text operations; any <HEX> Tj after the pipeline proves the specific watermark text was added.
+    // Blank 3-page PDF: watermark must appear on every page (not just the first).
+    // Guard against the decompression-bomb test's pdfMaxInflatedBytes=500 leaking via cache.
+    clearSettingsCache()
     // Fix the system clock so the KL date string is predictable.
     vi.useFakeTimers({ now: new Date('2026-11-08T00:00:00Z'), toFake: ['Date'] })
     try {
       const doc = await PDFDocument.create()
+      doc.addPage([612, 792])
+      doc.addPage([612, 792])
       doc.addPage([612, 792])
       const blankPdf = Buffer.from(await doc.save())
 
@@ -450,27 +450,33 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
       const bodyBuf = Buffer.from(await res.arrayBuffer())
       const outDoc = await PDFDocument.load(bodyBuf)
 
-      // Search decoded content streams; at least one page must contain the hex-encoded watermark
-      let found = false
-      for (let i = 0; i < outDoc.getPageCount(); i++) {
+      // Every page must contain the hex-encoded watermark (3-page guard: catches
+      // an implementation that only watermarks the first page).
+      const pageCount = outDoc.getPageCount()
+      expect(pageCount).toBe(3)
+      const pagesWithWatermark: number[] = []
+      for (let i = 0; i < pageCount; i++) {
         const page = outDoc.getPage(i)
         const contentsVal = page.node.get(PDFName.of('Contents'))
         if (!contentsVal) continue
         const refs = contentsVal instanceof PDFArray
           ? Array.from({ length: contentsVal.size() }, (_, j) => contentsVal.get(j))
           : [contentsVal]
+        let pageFound = false
         for (const ref of refs) {
           try {
             const obj = outDoc.context.lookup(ref instanceof PDFRef ? ref : ref)
             if (!(obj instanceof PDFRawStream)) continue
             const decoded = Buffer.from(decodePDFRawStream(obj).decode()).toString('latin1')
-            if (decoded.includes(expectedPattern)) found = true
+            if (decoded.includes(expectedPattern)) pageFound = true
           } catch {
             // skip non-stream objects
           }
         }
+        if (pageFound) pagesWithWatermark.push(i)
       }
-      expect(found).toBe(true)
+      // All 3 pages must carry the watermark
+      expect(pagesWithWatermark).toHaveLength(pageCount)
     } finally {
       vi.useRealTimers()
     }

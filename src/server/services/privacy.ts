@@ -117,10 +117,19 @@ export async function addBlockedCompany(
     throw new NotFoundError('Company not found')
   }
 
-  await db.blockedCompany.upsert({
-    where: { studentId_companyId: { studentId: profile.id, companyId: input.companyId } },
-    create: { studentId: profile.id, companyId: input.companyId },
-    update: {},
+  await db.$transaction(async (tx) => {
+    await tx.blockedCompany.upsert({
+      where: { studentId_companyId: { studentId: profile.id, companyId: input.companyId } },
+      create: { studentId: profile.id, companyId: input.companyId },
+      update: {},
+    })
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'student.block_company',
+      targetType: 'Company',
+      targetId: input.companyId,
+      metadata: { studentId: profile.id },
+    }, tx)
   })
 }
 
@@ -134,8 +143,17 @@ export async function removeBlockedCompany(
   })
   if (!profile) throw new NotFoundError('Student profile not found')
 
-  await db.blockedCompany.deleteMany({
-    where: { studentId: profile.id, companyId: input.companyId },
+  await db.$transaction(async (tx) => {
+    await tx.blockedCompany.deleteMany({
+      where: { studentId: profile.id, companyId: input.companyId },
+    })
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'student.unblock_company',
+      targetType: 'Company',
+      targetId: input.companyId,
+      metadata: { studentId: profile.id },
+    }, tx)
   })
 }
 
