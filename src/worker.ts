@@ -18,7 +18,10 @@ async function main() {
     createSchema: false,
   })
 
-  boss.on('error', (err: unknown) => logger.error({ err }, 'pg-boss error'))
+  boss.on('error', (err: unknown) => {
+    const e = err as Record<string, unknown>
+    logger.error({ errName: typeof e?.name === 'string' ? e.name : undefined, code: e?.code }, 'pg-boss error')
+  })
 
   await boss.start()
   logger.info('pg-boss started')
@@ -42,6 +45,7 @@ async function main() {
 
 main().catch((err: unknown) => {
   Sentry.captureException(err)
-  logger.error({ err }, 'worker startup failed')
-  process.exit(1)
+  const e = err as Record<string, unknown>
+  logger.error({ errName: typeof e?.name === 'string' ? e.name : undefined, code: e?.code }, 'worker startup failed')
+  void Sentry.close(2000).finally(() => process.exit(1))
 })

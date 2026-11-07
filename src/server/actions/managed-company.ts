@@ -34,7 +34,11 @@ export const transferManagedCompanyAction = action(
           text: `您已被指定为 FindMYJob 平台上一家企业的新负责人。\n\n接受链接：${acceptUrl}\n\n链接 7 天内有效。`,
         })
       } catch (err) {
-        logger.error({ err }, 'transferManagedCompanyAction: email send failed')
+        const e = err as Record<string, unknown>
+        logger.error(
+          { errName: typeof e?.name === 'string' ? e.name : undefined, code: e?.code },
+          'transferManagedCompanyAction: email send failed',
+        )
       }
     })
     return {}

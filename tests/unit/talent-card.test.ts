@@ -334,6 +334,117 @@ describe('toTalentDetail – 未解锁时自由文本里不出现姓名 (拉丁�
   })
 })
 
+// ---- issue #4: edu.description 专用哨兵 (整份 JSON 断言) -------------------
+
+const S_EDU_DESC_SENTINEL = 'edu-desc-unique@example.test'
+
+describe('toTalentDetail – 防泄漏 edu.description 整份 JSON 断言', () => {
+  const profileWithEduDescSentinel: ProfileDetailInput = {
+    ...piiProfile,
+    educations: [
+      {
+        ...piiProfile.educations[0]!,
+        description: `请联系 ${S_EDU_DESC_SENTINEL}`,
+      },
+    ],
+  }
+
+  it('整份 JSON 里不含 edu.description 哨兵邮箱 (unlocked=false)', () => {
+    const result = toTalentDetail(profileWithEduDescSentinel, { unlocked: false })
+    expect(JSON.stringify(result)).not.toContain(S_EDU_DESC_SENTINEL)
+  })
+
+  it('edu.description 字段本身不含哨兵邮箱 (unlocked=false)', () => {
+    const result = toTalentDetail(profileWithEduDescSentinel, { unlocked: false })
+    expect(result.educations[0]?.description).not.toContain(S_EDU_DESC_SENTINEL)
+    expect(result.educations[0]?.description).toContain('[已隐藏]')
+  })
+
+  it('已解锁时 edu.description 保留原文', () => {
+    const result = toTalentDetail(profileWithEduDescSentinel, { unlocked: true })
+    expect(result.educations[0]?.description).toContain(S_EDU_DESC_SENTINEL)
+  })
+})
+
+// ---- issue #5: 卡片 major 和学校名做姓名遮蔽 (unlocked=false) ----------------
+
+describe('toTalentCard – major 和学校名做姓名遮蔽 (unlocked=false)', () => {
+  const S_CARD_NAME = '王建国'
+  const profileWithNameInMajor: typeof piiProfile = {
+    ...piiProfile,
+    fullName: S_CARD_NAME,
+    major: `${S_CARD_NAME}专业方向`,
+    school: {
+      id: 's1',
+      nameZh: `${S_CARD_NAME}学院`,
+      nameEn: `Wang Jianguo College`,
+    },
+  }
+
+  it('major 里的姓名被遮（unlocked=false）', () => {
+    const r = toTalentCard(profileWithNameInMajor, { unlocked: false })
+    expect(r.major).not.toContain(S_CARD_NAME)
+    expect(r.major).toContain('[已隐藏]')
+  })
+
+  it('school.nameZh 里的姓名被遮（unlocked=false）', () => {
+    const r = toTalentCard(profileWithNameInMajor, { unlocked: false })
+    expect(r.school?.nameZh).not.toContain(S_CARD_NAME)
+  })
+
+  it('major 和 school TM-002 仍走 redact（unlocked=true）', () => {
+    const p = { ...profileWithNameInMajor, major: 'CS test@bad.com' }
+    const r = toTalentCard(p, { unlocked: true })
+    expect(r.major).not.toContain('test@bad.com')
+    expect(r.major).toContain('[已隐藏]')
+  })
+})
+
+// ---- issue #6: 拉丁字母名非 ASCII 字母边界（如 José）-----------------------
+
+describe('toTalentDetail – 拉丁名含非 ASCII 字母的边界（José 场景）', () => {
+  const S_JOSE = 'José'
+  const S_JOSE_LAST = 'García'
+  const joseProfile: ProfileDetailInput = {
+    ...piiProfile,
+    fullName: `${S_JOSE} ${S_JOSE_LAST}`,
+    headline: `I am ${S_JOSE} ${S_JOSE_LAST} and my number is 12345`,
+    summary: `José leads the team`,
+    experiences: [
+      {
+        ...piiProfile.experiences[0]!,
+        title: `Engineer, ${S_JOSE}`,
+        description: `García is the manager`,
+      },
+    ],
+  }
+
+  it('headline 里的 José 被遮（unlocked=false）', () => {
+    const r = toTalentDetail(joseProfile, { unlocked: false })
+    expect(r.headline).not.toContain(S_JOSE)
+  })
+
+  it('headline 里的 García 被遮（unlocked=false）', () => {
+    const r = toTalentDetail(joseProfile, { unlocked: false })
+    expect(r.headline).not.toContain(S_JOSE_LAST)
+  })
+
+  it('summary 里的 José 被遮（unlocked=false）', () => {
+    const r = toTalentDetail(joseProfile, { unlocked: false })
+    expect(r.summary).not.toContain(S_JOSE)
+  })
+
+  it('experience.description 里的 García 被遮（unlocked=false）', () => {
+    const r = toTalentDetail(joseProfile, { unlocked: false })
+    expect(r.experiences[0]?.description).not.toContain(S_JOSE_LAST)
+  })
+
+  it('已解锁时 headline 保留 José García', () => {
+    const r = toTalentDetail(joseProfile, { unlocked: true })
+    expect(r.headline).toContain(`${S_JOSE} ${S_JOSE_LAST}`)
+  })
+})
+
 // ---- issue #3: 防泄漏 – 补充路径覆盖 --------------------------------------
 
 const S_EXP_DESC_PHONE = '+60 11-5678 9012'

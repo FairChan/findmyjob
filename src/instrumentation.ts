@@ -12,5 +12,7 @@ export async function onRequestError(
   context: { routerKind: string; routeType: string; routePath: string },
 ) {
   const { captureRequestError } = await import('@sentry/nextjs')
-  captureRequestError(err, request, context)
+  // Prefer routePath (the route template, e.g. /s/[studentId]) over the actual path
+  // so Sentry never receives real IDs or tokens in the request URL.
+  captureRequestError(err, { ...request, path: context.routePath ?? request.path }, context)
 }

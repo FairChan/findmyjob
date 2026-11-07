@@ -42,8 +42,8 @@ export async function expectPageHealthy(
   // Playwright text locators pierce open shadow DOM (nextjs-portal uses an open root).
   await expect(page.getByText('Unhandled Runtime Error')).not.toBeVisible({ timeout: 3000 })
 
-  // Production error boundary
-  await expect(page.getByText('Application error')).not.toBeVisible()
+  // Production error boundary (Next 16.4.5 global-error shows "A server error occurred")
+  await expect(page.getByText('A server error occurred')).not.toBeVisible()
 
   // Next.js default 404
   await expect(page.getByText('This page could not be found')).not.toBeVisible()
