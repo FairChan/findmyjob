@@ -11,7 +11,7 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts', 'tests/architecture/**/*.test.ts'],
     exclude: ['prototype/**', 'node_modules/**', '.next/**', 'tests/e2e/**'],
     // 全局要求每条测试至少一个断言（见文件内注释）
     setupFiles: ['tests/setup/assertions.ts'],

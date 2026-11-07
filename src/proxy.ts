@@ -51,12 +51,40 @@ function extractLocale(pathname: string): string {
   return routing.defaultLocale
 }
 
-// 线 B（M7-T02）留下的钩子：已登录用户需要重新同意新版条款时，在这里重定向。
-// 目前是桩函数，真正接入 needsReconsent(userId)（src/server/services/legal-consent.ts）记在 M1-T07 的遗留项里。
+// 已登录用户需要重新同意新版条款时，在这里重定向。
+// 通过内部 API 端点检查（Prisma 不能在 Edge/Middleware 里直接用），
+// 失败时 fail-open（不阻塞用户），以防止内部错误或服务暂时不可用。
 async function checkReconsent(
-  _request: NextRequest,
+  request: NextRequest,
 ): Promise<NextResponse | null> {
-  return null
+  if (!hasSessionCookie(request)) return null
+
+  const pathname = request.nextUrl.pathname
+  // Don't redirect away from the reconsent page itself
+  if (pathname.includes('/legal/reconsent')) return null
+
+  try {
+    const checkUrl = new URL('/api/internal/needs-reconsent', request.nextUrl.origin)
+    const res = await fetch(checkUrl.toString(), {
+      headers: {
+        cookie: request.headers.get('cookie') ?? '',
+        'x-real-ip': request.headers.get('x-real-ip') ?? '',
+        'user-agent': request.headers.get('user-agent') ?? '',
+        origin: request.nextUrl.origin,
+      },
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = await res.json() as { needsReconsent?: boolean }
+    if (!data.needsReconsent) return null
+
+    const locale = extractLocale(pathname)
+    const reconsentUrl = new URL(`/${locale}/legal/reconsent`, request.url)
+    return NextResponse.redirect(reconsentUrl)
+  } catch {
+    // Fail open: a transient error must not lock users out
+    return null
+  }
 }
 
 export default async function middleware(request: NextRequest) {

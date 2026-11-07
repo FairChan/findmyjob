@@ -145,7 +145,8 @@ export const registerEmployer = action(
     // Run inside employer context so the before-hook and databaseHook skip the
     // student cap check and set role=EMPLOYER in the INSERT.
     // Consent is created in databaseHooks.user.create.after in auth.ts.
-    const { user } = await employerRegistrationContext.run(true, () =>
+    // Both the new-email and duplicate-email paths return { email } — no extra DB query needed.
+    await employerRegistrationContext.run(true, () =>
       callAuthSignUp(
         {
           name: input.name,
@@ -159,13 +160,6 @@ export const registerEmployer = action(
         userAgent,
       ),
     )
-
-    // Anti-enum: check whether the returned user actually exists.
-    const realUser = await db.user.findUnique({ where: { id: user.id }, select: { id: true } })
-    if (!realUser) {
-      // Duplicate email — reminder sent by onExistingUserSignUp in auth.ts.
-      return { email: input.email }
-    }
 
     return { email: input.email }
   },

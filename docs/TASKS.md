@@ -1092,7 +1092,7 @@
 
 > 以下是 P1 任务，GATE-M7 之后按各自的时点做（`AUTO_BUILD_SKIP_P1=1` 时跳过）。
 
-#### [ ] M1-T07 架构测试：越权注册表全覆盖（P1，M7 之后）
+#### [x] M1-T07 架构测试：越权注册表全覆盖（P1，M7 之后）
 依赖：M1-T03
 做：新增 `tests/architecture/server-boundary.test.ts`：用 TS 编译器 API 扫描所有 `use server` 文件和 route.ts 的导出；`action()` 和 `route()` 的注册表与越权矩阵逐项对比。
 验收：故意加一个没有包装的 export，测试失败
@@ -1107,6 +1107,8 @@
 > - route() 会读掉 body，需要原始 body 的 handler（比如 webhook 验签）不能走 input 解析；JSON 格式错误时静默变成 `{}` 的问题已改为返回 400。
 > - 名额满时直接 POST 原始端点返回伪造的 200：已改为 hooks.before 统一返回 SIGNUP_CLOSED。GATE-M4 时再核对一遍。
 > - proxy 的 checkReconsent 仍是线 B（M7-T02）留下的桩函数，永远返回 null。现在 Better Auth 已接入，要真正调用 needsReconsent(userId)：已登录、条款版本过期的用户跳转到重新同意页。这是 PDPA 相关功能，GATE-M7 之前必须做完。
+
+> 完成 2026-11-07：新增 tests/architecture/server-boundary.test.ts（TS 编译器 API 扫描 use server 和 route.ts 导出）；修复 auth.ts logger PII 泄漏、session.create.after IP 获取、user.create.after 路径守卫与同意校验、maybeWarnCap 静默吞错；signup-cap.ts deleteMany 加 role: 'STUDENT'；env.ts APP_ENV 按 NODE_ENV 兜底；register.ts 移除多余 realUser 查库；proxy.ts checkReconsent 实现为调用内部 API；新增 src/app/api/internal/needs-reconsent/route.ts；auth.ts disabledPaths 补全 /email-otp/request-email-change 和 /email-otp/change-email；DECISIONS.md 更新两处不准确描述。失败输出见提交说明。自查：1.鉴权在服务端：符合，所有修改路由均用 route({ auth: 'user' })；2.输入走 zod：符合，route/action wrapper 已校验；3.越权有测试：符合，architecture test 覆盖注册表；4.加锁和并发：不适用，本任务无余额/状态流转写操作；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增/修改页面；7.完成说明逐条写出；8.未删除或放宽已有断言。
 
 #### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02

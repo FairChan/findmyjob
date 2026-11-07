@@ -149,20 +149,32 @@ export const auth = betterAuth({
     '/email-otp/reset-password',
     '/email-otp/check-verification-otp',
     '/email-otp/verify-email',
+    // changeEmail plugin paths: not wired in UI; disable so they don't route
+    '/email-otp/request-email-change',
+    '/email-otp/change-email',
   ],
 
   // Connect Better Auth's internal logger to the app logger (suppresses raw messages in prod).
   // No `level` override — library default is warn, setting it explicitly causes APIErrors
   // to be double-logged via the default console logger.
+  // Extra args from BA are wrapped in an array; extract only {code, status} to avoid
+  // leaking PII that may be embedded in error details or email addresses.
   logger: {
     log: (level: string, message: string, ...args: unknown[]) => {
-      const extra = args.length ? { extra: args } : undefined
+      const safe: Record<string, unknown> = {}
+      for (const arg of args) {
+        if (arg && typeof arg === 'object') {
+          const a = arg as Record<string, unknown>
+          if ('code' in a) safe.code = a.code
+          if ('status' in a) safe.status = a.status
+        }
+      }
       if (level === 'error') {
-        logger.error({ code: 'BETTER_AUTH_ERROR', ...extra }, `[better-auth] ${message}`)
+        logger.error({ code: 'BETTER_AUTH_ERROR', ...safe }, `[better-auth] ${message}`)
       } else if (level === 'warn') {
-        logger.warn({ ...extra }, `[better-auth] ${message}`)
+        logger.warn(safe, `[better-auth] ${message}`)
       } else {
-        logger.info({ ...extra }, `[better-auth] ${message}`)
+        logger.info(safe, `[better-auth] ${message}`)
       }
     },
   },
@@ -228,7 +240,9 @@ export const auth = betterAuth({
     afterEmailVerification: async (user: { id: string; name: string; email: string; emailVerified: boolean; createdAt: Date; updatedAt: Date; image?: string | null }) => {
       const u = user as { id: string; role?: string }
       if (u.role === 'STUDENT') {
-        await maybeWarnCap().catch(() => {})
+        await maybeWarnCap().catch((err: unknown) => {
+          logger.warn({ code: 'WARN_CAP_FAILED', err }, 'maybeWarnCap failed')
+        })
       }
     },
   },
@@ -346,6 +360,12 @@ export const auth = betterAuth({
         // so it covers both UI-initiated and direct API registrations.
         after: async (user: Record<string, unknown>, ctx?: any) => {
           if (!user?.id) return
+          // Only write signup records for the standard registration path.
+          // Guards against admin plugins, social login, or scripts calling signUpEmail directly —
+          // those would otherwise get "consent granted" records the user never saw.
+          if (ctx?.path !== '/sign-up/email') return
+          const ctxBody = ctx?.body as Record<string, unknown> | undefined
+          if (ctxBody?.agreeTerms !== true || ctxBody?.agreePrivacy !== true) return
           // prismaAdapter 的 transaction 默认关闭：走到这里时 User 和 Account 已经提交、验证邮件也已排队。
           // 这里任何一步失败都把刚建的用户删掉（Account、Consent、StudentProfile 级联删除），不留没有同意记录的账号
           try {
@@ -375,7 +395,9 @@ export const auth = betterAuth({
           // Sessions created during /change-password are not new logins.
           const path: string = ctx?.path ?? ''
           if (path === '/change-password') return
-          const reqHeaders: Headers | undefined = ctx?.request?.headers
+          // Prefer ctx.headers (top-level in newer BA versions) before ctx.request.headers.
+          // session.ipAddress may be empty string or a /64-truncated IPv6 depending on BA version.
+          const reqHeaders: Headers | undefined = ctx?.headers ?? ctx?.request?.headers
           const ip = reqHeaders
             ? (getClientIp(reqHeaders as Headers) ?? undefined)
             : (session.ipAddress ?? undefined)

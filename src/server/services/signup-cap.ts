@@ -64,6 +64,7 @@ export async function purgeUnverifiedAccounts(): Promise<number> {
     const result = await db.user.deleteMany({
       where: {
         id: { in: ids.map((u) => u.id) },
+        role: 'STUDENT',
         emailVerified: false,
         createdAt: { lt: cutoff },
       },
