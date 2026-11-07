@@ -111,7 +111,22 @@ export const GET = route({ auth: 'admin' }, async (req, ctx) => {
     responseHeaders.set('Content-Length', String(s3Response.ContentLength))
   }
 
-  const webStream = Readable.toWeb(rawBody as Readable) as ReadableStream
+  const webStream = Readable.toWeb(rawBody as Readable) as ReadableStream<Uint8Array>
 
-  return new Response(webStream, { status: 200, headers: responseHeaders })
+  // When S3 omits ContentLength (e.g. chunked encoding), guard with a byte counter.
+  // Headers are already committed at this point, so exceeding the limit closes the stream
+  // rather than returning 502; that is acceptable fail-closed behaviour.
+  let streamTotal = 0
+  const sizeGuard = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      streamTotal += chunk.byteLength
+      if (streamTotal > VERIFICATION_MAX_BYTES) {
+        controller.error(new Error('oversized'))
+        return
+      }
+      controller.enqueue(chunk)
+    },
+  })
+
+  return new Response(webStream.pipeThrough(sizeGuard), { status: 200, headers: responseHeaders })
 })

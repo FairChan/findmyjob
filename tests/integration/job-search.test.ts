@@ -392,3 +392,31 @@ describe('searchJobs extended filters (C3)', () => {
     expect(ids).toContain(jVisible.id)
   })
 })
+
+// ----- industry ILIKE escaping (red line: 用户输入放进 LIKE 之前先转义) -----
+
+describe('searchJobs industry filter ILIKE escaping', () => {
+  it('underscore in industry code is treated as literal, not wildcard', async () => {
+    // a_b.x: exact match; axb.y: must NOT appear (without escaping, _ is a wildcard so axb matches a_b)
+    const co1 = await createCompany({ industryCode: 'a_b.x' })
+    const co2 = await createCompany({ industryCode: 'axb.y' })
+    const j1 = await createJobForCompany(co1, { title: `ilike_underscore_${Date.now()}_abx` })
+    const j2 = await createJobForCompany(co2, { title: `ilike_underscore_${Date.now()}_axby` })
+
+    const result = await searchJobs({ q: '', filters: { industry: 'a_b' } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).toContain(j1.id)
+    expect(ids).not.toContain(j2.id)
+  })
+
+  it('percent in industry code is treated as literal, not wildcard', async () => {
+    // industry='%': without escaping, LIKE '%.%' matches everything with a dot; with fix, matches nothing
+    const co = await createCompany({ industryCode: 'finance.bank' })
+    const j = await createJobForCompany(co, { title: `ilike_pct_${Date.now()}` })
+
+    const result = await searchJobs({ q: '', filters: { industry: '%' } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    // No company has industryCode='%' or '%.<anything>' literally
+    expect(ids).not.toContain(j.id)
+  })
+})

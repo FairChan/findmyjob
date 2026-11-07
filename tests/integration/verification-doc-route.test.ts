@@ -206,6 +206,54 @@ describe('GET /api/admin/verification-docs/[verificationId]/[index]', () => {
     expect(body).not.toContain('secret details')
   })
 
+  it('no ContentLength, oversized body → stream aborts before all bytes reach client', async () => {
+    const admin = await createAdminUser()
+    mockSession(admin.id)
+    const { cv } = await createVerification()
+
+    const LIMIT = 10 * 1024 * 1024
+    const extra = 100 * 1024
+    const totalBytes = LIMIT + extra
+    const chunkSize = 64 * 1024
+    let pushed = 0
+    const oversizedStream = new Readable({
+      read() {
+        if (pushed >= totalBytes) { this.push(null); return }
+        const size = Math.min(chunkSize, totalBytes - pushed)
+        this.push(Buffer.alloc(size, 0x41))
+        pushed += size
+      },
+    })
+    mockS3Send.mockResolvedValueOnce({
+      Body: oversizedStream,
+      ContentType: 'application/pdf',
+      // No ContentLength — simulates chunked/streaming S3 response
+    })
+
+    const res = await GET(makeRequest(cv.id, 0))
+    // Headers are committed before streaming; status is always 200 at this point
+    expect(res.status).toBe(200)
+
+    let totalRead = 0
+    let threw = false
+    try {
+      const reader = res.body!.getReader()
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        totalRead += value?.byteLength ?? 0
+      }
+    } catch {
+      threw = true
+    }
+
+    // With the size guard: stream must error or stop at LIMIT bytes, not deliver full LIMIT+100KB
+    // threw=true means the stream was aborted cleanly; otherwise, bytes read must not exceed LIMIT
+    expect(threw || totalRead <= LIMIT).toBe(true)
+    // Critical: we did NOT forward the entire oversized payload regardless of how the stream ended
+    expect(totalRead).toBeLessThan(totalBytes)
+  })
+
   it('ADMIN success: returns 200, correct headers, writes audit log without filename', async () => {
     const admin = await createAdminUser()
     mockSession(admin.id)

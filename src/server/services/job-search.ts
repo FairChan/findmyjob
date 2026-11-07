@@ -288,10 +288,13 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
     // Build company-level filter for industry / tags / size
     const companyWhere: Prisma.CompanyWhereInput = {}
     if (industry) {
-      companyWhere.OR = [
-        { industryCode: industry },
-        { industryCode: { startsWith: industry + '.' } },
-      ]
+      // Use raw SQL to properly escape LIKE wildcards (industry comes from user input)
+      const matchingCos = await db.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "Company"
+        WHERE "industryCode" = ${industry}
+           OR "industryCode" LIKE ${escapeIlike(industry) + '.%'}
+      `
+      companyWhere.id = { in: matchingCos.map((r) => r.id) }
     }
     if (tags?.length) companyWhere.tags = { hasSome: tags }
     if (size) companyWhere.size = size
@@ -390,7 +393,7 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
 
   // Extended filters (M5-T10)
   const industryParamFilter = industry
-    ? Prisma.sql`AND (c."industryCode" = ${industry} OR c."industryCode" LIKE ${industry + '.%'})`
+    ? Prisma.sql`AND (c."industryCode" = ${industry} OR c."industryCode" LIKE ${escapeIlike(industry) + '.%'})`
     : Prisma.empty
   const tagsParamFilter =
     tags?.length

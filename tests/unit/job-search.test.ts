@@ -292,13 +292,14 @@ describe('searchJobs', () => {
     expect(callArgs.where).toMatchObject({ salaryVisible: true, salaryMax: { gte: 3000 } })
   })
 
-  it('C3: empty query with industry filter passes company OR condition', async () => {
+  it('C3: empty query with industry filter uses id-in list (safe: $queryRaw escapes LIKE wildcards)', async () => {
+    // The industry filter now goes through $queryRaw to escape % and _ before LIKE.
+    // $queryRaw returns company ids; findMany is called with id.in rather than startsWith.
+    mockQueryRaw.mockResolvedValueOnce([{ id: 'co1' }, { id: 'co2' }])
     mockJobFindMany.mockResolvedValue([])
     await searchJobs({ q: '', filters: { industry: 'finance' } })
     const callArgs = mockJobFindMany.mock.calls[0][0]
-    expect(callArgs.where.company).toMatchObject({
-      OR: [{ industryCode: 'finance' }, { industryCode: { startsWith: 'finance.' } }],
-    })
+    expect(callArgs.where.company).toMatchObject({ id: { in: ['co1', 'co2'] } })
   })
 
   it('C3: empty query with tags filter passes company hasSome condition', async () => {
