@@ -202,6 +202,66 @@ describe('approveJob', () => {
     expect(afterSecond?.approvedJobCount).toBe(1)
   })
 
+  it('approvedJobCount gaming prevention: approve → sensitive edit via updateJob → approve again → count stays +1', async () => {
+    const adminCtx = await makeAdminCtx()
+    const { companyId, userId } = await createEmployer(testDb)
+    await testDb.company.update({
+      where: { id: companyId },
+      data: { verificationStatus: 'VERIFIED', approvedJobCount: 0 },
+    })
+    // First approval
+    const job = await makePendingJob(companyId, userId)
+    await approveJob(adminCtx, { jobId: job.id, updatedAt: job.updatedAt })
+    const afterFirst = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(afterFirst?.approvedJobCount).toBe(1)
+
+    // Simulate sensitive edit on published job (goes back to PENDING_REVIEW)
+    const { updateJob } = await import('@/server/services/jobs')
+    const publishedJob = await testDb.job.findUnique({ where: { id: job.id } })
+    expect(publishedJob?.publishedAt).not.toBeNull()
+    await updateJob(
+      { userId, companyId, role: 'OWNER' },
+      job.id,
+      {
+        title: 'Changed Title After Publish',
+        type: 'INTERNSHIP',
+        description: 'Test description',
+        workMode: 'ONSITE',
+        salaryVisible: true,
+        languages: [],
+        skills: [],
+        acceptsStudentPass: false,
+        sponsorsWorkPass: false,
+        submit: false,
+      },
+    )
+    const backToPending = await testDb.job.findUnique({ where: { id: job.id } })
+    expect(backToPending?.status).toBe('PENDING_REVIEW')
+    // publishedAt must be preserved so approveJob skips incrementing
+    expect(backToPending?.publishedAt).not.toBeNull()
+
+    // Second approval: count must remain at 1
+    await approveJob(adminCtx, { jobId: job.id, updatedAt: backToPending!.updatedAt })
+    const afterSecond = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(afterSecond?.approvedJobCount).toBe(1)
+  })
+
+  it('two distinct jobs approved → approvedJobCount +2', async () => {
+    const adminCtx = await makeAdminCtx()
+    const { companyId, userId } = await createEmployer(testDb)
+    await testDb.company.update({
+      where: { id: companyId },
+      data: { verificationStatus: 'VERIFIED', approvedJobCount: 0 },
+    })
+    const job1 = await makePendingJob(companyId, userId)
+    const job2 = await makePendingJob(companyId, userId)
+    await approveJob(adminCtx, { jobId: job1.id, updatedAt: job1.updatedAt })
+    const refreshed2 = await testDb.job.findUnique({ where: { id: job2.id } })
+    await approveJob(adminCtx, { jobId: job2.id, updatedAt: refreshed2!.updatedAt })
+    const company = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(company?.approvedJobCount).toBe(2)
+  })
+
   it('whitespace-only reviewNote is rejected', async () => {
     const result = rejectJobSchema.safeParse({ jobId: 'abc', reviewNote: '   ', updatedAt: new Date() })
     expect(result.success).toBe(false)

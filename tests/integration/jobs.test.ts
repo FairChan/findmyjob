@@ -219,7 +219,7 @@ describe('updateJob — TM-007 sensitive field re-review', () => {
     expect(updated.status).toBe('PUBLISHED')
   })
 
-  it('publishedAt is cleared when PUBLISHED job reverts to PENDING_REVIEW', async () => {
+  it('publishedAt is preserved when PUBLISHED job reverts to PENDING_REVIEW (prevents count gaming)', async () => {
     const ctx = await makeVerifiedCtx()
     const job = await makePublishedJob(ctx)
     expect(job.publishedAt).not.toBeNull()
@@ -229,7 +229,10 @@ describe('updateJob — TM-007 sensitive field re-review', () => {
       title: 'Changed Title', // sensitive change → PENDING_REVIEW
     })
     expect(updated.status).toBe('PENDING_REVIEW')
-    expect(updated.publishedAt).toBeNull()
+    // publishedAt must be preserved (not cleared) so approveJob can detect re-approval
+    // and skip incrementing approvedJobCount (prevents TM-007 bypass via count gaming)
+    expect(updated.publishedAt).not.toBeNull()
+    expect(updated.publishedAt?.getTime()).toBe(job.publishedAt!.getTime())
   })
 
   it('clearing requirements on DRAFT sets it to null in DB', async () => {
@@ -316,6 +319,39 @@ describe('updateJob — TM-007 sensitive field re-review', () => {
     })
     expect(updated.status).toBe('PENDING_REVIEW')
     expect(updated.reviewNote).toBeNull()
+  })
+
+  it('REJECTED job resubmit always → PENDING_REVIEW even when autoPublishAfter=0 (TM-007 bypass prevention)', async () => {
+    const ctx = await makeVerifiedCtx()
+    // Set autoPublishAfter=0 so a DRAFT submission would auto-publish
+    await testDb.systemSetting.upsert({
+      where: { key: 'jobs.autoPublishAfter' },
+      update: { value: 0 },
+      create: { key: 'jobs.autoPublishAfter', value: 0 },
+    })
+    await testDb.company.update({
+      where: { id: ctx.companyId },
+      data: { approvedJobCount: 0 },
+    })
+    const job = await testDb.job.create({
+      data: {
+        companyId: ctx.companyId,
+        createdById: ctx.userId,
+        title: 'Rejected Job',
+        type: 'INTERNSHIP',
+        description: 'Description with fraudulent content',
+        status: 'REJECTED',
+        workMode: 'ONSITE',
+        reviewNote: 'Fraudulent content',
+      },
+    })
+    const updated = await updateJob(ctx, job.id, {
+      ...baseInput,
+      title: 'Rejected Job Fixed',
+      submit: true,
+    })
+    // REJECTED re-submission must always go to PENDING_REVIEW, never PUBLISHED
+    expect(updated.status).toBe('PENDING_REVIEW')
   })
 
   it('cannot edit CLOSED job → ValidationError', async () => {

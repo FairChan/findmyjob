@@ -190,7 +190,21 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
           newStatus = 'PENDING_REVIEW'
         }
       }
-    } else if (existing.status === 'DRAFT' || existing.status === 'PENDING_REVIEW' || existing.status === 'REJECTED') {
+    } else if (existing.status === 'REJECTED') {
+      // Rejected jobs must always re-enter human review regardless of autoPublishAfter.
+      // Skipping the threshold check prevents bypassing TM-007 with previously-rejected content.
+      if (submit) {
+        const company = await tx.company.findUnique({
+          where: { id: ctx.companyId },
+          select: { verificationStatus: true },
+        })
+        if (!company) throw new NotFoundError()
+        if (company.verificationStatus !== 'VERIFIED') {
+          throw new ForbiddenError('Company must be verified to submit jobs for review')
+        }
+        newStatus = 'PENDING_REVIEW'
+      }
+    } else if (existing.status === 'DRAFT' || existing.status === 'PENDING_REVIEW') {
       if (submit) {
         const company = await tx.company.findUnique({
           where: { id: ctx.companyId },
@@ -208,10 +222,10 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
     let publishedAt: Date | null
     if (newStatus === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
       publishedAt = new Date()
-    } else if (newStatus === 'PENDING_REVIEW' && existing.status === 'PUBLISHED') {
-      // Going back to review: clear publishedAt so it reflects the eventual re-publish date
-      publishedAt = null
     } else {
+      // Preserve existing publishedAt when going back to PENDING_REVIEW.
+      // approveJob only increments approvedJobCount when publishedAt is null,
+      // so preserving it prevents the edit→review→approve cycle from gaming the threshold.
       publishedAt = existing.publishedAt
     }
 
