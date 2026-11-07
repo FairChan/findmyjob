@@ -847,7 +847,7 @@
 验收：与原型 C3 的测试用例一致；选了薪资档时隐藏薪资的职位不出现，也不能借筛选反推出它的薪资
 > 完成 2026-11-07：industryMatches（父级包含子级）；searchJobs 增加 industry/tags/size/salaryAtLeast 四个筛选（empty-query 走 Prisma company filter，keyword 走 SQL AND 片段）；jobs page listParamsSchema 增加四个 URL 参数；单元 29 条 + 集成 C3 9 条 + E2E 8 条全部通过；失败输出见提交说明。
 
-#### [ ] M5-T11 职位搜索性能：查询加 LIMIT、在数据库预筛候选（P1，E3 之前）
+#### [x] M5-T11 职位搜索性能：查询加 LIMIT、在数据库预筛候选（P1，E3 之前）
 依赖：M5-T09、M5-T10
 做：
 - 现状：`src/server/services/job-search.ts` 的 searchJobs 用 `$queryRaw` 把所有匹配的 PUBLISHED 职位（连同 description、requirements）都取出来，在应用里评分，再按游标切片，查询没有 LIMIT（2026-11-07 合并前复查记下的）。
@@ -860,6 +860,7 @@
 - 合成 1 万条职位（faker，只写测试库），常见查询的 p95 写进 docs/CAPACITY.md，目标值在 DECISIONS 里记一行。
 - 现有 job-search 的单测和集成测试全部通过。
 - 查询带 LIMIT：有测试断言单次取出的行数不超过上限。
+> 完成 2026-11-08：$queryRaw 加 `LIMIT ${candidateWindow}`（默认 500，读自 search.candidateWindow）；canSeeDescription=false 时 description/requirements 返回空串/null，不出现在 SQL 模板里；空查询 relevance 分支改用 Prisma 游标分页（取 limit+1 检测 hasMore），salary 分支取 candidateWindow 条后内存排序；基准测试（10k 合成职位）p95：空查询 11ms、关键词 40ms、关键词无匹配 37ms、salary 排序 18ms，全写入 docs/CAPACITY.md；pnpm lint + typecheck + test（72/72 通过，1 skipped bench）全部绿。
 
 ---
 

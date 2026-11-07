@@ -266,9 +266,10 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
   const { cursor, limit = 20 } = page
   const { type, workMode, state, sort = 'relevance', industry, tags, size, salaryAtLeast } = filters
 
-  const [defaultMode, fallbackBelow] = await Promise.all([
+  const [defaultMode, fallbackBelow, candidateWindow] = await Promise.all([
     getSetting<string>('search.defaultMode', 'RELATED'),
     getSetting<number>('search.relatedFallbackBelow', 5),
+    getSetting<number>('search.candidateWindow', 500),
   ])
   const mode: SearchMode = (params.mode ?? defaultMode) as SearchMode
 
@@ -299,43 +300,65 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
     if (tags?.length) companyWhere.tags = { hasSome: tags }
     if (size) companyWhere.size = size
 
-    const jobs = await db.job.findMany({
-      where: {
-        status: 'PUBLISHED',
-        AND: [{ OR: [{ deadline: null }, { deadline: { gt: now } }] }],
-        ...(type ? { type } : {}),
-        ...(workMode ? { workMode } : {}),
-        ...(state ? { state } : {}),
-        ...(salaryAtLeast ? { salaryVisible: true, salaryMax: { gte: salaryAtLeast } } : {}),
-        ...(Object.keys(companyWhere).length ? { company: companyWhere } : {}),
-      },
-      orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }],
-      select: baseSelect,
-    })
-    const all: SearchHit[] = jobs.map((j) => ({
-      job: toJobListItem(j),
-      score: 0,
-      matchedBy: 'exact' as const,
-    }))
+    const jobWhere: Prisma.JobWhereInput = {
+      status: 'PUBLISHED',
+      AND: [{ OR: [{ deadline: null }, { deadline: { gt: now } }] }],
+      ...(type ? { type } : {}),
+      ...(workMode ? { workMode } : {}),
+      ...(state ? { state } : {}),
+      ...(salaryAtLeast ? { salaryVisible: true, salaryMax: { gte: salaryAtLeast } } : {}),
+      ...(Object.keys(companyWhere).length ? { company: companyWhere } : {}),
+    }
 
-    // Salary sort: hidden salary jobs last
     if (sort === 'salary') {
+      // Salary sort needs all candidates ranked by salary; cap with candidateWindow
+      const jobs = await db.job.findMany({
+        where: jobWhere,
+        orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }],
+        take: candidateWindow,
+        select: baseSelect,
+      })
+      const all: SearchHit[] = jobs.map((j) => ({
+        job: toJobListItem(j),
+        score: 0,
+        matchedBy: 'exact' as const,
+      }))
       all.sort((a, b) => {
         const av = a.job.salaryMax !== null ? a.job.salaryMax : -Infinity
         const bv = b.job.salaryMax !== null ? b.job.salaryMax : -Infinity
         return bv - av
       })
+      const start = cursor ? all.findIndex((h) => h.job.id === cursor) + 1 : 0
+      const pageItems = all.slice(start, start + limit)
+      return {
+        exact: pageItems,
+        related: [],
+        nextCursor:
+          start + pageItems.length < all.length
+            ? pageItems[pageItems.length - 1]?.job.id ?? null
+            : null,
+      }
     }
 
-    const start = cursor ? all.findIndex((h) => h.job.id === cursor) + 1 : 0
-    const pageItems = all.slice(start, start + limit)
+    // Relevance sort: sort-key cursor via Prisma cursor pagination (bounded, no full-scan)
+    const jobs = await db.job.findMany({
+      where: jobWhere,
+      orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }],
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      select: baseSelect,
+    })
+    const hasMore = jobs.length > limit
+    const pageItems = hasMore ? jobs.slice(0, limit) : jobs
+    const hits: SearchHit[] = pageItems.map((j) => ({
+      job: toJobListItem(j),
+      score: 0,
+      matchedBy: 'exact' as const,
+    }))
     return {
-      exact: pageItems,
+      exact: hits,
       related: [],
-      nextCursor:
-        start + pageItems.length < all.length
-          ? pageItems[pageItems.length - 1]?.job.id ?? null
-          : null,
+      nextCursor: hasMore ? (pageItems[pageItems.length - 1]?.id ?? null) : null,
     }
   }
 
@@ -404,13 +427,22 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
     ? Prisma.sql`AND j."salaryVisible" = true AND j."salaryMax" >= ${salaryAtLeast}`
     : Prisma.empty
 
-  // Fetch candidate jobs using ILIKE (triggers gin_trgm_ops index on "title")
+  // Only fetch description/requirements when the caller is allowed to search them.
+  // This avoids transferring large text columns on every search request.
+  const descSelect = canSeeDescription
+    ? Prisma.sql`j."description", j."requirements",`
+    : Prisma.sql`'' AS "description", null AS "requirements",`
+
+  // Fetch candidate jobs using ILIKE (triggers gin_trgm_ops index on "title").
+  // LIMIT bounds the candidate window so the app-side scorer never processes
+  // the entire table — search.candidateWindow rows at most per request.
   const rows = await db.$queryRaw<RawJobRow[]>`
     SELECT DISTINCT
       j."id", j."title", j."type", j."category", j."workMode",
       j."state", j."city", j."salaryMin", j."salaryMax", j."salaryVisible",
       j."languages", j."skills", j."acceptsStudentPass", j."sponsorsWorkPass",
-      j."headcount", j."deadline", j."publishedAt", j."description", j."requirements",
+      j."headcount", j."deadline", j."publishedAt",
+      ${descSelect}
       c."id" AS "cId", c."legalName", c."displayNameZh", c."displayNameEn", c."industryCode"
     FROM "Job" j
     JOIN "Company" c ON c."id" = j."companyId"
@@ -432,6 +464,7 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
         ${industryFilter}
       )
     ORDER BY j."publishedAt" DESC, j."id" ASC
+    LIMIT ${Prisma.raw(String(candidateWindow))}
   `
 
   // ----- Score candidates in app code -----
