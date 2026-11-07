@@ -33,41 +33,55 @@ function assertNoErrors(errors: string[]) {
 // ---------------------------------------------------------------------------
 
 test.describe('M4-T15: invalid URL params show message not 500', () => {
+  // 按语言精确匹配 messages 里的 invalidParams 文案（zh 和 en 各跑一遍）
+  const INVALID_TEXT = {
+    zh: '请求参数无效，请检查页码或筛选条件后重试',
+    en: 'Invalid request parameters. Please check the page number or filters and try again.',
+  } as const
   const invalidCases = [
-    { label: 'sort=x', url: '/zh/e/talent?sort=x' },
-    { label: 'degreeLevel=X', url: '/zh/e/talent?degreeLevel=X' },
-    { label: 'page=0', url: '/zh/e/talent?page=0' },
-    { label: 'page=26 (over maxPage)', url: '/zh/e/talent?page=26' },
-    { label: 'keyword over 100 chars', url: `/zh/e/talent?keyword=${'a'.repeat(101)}` },
+    { label: 'sort=x', query: 'sort=x' },
+    { label: 'degreeLevel=X', query: 'degreeLevel=X' },
+    { label: 'page=0', query: 'page=0' },
+    { label: 'page=26 (over maxPage)', query: 'page=26' },
+    { label: 'keyword over 100 chars', query: `keyword=${'a'.repeat(101)}` },
   ]
 
-  for (const { label, url } of invalidCases) {
-    test(`invalid param: ${label} — 200, no 500, shows invalidParams text`, async ({ browser }) => {
-      const errors: string[] = []
-      const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
-      const page = await ctx.newPage()
-      page.on('console', (msg) => {
-        if (msg.type() === 'error') errors.push(msg.text())
+  for (const locale of ['zh', 'en'] as const) {
+    for (const { label, query } of invalidCases) {
+      test(`[${locale}] invalid param: ${label} — 200, no 500, shows invalidParams text`, async ({ browser }) => {
+        const errors: string[] = []
+        const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+        const page = await ctx.newPage()
+        page.on('console', (msg) => {
+          if (msg.type() === 'error') errors.push(msg.text())
+        })
+
+        try {
+          const response = await page.goto(`/${locale}/e/talent?${query}`)
+          expect(response?.status(), `Expected 200 for ${label}`).toBe(200)
+          await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
+          await expect(page.getByText(INVALID_TEXT[locale])).toBeVisible({ timeout: 10000 })
+          assertNoErrors(errors)
+        } finally {
+          await ctx.close()
+        }
       })
-
-      try {
-        const response = await page.goto(url)
-        expect(response?.status(), `Expected 200 for ${label}`).toBe(200)
-        // No Next.js error overlay
-        await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
-        // No error boundary text
-        await expect(page.getByText(/Something went wrong|发生了错误/i)).toHaveCount(0)
-        // Shows the "invalid params" message (zh text from messages/zh.json)
-        await expect(
-          page.getByText(/无效|invalid|参数/i),
-        ).toBeVisible({ timeout: 10000 })
-
-        assertNoErrors(errors)
-      } finally {
-        await ctx.close()
-      }
-    })
+    }
   }
+
+  // 空的 schoolId 按「不按学校筛选」处理，不报参数错误（DECISIONS 2026-11-07 M4-T15）
+  test('?schoolId= (empty) is treated as no school filter — 200, no invalidParams text', async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+    const page = await ctx.newPage()
+    try {
+      const response = await page.goto('/zh/e/talent?schoolId=')
+      expect(response?.status()).toBe(200)
+      await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
+      await expect(page.getByText(INVALID_TEXT.zh)).toHaveCount(0)
+    } finally {
+      await ctx.close()
+    }
+  })
 })
 
 // ---------------------------------------------------------------------------

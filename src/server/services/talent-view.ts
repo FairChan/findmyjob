@@ -8,6 +8,7 @@ import { NotFoundError, RateLimitedError, ForbiddenError } from '../errors'
 import { toTalentDetail } from '../serializers/talent-card'
 import type { TalentDetail } from '../serializers/talent-card'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { canSeeIdentity, getContactForCompany } from './contact-access'
 
 function todayUTCStart(): Date {
   const d = new Date()
@@ -39,7 +40,6 @@ export async function viewTalentProfile(
   type ProfileWithDetail = Prisma.StudentProfileGetPayload<{
     include: {
       school: { select: { id: true; nameZh: true; nameEn: true } }
-      unlocks: { select: { companyId: true } }
       educations: { select: { id: true; schoolName: true; major: true; degreeLevel: true; startDate: true; endDate: true; description: true; sortOrder: true } }
       experiences: { select: { id: true; kind: true; title: true; organization: true; startDate: true; endDate: true; description: true; sortOrder: true } }
       resumes: { select: { id: true; storageKey: true; isPrimary: true; parsedJson: true } }
@@ -88,11 +88,6 @@ export async function viewTalentProfile(
       where: { id: studentId },
       include: {
         school: { select: { id: true, nameZh: true, nameEn: true } },
-        unlocks: {
-          where: { companyId: ctx.companyId },
-          take: 1,
-          select: { companyId: true },
-        },
         educations: {
           select: {
             id: true,
@@ -159,6 +154,22 @@ export async function viewTalentProfile(
 
   if (!profile) throw new NotFoundError('Student profile not found')
 
+  const unlocked = await canSeeIdentity(ctx.companyId, studentId)
+  let actualUnlocked = unlocked
+  let contact = null
+  if (unlocked) {
+    try {
+      contact = await getContactForCompany(ctx.companyId, studentId)
+    } catch (err) {
+      if (err instanceof ForbiddenError) {
+        // Student may have blocked company between the two checks; show as locked
+        actualUnlocked = false
+      } else {
+        throw err
+      }
+    }
+  }
+
   return toTalentDetail(
     {
       id: profile.id,
@@ -179,6 +190,6 @@ export async function viewTalentProfile(
       experiences: profile.experiences,
       resumes: profile.resumes,
     },
-    { unlocked: profile.unlocks.length > 0, contact: null },
+    { unlocked: actualUnlocked, contact },
   )
 }

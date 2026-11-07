@@ -8,6 +8,7 @@ import { putObject } from '@/lib/storage'
 import { detectFileType, checkPdf, MIME_TYPES } from '@/server/lib/pdf'
 import { db } from '@/server/db'
 import { purposeSchema, validateFileName } from '@/server/lib/upload-input'
+import { RESUME_MAX_BYTES } from '@/server/lib/upload-constants'
 import type { AllowedMimeKey } from '@/server/lib/pdf'
 import type { UploadPurpose } from '@/server/lib/upload-input'
 
@@ -17,7 +18,7 @@ interface PurposeConfig {
 }
 
 const PURPOSE_CONFIGS: Record<UploadPurpose, PurposeConfig> = {
-  RESUME: { types: ['pdf'], maxBytes: 5 * 1024 * 1024 },
+  RESUME: { types: ['pdf'], maxBytes: RESUME_MAX_BYTES },
   VERIFICATION: { types: ['pdf', 'png', 'jpeg'], maxBytes: 10 * 1024 * 1024 },
   PAYMENT_PROOF: { types: ['pdf', 'png', 'jpeg'], maxBytes: 10 * 1024 * 1024 },
   LOGO: { types: ['png', 'jpeg'], maxBytes: 2 * 1024 * 1024 },

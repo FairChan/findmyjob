@@ -70,7 +70,8 @@ describe('approveCompany', () => {
 
     const wallet = await testDb.creditWallet.findUnique({ where: { companyId } })
     expect(wallet).not.toBeNull()
-    expect(wallet?.balance).toBe(0)
+    // balance is topped up immediately to pilot.monthlyCredits (default 30)
+    expect(wallet?.balance).toBe(30)
   })
 
   it('updates CompanyVerification with reviewNote containing channels and result', async () => {

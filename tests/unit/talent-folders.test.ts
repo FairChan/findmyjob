@@ -8,6 +8,14 @@ vi.mock('@/server/authz', () => ({
 vi.mock('@/server/services/talent-visibility', () => ({
   isStudentVisibleToCompany: vi.fn(),
 }))
+// Prevent contact-access → crypto → env chain from running in unit tests.
+// s1 is treated as unlocked; all others masked.
+vi.mock('@/server/services/contact-access', () => ({
+  canSeeIdentityMany: vi.fn().mockImplementation(async (_cid: string, ids: string[]) =>
+    new Set(ids.filter((id) => id === 's1')),
+  ),
+  canSeeIdentity: vi.fn().mockResolvedValue(false),
+}))
 vi.mock('@/server/serializers/talent-card', () => ({
   toTalentCard: vi.fn((profile: { id: string; fullName: string }, opts: { unlocked: boolean }) => ({
     id: profile.id,
