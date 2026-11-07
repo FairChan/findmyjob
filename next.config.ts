@@ -5,7 +5,7 @@ const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts')
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  serverExternalPackages: ['pino', '@sentry/nextjs', '@sentry/node'],
+  serverExternalPackages: ['pino', '@sentry/nextjs', '@sentry/node', 'pdf-lib'],
 }
 
 export default withNextIntl(nextConfig)

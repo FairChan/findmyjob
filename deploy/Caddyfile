@@ -19,6 +19,7 @@
 				request>uri regexp `\?.*` ""
 				request>headers>Cookie delete
 				request>headers>Authorization delete
+				resp_headers>Location delete
 			}
 		}
 	}

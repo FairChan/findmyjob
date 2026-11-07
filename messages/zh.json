@@ -831,5 +831,27 @@
     "descriptionLabel": "职位描述",
     "requirementsLabel": "任职要求",
     "benefitsLabel": "薪资福利"
+  },
+  "publicJobs": {
+    "title": "职位列表",
+    "empty": "暂无在招职位",
+    "backToList": "返回职位列表",
+    "descriptionLabel": "职位描述",
+    "requirementsLabel": "任职要求",
+    "benefitsLabel": "薪资福利",
+    "lockedTitle": "查看额度已用完",
+    "lockedDesc": "邀请同学注册 FindMYJob 即可解锁更多职位详情",
+    "inviteButton": "邀请同学解锁",
+    "shareJobLabel": "复制分享链接",
+    "type": {
+      "INTERNSHIP": "实习",
+      "FULL_TIME": "全职",
+      "PART_TIME": "兼职"
+    },
+    "workMode": {
+      "ONSITE": "到岗办公",
+      "HYBRID": "混合办公",
+      "REMOTE": "远程"
+    }
   }
 }
