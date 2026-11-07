@@ -807,6 +807,29 @@
     "yes": "是",
     "no": "否"
   },
+  "publicCompanies": {
+    "title": "合作企业",
+    "subtitle": "所有企业都经过 SSM 注册证书人工审核",
+    "tagAll": "全部",
+    "tagFORTUNE_500": "世界500强",
+    "tagMULTINATIONAL": "跨国公司",
+    "tagMY_LEADING": "马来西亚龙头",
+    "tagCN_OVERSEAS": "中资海外分支",
+    "tagSOE": "国企",
+    "tagALUMNI": "校友企业",
+    "tagCHINESE_MY": "华资",
+    "loadMore": "加载更多",
+    "empty": "暂无合作企业",
+    "openPositions": "个在招职位"
+  },
+  "registerLanding": {
+    "title": "注册 FindMYJob",
+    "subtitle": "选择你的角色",
+    "studentTitle": "我是学生",
+    "studentDesc": "免费建档，浏览职位，邀请同学解锁更多",
+    "employerTitle": "我是企业",
+    "employerDesc": "认证后搜索人才库，解锁联系方式"
+  },
   "publicJobs": {
     "title": "职位列表",
     "empty": "暂无在招职位",

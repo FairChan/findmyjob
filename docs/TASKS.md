@@ -592,6 +592,7 @@
 做：`/companies/[id]`：只展示已认证且启用的企业；创始合作伙伴徽章；在招职位列表（M5 之前为空状态）。
 验收：未认证企业的主页返回 404
 > 完成 2026-11-07：getPublicCompany service（VERIFIED+isActive 双条件过滤）；`/[locale]/(public)/companies/[id]/page.tsx`（Logo 签名 URL、创始合作伙伴徽章、空职位列表）；getSignedDisplayUrl 加入 storage.ts；zh/en i18n（companyProfile 命名空间）；6 个集成测试全部通过（772 tests）
+> 修复 2026-11-08（staging 实测，页头 404）：按原型新建 /companies 合作企业目录（listPublicCompanies：只列 VERIFIED 且 active 的企业，只取公开字段，带职位数，tag 筛选，游标分页 24 条；带筛选参数时 noindex,follow），以及 /register 注册入口（学生、企业二选一）。新增 tests/e2e/nav-links.spec.ts（/zh、/en 的页头、页脚、移动菜单站内链接都不能 404）和 tests/integration/list-public-companies.test.ts（10 条）。补修轮跑满 90 分钟超时，由 lane B 会话核对后提交。失败输出见提交说明。
 
 #### [x] M3-T06 企业控制台
 依赖：M3-T02
