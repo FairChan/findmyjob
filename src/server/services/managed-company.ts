@@ -6,7 +6,6 @@ import { logAudit } from './audit'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createCompanySchema } from './company'
 import { jobFormSchema } from './jobs'
-import { createWallet } from './credits'
 import { grantPilotCreditsOnVerification } from '../jobs/pilot-monthly-credits'
 import { logger } from '../lib/logger'
 import type { UserCtx } from '../authz'
@@ -69,11 +68,9 @@ export async function createManagedCompany(
       isManaged: true,
       verificationStatus: 'VERIFIED',
       verifiedAt: new Date(),
+      wallet: { create: { balance: 0 } },
     },
   })
-
-  // Create wallet for managed company (same as the approval flow)
-  await createWallet(company.id)
 
   await logAudit({
     actorId: ctx.userId,

@@ -112,9 +112,21 @@ export interface GrantPilotCreditsResult {
 }
 
 /**
- * Top-up system (补足制): grant enough PILOT_GRANT credits to bring the wallet up to
- * monthlyCredits. Skips if already granted this KL month (idempotency) or if the
- * balance is already at or above the quota.
+ * Returns the KL month string "YYYY-MM" for a given KL month-start UTC date
+ * (as produced by klMonthStartUtc in pilot-monthly-credits.ts).
+ */
+function klMonthRefId(monthStart: Date): string {
+  // monthStart is UTC midnight of KL 1st minus 8h; add 8h to get KL midnight
+  const klMidnight = new Date(monthStart.getTime() + 8 * 60 * 60 * 1000)
+  const year = klMidnight.getUTCFullYear()
+  const month = String(klMidnight.getUTCMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
+/**
+ * Top-up system (补足制): bring the wallet up to monthlyCredits for the given KL month.
+ * Always writes a CreditLedger row (even when delta=0) so that re-runs are idempotent
+ * by refType/refId rather than by createdAt. Delta=0 rows mean "checked, no top-up needed".
  * Must NOT be called inside an existing db.$transaction.
  */
 export async function grantPilotCredits(
@@ -122,19 +134,21 @@ export async function grantPilotCredits(
   monthlyCredits: number,
   monthStart: Date,
 ): Promise<GrantPilotCreditsResult> {
+  const refId = klMonthRefId(monthStart)
+
   return db.$transaction(async tx => {
     await lockXact(tx, LOCK_NS.CREDIT, companyId)
 
-    // Idempotency: skip if already granted a PILOT_GRANT in this KL month
-    const alreadyGranted = await tx.creditLedger.findFirst({
+    // Idempotency: skip if already processed this KL month (delta=0 rows count)
+    const alreadyProcessed = await tx.creditLedger.findFirst({
       where: {
         wallet: { companyId },
-        reason: LedgerReason.PILOT_GRANT,
-        createdAt: { gte: monthStart },
+        refType: 'PilotPeriod',
+        refId,
       },
       select: { id: true },
     })
-    if (alreadyGranted) return { granted: 0, reason: 'already_granted' as const }
+    if (alreadyProcessed) return { granted: 0, reason: 'already_granted' as const }
 
     const wallet = await tx.creditWallet.findUnique({
       where: { companyId },
@@ -142,16 +156,18 @@ export async function grantPilotCredits(
     })
     if (!wallet) return { granted: 0, reason: 'no_wallet' as const }
 
-    const topUp = monthlyCredits - wallet.balance
-    if (topUp <= 0) return { granted: 0, reason: 'balance_sufficient' as const }
+    const topUp = Math.max(0, monthlyCredits - wallet.balance)
 
+    // Always write a row (even topUp=0) to record "checked this month"
     await applyLedgerEntry(tx, {
       companyId,
       delta: topUp,
       reason: LedgerReason.PILOT_GRANT,
+      refType: 'PilotPeriod',
+      refId,
     })
 
-    return { granted: topUp, reason: 'ok' as const }
+    return { granted: topUp, reason: topUp > 0 ? ('ok' as const) : ('balance_sufficient' as const) }
   })
 }
 

@@ -1,5 +1,5 @@
 /**
- * Integration tests for unlock service (M4-T07).
+ * Integration tests for unlock service (M4-T07, M4-T20).
  *
  * Tests the core unlock transaction semantics:
  * - concurrent 10 unlocks with balance 3 → exactly 3 succeed
@@ -24,13 +24,19 @@ vi.mock('@/server/services/notifications', () => ({
   createNotification: vi.fn(),
 }))
 
+vi.mock('@/server/lib/alert', () => ({
+  alert: vi.fn(),
+}))
+
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer } from '../factories'
 import { unlockStudent } from '@/server/services/unlock'
 import { clearSettingsCache } from '@/server/services/settings'
 import { applyLedgerEntry, reconcileWallet } from '@/server/services/credits'
-import { LedgerReason } from '@prisma/client'
+import { LedgerReason, Prisma } from '@prisma/client'
 import { createNotification } from '@/server/services/notifications'
+import { runReconcileWallets } from '@/server/jobs/reconcile-wallets'
+import { alert } from '@/server/lib/alert'
 import {
   NotFoundError,
   RateLimitedError,
@@ -99,6 +105,7 @@ async function createVisibleStudent(overrides?: { completeness?: number }) {
 
 beforeEach(async () => {
   await seedSettings()
+  vi.mocked(alert).mockClear()
 })
 
 describe('unlockStudent: basic', () => {
@@ -291,6 +298,22 @@ describe('unlockStudent: concurrency', () => {
 
     const reconcile = await reconcileWallet({ companyId: emp.companyId })
     expect(reconcile.ok).toBe(true)
+
+    // M4-T20: runReconcileWallets should find no mismatches after concurrent unlocks
+    await runReconcileWallets()
+    expect(vi.mocked(alert)).not.toHaveBeenCalledWith('wallet.mismatch', expect.anything())
+
+    // RUNBOOK scenario 3 SQL: balance must equal SUM(ledger.delta) for all wallets
+    const mismatches = await testDb.$queryRaw<Array<{ companyId: string }>>(
+      Prisma.sql`
+        SELECT w."companyId"
+        FROM   "CreditWallet" w
+        LEFT JOIN "CreditLedger" l ON l."walletId" = w."id"
+        GROUP BY w."companyId", w."balance"
+        HAVING COALESCE(SUM(l."delta"), 0) <> w."balance"
+      `,
+    )
+    expect(mismatches).toEqual([])
   })
 
   it('concurrent duplicate unlocks for same student → only 1 charge, reconcileWallet ok', async () => {
@@ -323,5 +346,20 @@ describe('unlockStudent: concurrency', () => {
 
     const reconcile = await reconcileWallet({ companyId: emp.companyId })
     expect(reconcile.ok).toBe(true)
+
+    // M4-T20: runReconcileWallets should find no mismatches after concurrent duplicate unlocks
+    await runReconcileWallets()
+    expect(vi.mocked(alert)).not.toHaveBeenCalledWith('wallet.mismatch', expect.anything())
+
+    const mismatches = await testDb.$queryRaw<Array<{ companyId: string }>>(
+      Prisma.sql`
+        SELECT w."companyId"
+        FROM   "CreditWallet" w
+        LEFT JOIN "CreditLedger" l ON l."walletId" = w."id"
+        GROUP BY w."companyId", w."balance"
+        HAVING COALESCE(SUM(l."delta"), 0) <> w."balance"
+      `,
+    )
+    expect(mismatches).toEqual([])
   })
 })

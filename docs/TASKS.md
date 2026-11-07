@@ -848,7 +848,7 @@
 > 完成 2026-11-07：全部 6 项均已实现。(1) sanitizePdf worker：SANITIZE_PDF_SCRIPT 静态常量，resolveName 修正 pdf-lib 1.17.x asString() 带前导斜杠问题；(2) watermarkPdf worker：水印文字经 params 传，45° 旋转居中，ASCII 回落 safeCompanyLabel；(3) identityAccess 加入 contact-access.ts，gone→404、no_unlock→403；(4) authz-matrix 去掉 vi.mock('pdf-lib')，改 mock getObjectBytes 返回真实小 PDF；(5) resume-download-watermark.test.ts 新建，结构检查净化结果；(6) global-setup 往 MinIO 上传真实 PDF，冒烟用例断言 200/application/pdf/no-store。单元+集成：73 文件 / 1380 通过 / 0 失败 / 0 跳过（pnpm test 537s）。E2E（m4-t09-smoke.spec.ts）：2 通过 / 0 失败 / 0 跳过（含 3 条 setup 共 5 通过）。自查：(a) companyId 来自 requireVerifiedCompany ✓；(b) 外部输入 zod 校验 ✓；(c) 新单元/集成测试 73 文件 1380 通过；(d) E2E 2+3=5 通过 0 失败；(e) git status --porcelain 为空。
 > 延后（并入 M4-T17）：响应改成真正的流式返回；进程内并发 Map 在多实例下不共享（ARCHITECTURE §5.8 允许单实例）；404/403 区分构成简历 id 的存在性探测（cuid，难利用）。
 
-#### [ ] M4-T20 补修 M4-T10 合并前复查发现的问题：同月重复执行多发、并发解锁后的对账、定时任务按吉隆坡时间
+#### [x] M4-T20 补修 M4-T10 合并前复查发现的问题：同月重复执行多发、并发解锁后的对账、定时任务按吉隆坡时间
 依赖：M4-T10、M4-T16
 > 总控 2026-11-07 加入：复查（按 8bcbc23 读的代码）结论是 BLOCKED。加锁、设置读取和对账 SQL 都是对的：余额只经 applyLedgerEntry、同一事务里先 `lockXact` 再检查，对账是一条 SQL。但两条验收没做到。每条测试都要做到「把修复撤掉，测试就失败」。
 做 / 验收：
@@ -861,6 +861,7 @@
 4. 一家失败不能拖累整批（复查 M3）：`runPilotMonthlyCredits` 的循环里每家企业单独 try/catch，失败时 `logger` 记内部 ID 并 `alert('pilot.grant.failed', { companyId })`，继续处理下一家，最后有失败就抛错让 pg-boss 记失败。测试：让其中一家抛错，其余企业照样补到 30，alert 被调用一次。
 5. 认证后补点失败（复查 M4、M5）：`grantPilotCreditsOnVerification` 失败时除了 logger，还要 `alert('pilot.grant.failed', { companyId })`；managed-company 建企业和建钱包改成一次写入（`company.create` 里嵌套 `wallet: { create: {} }`），并补一条测试：新建代管企业后有钱包、余额等于 `pilot.monthlyCredits`。代管企业每月也补点这一点，在 DECISIONS 记一行（PRD 没写，按普通认证企业处理）。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 完成 2026-11-07：全部 5 项均已实现。(1) 同月幂等：`grantPilotCredits` 改用 `refType='PilotPeriod'` + `refId='YYYY-MM'` 查重，`delta=0` 时仍写账本行（「检查过、不用补」标记），DECISIONS D 新增两条；(2) 并发解锁对账：unlock.test.ts 两个并发用例末尾调 `runReconcileWallets()`，断言 alert 未被调用 + RUNBOOK 场景 3 SQL 结果为空；(3) 定时任务 KL 时区：registry.ts 两个 schedule 加 `tz: 'Asia/Kuala_Lumpur'` 和 `missed: 'once'`，新建 jobs-registry.test.ts 断言；(4) 一家失败不拖累整批：循环改单独 try/catch，失败调 `alert` + 记日志，全部完成后有失败则抛错；(5) 认证后补点失败告警 + 代管企业原子建钱包 + 新增代管企业钱包余额测试。自查：(a) companyId 来自 requireVerifiedCompany/requireCompanyMember ✓；(b) 外部输入 zod 校验 ✓；(c) lint + typecheck 通过 ✓。单元：47 文件 / 914 通过 / 0 失败 / 0 跳过。集成（M4-T20 相关 3 文件）：57 通过 / 0 失败 / 0 跳过；authz-matrix 单独跑 101/0/0。E2E（m4-t20-smoke.spec.ts）：1 通过 / 0 失败 / 0 跳过（含 3 条 setup 共 4 通过）。git status --porcelain 为空。
 > 延后（并入 M4-T17）：jobs 文件去掉 `import 'server-only'`（ARCHITECTURE §5.1）；`grantPilotCreditsOnVerification` 和 `klMonthStartUtc` 从 jobs/ 挪到 services/；`pilot.monthlyCredits` 校验为非负整数；对账补一条「余额大于 0、没有账本行」的测试；RUNBOOK 场景 3 用 adminAdjust 修不平对账（余额和账本同时变），要改写修复步骤。
 
 #### [ ] M4-T21 补修 M4-T12 合并前复查发现的问题：真实的「解锁 → 通知」测试、「谁看过我」按企业加吉隆坡日期去重、日期按吉隆坡时间显示
@@ -888,6 +889,19 @@
 4. 加交互，让 RSC 和 Server Action 的响应也被扫描：在人才库提交一次关键词搜索（走 `router.push` → RSC）、翻到第 2 页（数据不够就降低每页条数或多建几个学生）、从卡片点进详情页（客户端导航）、打开「加入收藏」的弹层、打开解锁确认框但不确认。
 5. 真的跑红一次：临时把 `toTalentCard` 的 headline（或 `toTalentDetail` 的 summary）改成不经 redact 的原文，跑这个 spec，确认 `not.toContain(<手机>)` 失败，再改回来；把失败的那条断言和报错贴进完成说明，并改写 spec 里那段错误的注释。
 6. 顺手修：`beforeAll` 里的邮箱用 `randomUUID()`，不要用 `Date.now()`（fullyParallel 下多个 worker 会撞 P2002）；加密改用 M4-T18 第 4 条抽出的 `crypto-core.ts`，删掉 spec 里自己复刻的 `encryptLocal`。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+
+#### [ ] M4-T23 sanitizePdf 改成严格白名单（线 B 的 M3-T07 要复用，修好才交出去）
+依赖：M4-T19
+> 总控 2026-11-07 加入：M4-T19 的提交（2b45b40、069cffd）已经把动作过滤改成白名单、去掉了注释上的 /AA、挡住了 /Next 链，但还有三处和 M4-T19 第 2 条以及 A-22（先净化再查看，总控默认决定）对不上：(1) 白名单里还有 `URI`，而按要求 URI 动作要去掉，`tests/unit/pdf-sanitize.test.ts` 里也没有「去掉 URI 动作」这一条；(2) 保留下来的 Link 沿用原来的注释字典，只删了 /AA，字典里别的键（比如 `/PA`，它本身也是一个动作）照样带出去；(3) 页面字典只删了 /AA，其余键原样复制。每条测试都要做到「把对应的净化步骤撤掉，测试就失败」，并且按 ROUND_NOTE 把失败输出原文贴进提交说明。
+做 / 验收：
+1. 链接只留文档内跳转：保留的 Link 只能是 `/Dest` 为显式数组、且第一个元素指向本文档某一页的；或者 `/A` 为 `/S /GoTo`、`/D` 是显式数组、没有 `/Next` 的。URI、命名目标（`/Dest` 是名字或字符串；`/Names` 已经整个去掉，这种链接本来就失效）、GoToR、GoToE、GoTo3D、Thread、RichMediaExecute 以及其他所有动作，一律去掉。
+2. 保留的 Link 不沿用原字典：新建一个最小字典，只放 `/Type /Annot`、`/Subtype /Link`、`/Rect`、`/Border [0 0 0]` 和一个新建的 `/Dest`（把原来的目标数组复制过来，页引用指向新文档里对应的页）。
+3. 页面字典改成白名单：只保留 `/Type`、`/Parent`、`/Resources`、`/Contents`、`/MediaBox`、`/CropBox`、`/BleedBox`、`/TrimBox`、`/ArtBox`、`/Rotate`、`/UserUnit`、`/Group` 和净化后的 `/Annots`，其余键（`/AA`、`/Thumb`、`/PieceInfo`、`/B`、`/Trans`、`/Metadata` 等）全部删除。
+4. 测试（在 `tests/unit/pdf-sanitize.test.ts` 里补，原有的断言一条都不删）：
+   - 正向，确认会保留：页面文字内容（净化后抽取内容流，还能看到原来的文字）、字体资源、MediaBox 和 CropBox 的数值、Rotate、显式数组目标的 GoTo 链接（而且它的字典只剩上面那几个键）；
+   - 反向，确认会删除：URI 动作的 Link、Link 上的 `/PA`、命名目标的 GoTo、GoTo3D、Thread、页面的 `/Thumb` 和 `/PieceInfo`、XFA（AcroForm 里的 /XFA）。
+5. 做完以后，在完成说明里写清 `sanitizePdf` 和 `watermarkPdf` 的最终签名；总控会转给线 B。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）

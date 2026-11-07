@@ -65,10 +65,10 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
   })
 
   // ── pilot-monthly-credits ─────────────────────────────────────────────────
-  // Top up all verified company wallets on the 1st of each month at 00:10 UTC
-  // (08:10 Asia/Kuala_Lumpur). Skipped when billing.enabled=true.
+  // Top up all verified company wallets on the 1st of each month at 00:10 KL time.
+  // Skipped when billing.enabled=true. missed:'once' catches up after downtime.
   await boss.createQueue('pilot-monthly-credits')
-  await boss.schedule('pilot-monthly-credits', '10 0 1 * *', {})
+  await boss.schedule('pilot-monthly-credits', '10 0 1 * *', {}, { tz: 'Asia/Kuala_Lumpur', missed: 'once' })
   await boss.work('pilot-monthly-credits', async () => {
     try {
       await runPilotMonthlyCredits()
@@ -80,9 +80,9 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
   })
 
   // ── reconcile-wallets ──────────────────────────────────────────────────────
-  // Daily at 03:00 Asia/Kuala_Lumpur (19:00 UTC previous day).
+  // Daily at 03:00 Asia/Kuala_Lumpur. missed:'once' catches up after downtime.
   await boss.createQueue('reconcile-wallets')
-  await boss.schedule('reconcile-wallets', '0 19 * * *', {})
+  await boss.schedule('reconcile-wallets', '0 3 * * *', {}, { tz: 'Asia/Kuala_Lumpur', missed: 'once' })
   await boss.work('reconcile-wallets', async () => {
     try {
       await runReconcileWallets()

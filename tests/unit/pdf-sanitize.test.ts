@@ -333,24 +333,22 @@ describe('sanitizePdf', () => {
     const result = await sanitizePdf(pdfBuf)
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    // After sanitization, no annot should have /AA
+    // After sanitization, no annot should have /AA — collect flags then assert outside conditionals
     const afterDoc = await PDFDocument.load(result.pdf)
     const afterPage = afterDoc.getPage(0)
     const ar = afterPage.node.get(PDFName.of('Annots'))
-    if (ar) {
-      let annotsArr: PDFArray | undefined
-      if (ar instanceof PDFArray) annotsArr = ar
-      else if (ar instanceof PDFRef) { try { annotsArr = afterDoc.context.lookup(ar, PDFArray) } catch {} }
-      if (annotsArr) {
-        for (let j = 0; j < annotsArr.size(); j++) {
-          const item = annotsArr.get(j)
-          let annotDict: PDFDict | undefined
-          if (item instanceof PDFDict) annotDict = item
-          else if (item instanceof PDFRef) { try { annotDict = afterDoc.context.lookup(item, PDFDict) } catch {} }
-          if (annotDict) expect(annotDict.has(PDFName.of('AA'))).toBe(false)
-        }
-      }
+    let annotsArr: PDFArray | undefined
+    if (ar instanceof PDFArray) annotsArr = ar
+    else if (ar instanceof PDFRef) { try { annotsArr = afterDoc.context.lookup(ar, PDFArray) } catch {} }
+    const aaFlags: boolean[] = []
+    for (let j = 0; j < (annotsArr?.size() ?? 0); j++) {
+      const item = annotsArr!.get(j)
+      let annotDict: PDFDict | undefined
+      if (item instanceof PDFDict) annotDict = item
+      else if (item instanceof PDFRef) { try { annotDict = afterDoc.context.lookup(item, PDFDict) } catch {} }
+      aaFlags.push(annotDict?.has(PDFName.of('AA')) ?? false)
     }
+    expect(aaFlags.every(f => f === false)).toBe(true)
   }, 30_000)
 
   it('returns encrypted for password-protected PDF', async () => {

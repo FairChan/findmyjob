@@ -1,5 +1,5 @@
 /**
- * Integration tests for pilot-monthly-credits job (M4-T10).
+ * Integration tests for pilot-monthly-credits job (M4-T10, M4-T20).
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
@@ -13,7 +13,6 @@ vi.mock('@/server/db', async () => {
   return { db: testDb }
 })
 
-// alert is a no-op in tests
 vi.mock('@/server/lib/alert', () => ({
   alert: vi.fn(),
 }))
@@ -23,11 +22,14 @@ import { setupTestDb, testDb } from '../setup/db'
 import { createEmployer } from '../factories'
 import { clearSettingsCache } from '@/server/services/settings'
 import { runPilotMonthlyCredits, grantPilotCreditsOnVerification } from '@/server/jobs/pilot-monthly-credits'
+import { applyLedgerEntry } from '@/server/services/credits'
+import { alert } from '@/server/lib/alert'
 
 setupTestDb()
 
 beforeEach(() => {
   clearSettingsCache()
+  vi.mocked(alert).mockClear()
 })
 
 async function makeVerifiedCompany() {
@@ -104,8 +106,13 @@ describe('runPilotMonthlyCredits', () => {
     const updated = await testDb.creditWallet.findUnique({ where: { companyId } })
     expect(updated?.balance).toBe(50) // unchanged
 
-    const ledger = await testDb.creditLedger.findMany({ where: { wallet: { companyId } } })
-    expect(ledger).toHaveLength(1) // no new entry
+    // A delta=0 PILOT_GRANT row is now written to record "checked this month"
+    const pilotLedger = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId }, reason: LedgerReason.PILOT_GRANT },
+    })
+    expect(pilotLedger).toHaveLength(1)
+    expect(pilotLedger[0].delta).toBe(0)
+    expect(pilotLedger[0].refType).toBe('PilotPeriod')
   })
 
   it('tops up to custom pilot.monthlyCredits setting', async () => {
@@ -197,5 +204,156 @@ describe('grantPilotCreditsOnVerification', () => {
 
     const ledger = await testDb.creditLedger.findMany({ where: { wallet: { companyId } } })
     expect(ledger).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M4-T20: re-run idempotency, concurrent dedup, failure isolation
+// ---------------------------------------------------------------------------
+
+describe('runPilotMonthlyCredits: M4-T20 same-month re-run', () => {
+  it('(a) balance already 30 → task writes delta=0 marker → unlock 10 → re-run → balance 20, no delta>0 PILOT_GRANT', async () => {
+    const { companyId } = await makeVerifiedCompany()
+    const wallet = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    // Top up balance to 30 via ADMIN_ADJUST to simulate "already at quota"
+    await testDb.$transaction(async tx => {
+      await applyLedgerEntry(tx, {
+        companyId,
+        delta: 30,
+        reason: LedgerReason.ADMIN_ADJUST,
+      })
+    })
+
+    // First run: balance=30, writes delta=0 PILOT_GRANT marker
+    await runPilotMonthlyCredits()
+
+    let w = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    expect(w.balance).toBe(30)
+    let pilotRows = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId }, reason: LedgerReason.PILOT_GRANT },
+    })
+    expect(pilotRows).toHaveLength(1)
+    expect(pilotRows[0].delta).toBe(0)
+
+    // Simulate spending 10 credits
+    await testDb.$transaction(async tx => {
+      await applyLedgerEntry(tx, {
+        companyId,
+        delta: -10,
+        reason: LedgerReason.UNLOCK,
+        refType: 'TalentUnlock',
+        refId: 'fake-unlock-1',
+      })
+    })
+
+    // Second run: should be skipped (refId already exists for this month)
+    await runPilotMonthlyCredits()
+
+    w = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    expect(w.balance).toBe(20) // no extra grant
+
+    pilotRows = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId }, reason: LedgerReason.PILOT_GRANT },
+    })
+    // Still only 1 PILOT_GRANT row (the delta=0 marker from the first run)
+    expect(pilotRows).toHaveLength(1)
+    expect(pilotRows.every(r => r.delta === 0)).toBe(true)
+    // Verification: removing the wallet balance check on idempotency would cause a 2nd grant row
+    void wallet // ensure the variable is used
+  })
+
+  it('(b) run → spend 5 → re-run → balance 25, only 1 PILOT_GRANT row', async () => {
+    const { companyId } = await makeVerifiedCompany()
+
+    // First run: balance=0 → grant 30
+    await runPilotMonthlyCredits()
+
+    let w = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    expect(w.balance).toBe(30)
+
+    // Spend 5
+    await testDb.$transaction(async tx => {
+      await applyLedgerEntry(tx, {
+        companyId,
+        delta: -5,
+        reason: LedgerReason.UNLOCK,
+        refType: 'TalentUnlock',
+        refId: 'fake-unlock-2',
+      })
+    })
+
+    // Second run: same month, should skip
+    await runPilotMonthlyCredits()
+
+    w = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    expect(w.balance).toBe(25) // no second grant
+
+    const pilotRows = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId }, reason: LedgerReason.PILOT_GRANT },
+    })
+    expect(pilotRows).toHaveLength(1) // only the original grant
+    expect(pilotRows[0].delta).toBe(30)
+  })
+
+  it('(c) concurrent 3 calls → only 1 grant row, balance 30 (lockXact prevents duplicates)', async () => {
+    const { companyId } = await makeVerifiedCompany()
+
+    // All three run concurrently: two runPilotMonthlyCredits + one grantPilotCreditsOnVerification
+    await Promise.all([
+      runPilotMonthlyCredits(),
+      runPilotMonthlyCredits(),
+      grantPilotCreditsOnVerification(companyId),
+    ])
+
+    const w = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    expect(w.balance).toBe(30)
+
+    const pilotRows = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId }, reason: LedgerReason.PILOT_GRANT },
+    })
+    expect(pilotRows).toHaveLength(1)
+  })
+})
+
+describe('runPilotMonthlyCredits: M4-T20 failure isolation', () => {
+  it('one company throws → others still get credits, alert called once per failure', async () => {
+    const { companyId: goodCompanyId } = await makeVerifiedCompany()
+    const { companyId: badCompanyId } = await makeVerifiedCompany()
+
+    const creditsModule = await import('@/server/services/credits')
+    const original = creditsModule.grantPilotCredits
+    const spy = vi.spyOn(creditsModule, 'grantPilotCredits').mockImplementation(async (id, monthly, start) => {
+      if (id === badCompanyId) throw new Error('simulated DB error')
+      return original(id, monthly, start)
+    })
+
+    try {
+      await expect(runPilotMonthlyCredits()).rejects.toThrow('1 company(ies) failed')
+    } finally {
+      spy.mockRestore()
+    }
+
+    const goodWallet = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId: goodCompanyId } })
+    expect(goodWallet.balance).toBe(30)
+
+    expect(vi.mocked(alert)).toHaveBeenCalledWith('pilot.grant.failed', { companyId: badCompanyId })
+    expect(vi.mocked(alert)).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('grantPilotCreditsOnVerification: M4-T20 alert on failure', () => {
+  it('calls alert and rethrows when grantPilotCredits throws', async () => {
+    const { companyId } = await makeVerifiedCompany()
+
+    const creditsModule = await import('@/server/services/credits')
+    const spy = vi.spyOn(creditsModule, 'grantPilotCredits').mockRejectedValueOnce(new Error('forced failure'))
+
+    try {
+      await expect(grantPilotCreditsOnVerification(companyId)).rejects.toThrow('forced failure')
+    } finally {
+      spy.mockRestore()
+    }
+
+    expect(vi.mocked(alert)).toHaveBeenCalledWith('pilot.grant.failed', { companyId })
   })
 })
