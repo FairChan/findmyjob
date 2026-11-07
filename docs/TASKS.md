@@ -993,10 +993,11 @@
 > 完成 2026-11-07：serializers/job.ts（toJobListItem/toJobDetail 白名单）；/jobs 列表（PUBLISHED+未过期，salaryVisible=false 不输出薪资，带筛选参数设 noindex,follow）；/jobs/[id] 详情（访客重定向登录，学生走 openJob，额度耗尽/跨企业 employer 显示 LockedJobCard，viewCount +1）；robots noindex；E2E smoke-m5-t03 8/8 通过，pii-leak 4/4 通过；lint/typecheck/db:check 全部通过；单元 1223/1224 通过（1 条 pre-existing team.test.ts）。
 > 修复 2026-11-07：1) 带 q 时 deadline 过滤被 OR 展开覆盖→改为 AND[deadline, q]；2) searchParams/id 缺 zod 校验→用 listParamsSchema/jobIdSchema safeParse，非法值当无效处理不报 500；3) LockedJobCard 邀请按钮 href 双加 locale→改为 /s/invite 由 i18n Link 加前缀；4) isSafePath 不放行 /jobs/<cuid>→提取 is-safe-path.ts 并加 jobs path 允许规则（带编码/backslash 拒绝）；详情页和锁定卡片加复制分享链接按钮；E2E smoke-m5-t03 17/17 通过，pii-leak 4/4 通过，单元 1246/1246 通过。
 
-#### [ ] M5-T04 投递
+#### [x] M5-T04 投递
 依赖：M5-T03、M4-T07
 做：`services/applications.ts`：完成度 ≥ `apply.minCompleteness` 才能投递，不够时带到向导里第一个没填完的步骤；选择简历 + 附言（≤ 500 字）；唯一约束；同一事务中按需创建 `TalentUnlock(source=APPLICATION)`；通知职位创建者；学生可以撤回。
 验收：重复投递被拒；完成度不足被拒；投递后企业无需扣点即可看到联系方式（集成测试）
+> 完成 2026-11-08：services/applications.ts（applyToJob/withdrawApplication/getMyApplicationForJob）；server actions；ApplyModal + AppliedStatus 客户端组件；职位详情页集成申请区；i18n zh/en；LOCK_NS.APPLICATION=1005；DuplicateApplicationError/CompletenessLowError；vitest.config.ts 增 testTimeout:30_000；16 个集成测试 + authz-matrix 新增行；E2E smoke tests/e2e/smoke-m5-t04.spec.ts；守护测试已验：移除 P2002→DuplicateApplicationError 映射→"throws DuplicateApplicationError"与"concurrent duplicate"同时变红；移除完成度检查→"throws CompletenessLowError"变红；移除 TalentUnlock createMany→"creates TalentUnlock"/"contact after apply"/"concurrent dedup"同时变红；各项恢复后全绿。
 
 #### [ ] M5-T05 企业投递看板与标准化列表
 依赖：M5-T04

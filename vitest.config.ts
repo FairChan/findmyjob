@@ -17,5 +17,7 @@ export default defineConfig({
     setupFiles: ['tests/setup/assertions.ts'],
     // Required for integration tests that share DB state; unit tests pay a small speed cost
     fileParallelism: false,
+    // Integration tests hit a real DB and need longer than the 5000ms default
+    testTimeout: 30_000,
   },
 })

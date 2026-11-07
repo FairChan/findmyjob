@@ -862,6 +862,22 @@
       "HYBRID": "混合办公",
       "REMOTE": "远程"
     },
-    "loadMore": "加载更多"
+    "loadMore": "加载更多",
+    "applyButton": "立即投递",
+    "appliedBadge": "已投递",
+    "withdrawButton": "撤回投递",
+    "completeProfileButton": "完善档案后投递",
+    "applyDialogTitle": "投递职位",
+    "applyDialogResume": "选择简历（可选）",
+    "applyDialogNoResume": "不附简历",
+    "applyDialogCoverNote": "附言（可选，最多 500 字）",
+    "applyDialogCoverNotePlaceholder": "向招聘方介绍自己，或说明申请原因……",
+    "applyDialogSubmit": "确认投递",
+    "applyDialogCancel": "取消",
+    "applySuccess": "投递成功！",
+    "applyErrorDuplicate": "你已经投递过该职位",
+    "applyErrorGeneral": "投递失败，请稍后重试",
+    "withdrawSuccess": "已撤回投递",
+    "withdrawErrorGeneral": "撤回失败，请稍后重试"
   }
 }
