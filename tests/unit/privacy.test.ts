@@ -24,6 +24,7 @@ const mockDb = vi.hoisted(() => ({
   profileView: {
     findMany: vi.fn(),
   },
+  $queryRaw: vi.fn(),
   talentUnlock: {
     findMany: vi.fn(),
   },
@@ -224,24 +225,21 @@ describe('getProfileViews', () => {
     expect(await getProfileViews(ctx)).toEqual([])
   })
 
-  it('deduplicates views per company (latest only)', async () => {
-    const now = new Date()
-    const earlier = new Date(now.getTime() - 1000)
-    mockDb.profileView.findMany.mockResolvedValue([
+  it('maps $queryRaw rows to viewedAt entries', async () => {
+    const now = new Date('2026-11-05T01:00:00Z')
+    mockDb.$queryRaw.mockResolvedValue([
       {
         companyId: COMPANY_ID,
         createdAt: now,
-        company: { legalName: 'Corp', displayNameZh: null, displayNameEn: null },
-      },
-      {
-        companyId: COMPANY_ID,
-        createdAt: earlier,
-        company: { legalName: 'Corp', displayNameZh: null, displayNameEn: null },
+        legalName: 'Corp',
+        displayNameZh: null,
+        displayNameEn: null,
       },
     ])
     const result = await getProfileViews(ctx)
     expect(result).toHaveLength(1)
     expect(result[0].viewedAt).toEqual(now)
+    expect(result[0].companyName).toBe('Corp')
   })
 })
 

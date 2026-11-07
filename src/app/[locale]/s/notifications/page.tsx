@@ -1,8 +1,10 @@
 import { headers } from 'next/headers'
 import Link from 'next/link'
-import { getTranslations } from 'next-intl/server'
+import { getTranslations, getLocale } from 'next-intl/server'
 import { requireStudent } from '@/server/authz'
-import { listNotifications, markAllNotificationsRead } from '@/server/services/notifications'
+import { listNotifications } from '@/server/services/notifications'
+import { NotificationsClient } from '@/components/notifications/NotificationsClient'
+import { formatKLDate } from '@/lib/format-date'
 
 export default async function NotificationsPage({
   params,
@@ -11,10 +13,11 @@ export default async function NotificationsPage({
 }) {
   const { locale } = await params
   const t = await getTranslations('notifications')
+  const detectedLocale = await getLocale()
   const { userId } = await requireStudent(await headers())
 
   const notifications = await listNotifications({ userId })
-  await markAllNotificationsRead({ userId })
+  const ids = notifications.map((n) => n.id)
 
   function notificationLabel(type: string): string {
     switch (type) {
@@ -68,12 +71,15 @@ export default async function NotificationsPage({
                 )}
               </div>
               <span className="shrink-0 text-xs text-muted-foreground">
-                {new Date(n.createdAt).toLocaleDateString()}
+                {formatKLDate(n.createdAt, detectedLocale)}
               </span>
             </li>
           ))}
         </ul>
       )}
+
+      {/* Mark displayed notifications as read after page renders */}
+      <NotificationsClient ids={ids} />
     </main>
   )
 }

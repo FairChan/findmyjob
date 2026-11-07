@@ -7,7 +7,10 @@
     "login": "Login",
     "register": "Sign Up",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "notifications": "Notifications",
+    "privacy": "Privacy Centre",
+    "myProfile": "My Profile"
   },
   "localeSwitcher": {
     "label": "Switch language",

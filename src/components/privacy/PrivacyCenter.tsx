@@ -24,13 +24,15 @@ interface BlockedEntry {
 interface ViewEntry {
   companyId: string
   companyName: string
-  viewedAt: Date
+  viewedAt: string
+  viewedAtKey: string
 }
 
 interface UnlockEntry {
   companyId: string
   companyName: string
-  unlockedAt: Date
+  unlockedAt: string
+  unlockedAtKey: string
 }
 
 interface Props {
@@ -261,10 +263,10 @@ export default function PrivacyCenter({
         ) : (
           <ul className="divide-y rounded-md border">
             {profileViews.map((v) => (
-              <li key={`${v.companyId}-${v.viewedAt.toISOString()}`} className="flex items-center justify-between px-4 py-3">
+              <li key={`${v.companyId}-${v.viewedAtKey}`} className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm">{v.companyName}</span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(v.viewedAt).toLocaleDateString('en-MY')}
+                  {v.viewedAt}
                 </span>
               </li>
             ))}
@@ -283,10 +285,10 @@ export default function PrivacyCenter({
         ) : (
           <ul className="divide-y rounded-md border">
             {unlocks.map((u) => (
-              <li key={`${u.companyId}-${u.unlockedAt.toISOString()}`} className="flex items-center justify-between px-4 py-3">
+              <li key={`${u.companyId}-${u.unlockedAtKey}`} className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm">{u.companyName}</span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(u.unlockedAt).toLocaleDateString('en-MY')}
+                  {u.unlockedAt}
                 </span>
               </li>
             ))}

@@ -443,38 +443,12 @@ export default async function globalSetup() {
       })
     }
 
-    // Create TalentUnlock record: verified employer unlocked this student
-    await prisma.talentUnlock.upsert({
-      where: {
-        companyId_studentId: {
-          companyId: verifiedEmp.companyId,
-          studentId: m4t12Profile.id,
-        },
-      },
-      create: {
-        companyId: verifiedEmp.companyId,
-        studentId: m4t12Profile.id,
-        unlockedById: verifiedEmp.userId,
-        source: 'CREDIT',
-        creditsSpent: 0,
-      },
-      update: {},
-    })
-
-    // Ensure at least one talent.unlock notification exists for the student
-    const existingNotification = await prisma.notification.findFirst({
+    // M4-T21: Do NOT pre-seed TalentUnlock or Notification for m4t12 student.
+    // The E2E test performs the real unlock flow: employer clicks unlock → student sees notification.
+    // Clear any stale notifications from previous runs so each run starts fresh.
+    await prisma.notification.deleteMany({
       where: { userId: m4t12StudentUser.id, type: 'talent.unlock' },
     })
-    if (!existingNotification) {
-      await prisma.notification.create({
-        data: {
-          userId: m4t12StudentUser.id,
-          type: 'talent.unlock',
-          payload: { companyId: verifiedEmp.companyId },
-          readAt: null,
-        },
-      })
-    }
 
     // ---- Write fixtures (passwords stored here for auth.setup.ts) ----
     const fixtures: E2EFixtures = {

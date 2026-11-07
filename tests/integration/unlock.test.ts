@@ -34,7 +34,7 @@ import { unlockStudent } from '@/server/services/unlock'
 import { clearSettingsCache } from '@/server/services/settings'
 import { applyLedgerEntry, reconcileWallet } from '@/server/services/credits'
 import { LedgerReason, Prisma } from '@prisma/client'
-import { createNotification } from '@/server/services/notifications'
+import { createNotification, type NotificationWriter } from '@/server/services/notifications'
 import { runReconcileWallets } from '@/server/jobs/reconcile-wallets'
 import { alert } from '@/server/lib/alert'
 import {
@@ -361,5 +361,78 @@ describe('unlockStudent: concurrency', () => {
       `,
     )
     expect(mismatches).toEqual([])
+  })
+})
+
+describe('unlockStudent: notification rows', () => {
+  beforeEach(() => {
+    // Let createNotification actually write to testDb so we can assert on notification rows.
+    vi.mocked(createNotification).mockImplementation(
+      async (writer: NotificationWriter, userId, type, payload) => {
+        await writer.notification.create({ data: { userId, type, payload } })
+      },
+    )
+  })
+
+  it('successful unlock writes exactly 1 Notification to student, payload has companyId+unlockId', async () => {
+    const emp = await createVerifiedEmployer()
+    await createWallet(emp.companyId, 5)
+    const student = await createVisibleStudent()
+
+    const result = await unlockStudent(
+      { userId: emp.userId, companyId: emp.companyId },
+      student.profileId,
+    )
+    expect(result.alreadyUnlocked).toBe(false)
+
+    const notifications = await testDb.notification.findMany({
+      where: { type: 'talent.unlock' },
+    })
+    // Exactly 1 notification for this unlock
+    const unlockNotifs = notifications.filter(
+      (n) => (n.payload as Record<string, unknown>).unlockId === result.unlockId,
+    )
+    expect(unlockNotifs).toHaveLength(1)
+    expect(unlockNotifs[0].userId).toBe(student.userId)
+    expect(unlockNotifs[0].type).toBe('talent.unlock')
+    const payload = unlockNotifs[0].payload as Record<string, unknown>
+    expect(payload.companyId).toBe(emp.companyId)
+    expect(payload.unlockId).toBe(result.unlockId)
+  })
+
+  it('company member has no talent.unlock notification for the student unlock', async () => {
+    const emp = await createVerifiedEmployer()
+    await createWallet(emp.companyId, 5)
+    const student = await createVisibleStudent()
+
+    await unlockStudent({ userId: emp.userId, companyId: emp.companyId }, student.profileId)
+
+    const empNotifs = await testDb.notification.findMany({
+      where: { userId: emp.userId, type: 'talent.unlock' },
+    })
+    expect(empNotifs).toHaveLength(0)
+  })
+
+  it('duplicate unlock does not add a second Notification', async () => {
+    const emp = await createVerifiedEmployer()
+    await createWallet(emp.companyId, 5)
+    const student = await createVisibleStudent()
+    const ctx = { userId: emp.userId, companyId: emp.companyId }
+
+    const first = await unlockStudent(ctx, student.profileId)
+    // duplicate — alreadyUnlocked path skips createNotification
+    const second = await unlockStudent(ctx, student.profileId)
+    expect(second.alreadyUnlocked).toBe(true)
+
+    const notifs = await testDb.notification.findMany({
+      where: { userId: student.userId, type: 'talent.unlock' },
+    })
+    // Only the first unlock should have created a notification
+    const forThisUnlock = notifs.filter(
+      (n) => (n.payload as Record<string, unknown>).unlockId === first.unlockId,
+    )
+    expect(forThisUnlock).toHaveLength(1)
+    // No second notification from duplicate
+    expect(notifs).toHaveLength(1)
   })
 })

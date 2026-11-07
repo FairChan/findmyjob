@@ -1,6 +1,6 @@
 import 'server-only'
 import { z } from 'zod'
-import { Visibility } from '@prisma/client'
+import { Visibility, Prisma } from '@prisma/client'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { logAudit } from './audit'
@@ -177,28 +177,40 @@ export async function getProfileViews(ctx: { userId: string }): Promise<
 
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
 
-  // Distinct per company: pick the latest view per company in the last 90 days
-  const rows = await db.profileView.findMany({
-    where: { studentId: profile.id, createdAt: { gte: since } },
-    orderBy: { createdAt: 'desc' },
-    include: {
-      company: { select: { legalName: true, displayNameZh: true, displayNameEn: true } },
-    },
-  })
+  // DISTINCT ON (companyId, KL-date): one row per (company, Kuala Lumpur calendar day),
+  // keeping the most recent view in each bucket, then sorted newest-first.
+  const rows = await db.$queryRaw<
+    Array<{
+      companyId: string
+      createdAt: Date
+      legalName: string
+      displayNameZh: string | null
+      displayNameEn: string | null
+    }>
+  >(Prisma.sql`
+    SELECT *
+    FROM (
+      SELECT DISTINCT ON (pv."companyId", (pv."createdAt" AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
+        pv."companyId",
+        pv."createdAt",
+        c."legalName",
+        c."displayNameZh",
+        c."displayNameEn"
+      FROM "ProfileView" pv
+      JOIN "Company" c ON c."id" = pv."companyId"
+      WHERE pv."studentId" = ${profile.id}
+        AND pv."createdAt" >= ${since}
+      ORDER BY pv."companyId", (pv."createdAt" AT TIME ZONE 'Asia/Kuala_Lumpur')::date, pv."createdAt" DESC
+    ) sub
+    ORDER BY "createdAt" DESC
+    LIMIT 200
+  `)
 
-  const seen = new Set<string>()
-  const result: Array<{ companyId: string; companyName: string; viewedAt: Date }> = []
-  for (const r of rows) {
-    if (seen.has(r.companyId)) continue
-    seen.add(r.companyId)
-    result.push({
-      companyId: r.companyId,
-      companyName:
-        r.company.displayNameZh ?? r.company.displayNameEn ?? r.company.legalName,
-      viewedAt: r.createdAt,
-    })
-  }
-  return result
+  return rows.map((r) => ({
+    companyId: r.companyId,
+    companyName: r.displayNameZh ?? r.displayNameEn ?? r.legalName,
+    viewedAt: r.createdAt,
+  }))
 }
 
 export async function getUnlocks(ctx: { userId: string }): Promise<

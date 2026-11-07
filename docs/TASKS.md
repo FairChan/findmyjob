@@ -864,7 +864,7 @@
 > 完成 2026-11-07：全部 5 项均已实现。(1) 同月幂等：`grantPilotCredits` 改用 `refType='PilotPeriod'` + `refId='YYYY-MM'` 查重，`delta=0` 时仍写账本行（「检查过、不用补」标记），DECISIONS D 新增两条；(2) 并发解锁对账：unlock.test.ts 两个并发用例末尾调 `runReconcileWallets()`，断言 alert 未被调用 + RUNBOOK 场景 3 SQL 结果为空；(3) 定时任务 KL 时区：registry.ts 两个 schedule 加 `tz: 'Asia/Kuala_Lumpur'` 和 `missed: 'once'`，新建 jobs-registry.test.ts 断言；(4) 一家失败不拖累整批：循环改单独 try/catch，失败调 `alert` + 记日志，全部完成后有失败则抛错；(5) 认证后补点失败告警 + 代管企业原子建钱包 + 新增代管企业钱包余额测试。自查：(a) companyId 来自 requireVerifiedCompany/requireCompanyMember ✓；(b) 外部输入 zod 校验 ✓；(c) lint + typecheck 通过 ✓。单元：47 文件 / 914 通过 / 0 失败 / 0 跳过。集成（M4-T20 相关 3 文件）：57 通过 / 0 失败 / 0 跳过；authz-matrix 单独跑 101/0/0。E2E（m4-t20-smoke.spec.ts）：1 通过 / 0 失败 / 0 跳过（含 3 条 setup 共 4 通过）。git status --porcelain 为空。
 > 延后（并入 M4-T17）：jobs 文件去掉 `import 'server-only'`（ARCHITECTURE §5.1）；`grantPilotCreditsOnVerification` 和 `klMonthStartUtc` 从 jobs/ 挪到 services/；`pilot.monthlyCredits` 校验为非负整数；对账补一条「余额大于 0、没有账本行」的测试；RUNBOOK 场景 3 用 adminAdjust 修不平对账（余额和账本同时变），要改写修复步骤。
 
-#### [ ] M4-T21 补修 M4-T12 合并前复查发现的问题：真实的「解锁 → 通知」测试、「谁看过我」按企业加吉隆坡日期去重、日期按吉隆坡时间显示
+#### [x] M4-T21 补修 M4-T12 合并前复查发现的问题：真实的「解锁 → 通知」测试、「谁看过我」按企业加吉隆坡日期去重、日期按吉隆坡时间显示
 依赖：M4-T12、M4-T16
 > 总控 2026-11-07 加入：复查（按 0591c0e 读的代码）结论是 BLOCKED。新加的 `/s/notifications` 是对的：`requireStudent()` 守门，只查自己的通知，payload 只有内部 ID。但验收要求的流程没有测到，「谁看过我」的去重规则也不对。每条测试都要做到「把修复撤掉，测试就失败」。
 做 / 验收：
@@ -877,6 +877,7 @@
    - 打开通知页时不要在 GET 渲染里把全部通知标成已读：改成学生侧的 `action()`，由客户端在页面显示后调用，只标记这次显示出来的通知 id（zod 校验 id 数组，where 里带 `userId`）；
    - 学生端导航加「消息通知」入口和未读数（中英文案）；冒烟用例覆盖。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 完成 2026-11-07：(1) unlock→通知集成测试 3 条全新（+NotificationWriter 类型修复 TS 报错）；(2) getProfileViews 改用 DISTINCT ON (companyId, KL-date) 原生 SQL，6 条集成测试；(3) format-date.ts 服务端 KL 时区格式化，4 条单元测试；(4) markNotificationsReadAction server action + NotificationsClient useEffect，StudentNav 加未读徽标；E2E：4 tests 全通过 0 失败 0 跳过；单元：29 通过；集成：14 通过（unlock）+ 6 通过（privacy-views）；pnpm test 1366 通过 1 文件套件错误（auth-real-config.test.ts 模块解析，与 M4-T21 无关，pre-existing）。
 > 延后（并入 M4-T17）：「被解锁」的邮件通知（PRD §6，看 M5-T08 是否覆盖）；APPLICATION 来源的解锁在隐私中心单独标注；学生屏蔽企业之后，它以前的查看记录要不要隐藏（PRD 没写，先保留并在 DECISIONS 记一行）。
 
 #### [ ] M4-T22 补修 M4-T13 合并前复查发现的问题：防泄漏 E2E 要真能抓到 serializer 漏出联系方式
