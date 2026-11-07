@@ -847,6 +847,20 @@
 验收：与原型 C3 的测试用例一致；选了薪资档时隐藏薪资的职位不出现，也不能借筛选反推出它的薪资
 > 完成 2026-11-07：industryMatches（父级包含子级）；searchJobs 增加 industry/tags/size/salaryAtLeast 四个筛选（empty-query 走 Prisma company filter，keyword 走 SQL AND 片段）；jobs page listParamsSchema 增加四个 URL 参数；单元 29 条 + 集成 C3 9 条 + E2E 8 条全部通过；失败输出见提交说明。
 
+#### [ ] M5-T11 职位搜索性能：查询加 LIMIT、在数据库预筛候选（P1，E3 之前）
+依赖：M5-T09、M5-T10
+做：
+- 现状：`src/server/services/job-search.ts` 的 searchJobs 用 `$queryRaw` 把所有匹配的 PUBLISHED 职位（连同 description、requirements）都取出来，在应用里评分，再按游标切片，查询没有 LIMIT（2026-11-07 合并前复查记下的）。
+- 改成在数据库里预筛：
+  - 用 trigram 相似度，或者分段的 ORDER BY，先取有限的候选（例如前 N×页大小）；
+  - 必须返回 description 时才 select 它；
+  - 游标改成基于排序键，而不是在全量结果上切片。
+- 行为和现有测试保持一致：EXACT/RELATED 两种模式、同义词、隐藏薪资排在最后、canSeeDescription 不外泄。
+验收：
+- 合成 1 万条职位（faker，只写测试库），常见查询的 p95 写进 docs/CAPACITY.md，目标值在 DECISIONS 里记一行。
+- 现有 job-search 的单测和集成测试全部通过。
+- 查询带 LIMIT：有测试断言单次取出的行数不超过上限。
+
 ---
 
 ## M6 · 运营后台（约 2.8 天）
@@ -1130,6 +1144,9 @@
 - pnpm-lock.yaml 有变化时跑 osv-scanner（`osv-scanner.toml`）。
 - 对 .github 跑 actionlint 和 zizmor。
 - 对镜像跑 Trivy（HIGH 和 CRITICAL，`--ignore-unfixed`，`.trivyignore`），对 Dockerfile 跑 hadolint；所有豁免都要写到期日，并记进 DECISIONS。
+- 另：2026-11-07 合并前复查遗留，随本任务一起做：
+  - `.github/workflows/ci.yml` 构建步骤里直接插值的 `${{ vars.NEXT_PUBLIC_SENTRY_DSN }}`，改成经 `env:` 传入，再在 run 里用 shell 变量引用；
+  - 删掉多余的 devDependency `@types/psl`（psl 自带类型，现在靠 tsconfig 的 paths 映射；这个包已经废弃），并在 DECISIONS 里补一句。
 验收：各 job 都通过，豁免文件里没有已过期的条目
 
 #### [ ] M7-T17 质量包：a11y 全覆盖、锁版本 Lighthouse、SEO 元数据、Logo 缓存（P1，E2 之前）
