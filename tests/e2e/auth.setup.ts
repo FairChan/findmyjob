@@ -20,6 +20,7 @@ function loadFixtures(): E2EFixtures {
 
 export const VERIFIED_STATE_PATH = 'tests/e2e/auth-verified.json'
 export const UNVERIFIED_STATE_PATH = 'tests/e2e/auth-unverified.json'
+export const M4T12_STUDENT_STATE_PATH = 'tests/e2e/auth-m4t12-student.json'
 
 setup('authenticate as verified employer', async ({ page }) => {
   const fixtures = loadFixtures()
@@ -46,4 +47,17 @@ setup('authenticate as unverified employer', async ({ page }) => {
   await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 30000 })
   await expect(page).not.toHaveURL(/\/login/)
   await page.context().storageState({ path: UNVERIFIED_STATE_PATH })
+})
+
+setup('authenticate as m4t12 student', async ({ page }) => {
+  const fixtures = loadFixtures()
+  await stubTurnstile(page)
+  await page.goto('/zh/login')
+  await page.fill('input[type="email"]', fixtures.m4t12Student.email)
+  await page.fill('input[type="password"]', fixtures.m4t12Student.password)
+  await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 15000 })
+  await page.click('button[type="submit"]')
+  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 30000 })
+  await expect(page).not.toHaveURL(/\/login/)
+  await page.context().storageState({ path: M4T12_STUDENT_STATE_PATH })
 })

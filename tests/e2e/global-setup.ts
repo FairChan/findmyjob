@@ -51,12 +51,14 @@ export interface E2EFixtures {
   student: { profileId: string }
   unlockedStudent: { profileId: string; resumeId: string }
   folder: { folderId: string }
+  m4t12Student: { email: string; password: string; profileId: string }
 }
 
 const VERIFIED_EMAIL = 'e2e-verified-employer@example.test'
 const UNVERIFIED_EMAIL = 'e2e-unverified-employer@example.test'
 const STUDENT_EMAIL = 'e2e-talent-student@example.test'
 const UNLOCKED_STUDENT_EMAIL = 'e2e-talent-student-unlocked@example.test'
+const M4T12_STUDENT_EMAIL = 'e2e-m4t12-student@example.test'
 
 export default async function globalSetup() {
   // 与 helpers/db.ts 同一个工厂：库名必须以 _test 结尾、主机必须是本机，APP_ENV=production/staging 直接拒绝
@@ -65,10 +67,33 @@ export default async function globalSetup() {
   // Generate random passwords each run; stored in fixtures.json read by auth.setup.ts
   const verifiedPassword = randomBytes(16).toString('base64url') + 'Aa1!'
   const unverifiedPassword = randomBytes(16).toString('base64url') + 'Aa1!'
+  const m4t12StudentPassword = randomBytes(16).toString('base64url') + 'Aa1!'
   const verifiedHashedPw = await hashPassword(verifiedPassword)
   const unverifiedHashedPw = await hashPassword(unverifiedPassword)
+  const m4t12StudentHashedPw = await hashPassword(m4t12StudentPassword)
 
   try {
+    // ---- Cleanup stale E2E data to ensure a consistent starting state ----
+    // Finds companies owned by the E2E employer emails and deletes them (the
+    // app user has CASCADE-DELETE on related tables like CompanyMember).
+    // CreditWallet, TalentUnlock, etc. have Restrict delete so we delete those first.
+    const employerEmails = [VERIFIED_EMAIL, UNVERIFIED_EMAIL]
+    for (const email of employerEmails) {
+      const existing = await prisma.user.findUnique({ where: { email } })
+      if (existing) {
+        const members = await prisma.companyMember.findMany({ where: { userId: existing.id } })
+        for (const m of members) {
+          // Delete order matters for Restrict FK: CreditWallet, TalentUnlock, then Company
+          await prisma.creditWallet.deleteMany({ where: { companyId: m.companyId } })
+          await prisma.talentUnlock.deleteMany({ where: { companyId: m.companyId } })
+          await prisma.talentFolder.deleteMany({ where: { companyId: m.companyId } })
+          await prisma.company.deleteMany({ where: { id: m.companyId } })
+        }
+        // Delete the user (cascade: Account, CompanyMember, Notification, etc.)
+        await prisma.user.delete({ where: { id: existing.id } })
+      }
+    }
+
     // ---- Helper: create or update employer user + company + member ----
     async function ensureEmployer(
       email: string,
@@ -113,6 +138,16 @@ export default async function globalSetup() {
         where: { userId: user.id },
         include: { company: true },
       })
+
+      // Guard: member might reference a deleted company (orphaned row). Discard it.
+      if (member) {
+        const companyExists = await prisma.company.findUnique({ where: { id: member.companyId } })
+        if (!companyExists) {
+          await prisma.companyMember.deleteMany({ where: { userId: user.id } })
+          member = null
+        }
+      }
+
       if (!member) {
         const company = await prisma.company.create({
           data: {
@@ -301,6 +336,94 @@ export default async function globalSetup() {
       update: {},
     })
 
+    // ---- Create/update M4-T12 student with credentials (notification flow test) ----
+    let m4t12StudentUser = await prisma.user.findUnique({ where: { email: M4T12_STUDENT_EMAIL } })
+    if (!m4t12StudentUser) {
+      m4t12StudentUser = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.create({
+          data: {
+            name: 'E2E M4T12 Student',
+            email: M4T12_STUDENT_EMAIL,
+            emailVerified: true,
+            role: 'STUDENT',
+            status: 'ACTIVE',
+          },
+        })
+        await tx.account.create({
+          data: {
+            userId: u.id,
+            accountId: u.id,
+            providerId: 'credential',
+            password: m4t12StudentHashedPw,
+          },
+        })
+        return u
+      })
+    } else {
+      m4t12StudentUser = await prisma.user.update({
+        where: { id: m4t12StudentUser.id },
+        data: { emailVerified: true, role: 'STUDENT', status: 'ACTIVE' },
+      })
+      await prisma.account.updateMany({
+        where: { userId: m4t12StudentUser.id, providerId: 'credential' },
+        data: { password: m4t12StudentHashedPw },
+      })
+    }
+
+    let m4t12Profile = await prisma.studentProfile.findUnique({ where: { userId: m4t12StudentUser.id } })
+    if (!m4t12Profile) {
+      m4t12Profile = await prisma.studentProfile.create({
+        data: {
+          userId: m4t12StudentUser.id,
+          fullName: 'E2E M4T12 Student',
+          visibility: 'PUBLIC',
+          completeness: 80,
+          schoolId: school?.id ?? null,
+          schoolVerifiedAt: new Date(),
+          major: 'Computer Science',
+          degreeLevel: 'BACHELOR',
+          graduationYear: 2026,
+          skills: ['Java'],
+          workAuth: 'STUDENT_PASS',
+          intents: ['INTERNSHIP'],
+          lastActiveAt: new Date(),
+        },
+      })
+    }
+
+    // Create TalentUnlock record: verified employer unlocked this student
+    await prisma.talentUnlock.upsert({
+      where: {
+        companyId_studentId: {
+          companyId: verifiedEmp.companyId,
+          studentId: m4t12Profile.id,
+        },
+      },
+      create: {
+        companyId: verifiedEmp.companyId,
+        studentId: m4t12Profile.id,
+        unlockedById: verifiedEmp.userId,
+        source: 'CREDIT',
+        creditsSpent: 0,
+      },
+      update: {},
+    })
+
+    // Ensure at least one talent.unlock notification exists for the student
+    const existingNotification = await prisma.notification.findFirst({
+      where: { userId: m4t12StudentUser.id, type: 'talent.unlock' },
+    })
+    if (!existingNotification) {
+      await prisma.notification.create({
+        data: {
+          userId: m4t12StudentUser.id,
+          type: 'talent.unlock',
+          payload: { companyId: verifiedEmp.companyId },
+          readAt: null,
+        },
+      })
+    }
+
     // ---- Write fixtures (passwords stored here for auth.setup.ts) ----
     const fixtures: E2EFixtures = {
       verifiedEmployer: {
@@ -316,6 +439,11 @@ export default async function globalSetup() {
       student: { profileId: profile.id },
       unlockedStudent: { profileId: unlockedProfile.id, resumeId: unlockedResume.id },
       folder: { folderId: folder.id },
+      m4t12Student: {
+        email: M4T12_STUDENT_EMAIL,
+        password: m4t12StudentPassword,
+        profileId: m4t12Profile.id,
+      },
     }
     writeFileSync(
       resolve(process.cwd(), 'tests/e2e/fixtures.json'),

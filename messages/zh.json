@@ -309,6 +309,20 @@
     "saveError": "保存失败，请重试",
     "errorValidation": "请检查输入格式（手机号需含国际区号，如 +60）"
   },
+  "notifications": {
+    "title": "消息通知",
+    "subtitle": "查看企业对你档案的操作通知。",
+    "empty": "暂无通知。",
+    "talentUnlock": "企业解锁了你的联系方式",
+    "companyVerified": "企业审核已通过",
+    "companyRejected": "企业审核未通过",
+    "jobApproved": "职位已通过审核",
+    "jobRejected": "职位审核未通过",
+    "systemAlert": "系统通知",
+    "unknownType": "通知",
+    "privacyLink": "前往隐私中心查看详情",
+    "unread": "未读"
+  },
   "privacy": {
     "title": "隐私中心",
     "subtitle": "管理你的人才库可见性、屏蔽的企业，以及谁查看过你的档案。",

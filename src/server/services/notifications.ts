@@ -4,6 +4,42 @@ import {
   type ProfileCardInput,
   type TalentCard,
 } from '@/server/serializers/talent-card'
+import { db } from '../db'
+
+export interface NotificationItem {
+  id: string
+  type: string
+  payload: Record<string, unknown>
+  readAt: Date | null
+  createdAt: Date
+}
+
+export async function listNotifications(
+  ctx: { userId: string },
+  opts: { limit?: number } = {},
+): Promise<NotificationItem[]> {
+  const rows = await db.notification.findMany({
+    where: { userId: ctx.userId },
+    orderBy: { createdAt: 'desc' },
+    take: opts.limit ?? 50,
+    select: { id: true, type: true, payload: true, readAt: true, createdAt: true },
+  })
+  return rows.map((r) => ({
+    id: r.id,
+    type: r.type,
+    payload: r.payload as Record<string, unknown>,
+    readAt: r.readAt,
+    createdAt: r.createdAt,
+  }))
+}
+
+export async function markAllNotificationsRead(ctx: { userId: string }): Promise<void> {
+  await db.notification.updateMany({
+    where: { userId: ctx.userId, readAt: null },
+    data: { readAt: new Date() },
+  })
+}
+
 export interface NotificationWriter {
   notification: {
     create: (args: { data: { userId: string; type: string; payload: any } }) => Promise<unknown>

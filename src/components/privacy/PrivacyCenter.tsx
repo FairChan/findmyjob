@@ -264,7 +264,7 @@ export default function PrivacyCenter({
               <li key={`${v.companyId}-${v.viewedAt.toISOString()}`} className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm">{v.companyName}</span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(v.viewedAt).toLocaleDateString()}
+                  {new Date(v.viewedAt).toLocaleDateString('en-MY')}
                 </span>
               </li>
             ))}
@@ -286,7 +286,7 @@ export default function PrivacyCenter({
               <li key={`${u.companyId}-${u.unlockedAt.toISOString()}`} className="flex items-center justify-between px-4 py-3">
                 <span className="text-sm">{u.companyName}</span>
                 <span className="text-xs text-muted-foreground">
-                  {new Date(u.unlockedAt).toLocaleDateString()}
+                  {new Date(u.unlockedAt).toLocaleDateString('en-MY')}
                 </span>
               </li>
             ))}

@@ -309,6 +309,20 @@
     "saveError": "Save failed, please try again",
     "errorValidation": "Please check your input format (phone must include country code, e.g. +60)"
   },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "See what companies have done with your profile.",
+    "empty": "No notifications yet.",
+    "talentUnlock": "A company unlocked your contact details",
+    "companyVerified": "Your company has been verified",
+    "companyRejected": "Your company verification was rejected",
+    "jobApproved": "Your job has been approved",
+    "jobRejected": "Your job was rejected",
+    "systemAlert": "System notification",
+    "unknownType": "Notification",
+    "privacyLink": "View Privacy Centre for details",
+    "unread": "Unread"
+  },
   "privacy": {
     "title": "Privacy Centre",
     "subtitle": "Manage your talent pool visibility, blocked companies, and who has viewed your profile.",

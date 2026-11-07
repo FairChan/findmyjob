@@ -43,3 +43,5 @@ prototype/package-lock.json
 tests/e2e/fixtures.json
 tests/e2e/auth-verified.json
 tests/e2e/auth-unverified.json
+# 所有 Playwright storageState（含测试库会话 cookie），由 auth.setup.ts 生成
+tests/e2e/auth-*.json
