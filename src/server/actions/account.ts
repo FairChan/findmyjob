@@ -6,8 +6,6 @@ import { getSession } from '@/server/auth'
 import { db } from '@/server/db'
 import { isSafePath } from '@/server/lib/is-safe-path'
 
-export { isSafePath }
-
 export const getPostLoginRedirect = action(
   {
     auth: 'public',
