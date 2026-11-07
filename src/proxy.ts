@@ -137,12 +137,22 @@ export default async function middleware(request: NextRequest) {
     }
   }
 
-  // --- All other page routes: re-consent check, then intl middleware ---
+  // --- All other page routes: re-consent check (page navigations only), then intl middleware ---
   const req = new NextRequest(request, { headers: requestHeaders })
-  const reconsentRedirect = await checkReconsent(req)
-  if (reconsentRedirect) {
-    reconsentRedirect.headers.set('x-request-id', requestId)
-    return reconsentRedirect
+  // Server Actions arrive as POST + Next-Action header; they cannot handle a 3xx redirect —
+  // the browser surfaces "网络连接出错" instead of following it. Skip reconsent for those;
+  // the user will be redirected on their next full page navigation.
+  // RSC client navigations (GET + RSC:1) are real navigations — Next 16.4.5 follows the
+  // redirect and renders the destination, so we let them through the check.
+  const isPageNavigation =
+    (request.method === 'GET' || request.method === 'HEAD') &&
+    !request.headers.has('Next-Action')
+  if (isPageNavigation) {
+    const reconsentRedirect = await checkReconsent(req)
+    if (reconsentRedirect) {
+      reconsentRedirect.headers.set('x-request-id', requestId)
+      return reconsentRedirect
+    }
   }
   const response = intlMiddleware(req)
   response.headers.set('x-request-id', requestId)

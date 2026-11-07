@@ -27,6 +27,47 @@ function reqWithCookie(path: string, origin: string) {
   })
 }
 
+function reqWithNextAction(path: string, origin: string) {
+  return new NextRequest(new URL(path, origin), {
+    method: 'POST',
+    headers: {
+      cookie: 'better-auth.session_token=abc.def',
+      'Next-Action': '1234567890abcdef1234567890abcdef12345678',
+    },
+  })
+}
+
+describe('checkReconsent: skip for non-page-navigation requests', () => {
+  beforeEach(() => {
+    mockFetch.mockReset()
+    // Simulate needsReconsent=true for all tests in this block
+    mockFetch.mockResolvedValue(
+      new Response(JSON.stringify({ needsReconsent: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    )
+  })
+
+  it('POST with Next-Action header does not redirect even when needsReconsent=true', async () => {
+    const req = reqWithNextAction('/zh/s/profile', 'https://app.example.test')
+    const res = await middleware(req)
+    // Server Action must not receive a redirect
+    expect(res.status).not.toBe(307)
+    expect(res.status).not.toBe(302)
+    // The internal reconsent check must not be called for non-navigation requests
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
+
+  it('GET page navigation redirects to reconsent when needsReconsent=true', async () => {
+    const req = reqWithCookie('/zh/s/profile', 'https://app.example.test')
+    const res = await middleware(req)
+    expect(res.status, 'should redirect (307)').toBe(307)
+    const location = res.headers.get('location') ?? ''
+    expect(location).toContain('/zh/legal/reconsent')
+  })
+})
+
 describe('checkReconsent: internal URL must not be derived from request host', () => {
   beforeEach(() => {
     mockFetch.mockReset()

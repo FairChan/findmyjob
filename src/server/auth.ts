@@ -91,7 +91,9 @@ if (env.APP_ENV === 'development') {
 async function writeSignupRecords(user: Record<string, unknown>, ctx?: any): Promise<void> {
   const body = ctx?.body as Record<string, unknown> | undefined
   const isEmployer = isEmployerRegistration()
-  const legalVersion = await getSetting<string>('legal.currentVersion', '1.0')
+  // Must match the same default as needsReconsent() in legal-consent.ts; a mismatch would
+  // mean newly registered users always get redirected to reconsent on their first page load.
+  const legalVersion = await getSetting<string>('legal.currentVersion', '2026-11-draft')
   const reqHeaders: Headers | null = ctx?.request?.headers ?? null
   const ip = reqHeaders ? getClientIp(reqHeaders as Headers) : null
   const userAgent = reqHeaders ? (reqHeaders as unknown as Headers).get('user-agent') : null

@@ -1110,6 +1110,7 @@
 
 > 完成 2026-11-07：新增 tests/architecture/server-boundary.test.ts（TS 编译器 API 扫描 use server 和 route.ts 导出）；修复 auth.ts logger PII 泄漏、session.create.after IP 获取、user.create.after 路径守卫与同意校验、maybeWarnCap 静默吞错；signup-cap.ts deleteMany 加 role: 'STUDENT'；env.ts APP_ENV 按 NODE_ENV 兜底；register.ts 移除多余 realUser 查库；proxy.ts checkReconsent 实现为调用内部 API；新增 src/app/api/internal/needs-reconsent/route.ts；auth.ts disabledPaths 补全 /email-otp/request-email-change 和 /email-otp/change-email；DECISIONS.md 更新两处不准确描述。失败输出见提交说明。自查：1.鉴权在服务端：符合，所有修改路由均用 route({ auth: 'user' })；2.输入走 zod：符合，route/action wrapper 已校验；3.越权有测试：符合，architecture test 覆盖注册表；4.加锁和并发：不适用，本任务无余额/状态流转写操作；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增/修改页面；7.完成说明逐条写出；8.未删除或放宽已有断言。
 > 修复 2026-11-07（合并前复查）：proxy.ts checkReconsent 改用固定 INTERNAL_BASE_URL（默认 127.0.0.1:3000）取代 request.nextUrl.origin，消除 Host 头注入可能把 session cookie 发送到攻击者控制的 host 的漏洞；env.ts 和 env.example 同步新增 INTERNAL_BASE_URL 可选字段；新增 tests/unit/proxy-reconsent.test.ts 3 条测试锁住行为。失败输出见提交说明。
+> 修复 2026-11-07（合并前全量 E2E）：(1) proxy.ts 增加 isPageNavigation 判断，Server Action (POST+Next-Action) 不做重新同意跳转；(2) auth.ts 修复 legalVersion 默认值与 needsReconsent 不一致（'1.0'→'2026-11-draft'）；(3) E2E fixture 写入当前版本同意记录（helpers/consent.ts, loginAs consent 选项, global-setup 清理+写入）；新增 reconsent.spec.ts。全量 E2E 104/104 通过。失败输出见提交说明。自查：1.鉴权在服务端：符合，proxy.ts 只改方法判断不改鉴权；2.输入走 zod：不适用，无新增输入；3.越权有测试：不适用；4.加锁和并发：不适用；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增页面；7-12.见提交说明。注：global-setup.ts 是 M4-T15 的文件，合并 M4 时可能有冲突。
 
 #### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02

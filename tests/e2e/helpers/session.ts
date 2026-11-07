@@ -16,6 +16,7 @@ import { faker } from '@faker-js/faker'
 import { hashPassword } from 'better-auth/crypto'
 import { stubTurnstile } from './turnstile'
 import { e2eDb as db } from './db'
+import { writeCurrentVersionConsent } from './consent'
 
 export type EmployerCompanyOpts = {
   verificationStatus?: 'UNSUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED'
@@ -24,9 +25,9 @@ export type EmployerCompanyOpts = {
 }
 
 export type LoginOpts =
-  | { role: 'STUDENT'; fromCurrentPage?: boolean }
-  | { role: 'EMPLOYER'; company?: EmployerCompanyOpts; fromCurrentPage?: boolean }
-  | { role: 'ADMIN'; fromCurrentPage?: boolean }
+  | { role: 'STUDENT'; fromCurrentPage?: boolean; consent?: boolean }
+  | { role: 'EMPLOYER'; company?: EmployerCompanyOpts; fromCurrentPage?: boolean; consent?: boolean }
+  | { role: 'ADMIN'; fromCurrentPage?: boolean; consent?: boolean }
 
 export type LoginResult = {
   userId: string
@@ -67,6 +68,12 @@ export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult>
       password: hashedPwd,
     },
   })
+
+  // Write current-version consent records so the user is not redirected to the
+  // reconsent page during the test. Pass consent: false to test the reconsent flow.
+  if (opts.consent !== false) {
+    await writeCurrentVersionConsent(user.id)
+  }
 
   let companyId: string | undefined
 
