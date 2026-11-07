@@ -253,4 +253,17 @@ describe('canSeeIdentityMany', () => {
     const result = await canSeeIdentityMany(emp.companyId, [profileId])
     expect(result.has(profileId)).toBe(false)
   })
+
+  it('excludes students whose account is not ACTIVE (账号状态 filter)', async () => {
+    const { profileId, userId: studentUserId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    // Suspend the student's account
+    await testDb.user.update({ where: { id: studentUserId }, data: { status: 'SUSPENDED' } })
+
+    const result = await canSeeIdentityMany(emp.companyId, [profileId])
+    expect(result.has(profileId)).toBe(false)
+  })
 })

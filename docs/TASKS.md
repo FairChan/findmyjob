@@ -907,7 +907,7 @@
 5. 做完以后，在完成说明里写清 `sanitizePdf` 和 `watermarkPdf` 的最终签名；总控会转给线 B。
 > 完成 2026-11-07：(1) 严格白名单全部落地：URI/GoTo3D/Thread 动作去掉，保留的 Link 只走 /Dest 显式数组或 /A/S/GoTo/D 显式数组；重建最小字典（Type/Subtype/Rect/Border[0,0,0]/Dest），/PA、/AA、/Next、/A 由构造而不存在；页面字典白名单（12 个键），/Thumb、/PieceInfo、/Trans 等全删；srcDoc 注解先于 copyPages 清空，不带任何原始注解对象进 outDoc；PDFRef 重新映射到 outDoc 页引用。(2) 集成测试 `resume-download-watermark.test.ts` 把 URI 注解改成 GoTo 注解，断言 GoTo 保留且以 /Dest 形式出现。(3) 红跑 A：撤掉页面白名单 + 允许 URI/GoTo3D/Thread + 对所有 Link 保底 destArr，7 条测试失败：removes page /AA、removes URI action Link、removes named-dest GoTo、removes GoTo3D、removes Thread、removes page /Thumb、removes page /PieceInfo。(4) 红跑 B：重建时注入 /PA /A /AA /Next 字段，4 条测试失败：produces minimal dict、removes /Next-chained JS、removes annotation /AA、removes /PA。(5) sanitizePdf 签名：`sanitizePdf(input: Buffer, opts?: { timeoutMs?: number }): Promise<SanitizeResult>`；watermarkPdf 签名：`watermarkPdf(input: Buffer, wm: { text: string }, opts?: { timeoutMs?: number }): Promise<WatermarkResult>`（见 pdf-sanitize.ts 末尾）。单元：76 文件总计 1377 通过 / 0 失败 / 0 跳过（auth-real-config.test.ts suite error 为 M4-T21 pre-existing，待 M4-T24 修复）。集成（含于 76 文件中）：resume-download-watermark.test.ts 8/0/0、pdf-sanitize.test.ts 23/0/0。E2E（全部 spec）：112 通过 / 0 失败 / 0 跳过；m4-t23-smoke.spec.ts 1/0/0（其余 spec 文件同 M4-T22 完成说明，均 0 失败）。git status --porcelain 为空。
 
-#### [ ] M4-T24 M4 修复任务的收尾核对：补齐缺失或空过的守护测试，修好集成测试
+#### [x] M4-T24 M4 修复任务的收尾核对：补齐缺失或空过的守护测试，修好集成测试
 依赖：M4-T21、M4-T23
 > 总控 2026-11-07 加入：对 M4-T16、T18～T21 做了最终核对（按 0ded445 读的代码）。代码层面的修复都在：审计进了事务、canSeeIdentity 统一把关、PDF 走 worker、补点按吉隆坡月份打标记、谁看过我用 DISTINCT ON；已有断言没有被削弱。但下面这些是那几个任务明确要求、却缺失或空过的守护测试，另外有一处 verify 不绿。每条都按 ROUND_NOTE 把「撤掉实现后的失败输出原文」贴进提交说明。
 做 / 验收：
@@ -923,6 +923,7 @@
 10. 用 ESLint 拦住恒真断言（总控 2026-11-07，ROUND_NOTE 同步）：在 `eslint.config.mjs` 针对测试文件（`tests/**`、`**/*.test.ts(x)`、`**/*.spec.ts`）加 `no-restricted-syntax`，禁止 `expect(<字面量>)`（选择器 `CallExpression[callee.name='expect'][arguments.0.type='Literal']`）和 `expect(undefined)`（`[arguments.0.type='Identifier'][arguments.0.name='undefined']`）。注意 flat config 里同一条规则在后面的配置块会整体覆盖前面的：如果测试文件原本也继承了 `RAW_UNSAFE_SELECTORS`，要把两组选择器合并在一起，不能丢掉原来的。验证：临时写一个 `expect(true).toBe(true)`，`pnpm lint` 报错（把报错原文贴进提交说明），删掉后 `pnpm lint` 通过。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数。
 > 总控 2026-11-08：第一次跑（run23 第 10 轮）到单轮 $15 预算上限被停，已完成的部分提交成 169ad53 `wip(M4-T24)`（lint、typecheck 通过）。从这里接着做，先读一遍这次提交的改动，逐条对照上面 1–10 条，只补还没做完的部分；全量测试和两次 E2E 都还没跑。
+> 完成 2026-11-08：补齐第 3 条（水印十六进制内容流守护测试，含 vi.useFakeTimers 固定 KL 日期）、第 8 条（canSeeIdentityMany 账号状态过滤的直接测试）两处漏项；其余 1–10 条均在 169ad53 wip 中完成。单元+集成：76 文件 / 1425 通过 / 0 失败 / 0 跳过。E2E 第 1 次：112 通过 / 0 失败 / 0 跳过；E2E 第 2 次：112 通过 / 0 失败 / 0 跳过。
 
 #### [ ] M4-T25 最后一轮收尾：防泄漏 E2E 的正向对照、sanitizePdf 的目标与字典校验、空过的守护测试、学校 OTP 并发测试不稳定
 依赖：M4-T22、M4-T23、M4-T24

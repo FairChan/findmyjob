@@ -415,46 +415,64 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
     }
   }, 30_000)
 
-  it('watermark content-stream guard: blank PDF → Tj operator present in decoded content stream', async () => {
-    // Blank PDF has no text operations. Any Tj after the pipeline proves the watermark was added.
-    const doc = await PDFDocument.create()
-    doc.addPage([612, 792])
-    const blankPdf = Buffer.from(await doc.save())
+  it('watermark content-stream guard: specific latin1-hex watermark text in decoded content stream', async () => {
+    // Blank PDF has no text operations; any <HEX> Tj after the pipeline proves the specific watermark text was added.
+    // Fix the system clock so the KL date string is predictable.
+    vi.useFakeTimers({ now: new Date('2026-11-08T00:00:00Z'), toFake: ['Date'] })
+    try {
+      const doc = await PDFDocument.create()
+      doc.addPage([612, 792])
+      const blankPdf = Buffer.from(await doc.save())
 
-    const { resumeId, emp } = await setupFixture()
-    mockGetObjectBytes.mockResolvedValueOnce(blankPdf)
-    mockSession(emp.userId, 'EMPLOYER')
+      // Use known ASCII displayNameEn so safeCompanyLabel returns 'Test Corp'
+      const { resumeId, emp } = await setupFixture({ displayNameEn: 'Test Corp' })
+      mockGetObjectBytes.mockResolvedValueOnce(blankPdf)
+      mockSession(emp.userId, 'EMPLOYER')
 
-    const { GET } = await import('@/app/api/resumes/[id]/download/route')
-    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
-    expect(res.status).toBe(200)
+      const { GET } = await import('@/app/api/resumes/[id]/download/route')
+      const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+      expect(res.status).toBe(200)
 
-    const bodyBuf = Buffer.from(await res.arrayBuffer())
-    const outDoc = await PDFDocument.load(bodyBuf)
+      // Build expected watermark text (mirrors route.ts logic)
+      const dateStr = Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Kuala_Lumpur',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date())
+      const wmText = `For Test Corp only · ${dateStr} · ${emp.userId}`
 
-    // Decode the content stream on each page; at least one must contain Tj
-    let foundTj = false
-    for (let i = 0; i < outDoc.getPageCount(); i++) {
-      const page = outDoc.getPage(i)
-      const contentsVal = page.node.get(PDFName.of('Contents'))
-      if (!contentsVal) continue
-      const refs = contentsVal instanceof PDFArray
-        ? Array.from({ length: contentsVal.size() }, (_, j) => contentsVal.get(j))
-        : [contentsVal]
-      for (const ref of refs) {
-        try {
-          const obj = outDoc.context.lookup(ref instanceof PDFRef ? ref : ref)
-          if (!(obj instanceof PDFRawStream)) continue
-          const decoded = Buffer.from(decodePDFRawStream(obj).decode())
-          if (decoded.includes(Buffer.from('Tj'))) {
-            foundTj = true
+      // WinAnsi/latin1 encoding: · is 0xB7; pdf-lib writes standard-font text as <HEX> Tj
+      const wmHex = Buffer.from(wmText, 'latin1').toString('hex').toUpperCase()
+      const expectedPattern = `<${wmHex}>`
+
+      const bodyBuf = Buffer.from(await res.arrayBuffer())
+      const outDoc = await PDFDocument.load(bodyBuf)
+
+      // Search decoded content streams; at least one page must contain the hex-encoded watermark
+      let found = false
+      for (let i = 0; i < outDoc.getPageCount(); i++) {
+        const page = outDoc.getPage(i)
+        const contentsVal = page.node.get(PDFName.of('Contents'))
+        if (!contentsVal) continue
+        const refs = contentsVal instanceof PDFArray
+          ? Array.from({ length: contentsVal.size() }, (_, j) => contentsVal.get(j))
+          : [contentsVal]
+        for (const ref of refs) {
+          try {
+            const obj = outDoc.context.lookup(ref instanceof PDFRef ? ref : ref)
+            if (!(obj instanceof PDFRawStream)) continue
+            const decoded = Buffer.from(decodePDFRawStream(obj).decode()).toString('latin1')
+            if (decoded.includes(expectedPattern)) found = true
+          } catch {
+            // skip non-stream objects
           }
-        } catch {
-          // skip non-stream objects
         }
       }
+      expect(found).toBe(true)
+    } finally {
+      vi.useRealTimers()
     }
-    expect(foundTj).toBe(true)
   }, 30_000)
 
   it('IDOR: company unlocked student X, downloads student Y resume → 403', async () => {
