@@ -493,6 +493,7 @@
     "sectionResume": "简历",
     "resumeLockedHint": "解锁后可查看和下载简历",
     "resumeUnlockedHint": "已解锁，可在此下载简历",
+    "resumeDownload": "下载简历",
     "degreeLevelFoundation": "预科",
     "degreeLevelDiploma": "文凭",
     "degreeLevelBachelor": "本科",

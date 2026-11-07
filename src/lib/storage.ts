@@ -65,6 +65,15 @@ export async function getSignedDisplayUrl(key: string): Promise<string> {
   return awsGetSignedUrl(client, command, { expiresIn: SIGNED_URL_EXPIRES_SECONDS })
 }
 
+export async function getObjectBytes(key: string): Promise<Buffer> {
+  const client = makeClient()
+  const command = new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: key })
+  const response = await client.send(command)
+  if (!response.Body) throw new Error('Empty S3 response body')
+  const bytes = await (response.Body as unknown as { transformToByteArray(): Promise<Uint8Array> }).transformToByteArray()
+  return Buffer.from(bytes)
+}
+
 export async function deleteAllVersions(key: string): Promise<void> {
   const client = makeClient()
   const bucket = env.S3_BUCKET

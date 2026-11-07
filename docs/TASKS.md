@@ -686,13 +686,15 @@
 
 > 完成 2026-11-07：`contact-access.ts` 新增 `canSeeIdentity(companyId, studentId)` 和 `getContactForCompany(companyId, studentId)`；`talent-view.ts` 解锁时调 `getContactForCompany` 获取明文联系方式；详情页新增 Contact 段落（已解锁时显示）；中英文案各加 6 个 key；`tests/integration/contact-access.test.ts`（12 个用例，含 TM-003 三种场景）；`authz-matrix.test.ts` 新增 5 行；E2E：m4-t08-smoke.spec.ts（1 条冒烟用例，1 通过 / 0 失败 / 0 跳过）。单元+集成测试：62 文件 1247 用例全通过；m4-t14-smoke 和 m4-t08-smoke 共 6 条 E2E 全通过。
 
-#### [ ] M4-T09 简历下载水印
+#### [x] M4-T09 简历下载水印
 依赖：M4-T08
 做：`/api/resumes/[id]/download`：校验企业对该学生有访问权（TalentUnlock 存在且未被屏蔽）；用 `PDFDocument.create()` 加 `copyPages()` 把页面复制到新文档，再在新文档每页加水印（PRD §3.3）；每个企业成员同时最多 2 个水印任务；流式返回；审计 `resume.download`。加 authz-matrix 行。
 验收：
 - 无权限 → 403；生成的 PDF 每页都有水印文字（测试中解析 PDF 验证）
 - 用 pdf-lib 重新解析输出文件：catalog 里没有 /OpenAction，/Names 下没有 JavaScript
 - 学生屏蔽该企业、被停用或申请删号后，下载返回 404（TM-003）
+
+> 完成 2026-11-07：`/api/resumes/[id]/download/route.ts`（route() company+verified 鉴权、canSeeIdentity 检查、每成员最多 2 并发水印任务、pdf-lib copyPages+Helvetica 水印、catalog 验证无 OpenAction/Names、logAudit resume.download）；`storage.ts` 新增 `getObjectBytes`；`talent-card.ts` 新增 `resumeIds`（仅 unlocked=true 时填充）；详情页新增简历下载链接；中英文案各加 1 个 key；authz-matrix 新增 4 行（vi.mock pdf-lib + 4 用例）；talent-card 新增 2 个 resumeIds 断言；global-setup 新增 unlockedStudent 夹具（含 TalentUnlock + ResumeFile）；E2E m4-t09-smoke.spec.ts：1 passed / 0 failed / 0 skipped；DECISIONS 记录 ASCII 水印决策（pdf-lib WinAnsi 限制）；偏差：水印文字用 ASCII 格式 "For {companyLabel} only · {date} · {userId}"，原因见 DECISIONS M4-T09
 
 #### [ ] M4-T10 公益期发点与对账任务
 依赖：M4-T06、M0-T11

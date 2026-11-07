@@ -24,7 +24,34 @@ vi.mock('@/lib/storage', () => ({
   deleteAllVersions: vi.fn().mockResolvedValue(undefined),
   getSignedUploadUrl: vi.fn(),
   getSignedDownloadUrl: vi.fn(),
+  getObjectBytes: vi.fn(),
 }))
+
+vi.mock('pdf-lib', () => {
+  function makeDoc() {
+    return {
+      getPageCount: vi.fn().mockReturnValue(1),
+      copyPages: vi.fn().mockResolvedValue([{
+        getSize: vi.fn().mockReturnValue({ width: 612, height: 792 }),
+        drawText: vi.fn(),
+      }]),
+      embedFont: vi.fn().mockResolvedValue({ widthOfTextAtSize: vi.fn().mockReturnValue(100) }),
+      addPage: vi.fn(),
+      save: vi.fn().mockResolvedValue(new Uint8Array()),
+      catalog: { has: vi.fn().mockReturnValue(false) },
+    }
+  }
+  return {
+    PDFDocument: {
+      load: vi.fn().mockImplementation(() => Promise.resolve(makeDoc())),
+      create: vi.fn().mockImplementation(() => Promise.resolve(makeDoc())),
+    },
+    StandardFonts: { Helvetica: 'Helvetica' },
+    rgb: vi.fn().mockReturnValue({}),
+    degrees: vi.fn().mockReturnValue(0),
+    PDFName: { of: vi.fn().mockReturnValue({}) },
+  }
+})
 
 vi.mock('next/headers', () => ({
   headers: vi.fn().mockResolvedValue(new Headers()),
@@ -1262,5 +1289,88 @@ describe('resume download ownership (M2-T05)', () => {
     const res = await GET(new Request(`http://localhost/api/resumes/${resume.id}`))
     expect(res.status).toBe(404)
     expect(vi.mocked(getSignedDownloadUrl)).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// resume.download (M4-T09): watermarked PDF download authz
+// ---------------------------------------------------------------------------
+
+describe('resume.download (M4-T09)', () => {
+  async function makeStudentWithResume() {
+    const { profileId } = await createStudent(testDb)
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date(), completeness: 80 },
+    })
+    const resume = await testDb.resumeFile.create({
+      data: {
+        studentId: profileId,
+        storageKey: 'resumes/dl-authz-test/cv.pdf',
+        fileName: 'cv.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+      },
+    })
+    return { profileId, resumeId: resume.id }
+  }
+
+  async function createUnlock(companyId: string, studentId: string, unlockedById: string) {
+    await testDb.creditWallet.upsert({
+      where: { companyId },
+      create: { companyId, balance: 10 },
+      update: {},
+    })
+    return testDb.talentUnlock.create({
+      data: { companyId, studentId, unlockedById, source: 'CREDIT', creditsSpent: 1 },
+    })
+  }
+
+  it('no TalentUnlock → 403', async () => {
+    const { resumeId } = await makeStudentWithResume()
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    mockSession(emp.userId)
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(403)
+  })
+
+  it('student blocks company after unlock → 403 (TM-003)', async () => {
+    const { profileId, resumeId } = await makeStudentWithResume()
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
+    mockSession(emp.userId)
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(403)
+  })
+
+  it('valid access + mocked PDF → 200 application/pdf, Cache-Control: no-store', async () => {
+    const { profileId, resumeId } = await makeStudentWithResume()
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    const { getObjectBytes } = await import('@/lib/storage')
+    vi.mocked(getObjectBytes).mockResolvedValueOnce(Buffer.from([37, 80, 68, 70]))
+    mockSession(emp.userId)
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('content-type')).toBe('application/pdf')
+    expect(res.headers.get('cache-control')).toContain('no-store')
+  })
+
+  it('resume not in DB → 404', async () => {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    mockSession(emp.userId)
+    // Use a fake-but-valid-looking cuid
+    const fakeId = 'clzzzzzzzzzzzzzzzzzzzzzzzz'
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${fakeId}/download`))
+    expect(res.status).toBe(404)
   })
 })

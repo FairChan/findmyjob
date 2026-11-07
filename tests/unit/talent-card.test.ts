@@ -131,6 +131,8 @@ describe('toTalentDetail – 防泄漏 (unlocked=false)', () => {
   })
 
   it('resumePreview 为 null', () => expect(result.resumePreview).toBeNull())
+
+  it('resumeIds 为空数组（locked 时不暴露简历 ID）', () => expect(result.resumeIds).toEqual([]))
 })
 
 // ---- toTalentDetail unlocked --------------------------------------------
@@ -146,6 +148,10 @@ describe('toTalentDetail – 已解锁 (unlocked=true)', () => {
 
   it('storageKey 不出现在 JSON（永远不暴露）', () => {
     expect(JSON.stringify(result)).not.toContain(S_STORAGE_KEY)
+  })
+
+  it('resumeIds 包含简历 ID（已解锁时暴露）', () => {
+    expect(result.resumeIds).toContain('res-1')
   })
 })
 

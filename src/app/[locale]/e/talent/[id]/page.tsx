@@ -296,17 +296,34 @@ function TalentDetailBody({
         </section>
       )}
 
-      {/* Resume count */}
+      {/* Resume download */}
       {detail.resumeCount > 0 && (
         <section aria-labelledby="resume-heading">
           <h2 id="resume-heading" className="mb-2 text-base font-semibold">
             {tLabel('sectionResume')}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            {detail.unlocked
-              ? tLabel('resumeUnlockedHint')
-              : tLabel('resumeLockedHint')}
-          </p>
+          {detail.unlocked && detail.resumeIds.length > 0 ? (
+            <ul className="space-y-2">
+              {detail.resumeIds.map((resumeId, idx) => (
+                <li key={resumeId}>
+                  <a
+                    href={`/api/resumes/${resumeId}/download`}
+                    download="resume.pdf"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                    data-testid={`resume-download-${idx}`}
+                  >
+                    {tLabel('resumeDownload')}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {detail.unlocked
+                ? tLabel('resumeUnlockedHint')
+                : tLabel('resumeLockedHint')}
+            </p>
+          )}
         </section>
       )}
     </div>

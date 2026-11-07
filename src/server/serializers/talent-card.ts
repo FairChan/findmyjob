@@ -117,6 +117,7 @@ export interface TalentDetail extends TalentCard {
   experiences: TalentExperience[]
   resumeCount: number
   resumePreview: unknown
+  resumeIds: string[]
   contact: ContactInput | null
 }
 
@@ -285,6 +286,7 @@ export function toTalentDetail(
       })),
     resumeCount: profile.resumes.length,
     resumePreview: unlocked && primary ? primary.parsedJson : null,
+    resumeIds: unlocked ? profile.resumes.map((r) => r.id) : [],
     contact: unlocked ? contact : null,
   }
 }

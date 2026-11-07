@@ -49,12 +49,14 @@ export interface E2EFixtures {
   verifiedEmployer: { email: string; password: string; companyId: string }
   unverifiedEmployer: { email: string; password: string; companyId: string }
   student: { profileId: string }
+  unlockedStudent: { profileId: string; resumeId: string }
   folder: { folderId: string }
 }
 
 const VERIFIED_EMAIL = 'e2e-verified-employer@example.test'
 const UNVERIFIED_EMAIL = 'e2e-unverified-employer@example.test'
 const STUDENT_EMAIL = 'e2e-talent-student@example.test'
+const UNLOCKED_STUDENT_EMAIL = 'e2e-talent-student-unlocked@example.test'
 
 export default async function globalSetup() {
   // 与 helpers/db.ts 同一个工厂：库名必须以 _test 结尾、主机必须是本机，APP_ENV=production/staging 直接拒绝
@@ -224,6 +226,81 @@ export default async function globalSetup() {
       update: {},
     })
 
+    // ---- Create/update unlocked student with a resume (M4-T09: download watermark smoke test) ----
+    let unlockedStudentUser = await prisma.user.findUnique({ where: { email: UNLOCKED_STUDENT_EMAIL } })
+    if (!unlockedStudentUser) {
+      unlockedStudentUser = await prisma.user.create({
+        data: {
+          name: 'E2E Unlocked Student',
+          email: UNLOCKED_STUDENT_EMAIL,
+          emailVerified: true,
+          role: 'STUDENT',
+          status: 'ACTIVE',
+        },
+      })
+    }
+
+    let unlockedProfile = await prisma.studentProfile.findUnique({ where: { userId: unlockedStudentUser.id } })
+    if (!unlockedProfile) {
+      unlockedProfile = await prisma.studentProfile.create({
+        data: {
+          userId: unlockedStudentUser.id,
+          fullName: 'E2E Unlocked Student',
+          visibility: 'PUBLIC',
+          completeness: 85,
+          schoolId: school?.id ?? null,
+          schoolVerifiedAt: new Date(),
+          major: 'Computer Science',
+          degreeLevel: 'BACHELOR',
+          graduationYear: 2025,
+          skills: ['Python'],
+          workAuth: 'STUDENT_PASS',
+          intents: ['INTERNSHIP'],
+          lastActiveAt: new Date(),
+        },
+      })
+    } else {
+      unlockedProfile = await prisma.studentProfile.update({
+        where: { id: unlockedProfile.id },
+        data: { visibility: 'PUBLIC', completeness: 85, schoolVerifiedAt: new Date() },
+      })
+    }
+
+    // Create or reuse a resume file for the unlocked student
+    let unlockedResume = await prisma.resumeFile.findFirst({
+      where: { studentId: unlockedProfile.id },
+    })
+    if (!unlockedResume) {
+      unlockedResume = await prisma.resumeFile.create({
+        data: {
+          studentId: unlockedProfile.id,
+          storageKey: `resumes/e2e-unlocked/${unlockedProfile.id}/cv.pdf`,
+          fileName: 'cv.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: 1024,
+          isPrimary: true,
+        },
+      })
+    }
+
+    // Create TalentUnlock so the detail page shows the download link
+    await prisma.talentUnlock.upsert({
+      where: {
+        companyId_studentId: {
+          companyId: verifiedEmp.companyId,
+          studentId: unlockedProfile.id,
+        },
+      },
+      create: {
+        companyId: verifiedEmp.companyId,
+        studentId: unlockedProfile.id,
+        unlockedById: verifiedEmp.userId,
+        source: 'CREDIT',
+        creditsSpent: 0,
+      },
+      update: {},
+    })
+
     // ---- Write fixtures (passwords stored here for auth.setup.ts) ----
     const fixtures: E2EFixtures = {
       verifiedEmployer: {
@@ -237,6 +314,7 @@ export default async function globalSetup() {
         companyId: unverifiedEmp.companyId,
       },
       student: { profileId: profile.id },
+      unlockedStudent: { profileId: unlockedProfile.id, resumeId: unlockedResume.id },
       folder: { folderId: folder.id },
     }
     writeFileSync(
