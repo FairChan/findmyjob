@@ -1259,6 +1259,15 @@
   - verificationRecord 是运营填的自由文本，会原样写进审计 metadata。要提醒运营不要在里面写个人电话。
   - 运营后台还没有代管企业的页面（创建、代发职位、移交），需要总控另排任务。
 - E2E 测试库（fix(M3-T01) e2e-testdb，最终复查）：validateTestDbUrl 把 0.0.0.0 也当成本机。
+- M5-T03 公开职位页（2026-11-07 复查和最终复查延后的项）：
+  - /jobs 列表没有游标分页，findMany 不设 take（M5-T09 做搜索 service 时一起处理）。
+  - 学生重复打开同一个职位，viewCount 每次都 +1；ADMIN 打开也计数。viewCount 的写入是不等待的 fire-and-forget。
+  - 列表搜索用 Prisma 的 `contains`：核实 q 里的 `%` 和 `_` 有没有被当成通配符。
+  - 登录态响应的 Cache-Control 和 X-Robots-Tag 等 M7-T05。
+  - ShareJobButton 复制成功只显示「✓」，没有文字；clipboard 不可用或被拒时没有处理。
+  - isSafePath 新加的「解码后必须和原串一致」对原有的 /s/、/e/、/admin 规则也生效，带编码字符的旧跳转会退回默认页。这只会更严，要不要对查询串放宽待定。
+  - ADMIN 规则是 `startsWith('/{locale}/admin')`，会放行 `/zh/administrator-x` 这类路径。这是原有规则；改成 `/{locale}/admin/` 或者完全等于 `/{locale}/admin`。
+- M7-T19 第 1 轮（上传）补修以后，复查仍不足的地方：checkInflateBomb 预扫描能被绕过（间接引用的 Filter、名字转义、超过 512 字节的填充、数据里嵌字面的 endstream、截断的流不计入额度、过滤器链、LZW、stream 后面没有换行）。由 fix-M7-T19-p1c 在 pdf-lib 的 `DecodeStream.ensureBuffer` 上统一限额。**上线前必须处理。**
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 > 进度 2026-11-07 第 1/7 轮（M2-T05 上传 + 第二轮遗留 idSchema）：修掉：pdf-lib 解压炸弹→worker_threads resourceLimits（tests/unit/pdf-check.test.ts，12 条）；加密检测绕过→hasRawEncryptionMarkers 原始字节扫描；0 页 PDF 被接受→checkPdf pageCount<1 拒收；PAYMENT_PROOF 允许 ADMIN→改为 OWNER（tests/unit/upload-authz.test.ts，7 条，含 authz-matrix 新行）；key 用 randomUUID+userId→改用 studentProfileId；非法 purpose/id 返回 404→改为 400；下载响应缺 X-Robots-Tag→已加；idSchema 从 upload-input.ts 导入（route.ts）；deploy/Caddyfile 新增 resp_headers>Location delete 防签名 URL 进日志（需真机验证，见 DECISIONS）。接受的风险：孤儿对象、请求体读进内存（均见 DECISIONS 第 1 轮条目）。转给别的任务：无。
 > 进度 2026-11-07 第 1/7 轮补修：（1）FlateDecode 炸弹真正修好：在 pdf.ts 加 checkInflateBomb()，用 zlib.inflateSync maxOutputLength 预扫描所有 FlateDecode 流，超过 getSetting('upload.pdfMaxInflatedBytes', 50MB) 就拒收；炸弹检查在 Worker 之前、加密检查之后执行；worker/resourceLimits 保留作第二道防线。测试文件 tests/unit/pdf-check.test.ts（17 条），含 checkPdf 炸弹拒收测试（10ms 内返回）和 checkInflateBomb 单元测试（包括单流超限、累计超限、非 FlateDecode 不受影响）；去掉了原先名不副实的 large-stream 用例。默认值 52428800（50 MB）记进 DECISIONS。（2）生产镜像里找不到 pdf-lib：在 pdf.ts 加 `import 'pdf-lib'` 静态导入，使 Next.js nft 跟踪 pnpm 符号链接并在 standalone 里建立正确的 symlink 结构（含 tslib 等传递依赖），pdf-lib 加入 serverExternalPackages；build 验证：`.next/standalone/node_modules/pdf-lib/cjs/` 存在（symlink 到 pnpm store），Worker 在 standalone 目录下 `require('pdf-lib')` 实际解析 1 页 PDF 返回 `{ok:true, pageCount:1}`。
