@@ -266,11 +266,16 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
   const { cursor, limit = 20 } = page
   const { type, workMode, state, sort = 'relevance', industry, tags, size, salaryAtLeast } = filters
 
-  const [defaultMode, fallbackBelow, candidateWindow] = await Promise.all([
+  const [defaultMode, fallbackBelow, candidateWindowSetting] = await Promise.all([
     getSetting<string>('search.defaultMode', 'RELATED'),
     getSetting<number>('search.relatedFallbackBelow', 5),
-    getSetting<number>('search.candidateWindow', 500),
+    getSetting<unknown>('search.candidateWindow', 500),
   ])
+  // SystemSetting values are untyped JSON (and editable from the admin settings page): coerce to an
+  // integer in [1, 5000] before it reaches LIMIT, and bind it as a parameter, never as raw SQL.
+  const windowNum = Number(candidateWindowSetting)
+  const candidateWindow =
+    Number.isInteger(windowNum) && windowNum > 0 ? Math.min(windowNum, 5000) : 500
   const mode: SearchMode = (params.mode ?? defaultMode) as SearchMode
 
   const tokens = q.trim().toLowerCase().split(/\s+/).filter(Boolean)
@@ -464,7 +469,7 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
         ${industryFilter}
       )
     ORDER BY j."publishedAt" DESC, j."id" ASC
-    LIMIT ${Prisma.raw(String(candidateWindow))}
+    LIMIT ${candidateWindow}
   `
 
   // ----- Score candidates in app code -----
