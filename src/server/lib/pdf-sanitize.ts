@@ -7,11 +7,19 @@ export type SanitizeResult =
 
 // SECURITY: script must be a static string constant. Caller-supplied values must
 // come through `params` only — never interpolated into the script string.
-// Removes: /AA (page and catalog), /OpenAction, /Names, /AcroForm.
-// Annotation filter: keeps only /Subtype /Link with /A /S /GoTo (in-doc navigation),
-// /Dest in-doc links, or /A /S /URI (external hyperlinks). Strips JS, Launch,
-// FileAttachment, Widget, and all other action types that enable code execution
-// or file access.
+//
+// Sanitization pipeline:
+//   1. Catalog: removes /OpenAction, /AA, /Names, /AcroForm.
+//   2. Page whitelist: only Type, Parent, Resources, Contents, MediaBox, CropBox,
+//      BleedBox, TrimBox, ArtBox, Rotate, UserUnit, Group — all other page-level
+//      keys (/AA, /Thumb, /PieceInfo, /Trans, /Metadata, /B, etc.) are dropped.
+//   3. Annotation rebuild: only Link annotations with an in-document /Dest (explicit
+//      array, first element is a page PDFRef) or /A /S /GoTo with explicit /D array
+//      are preserved. All other subtypes and all other action types (URI, GoToR,
+//      GoToE, GoTo3D, Thread, RichMediaExecute, Launch, …) are dropped.
+//      Preserved annotations are rebuilt from scratch as minimal dicts containing
+//      only /Type /Annot, /Subtype /Link, /Rect, /Border [0 0 0], and /Dest —
+//      stripping /AA, /PA, /Next chains, and any other extra keys.
 const SANITIZE_PDF_SCRIPT = `
 const { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef } = pdfLib;
 const srcDoc = await PDFDocument.load(input, { ignoreEncryption: true, updateMetadata: false });
@@ -19,8 +27,6 @@ if (srcDoc.isEncrypted) return { kind: 'encrypted' };
 const outDoc = await PDFDocument.create();
 const pageCount = srcDoc.getPageCount();
 
-// pdf-lib 1.17.x context.lookup only resolves PDFRef, not inline objects.
-// Use instanceof checks directly for inline PDFName / PDFDict / PDFArray values.
 function resolveName(ctx, val) {
   if (val instanceof PDFName) return val.asString().replace(/^\\//, '');
   if (val instanceof PDFRef) { try { const r = ctx.lookup(val, PDFName); return r ? r.asString().replace(/^\\//, '') : null; } catch { return null; } }
@@ -37,50 +43,127 @@ function resolveArray(ctx, val) {
   return null;
 }
 
-// Sanitize annotations on srcDoc pages first. srcDoc.context refs are properly interned
-// for the loaded input, so lookup is reliable here. After sanitizing, copy cleaned pages
-// to outDoc — only referenced objects are deep-copied, so orphaned annotation dicts
-// (those we removed) are never carried into outDoc.
-const allowedActions = new Set(['GoTo', 'URI']);
+// Build srcDoc page-ref → page-index map for /Dest validation and remap.
+const srcRefToIdx = new Map();
+for (let i = 0; i < pageCount; i++) {
+  srcRefToIdx.set(srcDoc.getPage(i).ref.toString(), i);
+}
+
+// Pass 1: collect annotations to keep from each srcDoc page, then clear all
+// srcDoc page annotations.  Clearing before copyPages ensures that no original
+// annotation objects (URI, GoTo3D, /AA, /PA, /Next chains, etc.) are
+// deep-copied into outDoc — only page content (fonts, images, streams) transfers.
+const preservedPerPage = [];
 for (let p = 0; p < pageCount; p++) {
   const page = srcDoc.getPage(p);
-  page.node.delete(PDFName.of('AA'));
-  const annotsVal = page.node.get(PDFName.of('Annots'));
-  if (!annotsVal) continue;
-  const annotsArr = resolveArray(srcDoc.context, annotsVal);
-  if (!annotsArr) { page.node.delete(PDFName.of('Annots')); continue; }
   const kept = [];
-  for (let i = 0; i < annotsArr.size(); i++) {
-    const item = annotsArr.get(i);
-    const annotDict = resolveDict(srcDoc.context, item);
-    if (!annotDict) continue;
-    // Strip annotation-level /AA
-    annotDict.delete(PDFName.of('AA'));
-    const subtypeName = resolveName(srcDoc.context, annotDict.get(PDFName.of('Subtype')));
-    if (subtypeName !== 'Link') continue;
-    const aVal = annotDict.get(PDFName.of('A'));
-    if (aVal) {
-      const actionDict = resolveDict(srcDoc.context, aVal);
-      if (!actionDict) continue;
-      // Reject chained actions (/Next) — they could bypass the allowlist
-      if (actionDict.has(PDFName.of('Next'))) continue;
-      const sName = resolveName(srcDoc.context, actionDict.get(PDFName.of('S')));
-      if (!sName || !allowedActions.has(sName)) continue;
+
+  const annotsVal = page.node.get(PDFName.of('Annots'));
+  if (annotsVal) {
+    const annotsArr = resolveArray(srcDoc.context, annotsVal);
+    if (annotsArr) {
+      for (let i = 0; i < annotsArr.size(); i++) {
+        const item = annotsArr.get(i);
+        const annotDict = resolveDict(srcDoc.context, item);
+        if (!annotDict) continue;
+
+        const subtype = resolveName(srcDoc.context, annotDict.get(PDFName.of('Subtype')));
+        if (subtype !== 'Link') continue;
+
+        const rectVal = annotDict.get(PDFName.of('Rect'));
+        if (!rectVal) continue;
+        const rectArr = resolveArray(srcDoc.context, rectVal);
+        if (!rectArr) continue;
+
+        let destArr = null;
+
+        // Form 1: /Dest is an explicit array whose first element is a page PDFRef.
+        // Named destinations (/Dest is a name or string) are rejected.
+        const destDirect = annotDict.get(PDFName.of('Dest'));
+        if (destDirect) {
+          const dArr = resolveArray(srcDoc.context, destDirect);
+          if (dArr && dArr.size() > 0) {
+            const firstEl = dArr.get(0);
+            if (firstEl instanceof PDFRef && srcRefToIdx.has(firstEl.toString())) {
+              destArr = dArr;
+            }
+          }
+        }
+
+        // Form 2: /A /S /GoTo with explicit /D array.
+        // URI, GoToR, GoToE, GoTo3D, Thread, RichMediaExecute and all other action
+        // types are rejected.  /Next chains are stripped by the rebuild step below.
+        if (!destArr) {
+          const aVal = annotDict.get(PDFName.of('A'));
+          if (aVal) {
+            const actionDict = resolveDict(srcDoc.context, aVal);
+            if (actionDict) {
+              const s = resolveName(srcDoc.context, actionDict.get(PDFName.of('S')));
+              if (s === 'GoTo') {
+                const dVal = actionDict.get(PDFName.of('D'));
+                const dArr = resolveArray(srcDoc.context, dVal);
+                if (dArr) destArr = dArr;
+              }
+            }
+          }
+        }
+
+        if (destArr) kept.push({ rectArr, destArr });
+      }
     }
-    kept.push(item);
   }
-  if (kept.length === 0) page.node.delete(PDFName.of('Annots'));
-  else page.node.set(PDFName.of('Annots'), srcDoc.context.obj(kept));
+  // Clear all annotations from srcDoc page — will be rebuilt from scratch in outDoc.
+  page.node.delete(PDFName.of('Annots'));
+  preservedPerPage.push(kept);
 }
 
-// Copy sanitized pages into the fresh outDoc.
+// Copy sanitized pages into the fresh outDoc (no annotation objects are carried over).
 const copiedPages = await outDoc.copyPages(srcDoc, Array.from({ length: pageCount }, (_, i) => i));
-for (const page of copiedPages) {
+
+// Page key whitelist — all other keys (/AA, /Thumb, /PieceInfo, /Trans, /Metadata, /B …) are dropped.
+const PAGE_KEY_ALLOW = new Set([
+  'Type', 'Parent', 'Resources', 'Contents', 'MediaBox', 'CropBox',
+  'BleedBox', 'TrimBox', 'ArtBox', 'Rotate', 'UserUnit', 'Group'
+]);
+
+for (let p = 0; p < pageCount; p++) {
+  const page = copiedPages[p];
   outDoc.addPage(page);
+
+  const keysToDelete = page.node.keys().filter(k => !PAGE_KEY_ALLOW.has(k.asString().replace(/^\\//, '')));
+  for (const k of keysToDelete) page.node.delete(k);
+
+  // Rebuild kept annotations as minimal /Dest dicts.
+  // This strips /AA, /PA, /Next chains, and all other extra keys by construction.
+  const annotData = preservedPerPage[p];
+  if (annotData.length > 0) {
+    const newAnnotRefs = annotData.map(({ rectArr, destArr }) => {
+      // Remap srcDoc page PDFRefs in the destination array to outDoc page PDFRefs.
+      const newDest = [];
+      for (let k = 0; k < destArr.size(); k++) {
+        const el = destArr.get(k);
+        if (el instanceof PDFRef) {
+          const idx = srcRefToIdx.get(el.toString());
+          newDest.push(idx !== undefined ? copiedPages[idx].ref : el);
+        } else {
+          newDest.push(el);
+        }
+      }
+      const rectElems = [];
+      for (let k = 0; k < rectArr.size(); k++) rectElems.push(rectArr.get(k));
+      return outDoc.context.register(outDoc.context.obj({
+        Type: 'Annot',
+        Subtype: 'Link',
+        Rect: outDoc.context.obj(rectElems),
+        Border: outDoc.context.obj([0, 0, 0]),
+        Dest: outDoc.context.obj(newDest),
+      }));
+    });
+    page.node.set(PDFName.of('Annots'), outDoc.context.obj(newAnnotRefs));
+  }
 }
 
-// Belt-and-suspenders: strip catalog-level dangerous entries from outDoc
-// (outDoc is fresh from create(), so these are no-ops unless copyPages pulled them in).
+// Belt-and-suspenders: strip catalog-level dangerous entries from outDoc.
 outDoc.catalog.delete(PDFName.of('OpenAction'));
 outDoc.catalog.delete(PDFName.of('AA'));
 outDoc.catalog.delete(PDFName.of('Names'));

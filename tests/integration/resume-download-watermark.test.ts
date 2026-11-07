@@ -5,7 +5,7 @@
  * Verifies that:
  *  - sanitizePdf removes dangerous catalog entries, page /AA, and dangerous annotations
  *  - watermarkPdf is applied (content stream check)
- *  - URI Link annotation is preserved after sanitization
+ *  - GoTo Link annotation is preserved as /Dest after sanitization (M4-T23: URI removed)
  *  - Page count is preserved
  *  - Audit record is created
  *  - Dangerous catalog keys are absent in the response PDF
@@ -128,15 +128,16 @@ async function buildDangerousPdf(): Promise<Buffer> {
     FS: { Type: 'Filespec', F: PDFHexString.fromText('malware.exe') },
   }))
 
-  // 6. URI Link annotation (should be preserved)
-  const uriAnnotRef = doc.context.register(doc.context.obj({
+  // 6. GoTo Link annotation (should be preserved as /Dest link, rebuilt without /A)
+  // URI links are rejected since M4-T23. Only in-document GoTo/Dest links are kept.
+  const gotoAnnotRef = doc.context.register(doc.context.obj({
     Type: 'Annot',
     Subtype: 'Link',
     Rect: [10, 600, 200, 620],
-    A: { S: 'URI', URI: PDFHexString.fromText('https://example.com') },
+    A: { S: 'GoTo', D: ['Fit'] },
   }))
 
-  page0.node.set(PDFName.of('Annots'), doc.context.obj([jsAnnotRef, faAnnotRef, uriAnnotRef]))
+  page0.node.set(PDFName.of('Annots'), doc.context.obj([jsAnnotRef, faAnnotRef, gotoAnnotRef]))
 
   return Buffer.from(await doc.save())
 }
@@ -235,7 +236,7 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
     return { profileId, resumeId: resume.id, emp }
   }
 
-  it('sanitized + watermarked PDF: dangerous content removed, URI Link preserved, page count 3', async () => {
+  it('sanitized + watermarked PDF: dangerous content removed, GoTo Link preserved as /Dest, page count 3', async () => {
     const dangerousPdf = await buildDangerousPdf()
     const { profileId, resumeId, emp } = await setupFixture()
     mockGetObjectBytes.mockResolvedValueOnce(dangerousPdf)
@@ -263,11 +264,12 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
     // No page /AA
     expect(await anyPageHasAA(bodyBuf)).toBe(false)
 
-    // Only the URI Link annotation should remain on page 0
+    // GoTo Link annotation preserved, rebuilt as /Dest (no /A — strict whitelist M4-T23)
     const annots = await getAnnotsOnPage0(bodyBuf)
     expect(annots).toHaveLength(1)
     expect(annots[0].subtype).toBe('Link')
-    expect(annots[0].actionS).toBe('URI')
+    // Rebuilt as /Dest dict: no /A key, so actionS is undefined
+    expect(annots[0].actionS).toBeUndefined()
 
     // Audit record created
     const audits = await testDb.auditLog.findMany({
