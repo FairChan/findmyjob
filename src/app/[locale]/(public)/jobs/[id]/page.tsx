@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
 import { headers } from 'next/headers'
@@ -7,15 +8,19 @@ import { db } from '@/server/db'
 import { getSession } from '@/server/auth'
 import { openJob } from '@/server/services/job-view-quota'
 import { toJobDetail } from '@/server/serializers/job'
+import { ShareJobButton } from './ShareJobButton'
+
+const jobIdSchema = z.string().cuid()
 
 interface PageProps {
   params: Promise<{ locale: string; id: string }>
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const { id } = await params
+  const { id: rawId } = await params
+  if (!jobIdSchema.safeParse(rawId).success) return {}
   const job = await db.job.findUnique({
-    where: { id, status: 'PUBLISHED' },
+    where: { id: rawId, status: 'PUBLISHED' },
     select: { title: true },
   })
   if (!job) return {}
@@ -26,7 +31,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function JobDetailPage({ params }: PageProps) {
-  const { locale, id } = await params
+  const { locale, id: rawId } = await params
+  const idParsed = jobIdSchema.safeParse(rawId)
+  if (!idParsed.success) return notFound()
+  const id = idParsed.data
   const h = await headers()
   const t = await getTranslations('publicJobs')
 
@@ -106,7 +114,7 @@ export default async function JobDetailPage({ params }: PageProps) {
     })
     const isOwnCompany = member?.companyId === job.companyId
     if (!isOwnCompany) {
-      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} t={t} locale={locale} jobId={id} />
+      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} t={t} jobId={id} />
     }
   }
 
@@ -123,7 +131,7 @@ export default async function JobDetailPage({ params }: PageProps) {
     const { allowed } = await openJob(studentProfile.id, id)
 
     if (!allowed) {
-      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} t={t} locale={locale} jobId={id} />
+      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} t={t} jobId={id} />
     }
 
     // Increment viewCount (best-effort, non-blocking)
@@ -192,6 +200,7 @@ export default async function JobDetailPage({ params }: PageProps) {
           </section>
         )}
       </article>
+      <ShareJobButton jobId={id} label={t('shareJobLabel')} />
     </div>
   )
 }
@@ -201,14 +210,12 @@ function LockedJobCard({
   companyName,
   state,
   t,
-  locale,
   jobId,
 }: {
   title: string
   companyName: string
   state: string | null
   t: Awaited<ReturnType<typeof getTranslations<'publicJobs'>>>
-  locale: string
   jobId: string
 }) {
   return (
@@ -228,13 +235,15 @@ function LockedJobCard({
           <p className="text-sm font-medium mb-1">{t('lockedTitle')}</p>
           <p className="text-sm text-muted-foreground mb-4">{t('lockedDesc')}</p>
           <Link
-            href={`/${locale}/invite`}
-            className="inline-flex items-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground hover:bg-brand/90 transition-colors"
+            href="/s/invite"
+            className="inline-flex items-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground hover:bg-brand/90 transition-colors min-h-[24px]"
           >
             {t('inviteButton')}
           </Link>
         </div>
+        <ShareJobButton jobId={jobId} label={t('shareJobLabel')} />
       </div>
     </div>
   )
 }
+

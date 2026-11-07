@@ -4,15 +4,9 @@ import { headers } from 'next/headers'
 import { action } from '@/server/action'
 import { getSession } from '@/server/auth'
 import { db } from '@/server/db'
-import { ForbiddenError } from '@/server/errors'
+import { isSafePath } from '@/server/lib/is-safe-path'
 
-function isSafePath(path: string, role: string, locale: string): boolean {
-  if (!path.startsWith('/')) return false
-  if (role === 'STUDENT') return path.startsWith(`/${locale}/s/`)
-  if (role === 'EMPLOYER') return path.startsWith(`/${locale}/e/`)
-  if (role === 'ADMIN') return path.startsWith(`/${locale}/admin`)
-  return false
-}
+export { isSafePath }
 
 export const getPostLoginRedirect = action(
   {

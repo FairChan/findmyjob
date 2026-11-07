@@ -812,6 +812,7 @@
     "lockedTitle": "Job view quota exhausted",
     "lockedDesc": "Invite friends to sign up for FindMYJob to unlock more job details",
     "inviteButton": "Invite to Unlock",
+    "shareJobLabel": "Copy Share Link",
     "type": {
       "INTERNSHIP": "Internship",
       "FULL_TIME": "Full-time",

@@ -1,8 +1,16 @@
+import { z } from 'zod'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { db } from '@/server/db'
 import { toJobListItem } from '@/server/serializers/job'
+
+const listParamsSchema = z.object({
+  q: z.string().trim().max(100).optional(),
+  type: z.enum(['INTERNSHIP', 'FULL_TIME', 'PART_TIME']).optional(),
+  state: z.string().max(10).optional(),
+  workMode: z.enum(['ONSITE', 'HYBRID', 'REMOTE']).optional(),
+})
 
 interface PageProps {
   params: Promise<{ locale: string }>
@@ -10,7 +18,9 @@ interface PageProps {
 }
 
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
-  const { q, type, state, workMode } = await searchParams
+  const raw = await searchParams
+  const parsed = listParamsSchema.safeParse(raw)
+  const { q, type, state, workMode } = parsed.success ? parsed.data : {}
   const hasFilters = !!(q || type || state || workMode)
   return {
     robots: hasFilters ? 'noindex,follow' : undefined,
@@ -19,7 +29,9 @@ export async function generateMetadata({ searchParams }: PageProps): Promise<Met
 
 export default async function JobsPage({ params, searchParams }: PageProps) {
   const { locale } = await params
-  const { q, type, state, workMode } = await searchParams
+  const raw = await searchParams
+  const parsed = listParamsSchema.safeParse(raw)
+  const { q, type, state, workMode } = parsed.success ? parsed.data : {}
   const t = await getTranslations('publicJobs')
 
   const now = new Date()
@@ -27,19 +39,23 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
   const jobs = await db.job.findMany({
     where: {
       status: 'PUBLISHED',
-      OR: [{ deadline: null }, { deadline: { gt: now } }],
-      ...(type ? { type: type as 'INTERNSHIP' | 'FULL_TIME' | 'PART_TIME' } : {}),
+      AND: [
+        { OR: [{ deadline: null }, { deadline: { gt: now } }] },
+        ...(q
+          ? [
+              {
+                OR: [
+                  { title: { contains: q, mode: 'insensitive' as const } },
+                  { category: { contains: q, mode: 'insensitive' as const } },
+                  { skills: { has: q } },
+                ],
+              },
+            ]
+          : []),
+      ],
+      ...(type ? { type } : {}),
       ...(state ? { state } : {}),
-      ...(workMode ? { workMode: workMode as 'ONSITE' | 'HYBRID' | 'REMOTE' } : {}),
-      ...(q
-        ? {
-            OR: [
-              { title: { contains: q, mode: 'insensitive' } },
-              { category: { contains: q, mode: 'insensitive' } },
-              { skills: { has: q } },
-            ],
-          }
-        : {}),
+      ...(workMode ? { workMode } : {}),
     },
     orderBy: { publishedAt: 'desc' },
     select: {

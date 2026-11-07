@@ -24,9 +24,9 @@ export type EmployerCompanyOpts = {
 }
 
 export type LoginOpts =
-  | { role: 'STUDENT' }
-  | { role: 'EMPLOYER'; company?: EmployerCompanyOpts }
-  | { role: 'ADMIN' }
+  | { role: 'STUDENT'; fromCurrentPage?: boolean }
+  | { role: 'EMPLOYER'; company?: EmployerCompanyOpts; fromCurrentPage?: boolean }
+  | { role: 'ADMIN'; fromCurrentPage?: boolean }
 
 export type LoginResult = {
   userId: string
@@ -94,7 +94,9 @@ export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult>
   // one bucket and the full suite trips the limit. The limit itself is unchanged.
   await page.setExtraHTTPHeaders({ 'x-real-ip': testClientIp() })
   await stubTurnstile(page)
-  await page.goto('/zh/login')
+  if (!opts.fromCurrentPage) {
+    await page.goto('/zh/login')
+  }
   await page.fill('[name="email"]', email)
   await page.fill('[name="password"]', password)
 

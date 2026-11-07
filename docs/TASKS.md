@@ -791,6 +791,7 @@
 - 访客打开详情页，HTML 里有 noindex，没有 ld+json；隐藏薪资职位的列表页、详情页和 metadata 里都没有金额
 - 企业成员打开其他企业的职位详情，只能看到锁定卡片（从 M2-T10 移入，见 DECISIONS 2026-11-07 M2-T12 fix 4）
 > 完成 2026-11-07：serializers/job.ts（toJobListItem/toJobDetail 白名单）；/jobs 列表（PUBLISHED+未过期，salaryVisible=false 不输出薪资，带筛选参数设 noindex,follow）；/jobs/[id] 详情（访客重定向登录，学生走 openJob，额度耗尽/跨企业 employer 显示 LockedJobCard，viewCount +1）；robots noindex；E2E smoke-m5-t03 8/8 通过，pii-leak 4/4 通过；lint/typecheck/db:check 全部通过；单元 1223/1224 通过（1 条 pre-existing team.test.ts）。
+> 修复 2026-11-07：1) 带 q 时 deadline 过滤被 OR 展开覆盖→改为 AND[deadline, q]；2) searchParams/id 缺 zod 校验→用 listParamsSchema/jobIdSchema safeParse，非法值当无效处理不报 500；3) LockedJobCard 邀请按钮 href 双加 locale→改为 /s/invite 由 i18n Link 加前缀；4) isSafePath 不放行 /jobs/<cuid>→提取 is-safe-path.ts 并加 jobs path 允许规则（带编码/backslash 拒绝）；详情页和锁定卡片加复制分享链接按钮；E2E smoke-m5-t03 17/17 通过，pii-leak 4/4 通过，单元 1246/1246 通过。
 
 #### [ ] M5-T04 投递
 依赖：M5-T03、M4-T07

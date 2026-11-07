@@ -812,6 +812,7 @@
     "lockedTitle": "查看额度已用完",
     "lockedDesc": "邀请同学注册 FindMYJob 即可解锁更多职位详情",
     "inviteButton": "邀请同学解锁",
+    "shareJobLabel": "复制分享链接",
     "type": {
       "INTERNSHIP": "实习",
       "FULL_TIME": "全职",
