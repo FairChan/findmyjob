@@ -847,7 +847,7 @@
 验收：与原型 C3 的测试用例一致；选了薪资档时隐藏薪资的职位不出现，也不能借筛选反推出它的薪资
 > 完成 2026-11-07：industryMatches（父级包含子级）；searchJobs 增加 industry/tags/size/salaryAtLeast 四个筛选（empty-query 走 Prisma company filter，keyword 走 SQL AND 片段）；jobs page listParamsSchema 增加四个 URL 参数；单元 29 条 + 集成 C3 9 条 + E2E 8 条全部通过；失败输出见提交说明。
 
-#### [ ] M5-T11 职位搜索性能：查询加 LIMIT、在数据库预筛候选（P1，E3 之前）
+#### [x] M5-T11 职位搜索性能：查询加 LIMIT、在数据库预筛候选（P1，E3 之前）
 依赖：M5-T09、M5-T10
 做：
 - 现状：`src/server/services/job-search.ts` 的 searchJobs 用 `$queryRaw` 把所有匹配的 PUBLISHED 职位（连同 description、requirements）都取出来，在应用里评分，再按游标切片，查询没有 LIMIT（2026-11-07 合并前复查记下的）。
@@ -860,6 +860,7 @@
 - 合成 1 万条职位（faker，只写测试库），常见查询的 p95 写进 docs/CAPACITY.md，目标值在 DECISIONS 里记一行。
 - 现有 job-search 的单测和集成测试全部通过。
 - 查询带 LIMIT：有测试断言单次取出的行数不超过上限。
+> 完成 2026-11-08：$queryRaw 加 `LIMIT ${candidateWindow}`（默认 500，读自 search.candidateWindow）；canSeeDescription=false 时 description/requirements 返回空串/null，不出现在 SQL 模板里；空查询 relevance 分支改用 Prisma 游标分页（取 limit+1 检测 hasMore），salary 分支取 candidateWindow 条后内存排序；基准测试（10k 合成职位）p95：空查询 11ms、关键词 40ms、关键词无匹配 37ms、salary 排序 18ms，全写入 docs/CAPACITY.md；pnpm lint + typecheck + test（72/72 通过，1 skipped bench）全部绿。
 
 ---
 
@@ -1053,6 +1054,7 @@
 > 修复 2026-11-05：(1) backup+migrate 改用 APP_TAG env-prefix，update_app_tag 推迟到迁移成功后，ERR trap 在 tag 写入后失败时恢复 .env；(2) 回滚目标改为「当前 sha 最近一次 deploy 之前的那条 deploy 记录」（awk 逐行跟踪 prev），避免 rollback-after-rollback 再次回到坏版本；(3) 迁移检查先 test -d 判断目录存在，移除 2>/dev/null 和 || true 让 docker run 失败可见，校验迁移名格式 ^[0-9]{14}_[a-z0-9_]+$；(4) DB URL 改走 --env-file 临时文件，不出现在命令行参数；(5) 部署和回滚均记录 digest 并支持 --expect-digest sha256:… 核对；RUNBOOK 部署/回滚两节同步更新；bash -n 语法通过，pnpm lint+typecheck+test 全绿。真机演练（部署 A、部署 B、回滚）仍需在 M7-H01 配置好的服务器上执行。
 > 修复 2026-11-05：(a) wallet 余额保持 0（credits.ts 未实现，M4-T06 未完成）；(b) session token 改用 crypto.randomBytes(32).toString('base64url')，不再可预测；(c) k6 setup() 在 accounts 为空时 fail()；(d) 人才库请求改为 redirects:0、只认 200 为成功；ESLint 豁免保留（seed-load.ts 仍访问 User.email PII）。
 > 修复 2026-11-05（二）：(1) set -Eeuo pipefail（加 -E），ERR trap 现可在 update_app_tag/dc up 函数内触发，注释说明原因；(2) actual_digest 用 ${var#*@} 剥离 registry/repo@ 前缀，存入 history 和比对的值均为裸 sha256:…，--expect-digest 和 rollback 自动核对均已可用；rollback 在有记录 digest 时改用 ${IMAGE_APP}@${digest} 拉取再 tag；(3) 迁移检查区分 docker run 退出码：exit 1 = 目录不存在（跳过），其他非零 = docker/exec 失败（die），防止 125/126/127 被误判为目录缺失而静默跳过审批；bash -n 通过，pnpm lint+typecheck+test 526 passed 全绿。真机走查（部署 A→B→回滚→回滚）仍需在 M7-H01 配置的服务器上执行。
+> 修复 2026-11-08（部署支持，总控授权）：findmyjob-deploy 加 FINDMYJOB_SKIP_PULL=1：不 pull，改成检查镜像在本机存在，缺了就报错退出（deploy 和 rollback 都支持），给「本机构建、docker load 到服务器」这条部署路线用；没有 RepoDigests 时 digest 一律记成 unknown；WORKDIR 可以用 FINDMYJOB_WORKDIR 覆盖（为了测试）。新增 deploy/server/findmyjob-deploy.test.sh（docker stub，9 条）；RUNBOOK「部署」补了没有 registry 时的步骤。失败输出见提交说明。
 
 #### [x] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
 依赖：M7-T06

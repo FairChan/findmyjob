@@ -316,6 +316,54 @@ describe('searchJobs', () => {
     expect(callArgs.where.company).toMatchObject({ size: 'S51_200' })
   })
 
+  it('keyword search: $queryRaw SQL contains LIMIT to bound candidate rows', async () => {
+    mockQueryRaw.mockResolvedValue([])
+    await searchJobs({ q: '财务', mode: 'EXACT', canSeeDescription: false, page: { limit: 10 } })
+    // The keyword $queryRaw is the only call here (no industry filter)
+    expect(mockQueryRaw).toHaveBeenCalledOnce()
+    // Template strings are the first argument; LIMIT appears in the SQL template itself
+    const templateStrings = mockQueryRaw.mock.calls[0][0] as TemplateStringsArray
+    const rawSqlParts = Array.from(templateStrings).join('')
+    expect(rawSqlParts).toContain('LIMIT')
+  })
+
+  // search.candidateWindow comes from SystemSetting (editable once M6-T05 ships). It must reach the SQL
+  // only as a bound integer parameter, never as raw text (CLAUDE.md 原生 SQL 红线).
+  it('keyword search: a non-integer candidateWindow setting never reaches the SQL text', async () => {
+    mockGetSetting.mockImplementation((key: string, def: unknown) => Promise.resolve(
+      key === 'search.candidateWindow' ? '5; DROP TABLE "Job"' : def,
+    ))
+    mockQueryRaw.mockResolvedValue([])
+    await searchJobs({ q: '财务', mode: 'EXACT', canSeeDescription: false, page: { limit: 10 } })
+    const [templateStrings, ...values] = mockQueryRaw.mock.calls[0] as [TemplateStringsArray, ...unknown[]]
+    const rawSqlParts = Array.from(templateStrings).join('')
+    expect(rawSqlParts).not.toContain('DROP TABLE')
+    expect(rawSqlParts).toMatch(/LIMIT\s*$/m)
+    expect(values).toContain(500)
+  })
+
+  it('keyword search: candidateWindow is clamped to at most 5000', async () => {
+    mockGetSetting.mockImplementation((key: string, def: unknown) => Promise.resolve(
+      key === 'search.candidateWindow' ? 1_000_000 : def,
+    ))
+    mockQueryRaw.mockResolvedValue([])
+    await searchJobs({ q: '财务', mode: 'EXACT', canSeeDescription: false, page: { limit: 10 } })
+    const values = (mockQueryRaw.mock.calls[0] as unknown[]).slice(1)
+    expect(values).toContain(5000)
+    expect(values).not.toContain(1_000_000)
+  })
+
+  it('keyword search: description not in SQL template when canSeeDescription=false', async () => {
+    mockQueryRaw.mockResolvedValue([])
+    await searchJobs({ q: '财务', canSeeDescription: false })
+    const templateStrings = mockQueryRaw.mock.calls[0][0] as TemplateStringsArray
+    const rawSqlParts = Array.from(templateStrings).join('')
+    // The description column is supplied via a Prisma.sql fragment (interpolated value),
+    // so the literal 'j."description"' does NOT appear in the template strings when
+    // canSeeDescription=false (it would appear as '' AS "description" via the fragment).
+    expect(rawSqlParts).not.toContain('j."description"')
+  })
+
   it('cursor pagination: second page starts after cursor job', async () => {
     const rows = Array.from({ length: 5 }, (_, i) =>
       makeRow({ id: `j${i}`, title: `财务职位${i}`, publishedAt: new Date(2026, 0, i + 1) }),
