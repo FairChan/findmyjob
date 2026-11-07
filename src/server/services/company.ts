@@ -246,3 +246,57 @@ export async function getPublicCompany(id: string) {
     },
   })
 }
+
+const PUBLIC_COMPANY_PAGE_SIZE = 24
+
+export async function listPublicCompanies(input: {
+  tag?: import('@prisma/client').CompanyTag
+  cursor?: string
+}) {
+  const now = new Date()
+  const companies = await db.company.findMany({
+    where: {
+      verificationStatus: 'VERIFIED',
+      isActive: true,
+      ...(input.tag ? { tags: { has: input.tag } } : {}),
+      ...(input.cursor ? { id: { gt: input.cursor } } : {}),
+    },
+    select: {
+      id: true,
+      legalName: true,
+      displayNameZh: true,
+      displayNameEn: true,
+      description: true,
+      website: true,
+      logoKey: true,
+      state: true,
+      city: true,
+      industryCode: true,
+      size: true,
+      isFoundingPartner: true,
+      tags: true,
+      _count: {
+        select: {
+          jobs: {
+            where: {
+              status: 'PUBLISHED',
+              OR: [{ deadline: null }, { deadline: { gte: now } }],
+            },
+          },
+        },
+      },
+    },
+    orderBy: { id: 'asc' },
+    take: PUBLIC_COMPANY_PAGE_SIZE + 1,
+  })
+
+  const hasMore = companies.length > PUBLIC_COMPANY_PAGE_SIZE
+  const raw = hasMore ? companies.slice(0, PUBLIC_COMPANY_PAGE_SIZE) : companies
+  const items = raw.map(({ _count, ...rest }) => ({
+    ...rest,
+    publishedJobCount: _count.jobs,
+  }))
+  const nextCursor = hasMore ? items[items.length - 1].id : null
+
+  return { items, nextCursor }
+}
