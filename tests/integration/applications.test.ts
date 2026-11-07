@@ -36,6 +36,7 @@ import {
   withdrawApplication,
   getMyApplicationForJob,
 } from '@/server/services/applications'
+import { canApplyToJob } from '@/server/services/job-view-quota'
 import { getContactForCompany } from '@/server/services/contact-access'
 import { encryptField } from '@/server/lib/crypto'
 import {
@@ -47,6 +48,15 @@ import {
 import { ApplicationStatus } from '@prisma/client'
 
 setupTestDb()
+
+/** Pre-seed a JobView so canApplyToJob returns true (required by M5-T12 quota bypass fix). */
+async function addJobView(studentId: string, jobId: string) {
+  await testDb.jobView.upsert({
+    where: { studentId_jobId: { studentId, jobId } },
+    create: { studentId, jobId },
+    update: {},
+  })
+}
 
 async function seedApplySettings(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
@@ -82,6 +92,7 @@ describe('applyToJob', () => {
     const { userId, profileId } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     const result = await applyToJob({ userId }, { jobId: job.id })
 
@@ -102,6 +113,7 @@ describe('applyToJob', () => {
     const { userId, profileId } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     await applyToJob({ userId }, { jobId: job.id })
 
@@ -122,6 +134,7 @@ describe('applyToJob', () => {
       data: { verificationStatus: 'VERIFIED' },
     })
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     // Write encrypted contact info for the student
     const encPhone = encryptField('+60123456789', `StudentContact.phone:${profileId}`)
@@ -159,6 +172,7 @@ describe('applyToJob', () => {
     const { userId, profileId } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     await applyToJob({ userId }, { jobId: job.id })
 
@@ -233,6 +247,7 @@ describe('applyToJob', () => {
     const { userId, profileId } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     const results = await Promise.allSettled([
       applyToJob({ userId }, { jobId: job.id }),
@@ -258,6 +273,9 @@ describe('applyToJob', () => {
     // Create two separate published jobs
     const job1 = await createPublishedJob(emp.companyId, emp.userId)
     const job2 = await createPublishedJob(emp.companyId, emp.userId)
+    // Both jobs need a JobView (M5-T12 quota bypass fix)
+    await addJobView(profileId, job1.id)
+    await addJobView(profileId, job2.id)
 
     // Apply to both simultaneously (creates TalentUnlock for same company+student)
     await Promise.all([
@@ -270,14 +288,90 @@ describe('applyToJob', () => {
     })
     expect(unlocks).toHaveLength(1)
   })
+
+  // --- M5-T12: quota bypass prevention tests ---
+
+  it('quota exhausted, no JobView, no Invitation → NOT_FOUND (quota bypass blocked)', async () => {
+    await seedApplySettings({ 'studentQuota.enabled': true, 'studentQuota.baseJobViews': 1 })
+    const { userId, profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    const otherJob = await createPublishedJob(emp.companyId, emp.userId)
+
+    // Exhaust the 1-view quota by viewing a different job
+    await testDb.jobView.create({ data: { studentId: profileId, jobId: otherJob.id } })
+
+    // No JobView for job, no invitation → canApplyToJob returns false
+    await expect(
+      applyToJob({ userId }, { jobId: job.id }),
+    ).rejects.toBeInstanceOf(NotFoundError)
+
+    // No Application created
+    const count = await testDb.application.count({ where: { studentId: profileId, jobId: job.id } })
+    expect(count).toBe(0)
+    // No TalentUnlock created
+    const unlocks = await testDb.talentUnlock.findMany({ where: { companyId: emp.companyId, studentId: profileId } })
+    expect(unlocks).toHaveLength(0)
+  })
+
+  it('has JobView → apply succeeds even when quota would otherwise block', async () => {
+    await seedApplySettings({ 'studentQuota.enabled': true, 'studentQuota.baseJobViews': 1 })
+    const { userId, profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    const otherJob = await createPublishedJob(emp.companyId, emp.userId)
+
+    // Exhaust quota with another job
+    await testDb.jobView.create({ data: { studentId: profileId, jobId: otherJob.id } })
+    // But student already viewed this specific job
+    await addJobView(profileId, job.id)
+
+    const result = await applyToJob({ userId }, { jobId: job.id })
+    expect(result.applicationId).toBeTruthy()
+  })
+
+  it('has Invitation (no JobView) → apply succeeds', async () => {
+    await seedApplySettings({ 'studentQuota.enabled': true, 'studentQuota.baseJobViews': 1 })
+    const { userId, profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    const otherJob = await createPublishedJob(emp.companyId, emp.userId)
+
+    // Exhaust quota
+    await testDb.jobView.create({ data: { studentId: profileId, jobId: otherJob.id } })
+    // No JobView for job, but student has an invitation
+    await testDb.invitation.create({
+      data: {
+        jobId: job.id,
+        studentId: profileId,
+        companyId: emp.companyId,
+        sentById: emp.userId,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    })
+
+    const result = await applyToJob({ userId }, { jobId: job.id })
+    expect(result.applicationId).toBeTruthy()
+  })
+
+  it('canApplyToJob: unlimited quota (enabled=false) → true', async () => {
+    await seedApplySettings({ 'studentQuota.enabled': false })
+    const { profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+
+    const result = await canApplyToJob(profileId, job.id)
+    expect(result).toBe(true)
+  })
 })
 
 describe('withdrawApplication', () => {
   it('changes status to WITHDRAWN and creates ApplicationEvent', async () => {
     await seedApplySettings()
-    const { userId } = await createStudentWithCompleteness(70)
+    const { userId, profileId } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     const { applicationId } = await applyToJob({ userId }, { jobId: job.id })
     await withdrawApplication({ userId }, { applicationId })
@@ -296,10 +390,11 @@ describe('withdrawApplication', () => {
 
   it('throws NotFoundError when applicationId does not belong to this student', async () => {
     await seedApplySettings()
-    const { userId: uid1 } = await createStudentWithCompleteness(70)
+    const { userId: uid1, profileId: pid1 } = await createStudentWithCompleteness(70)
     const { userId: uid2 } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(pid1, job.id)
 
     const { applicationId } = await applyToJob({ userId: uid1 }, { jobId: job.id })
 
@@ -315,9 +410,10 @@ describe('withdrawApplication', () => {
 
   it('is idempotent: withdrawing twice does not error', async () => {
     await seedApplySettings()
-    const { userId } = await createStudentWithCompleteness(70)
+    const { userId, profileId } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     const { applicationId } = await applyToJob({ userId }, { jobId: job.id })
     await withdrawApplication({ userId }, { applicationId })
@@ -339,9 +435,10 @@ describe('getMyApplicationForJob', () => {
 
   it('returns application after applying', async () => {
     await seedApplySettings()
-    const { userId } = await createStudentWithCompleteness(70)
+    const { userId, profileId } = await createStudentWithCompleteness(70)
     const emp = await createEmployer(testDb)
     const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
 
     const { applicationId } = await applyToJob({ userId }, { jobId: job.id })
     const result = await getMyApplicationForJob({ userId }, job.id)

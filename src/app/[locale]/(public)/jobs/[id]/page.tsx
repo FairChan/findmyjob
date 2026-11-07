@@ -11,7 +11,7 @@ import { openJob } from '@/server/services/job-view-quota'
 import { toJobDetail } from '@/server/serializers/job'
 import { stateLabel } from '@/lib/my-states'
 import { ShareJobButton } from './ShareJobButton'
-import { ApplyModal, AppliedStatus } from '@/components/apply/ApplyModal'
+import { ApplyModal, AppliedStatus, WithdrawnStatus } from '@/components/apply/ApplyModal'
 import { getSetting } from '@/server/services/settings'
 
 const jobIdSchema = z.string().cuid()
@@ -168,6 +168,8 @@ export default async function JobDetailPage({ params }: PageProps) {
 
     if (existing && existing.status !== 'WITHDRAWN') {
       applySection = <AppliedStatus applicationId={existing.id} />
+    } else if (existing?.status === 'WITHDRAWN') {
+      applySection = <WithdrawnStatus />
     } else {
       applySection = (
         <ApplyModal

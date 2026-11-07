@@ -1672,6 +1672,8 @@ describe('application authz (M5-T04): applyToJobAction / withdrawApplicationActi
     const { userId, profileId } = await createStudent(testDb, { completeness: 70 })
     const emp = await createEmployer(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    // M5-T12: pre-seed JobView so canApplyToJob returns true (quota bypass fix)
+    await testDb.jobView.create({ data: { studentId: profileId, jobId: job.id } })
     return { userId, profileId, companyId: emp.companyId, job }
   }
 

@@ -901,6 +901,7 @@
     "applyErrorDuplicate": "你已经投递过该职位",
     "applyErrorGeneral": "投递失败，请稍后重试",
     "withdrawSuccess": "已撤回投递",
-    "withdrawErrorGeneral": "撤回失败，请稍后重试"
+    "withdrawErrorGeneral": "撤回失败，请稍后重试",
+    "withdrawnBadge": "已撤回"
   }
 }

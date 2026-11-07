@@ -901,6 +901,7 @@
     "applyErrorDuplicate": "You have already applied for this position",
     "applyErrorGeneral": "Failed to submit application, please try again",
     "withdrawSuccess": "Application withdrawn",
-    "withdrawErrorGeneral": "Failed to withdraw application, please try again"
+    "withdrawErrorGeneral": "Failed to withdraw application, please try again",
+    "withdrawnBadge": "Withdrawn"
   }
 }

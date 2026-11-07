@@ -200,6 +200,58 @@ test.describe('M5-T04 application smoke', () => {
     }
   })
 
+  test('withdrawn application shows "已撤回" badge on page load, no apply button (M5-T12)', async ({ page }) => {
+    const { job, company, cleanup } = await createTestJob('WithdrawnBadge')
+    try {
+      await e2eDb.systemSetting.upsert({
+        where: { key: 'apply.minCompleteness' },
+        create: { key: 'apply.minCompleteness', value: 60 },
+        update: { value: 60 },
+      })
+      await e2eDb.systemSetting.upsert({
+        where: { key: 'studentQuota.enabled' },
+        create: { key: 'studentQuota.enabled', value: false },
+        update: { value: false },
+      })
+
+      const { userId } = await loginAs(page, { role: 'STUDENT' })
+      // loginAs bypasses Better Auth signup hooks, so StudentProfile may not exist yet.
+      // Use upsert to ensure the profile exists regardless of timing.
+      await e2eDb.studentProfile.upsert({
+        where: { userId },
+        create: { userId, fullName: 'E2E WithdrawnBadge Student', completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+        update: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+      })
+
+      const profile = await e2eDb.studentProfile.findUnique({ where: { userId } })
+      expect(profile).not.toBeNull()
+
+      // Pre-seed a WITHDRAWN application (simulates: student applied then withdrew)
+      const app = await e2eDb.application.create({
+        data: { jobId: job.id, studentId: profile!.id, status: 'WITHDRAWN' },
+      })
+      await e2eDb.talentUnlock.upsert({
+        where: { companyId_studentId: { companyId: company.id, studentId: profile!.id } },
+        create: { companyId: company.id, studentId: profile!.id, unlockedById: userId, source: 'APPLICATION', creditsSpent: 0 },
+        update: {},
+      })
+
+      await expectPageHealthy(page, `/zh/jobs/${job.id}`)
+
+      // Must show "已撤回" badge (not apply button); use exact match to avoid matching
+      // "WithdrawnBadge" in the test job title/company name.
+      await expect(page.getByText(/^已撤回$|^Withdrawn$/)).toBeVisible({ timeout: 5000 })
+      // Apply button must NOT be present
+      await expect(page.getByRole('button', { name: /立即投递|Apply Now/i })).not.toBeVisible()
+
+      // Cleanup
+      await e2eDb.applicationEvent.deleteMany({ where: { applicationId: app.id } })
+      await e2eDb.application.delete({ where: { id: app.id } }).catch(() => {})
+    } finally {
+      await cleanup()
+    }
+  })
+
   test('student can withdraw an application', async ({ page }) => {
     const { job, company, cleanup } = await createTestJob('Withdraw')
 
@@ -253,10 +305,10 @@ test.describe('M5-T04 application smoke', () => {
 
       await withdrawBtn.click()
 
-      // After withdraw, the applied badge should disappear
-      await expect(page.getByText(/已撤回|withdrawn/i)).toBeVisible({ timeout: 10000 }).catch(() => {
-        // The page may refresh; just verify no "Applied" badge remains
-      })
+      // After withdraw, the page refreshes and must show the withdrawn badge (M5-T12 fix 2)
+      await expect(page.getByText(/已撤回|Withdrawn/)).toBeVisible({ timeout: 10000 })
+      // The apply button must NOT be visible after withdrawal (PRD: one application per job)
+      await expect(page.getByRole('button', { name: /立即投递|Apply Now/i })).not.toBeVisible({ timeout: 3000 })
 
       // Verify status in DB
       const updated = await e2eDb.application.findUnique({ where: { id: app.id } })

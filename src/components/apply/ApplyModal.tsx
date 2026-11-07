@@ -151,6 +151,15 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
   )
 }
 
+export function WithdrawnStatus() {
+  const t = useTranslations('publicJobs')
+  return (
+    <span className="inline-flex items-center rounded-md bg-muted text-muted-foreground px-4 py-2 text-sm font-semibold min-h-[36px]">
+      {t('withdrawnBadge')}
+    </span>
+  )
+}
+
 interface AppliedStatusProps {
   applicationId: string
 }
