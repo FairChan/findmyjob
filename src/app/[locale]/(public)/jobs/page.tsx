@@ -4,6 +4,11 @@ import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { stateLabel } from '@/lib/my-states'
 import { searchJobs } from '@/server/services/job-search'
+import type { CompanyTag, CompanySize } from '@prisma/client'
+
+const VALID_COMPANY_TAGS: CompanyTag[] = [
+  'FORTUNE_500', 'MULTINATIONAL', 'MY_LEADING', 'CN_OVERSEAS', 'SOE', 'ALUMNI', 'CHINESE_MY',
+]
 
 const listParamsSchema = z.object({
   q: z.string().trim().max(100).optional(),
@@ -12,6 +17,12 @@ const listParamsSchema = z.object({
   workMode: z.enum(['ONSITE', 'HYBRID', 'REMOTE']).optional(),
   sort: z.enum(['relevance', 'salary']).optional(),
   cursor: z.string().max(64).optional(),
+  // Extended filters (M5-T10)
+  industry: z.string().max(50).optional(),
+  /** Comma-separated CompanyTag values */
+  tags: z.string().max(200).optional(),
+  size: z.enum(['S1_10', 'S11_50', 'S51_200', 'S201_1000', 'S1000_PLUS']).optional(),
+  salary: z.coerce.number().int().min(1).max(1_000_000).optional(),
 })
 
 interface PageProps {
@@ -23,14 +34,18 @@ interface PageProps {
     workMode?: string
     sort?: string
     cursor?: string
+    industry?: string
+    tags?: string
+    size?: string
+    salary?: string
   }>
 }
 
 export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
   const raw = await searchParams
   const parsed = listParamsSchema.safeParse(raw)
-  const { q, type, state, workMode } = parsed.success ? parsed.data : {}
-  const hasFilters = !!(q || type || state || workMode)
+  const { q, type, state, workMode, industry, tags: rawTags, size, salary } = parsed.success ? parsed.data : {}
+  const hasFilters = !!(q || type || state || workMode || industry || rawTags || size || salary)
   return {
     robots: hasFilters ? 'noindex,follow' : undefined,
   }
@@ -42,7 +57,15 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
   const { locale } = await params
   const raw = await searchParams
   const parsed = listParamsSchema.safeParse(raw)
-  const { q, type, state, workMode, sort, cursor } = parsed.success ? parsed.data : {}
+  const { q, type, state, workMode, sort, cursor, industry, tags: rawTags, size, salary } =
+    parsed.success ? parsed.data : {}
+
+  // Parse and validate tags (comma-separated CompanyTag values from URL)
+  const tags =
+    rawTags
+      ? (rawTags.split(',').filter((t): t is CompanyTag => (VALID_COMPANY_TAGS as string[]).includes(t)) as CompanyTag[])
+      : undefined
+
   const t = await getTranslations('publicJobs')
 
   const result = await searchJobs({
@@ -52,6 +75,10 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
       ...(state ? { state } : {}),
       ...(workMode ? { workMode } : {}),
       ...(sort ? { sort } : {}),
+      ...(industry ? { industry } : {}),
+      ...(tags?.length ? { tags } : {}),
+      ...(size ? { size: size as CompanySize } : {}),
+      ...(salary ? { salaryAtLeast: salary } : {}),
     },
     page: { cursor, limit: PAGE_LIMIT },
     // Public job list: description not searched (guests and non-quota users)
@@ -69,6 +96,10 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
     if (state) p.set('state', state)
     if (workMode) p.set('workMode', workMode)
     if (sort) p.set('sort', sort)
+    if (industry) p.set('industry', industry)
+    if (rawTags) p.set('tags', rawTags)
+    if (size) p.set('size', size)
+    if (salary) p.set('salary', String(salary))
     if (nextCursor) p.set('cursor', nextCursor)
     return `/${locale}/jobs?${p.toString()}`
   }

@@ -32,6 +32,41 @@ beforeEach(async () => {
   companyId = company.id
 })
 
+/** Create a company with given attributes and return its id. */
+async function createCompany(attrs: { industryCode?: string; tags?: string[]; size?: string }) {
+  const c = await testDb.company.create({
+    data: {
+      legalName: `FilterCorp_${Date.now()}`,
+      verificationStatus: 'VERIFIED',
+      isActive: true,
+      industryCode: attrs.industryCode,
+      // Prisma accepts the enum values directly for array fields
+      ...(attrs.tags ? { tags: { set: attrs.tags as never } } : {}),
+      ...(attrs.size ? { size: attrs.size as never } : {}),
+    },
+  })
+  return c.id
+}
+
+/** Create a published job under a specific company. */
+async function createJobForCompany(cId: string, overrides: { title: string; salaryMin?: number; salaryMax?: number; salaryVisible?: boolean }) {
+  return testDb.job.create({
+    data: {
+      companyId: cId,
+      createdById,
+      title: overrides.title,
+      type: 'INTERNSHIP',
+      workMode: 'HYBRID',
+      description: 'filter-test description',
+      status: 'PUBLISHED',
+      publishedAt: new Date(),
+      salaryMin: overrides.salaryMin ?? null,
+      salaryMax: overrides.salaryMax ?? null,
+      salaryVisible: overrides.salaryVisible ?? true,
+    },
+  })
+}
+
 async function createJob(overrides: {
   title: string
   skills?: string[]
@@ -215,5 +250,145 @@ describe('searchJobs integration', () => {
     const result = await searchJobs({ q: sentinel, mode: 'EXACT', canSeeDescription: false })
     const ids = [...result.exact, ...result.related].map((h) => h.job.id)
     expect(ids).toHaveLength(0)
+  })
+})
+
+// ----- Extended filters (prototype C3) -----
+
+describe('searchJobs extended filters (C3)', () => {
+  it('C3: industry parent code includes all its children (empty query)', async () => {
+    const bankCo = await createCompany({ industryCode: 'finance.bank' })
+    const insCo = await createCompany({ industryCode: 'finance.insurance' })
+    const techCo = await createCompany({ industryCode: 'tech.software' })
+    const jBank = await createJobForCompany(bankCo, { title: `C3bank_${Date.now()}` })
+    const jIns = await createJobForCompany(insCo, { title: `C3ins_${Date.now()}` })
+    const jTech = await createJobForCompany(techCo, { title: `C3tech_${Date.now()}` })
+
+    const result = await searchJobs({ q: '', filters: { industry: 'finance' } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).toContain(jBank.id)
+    expect(ids).toContain(jIns.id)
+    expect(ids).not.toContain(jTech.id)
+  })
+
+  it('C3: industry child code matches exact child only', async () => {
+    const bankCo = await createCompany({ industryCode: 'finance.bank' })
+    const insCo = await createCompany({ industryCode: 'finance.insurance' })
+    const jBank = await createJobForCompany(bankCo, { title: `C3bankOnly_${Date.now()}` })
+    const jIns = await createJobForCompany(insCo, { title: `C3insOnly_${Date.now()}` })
+
+    const result = await searchJobs({ q: '', filters: { industry: 'finance.bank' } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).toContain(jBank.id)
+    expect(ids).not.toContain(jIns.id)
+  })
+
+  it('C3: tags match when company has any selected tag', async () => {
+    const soeCo = await createCompany({ tags: ['SOE'] })
+    const f500Co = await createCompany({ tags: ['FORTUNE_500'] })
+    const noCo = await createCompany({ tags: [] })
+    const jSoe = await createJobForCompany(soeCo, { title: `C3soe_${Date.now()}` })
+    const jF500 = await createJobForCompany(f500Co, { title: `C3f500_${Date.now()}` })
+    const jNone = await createJobForCompany(noCo, { title: `C3notag_${Date.now()}` })
+
+    const result = await searchJobs({ q: '', filters: { tags: ['FORTUNE_500', 'SOE'] } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).toContain(jSoe.id)
+    expect(ids).toContain(jF500.id)
+    expect(ids).not.toContain(jNone.id)
+  })
+
+  it('C3: tags filter with no matching tag returns no results', async () => {
+    const soeCo = await createCompany({ tags: ['SOE'] })
+    const jSoe = await createJobForCompany(soeCo, { title: `C3noMatchTag_${Date.now()}` })
+
+    const result = await searchJobs({ q: '', filters: { tags: ['MULTINATIONAL'] } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).not.toContain(jSoe.id)
+  })
+
+  it('C3: size filter matches exact company size', async () => {
+    const bigCo = await createCompany({ size: 'S1000_PLUS' })
+    const smallCo = await createCompany({ size: 'S1_10' })
+    const jBig = await createJobForCompany(bigCo, { title: `C3big_${Date.now()}` })
+    const jSmall = await createJobForCompany(smallCo, { title: `C3small_${Date.now()}` })
+
+    const result = await searchJobs({ q: '', filters: { size: 'S1000_PLUS' } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).toContain(jBig.id)
+    expect(ids).not.toContain(jSmall.id)
+  })
+
+  it('C3: salary band uses salaryMax (job with salaryMax >= band is included)', async () => {
+    const co = await createCompany({})
+    const jHigh = await createJobForCompany(co, { title: `C3salHigh_${Date.now()}`, salaryMax: 3500 })
+    const jLow = await createJobForCompany(co, { title: `C3salLow_${Date.now()}`, salaryMax: 2000 })
+
+    const result = await searchJobs({ q: '', filters: { salaryAtLeast: 3000 } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).toContain(jHigh.id)
+    expect(ids).not.toContain(jLow.id)
+  })
+
+  it('C3: salary band excludes hidden-salary jobs', async () => {
+    const co = await createCompany({})
+    const jHidden = await createJobForCompany(co, {
+      title: `C3salHidden_${Date.now()}`,
+      salaryMax: 9000,
+      salaryVisible: false,
+    })
+    const jVisible = await createJobForCompany(co, {
+      title: `C3salVisible_${Date.now()}`,
+      salaryMax: 4000,
+    })
+
+    const resultWithFilter = await searchJobs({ q: '', filters: { salaryAtLeast: 3000 } })
+    const idsFiltered = [...resultWithFilter.exact, ...resultWithFilter.related].map((h) => h.job.id)
+    // Hidden salary job must NOT appear in salary-filtered results
+    expect(idsFiltered).not.toContain(jHidden.id)
+    // Visible job with salaryMax >= 3000 must appear
+    expect(idsFiltered).toContain(jVisible.id)
+
+    // Without the salary filter, hidden salary job IS accessible
+    const resultAll = await searchJobs({ q: '' })
+    const idsAll = [...resultAll.exact, ...resultAll.related].map((h) => h.job.id)
+    expect(idsAll).toContain(jHidden.id)
+  })
+
+  it('C3: keyword search with industry filter (non-empty query)', async () => {
+    const sentinel = `C3keyInd_${Date.now()}`
+    const bankCo = await createCompany({ industryCode: 'finance.bank' })
+    const techCo = await createCompany({ industryCode: 'tech.software' })
+    const jBank = await createJobForCompany(bankCo, { title: `${sentinel} banking role` })
+    const jTech = await createJobForCompany(techCo, { title: `${sentinel} tech role` })
+
+    const result = await searchJobs({ q: sentinel, mode: 'EXACT', filters: { industry: 'finance' } })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).toContain(jBank.id)
+    expect(ids).not.toContain(jTech.id)
+  })
+
+  it('C3: keyword search with salary band excludes hidden salary (non-empty query)', async () => {
+    const sentinel = `C3keySal_${Date.now()}`
+    const co = await createCompany({})
+    const jHidden = await createJobForCompany(co, {
+      title: `${sentinel} hidden-sal`,
+      salaryMax: 10000,
+      salaryVisible: false,
+    })
+    const jVisible = await createJobForCompany(co, {
+      title: `${sentinel} visible-sal`,
+      salaryMax: 5000,
+    })
+
+    const result = await searchJobs({
+      q: sentinel,
+      mode: 'EXACT',
+      filters: { salaryAtLeast: 3000 },
+      canSeeDescription: false,
+    })
+    const ids = [...result.exact, ...result.related].map((h) => h.job.id)
+    expect(ids).not.toContain(jHidden.id)
+    expect(ids).toContain(jVisible.id)
   })
 })

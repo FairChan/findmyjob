@@ -22,6 +22,7 @@ const mockGetSetting = vi.hoisted(() => vi.fn())
 vi.mock('@/server/services/settings', () => ({ getSetting: mockGetSetting }))
 
 import { expandTerms, escapeIlike, searchJobs, _clearSynonymCache } from '@/server/services/job-search'
+import { industryMatches } from '@/server/lib/taxonomy/industries'
 
 // Synonym groups matching the prototype + seed data
 const SYNONYM_GROUPS: string[][] = [
@@ -139,6 +140,34 @@ describe('escapeIlike', () => {
   })
 })
 
+// ----- industryMatches unit tests -----
+
+describe('industryMatches', () => {
+  it('parent code matches child (finance.bank matches finance)', () => {
+    expect(industryMatches('finance.bank', 'finance')).toBe(true)
+  })
+
+  it('parent code matches all children (finance.insurance matches finance)', () => {
+    expect(industryMatches('finance.insurance', 'finance')).toBe(true)
+  })
+
+  it('child code matches itself exactly', () => {
+    expect(industryMatches('finance.bank', 'finance.bank')).toBe(true)
+  })
+
+  it('child code does not match sibling parent', () => {
+    expect(industryMatches('finance.bank', 'tech')).toBe(false)
+  })
+
+  it('null company code returns false', () => {
+    expect(industryMatches(null, 'finance')).toBe(false)
+  })
+
+  it('code like financeX does not match finance (must have dot separator)', () => {
+    expect(industryMatches('financeXYZ', 'finance')).toBe(false)
+  })
+})
+
 // ----- searchJobs with mocked DB -----
 
 describe('searchJobs', () => {
@@ -252,6 +281,38 @@ describe('searchJobs', () => {
     // 'b' has salaryVisible=false → toJobListItem nullifies salaryMax → ranked last by salary sort
     expect(ids).toContain('b')
     expect(ids[ids.length - 1]).toBe('b')
+  })
+
+  // ----- Extended filters (M5-T10, prototype C3) -----
+
+  it('C3: empty query with salaryAtLeast passes filter to findMany', async () => {
+    mockJobFindMany.mockResolvedValue([])
+    await searchJobs({ q: '', filters: { salaryAtLeast: 3000 } })
+    const callArgs = mockJobFindMany.mock.calls[0][0]
+    expect(callArgs.where).toMatchObject({ salaryVisible: true, salaryMax: { gte: 3000 } })
+  })
+
+  it('C3: empty query with industry filter passes company OR condition', async () => {
+    mockJobFindMany.mockResolvedValue([])
+    await searchJobs({ q: '', filters: { industry: 'finance' } })
+    const callArgs = mockJobFindMany.mock.calls[0][0]
+    expect(callArgs.where.company).toMatchObject({
+      OR: [{ industryCode: 'finance' }, { industryCode: { startsWith: 'finance.' } }],
+    })
+  })
+
+  it('C3: empty query with tags filter passes company hasSome condition', async () => {
+    mockJobFindMany.mockResolvedValue([])
+    await searchJobs({ q: '', filters: { tags: ['SOE', 'FORTUNE_500'] } })
+    const callArgs = mockJobFindMany.mock.calls[0][0]
+    expect(callArgs.where.company).toMatchObject({ tags: { hasSome: ['SOE', 'FORTUNE_500'] } })
+  })
+
+  it('C3: empty query with size filter passes company size condition', async () => {
+    mockJobFindMany.mockResolvedValue([])
+    await searchJobs({ q: '', filters: { size: 'S51_200' } })
+    const callArgs = mockJobFindMany.mock.calls[0][0]
+    expect(callArgs.where.company).toMatchObject({ size: 'S51_200' })
   })
 
   it('cursor pagination: second page starts after cursor job', async () => {

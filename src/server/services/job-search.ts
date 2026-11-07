@@ -1,6 +1,6 @@
 import 'server-only'
 import { Prisma } from '@prisma/client'
-import type { JobType, WorkMode } from '@prisma/client'
+import type { JobType, WorkMode, CompanyTag, CompanySize } from '@prisma/client'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { INDUSTRIES, getIndustryLabel } from '../lib/taxonomy/industries'
@@ -13,6 +13,14 @@ export interface SearchFilters {
   workMode?: WorkMode
   state?: string
   sort?: 'relevance' | 'salary'
+  /** Two-level industry code; selecting a parent includes all its children. */
+  industry?: string
+  /** Company positioning tags; job matches if company has any of the selected tags. */
+  tags?: CompanyTag[]
+  /** Company size filter. */
+  size?: CompanySize
+  /** Salary band: job must have salaryMax >= this value; hidden-salary jobs are excluded. */
+  salaryAtLeast?: number
 }
 
 export interface SearchPage {
@@ -256,7 +264,7 @@ type RawJobRow = {
 export async function searchJobs(params: SearchParams): Promise<SearchResult> {
   const { q, filters = {}, page = {}, canSeeDescription = false } = params
   const { cursor, limit = 20 } = page
-  const { type, workMode, state, sort = 'relevance' } = filters
+  const { type, workMode, state, sort = 'relevance', industry, tags, size, salaryAtLeast } = filters
 
   const [defaultMode, fallbackBelow] = await Promise.all([
     getSetting<string>('search.defaultMode', 'RELATED'),
@@ -276,6 +284,18 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
       company: { select: { id: true, legalName: true, displayNameZh: true, displayNameEn: true } },
     } as const
     const now = new Date()
+
+    // Build company-level filter for industry / tags / size
+    const companyWhere: Prisma.CompanyWhereInput = {}
+    if (industry) {
+      companyWhere.OR = [
+        { industryCode: industry },
+        { industryCode: { startsWith: industry + '.' } },
+      ]
+    }
+    if (tags?.length) companyWhere.tags = { hasSome: tags }
+    if (size) companyWhere.size = size
+
     const jobs = await db.job.findMany({
       where: {
         status: 'PUBLISHED',
@@ -283,6 +303,8 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
         ...(type ? { type } : {}),
         ...(workMode ? { workMode } : {}),
         ...(state ? { state } : {}),
+        ...(salaryAtLeast ? { salaryVisible: true, salaryMax: { gte: salaryAtLeast } } : {}),
+        ...(Object.keys(companyWhere).length ? { company: companyWhere } : {}),
       },
       orderBy: [{ publishedAt: 'desc' }, { id: 'asc' }],
       select: baseSelect,
@@ -366,6 +388,19 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
     ? Prisma.sql`AND j."workMode"::text = ${workMode}`
     : Prisma.empty
 
+  // Extended filters (M5-T10)
+  const industryParamFilter = industry
+    ? Prisma.sql`AND (c."industryCode" = ${industry} OR c."industryCode" LIKE ${industry + '.%'})`
+    : Prisma.empty
+  const tagsParamFilter =
+    tags?.length
+      ? Prisma.sql`AND EXISTS (SELECT 1 FROM unnest(c."tags") t WHERE t::text = ANY(ARRAY[${Prisma.join(tags.map((t) => Prisma.sql`${t}`), ',')}]))`
+      : Prisma.empty
+  const sizeParamFilter = size ? Prisma.sql`AND c."size"::text = ${size}` : Prisma.empty
+  const salaryBandFilter = salaryAtLeast
+    ? Prisma.sql`AND j."salaryVisible" = true AND j."salaryMax" >= ${salaryAtLeast}`
+    : Prisma.empty
+
   // Fetch candidate jobs using ILIKE (triggers gin_trgm_ops index on "title")
   const rows = await db.$queryRaw<RawJobRow[]>`
     SELECT DISTINCT
@@ -381,6 +416,10 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
       ${typeFilter}
       ${stateFilter}
       ${workModeFilter}
+      ${industryParamFilter}
+      ${tagsParamFilter}
+      ${sizeParamFilter}
+      ${salaryBandFilter}
       AND (
         (${titleConds})
         OR (${skillsConds})

@@ -141,3 +141,9 @@ export function getIndustryLabel(code: string, locale: 'zh' | 'en'): string | nu
   }
   return null
 }
+
+/** True when companyCode equals filterCode or is a child (e.g. 'finance.bank' matches 'finance'). */
+export function industryMatches(companyCode: string | null, filterCode: string): boolean {
+  if (!companyCode) return false
+  return companyCode === filterCode || companyCode.startsWith(filterCode + '.')
+}
