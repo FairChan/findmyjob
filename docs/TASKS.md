@@ -956,6 +956,16 @@
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 > 完成 2026-11-08：1–5 条全部完成。(1) pii-leak E2E 正向对照：goto status 200、waitForURL(/page=2/)、waitForURL(/keyword=/)、Step 8 详情页直开；[已隐藏] 断言和哨兵 STORAGE_KEY/WECHAT 断言均已补回。(2) validateDestArr（page-ref 负向检查）+ validateRectArr（size !== 4）+ 页面白名单 copyPages 前先清一遍 + /Group 重建；PDFNumber/PDFNull 改为 instanceof PDFRef 负向检查避免 CJS 导出差异导致的 TypeError。(3)(4) decodePDFRawStream 解码 Contents（兼容 PDFArray）、CropBox 数值断言、Dest[0] ref 重映射断言；/AA、/PA、/Next、GoTo3D、Thread、GoToR、GoToE、Form-1 /Dest、非页 ref、9999 0 R、Rect 3 数字 共 11 条守护测试全有实断言。(5) OTP 并发：rateLimitErrors + expiredOrNotFoundErrors >= 15，新增「无其他类型」断言。红跑证据（page-ref 检查）：resume-download-watermark 测试里 GoTo 注解用 D:['Fit']（D[0] 是 PDFName 而非 PDFRef），validateDestArr 正确拒绝：AssertionError: expected [] to have a length of 1 but got +0（tests/integration/resume-download-watermark.test.ts:270）；修正为 D:[doc.getPage(1).ref, PDFName.of('Fit')] 后通过。单元+集成：76 文件 / 1432 通过 / 0 失败 / 0 跳过。E2E：无人值守模式下无运行环境，未执行。
 
+#### [ ] M4-T26 GATE-M4 取证缺口：屏蔽与取消屏蔽、联系方式读取写审计；E2E 收集服务端日志并 grep 哨兵 PII；水印逐页断言（P0，用户签字前完成）
+依赖：M4-T25
+> 总控 2026-11-08 加入（监督会话决定由线 B 做）：GATE-M4 自动取证（`findmyjob-plan/.reports/2026-11-08-gate-m4/evidence.md`，按 88c67c6）发现下面 4 处，不修的话用户亲自签字时第 2.7 条和第 7 条过不了。只做这 4 条，不扩大范围。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
+做 / 验收：
+1. 屏蔽、取消屏蔽企业写审计：`src/server/services/privacy.ts` 里屏蔽（约 104–125 行）和取消屏蔽（约 127–140 行）在同一个 `$transaction` 里写 AuditLog，动作名 `student.block_company` / `student.unblock_company`，targetType `Company`，targetId 是 companyId，metadata 只放内部 ID；两个动作名补进 ARCHITECTURE §5.7 的清单；运营后台如果有审计动作的中英文显示文案，同步加上。测试：屏蔽后恰好 1 条 `student.block_company` 审计，actorId 是学生的 userId；取消屏蔽同理；把写审计删掉时测试失败。
+2. 联系方式读取写审计：`getContactForCompany` 成功返回明文时写一条 `contact.read` 审计（actorId 用调用方传入的 userId；如果签名里没有 userId，就给它加一个 ctx 参数，所有调用方一起改），metadata 只放 companyId、studentId，绝不放解密后的值；和读取放在同一个事务里，审计写入失败时整次读取失败（fail closed）。`docs/RUNBOOK.md` 场景 1 里查 `contact.read` 的说法和实现对上。测试：解锁后查看详情页（或直接调用）产生 1 条 `contact.read`，metadata 里没有手机号、邮箱这些明文；未解锁或被拒时不产生这条审计。
+3. E2E 收集服务端日志并 grep 哨兵：`playwright.config.ts` 的 webServer 设 `stdout: 'pipe'`、`stderr: 'pipe'`，把 dev server 的输出写进 `$TEMP` 下的日志文件（不要写进仓库目录），或者用 Playwright 自带的 webServer 日志；新增一条在全部 spec 跑完后执行的检查（globalTeardown 或单独的 spec，按项目顺序放最后），读这份日志，断言里面没有 pii-leak.spec.ts 用到的任何哨兵值（全名、手机号的几种形式、邮箱、微信、WhatsApp、LinkedIn、storageKey），同时断言日志里至少有 1 行 pino JSON（防止日志没收进来而空过）。
+4. 水印逐页断言：`tests/integration/resume-download-watermark.test.ts` 里守护水印的那条改用 3 页 PDF，逐页解码内容流，断言每一页都有水印文字的十六进制 `<…> Tj`；临时改成只给第 1 页加水印时，这条测试要失败。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
+
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 
 ---
@@ -1562,6 +1572,7 @@
 11. （已转给线 B 的 M3-T07：A-22 已定为「先净化再查看」，复用 M4-T19 的 `sanitizePdf`；这里只留作记录）来自线 B（TM-016）：运营在 /admin/companies/[companyId] 查看的企业认证材料，现在给的是原文件的签名 URL；PDF 改成先经 `sanitizePdf`（M4-T19）清理再下发，图片维持原样。
 12. 来自 M4-T12 复查（Low）：「被解锁」邮件通知（PRD §6，若 M5-T08 没覆盖就在这里做）；隐私中心里 APPLICATION 来源的解锁单独标注；学生屏蔽企业后它以前的查看记录是否隐藏（先保留，DECISIONS 记一行）。
 13. 来自 M4 修复任务的最终核对（Low）：`credits.adjust` 审计写入失败时整笔回滚的测试；解锁后查学生 userId 的那次 `studentProfile.findUnique` 也放进通知的 try/catch；global-setup 里补账本行和改余额放进同一个事务；水印考虑页面 /Rotate；format-date 的断言改成完整字符串比较，admin 页面的日期也走 format-date；mark-as-read action 加「传别人的通知 id 不生效」的测试；解锁通知 payload 断言完整形状；StudentNav 的 aria-label 改成导航用途的名字。
+14. 来自 GATE-M4 取证（2026-11-08）：「列表悬停 3 秒 ProfileView 不变」的 E2E 跑在 next dev 上（dev 不做 prefetch），也不数 ProfileView 行数，去掉 `prefetch={false}` 时没有测试会失败；改用 next start 跑这一条，或者加一条断言 Link 带 `prefetch={false}` 的组件测试。上传拒绝补路由级测试（断言 putObject 没被调用），`resumeFile.create` 失败时删掉已上传的对象；补「被移除的成员下一次请求被拒」的测试，以及只删掉 team.ts 里已用邀请检查时会失败的测试；补 `student.visibility.change` 审计的断言；pii-leak 断言响应里没有 `/api/resumes/`。另外，sanitizePdf 的 Dest/Rect 尾部元素现在只要求不是 PDFRef，按 M4-T25 原规格收紧为只能是 PDFName、PDFNumber、PDFNull（处理好 CJS 导出下的 instanceof）。
 
 ---
 
