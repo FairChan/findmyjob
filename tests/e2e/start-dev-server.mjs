@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os'
 
 const port = process.env.PORT || '3000'
 // SERVER_LOG_PATH is injected via playwright.config.ts webServer.env; fall back to tmpdir if absent.
-const logPath = process.env.SERVER_LOG_PATH || join(tmpdir(), 'findmyjob-laneb-e2e-server.log')
+const logPath = process.env.SERVER_LOG_PATH || join(tmpdir(), `findmyjob-e2e-server-${port}.log`)
 
 const ws = createWriteStream(logPath)
 
