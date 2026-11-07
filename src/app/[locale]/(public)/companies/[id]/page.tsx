@@ -1,7 +1,10 @@
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
+import { z } from 'zod'
 import { getPublicCompany, isOwnLogoKey } from '@/server/services/company'
 import { getSignedDisplayUrl } from '@/lib/storage'
+
+const companyIdSchema = z.string().cuid()
 
 export default async function CompanyPublicPage({
   params,
@@ -10,6 +13,8 @@ export default async function CompanyPublicPage({
 }) {
   const { locale, id } = await params
   const t = await getTranslations('companyProfile')
+
+  if (!companyIdSchema.safeParse(id).success) return notFound()
 
   const company = await getPublicCompany(id)
   if (!company) return notFound()

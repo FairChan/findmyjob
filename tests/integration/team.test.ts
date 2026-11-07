@@ -3,6 +3,7 @@
  * Tests invite, accept, remove, and role-change flows.
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { createHash } from 'crypto'
 
 vi.mock('@/server/auth', () => ({
   getSession: vi.fn(),
@@ -81,7 +82,17 @@ describe('inviteMember', () => {
     const invite = await testDb.companyInvite.findFirst({ where: { companyId: ctx.companyId } })
     expect(invite).toBeTruthy()
     expect(invite!.tokenHash).not.toBe(result.token)
+    expect(invite!.tokenHash).toBe(createHash('sha256').update(result.token).digest('hex'))
     expect(invite!.email).toBe('new@example.test')
+    // Plaintext token must not appear in AuditLog or Notification
+    const auditWithToken = await testDb.auditLog.findFirst({
+      where: { metadata: { string_contains: result.token } },
+    })
+    expect(auditWithToken).toBeNull()
+    const notifWithToken = await testDb.notification.findFirst({
+      where: { payload: { string_contains: result.token } },
+    })
+    expect(notifWithToken).toBeNull()
   })
 
   it('RECRUITER cannot invite members', async () => {
@@ -120,37 +131,48 @@ describe('inviteMember', () => {
     ).rejects.toBeInstanceOf(ValidationError)
   })
 
-  it('expired and accepted invites do not count toward the limit', async () => {
-    await seedSettings({ maxMembers: 3, maxInvitesPerDay: 10 })
+  it('expired invites do not count toward the limit', async () => {
+    await seedSettings({ maxMembers: 2, maxInvitesPerDay: 10 })
     const { userId, companyId } = await createEmployer(testDb)
     const ctx = await getCtx(userId)
 
-    // Create 2 expired invites and 1 accepted invite directly in DB
-    const expiresAt = new Date(Date.now() - 1000)
-    await testDb.companyInvite.createMany({
-      data: [
-        {
-          companyId,
-          email: 'expired-1@example.test',
-          role: 'RECRUITER',
-          tokenHash: 'deadbeef01',
-          expiresAt,
-          createdById: userId,
-        },
-        {
-          companyId,
-          email: 'expired-2@example.test',
-          role: 'RECRUITER',
-          tokenHash: 'deadbeef02',
-          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-          acceptedAt: new Date(),
-          createdById: userId,
-        },
-      ],
+    // Create an expired invite — should NOT count toward the pending limit
+    await testDb.companyInvite.create({
+      data: {
+        companyId,
+        email: 'expired-only@example.test',
+        role: 'RECRUITER',
+        tokenHash: 'deadbeef-expired-01',
+        expiresAt: new Date(Date.now() - 1000),
+        createdById: userId,
+      },
     })
 
-    // 1 member + 0 valid pending = 1, so invite should succeed
-    const result = await inviteMember(ctx, { email: 'fresh@example.test', role: 'RECRUITER' })
+    // 1 member + 0 valid pending = 1 < maxMembers=2, so invite should succeed
+    const result = await inviteMember(ctx, { email: 'fresh-exp@example.test', role: 'RECRUITER' })
+    expect(result.token).toBeTruthy()
+  })
+
+  it('accepted invites do not count toward the limit', async () => {
+    await seedSettings({ maxMembers: 2, maxInvitesPerDay: 10 })
+    const { userId, companyId } = await createEmployer(testDb)
+    const ctx = await getCtx(userId)
+
+    // Create an accepted invite — should NOT count toward the pending limit
+    await testDb.companyInvite.create({
+      data: {
+        companyId,
+        email: 'accepted-only@example.test',
+        role: 'RECRUITER',
+        tokenHash: 'deadbeef-accepted-01',
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        acceptedAt: new Date(),
+        createdById: userId,
+      },
+    })
+
+    // 1 member + 0 valid pending = 1 < maxMembers=2, so invite should succeed
+    const result = await inviteMember(ctx, { email: 'fresh-acc@example.test', role: 'RECRUITER' })
     expect(result.token).toBeTruthy()
   })
 
@@ -379,6 +401,38 @@ describe('removeMember', () => {
     await expect(
       removeMember(ctxA, { memberId: memberB!.id }),
     ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('removing a member expires their pending invites', async () => {
+    await seedSettings({ maxMembers: 10, maxInvitesPerDay: 10 })
+    const { userId: ownerUserId, companyId } = await createEmployer(testDb)
+    const ownerCtx = await getCtx(ownerUserId)
+
+    // Add an ADMIN member
+    const admin = await testDb.user.create({
+      data: { name: 'RemovedAdmin', email: 'removed-admin@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    const adminMember = await testDb.companyMember.create({
+      data: { companyId, userId: admin.id, role: 'ADMIN' },
+    })
+
+    // Admin sends a pending invite
+    const adminCtx = { userId: admin.id, companyId, role: 'ADMIN' as const }
+    await inviteMember(adminCtx, { email: 'pending-by-admin@example.test', role: 'RECRUITER' })
+
+    const beforeRemoval = await testDb.companyInvite.findFirst({
+      where: { companyId, createdById: admin.id },
+    })
+    expect(beforeRemoval!.expiresAt.getTime()).toBeGreaterThan(Date.now())
+
+    // Remove the admin
+    await removeMember(ownerCtx, { memberId: adminMember.id })
+
+    // Their pending invite should now be expired
+    const afterRemoval = await testDb.companyInvite.findFirst({
+      where: { companyId, createdById: admin.id },
+    })
+    expect(afterRemoval!.expiresAt.getTime()).toBeLessThanOrEqual(Date.now())
   })
 })
 

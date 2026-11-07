@@ -17,7 +17,16 @@ RUN pnpm install --frozen-lockfile && pnpm prisma generate
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN SKIP_ENV_VALIDATION=1 pnpm build
+# NEXT_PUBLIC_* vars are inlined at build time by Next.js; pass them as ARGs so the browser
+# bundle includes the correct DSN and release tag without baking secrets into image layers.
+ARG NEXT_PUBLIC_SENTRY_DSN=""
+ARG NEXT_PUBLIC_APP_TAG=""
+ARG NEXT_PUBLIC_SENTRY_ENVIRONMENT="production"
+RUN SKIP_ENV_VALIDATION=1 \
+    NEXT_PUBLIC_SENTRY_DSN=${NEXT_PUBLIC_SENTRY_DSN} \
+    NEXT_PUBLIC_APP_TAG=${NEXT_PUBLIC_APP_TAG} \
+    NEXT_PUBLIC_SENTRY_ENVIRONMENT=${NEXT_PUBLIC_SENTRY_ENVIRONMENT} \
+    pnpm build
 
 # ── migrate ───────────────────────────────────────────────────────────────────
 # pushed as ghcr.io/fairchan/findmyjob-migrate:<sha>

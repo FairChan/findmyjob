@@ -95,7 +95,7 @@ export async function inviteMember(
     action: 'company.invite.send',
     targetType: 'Company',
     targetId: companyId,
-    metadata: { email: input.email, role: input.role },
+    metadata: { role: input.role },
   })
 
   return { token }
@@ -122,6 +122,10 @@ export async function acceptInvite(ctx: UserCtx, token: string): Promise<void> {
   // OWNER role invites are not issued for non-managed companies
   if (invite.role === 'OWNER') {
     throw new ForbiddenError('OWNER can only be assigned via managed company transfer')
+  }
+  // Non-OWNER invites for managed companies must not go through the normal member flow
+  if (invite.company.isManaged) {
+    throw new ForbiddenError('Cannot accept member invite for a platform-managed company')
   }
 
   // Email must match (case-insensitive)
@@ -195,6 +199,18 @@ export async function removeMember(ctx: CompanyCtx, input: RemoveMemberInput): P
   if (target.userId === userId) throw new ForbiddenError('Cannot remove yourself')
 
   await db.companyMember.delete({ where: { id: input.memberId } })
+
+  // Expire any pending invites created by the removed member so they cannot
+  // accept them and re-join after removal.
+  await db.companyInvite.updateMany({
+    where: {
+      companyId,
+      createdById: target.userId,
+      acceptedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    data: { expiresAt: new Date() },
+  })
 
   await logAudit({
     actorId: userId,

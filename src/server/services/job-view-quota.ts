@@ -12,6 +12,7 @@ export type QuotaResult = {
 
 export type OpenJobResult = {
   allowed: boolean
+  isNewView: boolean
   quota: QuotaResult
 }
 
@@ -68,10 +69,11 @@ export async function openJob(studentId: string, jobId: string): Promise<OpenJob
   ])
   if (application || invitation) {
     const quota = await getQuota(studentId)
-    return { allowed: true, quota }
+    return { allowed: true, isNewView: false, quota }
   }
 
   let allowed = false
+  let isNewView = false
   let resultQuota!: QuotaResult
 
   await db.$transaction(async (tx) => {
@@ -93,6 +95,7 @@ export async function openJob(studentId: string, jobId: string): Promise<OpenJob
     })
     if (existing) {
       allowed = true
+      isNewView = false
       resultQuota = quota
       return
     }
@@ -100,6 +103,7 @@ export async function openJob(studentId: string, jobId: string): Promise<OpenJob
     // Quota exhausted
     if (quota.limit !== null && used >= quota.limit) {
       allowed = false
+      isNewView = false
       resultQuota = quota
       return
     }
@@ -107,8 +111,9 @@ export async function openJob(studentId: string, jobId: string): Promise<OpenJob
     // Within quota — record the view
     await tx.jobView.create({ data: { studentId, jobId } })
     allowed = true
+    isNewView = true
     resultQuota = { ...quota, used: used + 1 }
   })
 
-  return { allowed, quota: resultQuota }
+  return { allowed, isNewView, quota: resultQuota }
 }

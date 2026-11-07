@@ -8,6 +8,7 @@ import { db } from '@/server/db'
 import { getSession } from '@/server/auth'
 import { openJob } from '@/server/services/job-view-quota'
 import { toJobDetail } from '@/server/serializers/job'
+import { stateLabel } from '@/lib/my-states'
 import { ShareJobButton } from './ShareJobButton'
 
 const jobIdSchema = z.string().cuid()
@@ -128,20 +129,19 @@ export default async function JobDetailPage({ params }: PageProps) {
       redirect(`/${locale}/s/onboarding`)
     }
 
-    const { allowed } = await openJob(studentProfile.id, id)
+    const { allowed, isNewView } = await openJob(studentProfile.id, id)
 
     if (!allowed) {
       return <LockedJobCard title={job.title} companyName={companyName} state={job.state} t={t} jobId={id} />
     }
 
-    // Increment viewCount (best-effort, non-blocking)
-    db.job.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {})
+    // Only increment viewCount on first open — not on repeat visits
+    if (isNewView) {
+      db.job.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {})
+    }
   }
 
-  // Admin or own-company employer sees full detail
-  if (dbUser.role === 'ADMIN') {
-    db.job.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {})
-  }
+  // Admin sees full detail but does not count as a job view
 
   const detail = toJobDetail(job)
 
@@ -157,7 +157,7 @@ export default async function JobDetailPage({ params }: PageProps) {
         <h1 className="text-2xl font-bold mb-1">{detail.title}</h1>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mb-4">
           <span>{companyName}</span>
-          {detail.state && <span>· {detail.state}</span>}
+          {detail.state && <span>· {stateLabel(detail.state, locale)}</span>}
           {detail.city && <span>· {detail.city}</span>}
           <span>· {t(`type.${detail.type}`)}</span>
           <span>· {t(`workMode.${detail.workMode}`)}</span>
@@ -200,7 +200,7 @@ export default async function JobDetailPage({ params }: PageProps) {
           </section>
         )}
       </article>
-      <ShareJobButton jobId={id} label={t('shareJobLabel')} />
+      <ShareJobButton jobId={id} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
     </div>
   )
 }
@@ -241,7 +241,7 @@ function LockedJobCard({
             {t('inviteButton')}
           </Link>
         </div>
-        <ShareJobButton jobId={jobId} label={t('shareJobLabel')} />
+        <ShareJobButton jobId={jobId} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
       </div>
     </div>
   )

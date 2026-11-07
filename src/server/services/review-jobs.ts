@@ -15,7 +15,7 @@ export type ApproveJobInput = z.infer<typeof approveJobSchema>
 
 export const rejectJobSchema = z.object({
   jobId: z.string().min(1),
-  reviewNote: z.string().min(1).max(2000),
+  reviewNote: z.string().trim().min(1).max(2000),
   updatedAt: z.coerce.date(),
 })
 
@@ -53,16 +53,44 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
 
   const jobBase = await db.job.findUnique({
     where: { id: input.jobId },
-    select: { id: true, companyId: true, createdById: true, publishedAt: true },
+    select: { id: true },
   })
   if (!jobBase) throw new NotFoundError()
 
+  let companyId!: string
+  let createdById!: string
+
   await db.$transaction(async tx => {
+    // Read current state inside transaction to avoid race with concurrent updates
+    const job = await tx.job.findUnique({
+      where: { id: input.jobId },
+      select: { id: true, companyId: true, createdById: true, publishedAt: true, status: true },
+    })
+    if (!job) throw new NotFoundError()
+
+    companyId = job.companyId
+    createdById = job.createdById
+
+    // Status check first so callers get a consistent ValidationError for wrong-status jobs
+    if (job.status !== 'PENDING_REVIEW') {
+      throw new ValidationError('职位已被修改或已处理，请刷新后再审')
+    }
+
+    // Re-check company verification and isActive before approving
+    const company = await tx.company.findUnique({
+      where: { id: job.companyId },
+      select: { verificationStatus: true, isActive: true },
+    })
+    if (!company || company.verificationStatus !== 'VERIFIED' || !company.isActive) {
+      throw new ForbiddenError('Company is not verified or is inactive')
+    }
+
     const result = await tx.job.updateMany({
       where: { id: input.jobId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
       data: {
         status: 'PUBLISHED',
-        publishedAt: jobBase.publishedAt ?? new Date(),
+        // Preserve original publishedAt if re-approving after edit; otherwise stamp now
+        publishedAt: job.publishedAt ?? new Date(),
         reviewNote: null,
       },
     })
@@ -71,13 +99,16 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
       throw new ValidationError('职位已被修改或已处理，请刷新后再审')
     }
 
-    await tx.company.update({
-      where: { id: jobBase.companyId },
-      data: { approvedJobCount: { increment: 1 } },
-    })
+    // Only increment approvedJobCount the first time the job is published
+    if (job.publishedAt === null) {
+      await tx.company.update({
+        where: { id: job.companyId },
+        data: { approvedJobCount: { increment: 1 } },
+      })
+    }
 
-    await createNotification(tx, jobBase.createdById, 'job.approved', {
-      jobId: jobBase.id,
+    await createNotification(tx, job.createdById, 'job.approved', {
+      jobId: job.id,
     })
   })
 

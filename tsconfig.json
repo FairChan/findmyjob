@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "psl": [
+        "./node_modules/psl/types/index.d.ts"
       ]
     }
   },

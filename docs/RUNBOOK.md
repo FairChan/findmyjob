@@ -188,7 +188,7 @@ IAM 权限见 M7-H01 配置表：
 ### 检查备份是否正常运行
 
 1. 登录 healthchecks.io，确认 `findmyjob-backup` 显示绿色。
-2. 或者列出 S3 对象（需要 List/Get 权限；**使用 restore-reader 凭据，在离线机器上执行**）：
+2. 或者列出 S3 对象（需要 List/Get 权限；**使用 restore-reader 凭据，在管理机或其他有网络访问权限的机器上执行**）：
    ```bash
    read -rs AWS_ACCESS_KEY_ID && export AWS_ACCESS_KEY_ID
    read -rs AWS_SECRET_ACCESS_KEY && export AWS_SECRET_ACCESS_KEY
@@ -251,7 +251,8 @@ $DC --profile ops run --rm -T --entrypoint aws \
   restore s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 10
 
 # 3. 执行演练：私钥从 USB 经 stdin 传进 restore 容器。
-#    --keep 是为了留下演练库给第 4 步用；Session 仍由脚本的 cleanup trap 清空，失败时库会被删掉
+#    --keep 是为了留下演练库给第 4 步用；Session 仍由脚本的 cleanup trap 清空；
+#    --keep 只在演练完整完成（RESTORE_COMPLETE=1）时生效，演练过程出错时库仍会被删掉
 cat /media/usb/age-private.key | \
   $DC --profile ops run --rm -T \
     -e RESTORE_ADMIN_DATABASE_URL -e RESTORE_S3_ACCESS_KEY_ID -e RESTORE_S3_SECRET_ACCESS_KEY -e BACKUP_S3_BUCKET \
@@ -319,6 +320,11 @@ unset RESTORE_S3_ACCESS_KEY_ID RESTORE_S3_SECRET_ACCESS_KEY RESTORE_ADMIN_DATABA
    read -rs RESTORE_S3_SECRET_ACCESS_KEY && export RESTORE_S3_SECRET_ACCESS_KEY
    read -rs RESTORE_ADMIN_DATABASE_URL   && export RESTORE_ADMIN_DATABASE_URL   # postgresql://findmyjob_owner:<pass>@postgres:5432/postgres
    export BACKUP_S3_BUCKET=findmyjob-backups
+   # aws CLI 认 AWS_* 变量名；用同一份凭据列出可用备份，由操作人选目标 key
+   export AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$RESTORE_S3_SECRET_ACCESS_KEY"
+   $DC --profile ops run --rm -T --entrypoint aws \
+     -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY \
+     restore s3 ls s3://findmyjob-backups/db/daily/ --region ap-southeast-5 | tail -n 10
 
    cat /media/usb/age-private.key | \
      $DC --profile ops run --rm -T \
@@ -377,7 +383,7 @@ unset RESTORE_S3_ACCESS_KEY_ID RESTORE_S3_SECRET_ACCESS_KEY RESTORE_ADMIN_DATABA
 **判断**：收到举报，或 AuditLog 里出现 `contact.read` 记录但对应 TalentUnlock 不存在。
 
 **步骤**：
-1. 以只读身份运行「只读 SQL 模板」里的 `talent.view` / `talent.unlock` 查询，确认涉及的 companyId 和 studentId（只看 ID 和数量，不查完整行）。
+1. 以只读身份运行「只读 SQL 模板」里的 `talent.view` / `talent.unlock` 查询，确认涉及的 actorId 和 studentId（只看 ID 和数量，不查完整行）。
 2. 若确认企业读到了联系方式，立即禁用该企业并清除其会话（以 findmyjob_owner 执行）：
    ```sql
    UPDATE "Company" SET "isActive" = false WHERE id = '<companyId>';
@@ -469,9 +475,10 @@ BEGIN READ ONLY;
 SELECT "targetId"  AS "studentId",
        COUNT(*)    AS "viewCount"
 FROM   "AuditLog"
-WHERE  action       = 'talent.view'
-  AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
-  AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
+WHERE  action        = 'talent.view'
+  AND  "targetType"  = 'StudentProfile'
+  AND  "createdAt"  >= '<开始时间 UTC>'::timestamptz
+  AND  "createdAt"  <  '<结束时间 UTC>'::timestamptz
 GROUP  BY "targetId"
 ORDER  BY "viewCount" DESC
 LIMIT  100;
@@ -486,9 +493,10 @@ SELECT "targetId"    AS "studentId",
        "actorId"     AS "actorUserId",
        COUNT(*)      AS "unlockCount"
 FROM   "AuditLog"
-WHERE  action       = 'talent.unlock'
-  AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
-  AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
+WHERE  action        = 'talent.unlock'
+  AND  "targetType"  = 'StudentProfile'
+  AND  "createdAt"  >= '<开始时间 UTC>'::timestamptz
+  AND  "createdAt"  <  '<结束时间 UTC>'::timestamptz
 GROUP  BY "targetId", "actorId"
 ORDER  BY "unlockCount" DESC
 LIMIT  100;
@@ -503,9 +511,10 @@ SELECT "targetId"    AS "studentId",
        "actorId"     AS "actorUserId",
        COUNT(*)      AS "downloadCount"
 FROM   "AuditLog"
-WHERE  action       = 'resume.download'
-  AND  "createdAt" >= '<开始时间 UTC>'::timestamptz
-  AND  "createdAt" <  '<结束时间 UTC>'::timestamptz
+WHERE  action        = 'resume.download'
+  AND  "targetType"  = 'StudentProfile'
+  AND  "createdAt"  >= '<开始时间 UTC>'::timestamptz
+  AND  "createdAt"  <  '<结束时间 UTC>'::timestamptz
 GROUP  BY "targetId", "actorId"
 ORDER  BY "downloadCount" DESC
 LIMIT  100;

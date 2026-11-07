@@ -319,6 +319,9 @@ jobs:
         run: |
           docker build \
             --target runner \
+            --build-arg NEXT_PUBLIC_SENTRY_DSN="${{ vars.NEXT_PUBLIC_SENTRY_DSN }}" \
+            --build-arg NEXT_PUBLIC_APP_TAG="${{ github.sha }}" \
+            --build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT="production" \
             --tag "ghcr.io/fairchan/findmyjob:${{ github.sha }}" \
             --file deploy/Dockerfile \
             .

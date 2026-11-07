@@ -4,7 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { headers } from 'next/headers'
 import { requireAdmin } from '@/server/authz'
 import { getJobForReview } from '@/server/services/review-jobs'
-import { ReviewJobForm } from './ReviewJobForm'
+import { ReviewJobForm } from './review-job-form'
 
 export default async function AdminJobReviewPage({
   params,
@@ -80,9 +80,15 @@ export default async function AdminJobReviewPage({
           {job.deadline && (
             <>
               <dt className="text-muted-foreground">{t('deadlineLabel')}</dt>
-              <dd>{job.deadline.toLocaleDateString('en-MY')}</dd>
+              <dd>{job.deadline.toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' })}</dd>
             </>
           )}
+
+          <dt className="text-muted-foreground">{t('acceptsStudentPassLabel')}</dt>
+          <dd>{job.acceptsStudentPass ? t('yes') : t('no')}</dd>
+
+          <dt className="text-muted-foreground">{t('sponsorsWorkPassLabel')}</dt>
+          <dd>{job.sponsorsWorkPass ? t('yes') : t('no')}</dd>
 
           {job.languages.length > 0 && (
             <>

@@ -181,8 +181,9 @@ services:
   # Restore service: runs restore-drill.sh inside the backend network so it can
   # reach postgres by service name. Credentials and age private key are injected
   # at run-time only — never stored in env files.
-  # Usage (演练/真实恢复，在服务器上执行):
-  #   cat /media/usb/age.key | docker compose --profile ops run -T --rm \
+  # Usage (演练/真实恢复，在服务器上执行，需先 cd /opt/findmyjob):
+  #   DC="docker compose -f /opt/findmyjob/docker-compose.prod.yml --env-file /opt/findmyjob/.env"
+  #   cat /media/usb/age.key | $DC --profile ops run -T --rm \
   #     -e RESTORE_ADMIN_DATABASE_URL \
   #     -e RESTORE_S3_ACCESS_KEY_ID \
   #     -e RESTORE_S3_SECRET_ACCESS_KEY \

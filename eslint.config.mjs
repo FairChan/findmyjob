@@ -120,8 +120,6 @@ const eslintConfig = [
     files: [
       'src/server/services/contact-access.ts',
       'src/server/services/credits.ts',
-      // review-company creates CreditWallet (balance=0) on approval; ledger mutations remain in credits.ts
-      'src/server/services/review-company.ts',
       'prisma/seed.ts',
       'prisma/seed-load.ts',
       'tests/**/*.ts',

@@ -7,18 +7,24 @@ import { VersionMismatchError } from '../errors'
 export async function needsReconsent(userId: string): Promise<boolean> {
   const currentVersion = await getSetting('legal.currentVersion', '2026-11-draft')
 
+  // Query the LATEST record for each consent type regardless of version.
+  // A revocation (granted=false) recorded under any version must be honoured;
+  // granting under an old version also requires reconsent for the new version.
   const [terms, privacy] = await Promise.all([
     db.consent.findFirst({
-      where: { userId, type: 'TERMS', version: currentVersion },
+      where: { userId, type: 'TERMS' },
       orderBy: { createdAt: 'desc' },
     }),
     db.consent.findFirst({
-      where: { userId, type: 'PRIVACY', version: currentVersion },
+      where: { userId, type: 'PRIVACY' },
       orderBy: { createdAt: 'desc' },
     }),
   ])
 
-  return terms?.granted !== true || privacy?.granted !== true
+  return (
+    terms?.granted !== true || terms.version !== currentVersion ||
+    privacy?.granted !== true || privacy.version !== currentVersion
+  )
 }
 
 export async function recordLegalConsent(

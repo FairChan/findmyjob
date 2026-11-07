@@ -152,7 +152,12 @@ function redactNameParts(text: string, fullName: string): string {
     for (const seg of fullName.split(/\s+/)) {
       if ([...seg].length >= 3) {
         const escaped = seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        result = result.replace(new RegExp(`\\b${escaped}\\b`, 'gi'), HIDDEN)
+        // Use Unicode-aware boundaries: negative lookahead/lookbehind for broader letter ranges
+        // so accented characters (é, ü, ñ, etc.) are treated as letters, not word boundaries.
+        result = result.replace(
+          new RegExp(`(?<![a-zA-Z\\u00C0-\\u02AF])${escaped}(?![a-zA-Z\\u00C0-\\u02AF])`, 'gi'),
+          HIDDEN,
+        )
       }
     }
   }
@@ -191,11 +196,19 @@ export function toTalentCard(
     school: profile.school
       ? {
           id: profile.school.id,
-          nameZh: redact(profile.school.nameZh),
-          nameEn: redact(profile.school.nameEn),
+          nameZh: unlocked
+            ? redact(profile.school.nameZh)
+            : redactNameParts(redact(profile.school.nameZh), profile.fullName),
+          nameEn: unlocked
+            ? redact(profile.school.nameEn)
+            : redactNameParts(redact(profile.school.nameEn), profile.fullName),
         }
       : null,
-    major: profile.major != null ? redact(profile.major) : null,
+    major: profile.major != null
+      ? unlocked
+        ? redact(profile.major)
+        : redactNameParts(redact(profile.major), profile.fullName)
+      : null,
     degreeLevel: profile.degreeLevel,
     graduationYear: profile.graduationYear,
     cgpa: profile.cgpa != null ? profile.cgpa.toString() : null,

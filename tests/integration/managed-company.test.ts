@@ -97,6 +97,19 @@ describe('createManagedCompany', () => {
     await expect(createManagedCompany(ctx, baseInput)).rejects.toBeInstanceOf(ForbiddenError)
   })
 
+  it('suspended admin is rejected', async () => {
+    const admin = await testDb.user.create({
+      data: {
+        name: faker.person.fullName(),
+        email: `suspended-admin-${Date.now()}@example.test`,
+        emailVerified: true,
+        role: 'ADMIN',
+        status: 'SUSPENDED',
+      },
+    })
+    await expect(createManagedCompany({ userId: admin.id }, baseInput)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
   it('admin can create multiple managed companies (no member constraint)', async () => {
     const ctx = await makeAdminCtx()
     const c1 = await createManagedCompany(ctx, { legalName: `MCo-A-${Date.now()}` })
@@ -135,13 +148,13 @@ describe('postJobAsPlatform', () => {
     expect(audit).not.toBeNull()
   })
 
-  it('approvedJobCount incremented after platform post', async () => {
+  it('approvedJobCount NOT incremented for platform posts (bypasses review queue)', async () => {
     const ctx = await makeAdminCtx()
     const company = await createManagedCompany(ctx, { legalName: `MCo-Cnt-${Date.now()}` })
     expect(company.approvedJobCount).toBe(0)
     await postJobAsPlatform(ctx, company.id, jobInput)
     const updated = await testDb.company.findUnique({ where: { id: company.id } })
-    expect(updated!.approvedJobCount).toBe(1)
+    expect(updated!.approvedJobCount).toBe(0)
   })
 
   it('non-managed company is rejected', async () => {
@@ -419,41 +432,44 @@ describe('acceptManagedTransfer', () => {
     await expect(postJobAsPlatform(adminCtx, company.id, jobInput)).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it('second sequential accept (via updateMany guard) is rejected', async () => {
-    // After the first accept, isManaged=false → updateMany count=0 → ValidationError
-    const email1 = `seq1-${Date.now()}@example.test`
-    const email2 = `seq2-${Date.now()}@example.test`
+  it('concurrent dual-accept: only one succeeds, lockXact serialises transfers', async () => {
+    // Both invites are valid and un-expired at the same time.
+    // Promise.all drives true concurrent transactions; lockXact on companyId prevents deadlock.
+    const email1 = `con1-${Date.now()}@example.test`
+    const email2 = `con2-${Date.now()}@example.test`
     const adminCtx = await makeAdminCtx()
-    const company = await createManagedCompany(adminCtx, { legalName: `MCo-Seq-${Date.now()}` })
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-Con-${Date.now()}` })
     const { token: t1 } = await transferCompany(adminCtx, company.id, {
       ownerEmail: email1,
       verificationRecord: 'Phone callback',
       verificationMethod: 'PHONE_CALLBACK',
     })
-    // Create a second invite — simulate two legit invites
     const { token: t2 } = await transferCompany(adminCtx, company.id, {
       ownerEmail: email2,
       verificationRecord: 'Phone callback',
       verificationMethod: 'PHONE_CALLBACK',
     })
-    // Un-expire the second invite (since first accept revoked it), then try
-    await testDb.companyInvite.updateMany({
-      where: { companyId: company.id, email: email2 },
-      data: { expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) },
-    })
-
+    // Both invites are valid; un-expire t2 (revoked by t1 setup above is not an issue here
+    // since both invites are still active at this point - transferCompany creates them, not revokes)
     const { userId: uid1 } = await createEmployerWithoutCompany(testDb, { email: email1 })
     const { userId: uid2 } = await createEmployerWithoutCompany(testDb, { email: email2 })
 
-    await acceptManagedTransfer({ userId: uid1 }, t1)
+    // Run both concurrently — exactly one must succeed, one must throw ValidationError
+    const results = await Promise.allSettled([
+      acceptManagedTransfer({ userId: uid1 }, t1),
+      acceptManagedTransfer({ userId: uid2 }, t2),
+    ])
 
-    // After transfer, isManaged=false; updateMany guard catches this
-    await expect(acceptManagedTransfer({ userId: uid2 }, t2)).rejects.toBeInstanceOf(ValidationError)
+    const fulfilled = results.filter(r => r.status === 'fulfilled')
+    const rejected = results.filter(r => r.status === 'rejected') as PromiseRejectedResult[]
+    expect(fulfilled).toHaveLength(1)
+    expect(rejected).toHaveLength(1)
+    expect(rejected[0].reason).toBeInstanceOf(ValidationError)
 
-    // Only uid1 is owner
+    // Exactly one OWNER member exists
     const members = await testDb.companyMember.findMany({ where: { companyId: company.id } })
     expect(members).toHaveLength(1)
-    expect(members[0].userId).toBe(uid1)
+    expect(members[0].role).toBe('OWNER')
   })
 })
 
@@ -483,6 +499,35 @@ describe('team.acceptInvite OWNER invite rejection', () => {
       data: { name: 'Target', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
     })
     await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('non-OWNER invite for managed company via acceptInvite → ForbiddenError', async () => {
+    const adminCtx = await makeAdminCtx()
+    const company = await createManagedCompany(adminCtx, { legalName: `MCo-NOwnerManaged-${Date.now()}` })
+    const email = `non-owner-managed-${Date.now()}@example.test`
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    // Insert an ADMIN-role invite directly for the managed company
+    await testDb.companyInvite.create({
+      data: {
+        companyId: company.id,
+        email,
+        role: 'ADMIN',
+        tokenHash: hash,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        createdById: adminCtx.userId,
+      },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+    // Company must still be managed (no member was added)
+    const updated = await testDb.company.findUnique({ where: { id: company.id } })
+    expect(updated!.isManaged).toBe(true)
+    const member = await testDb.companyMember.findFirst({ where: { companyId: company.id } })
+    expect(member).toBeNull()
   })
 })
 
@@ -536,6 +581,37 @@ describe('transferCompany verificationMethod', () => {
         verificationMethod: 'DOMAIN_MATCH',
       }),
     ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('DOMAIN_MATCH rejects public suffix as email domain (PSL check)', async () => {
+    // email @co.uk is a public suffix — should NOT match a company website like corp.co.uk
+    const ctx = await makeAdminCtx()
+    const company = await createManagedCompany(ctx, {
+      legalName: `MCo-DM-PSL-${Date.now()}`,
+      website: 'https://corp.co.uk',
+    })
+    await expect(
+      transferCompany(ctx, company.id, {
+        ownerEmail: 'admin@co.uk',
+        verificationRecord: 'Domain match',
+        verificationMethod: 'DOMAIN_MATCH',
+      }),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('DOMAIN_MATCH accepts subdomain of same registerable domain', async () => {
+    const ctx = await makeAdminCtx()
+    const company = await createManagedCompany(ctx, {
+      legalName: `MCo-DM-Sub-${Date.now()}`,
+      website: 'https://careers.techcorp.com',
+    })
+    // owner@techcorp.com shares the same registerable domain as careers.techcorp.com
+    const result = await transferCompany(ctx, company.id, {
+      ownerEmail: 'owner@techcorp.com',
+      verificationRecord: 'Domain match confirmed',
+      verificationMethod: 'DOMAIN_MATCH',
+    })
+    expect(typeof result.token).toBe('string')
   })
 })
 

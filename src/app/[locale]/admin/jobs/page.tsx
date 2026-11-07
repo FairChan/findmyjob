@@ -12,6 +12,7 @@ export default async function AdminJobsPage({
   const { locale } = await params
   const ctx = await requireAdmin(await headers())
   const t = await getTranslations('adminJobs')
+  const tJobs = await getTranslations('jobs')
   const jobs = await listPendingJobs(ctx)
 
   return (
@@ -39,12 +40,10 @@ export default async function AdminJobsPage({
                   <td className="p-3 font-medium">{job.title}</td>
                   <td className="p-3 text-muted-foreground">{job.company.legalName}</td>
                   <td className="p-3 text-muted-foreground">
-                    <span className="inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-xs text-yellow-800">
-                      {t('statusPending')}
-                    </span>
+                    {tJobs(`type.${job.type}`)}
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(job.updatedAt).toLocaleDateString(locale)}
+                    {new Date(job.updatedAt).toLocaleDateString(locale === 'zh' ? 'zh-MY' : 'en-MY', { timeZone: 'Asia/Kuala_Lumpur' })}
                   </td>
                   <td className="p-3 text-right">
                     <Link

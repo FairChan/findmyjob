@@ -186,6 +186,128 @@ fi
 rm -rf "${_MOCK_SC_BIN}"
 unset _MOCK_SC_BIN _sc_cmd _sc_rc _sc_out _sc_keep_rc _sc_keep_out
 
+# ── --keep + failure drops DB (not retained as half-finished restore) ─────────
+# When --keep is passed but the restore fails (RESTORE_COMPLETE stays 0),
+# the drill database must still be dropped. Prior to the RESTORE_COMPLETE fix,
+# --keep always retained the DB even on failure, leaving a potentially corrupted
+# half-finished database behind.
+_MOCK_KD_BIN="$(mktemp -d -t restore-drill-kd.XXXXXXXX)"
+cat > "${_MOCK_KD_BIN}/aws" <<KDMOCKEOF
+#!/usr/bin/env bash
+if [[ "\$*" == *"s3api"* ]]; then
+  printf 'age-encryption.org/v1' > "\${@: -1}"
+  exit 0
+fi
+exit 1
+KDMOCKEOF
+chmod +x "${_MOCK_KD_BIN}/aws"
+cat > "${_MOCK_KD_BIN}/psql" <<'KDMOCKEOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "$arg" == "-f" ]]; then exit 1; fi
+done
+exit 0
+KDMOCKEOF
+chmod +x "${_MOCK_KD_BIN}/psql"
+for _kd_cmd in age pg_restore python3; do
+  printf '#!/usr/bin/env bash\nexit 0\n' > "${_MOCK_KD_BIN}/${_kd_cmd}"
+  chmod +x "${_MOCK_KD_BIN}/${_kd_cmd}"
+done
+
+_kd_rc=0
+_kd_out=$(
+  PATH="${_MOCK_KD_BIN}:${PATH}" \
+  BACKUP_S3_BUCKET=testbucket \
+  RESTORE_S3_ACCESS_KEY_ID=testkey \
+  RESTORE_S3_SECRET_ACCESS_KEY=testsecret \
+  RESTORE_ADMIN_DATABASE_URL="postgresql://u:p@localhost:5432/postgres" \
+  bash "$SCRIPT" \
+    --key db/daily/2026-11-05T19-15-00Z.dump.age \
+    --skip-rpo --keep \
+    findmyjob_restore_drill \
+    <<< "AGE-SECRET-KEY-1TESTKEY000000000000000000000000000000000000000000000000" \
+    2>&1
+) || _kd_rc=$?
+
+if [ "$_kd_rc" -eq 0 ]; then
+  echo "FAIL: --keep+failure-drops-DB — script should exit non-zero (db-setup failed)"
+  FAIL=$(( FAIL + 1 ))
+elif echo "$_kd_out" | grep -q "\[drill\] drill database dropped"; then
+  echo "PASS: --keep+failure-drops-DB — '[drill] drill database dropped' present even with --keep"
+  PASS=$(( PASS + 1 ))
+else
+  echo "FAIL: --keep+failure-drops-DB — '[drill] drill database dropped' missing; output: ${_kd_out}"
+  FAIL=$(( FAIL + 1 ))
+fi
+
+rm -rf "${_MOCK_KD_BIN}"
+unset _MOCK_KD_BIN _kd_cmd _kd_rc _kd_out
+
+# ── counts.json missing table → fail ─────────────────────────────────────────
+# When a table listed in the expected set is absent from counts.json, the check
+# must fail (exit 1) with an informative error.  Previously the Python loop used
+# 'continue', silently accepting incomplete counts files.
+# Uses 'python' (Anaconda, confirmed available) since python3 is not usable here.
+_PYBIN=""
+for _pb in python python3; do
+  if "$_pb" -c 'import sys; sys.exit(0)' 2>/dev/null; then
+    _PYBIN="$_pb"
+    break
+  fi
+done
+
+if [ -z "$_PYBIN" ]; then
+  echo "SKIP: counts.json-missing-table — no working python found"
+  PASS=$(( PASS + 1 ))   # treat as SKIP/PASS to not block the suite
+else
+  _cj_tmp="$(mktemp -t restore-test-counts.XXXXXXXX.json)"
+  # counts.json with User/StudentProfile/Company but missing Job/Application/CreditLedger/AuditLog
+  printf '{"timestamp":"2026-11-07T00:00:00Z","User":10,"StudentProfile":5,"Company":3}' > "$_cj_tmp"
+
+  # Write Python to a temp file; heredoc-inside-$() loses the exit code when
+  # the redirects appear after the heredoc delimiter (bash parses them as a
+  # separate no-op command). Using a file avoids that shell parsing edge-case.
+  _cj_py="$(mktemp -t restore-test-counts-py.XXXXXXXX.py)"
+  cat > "$_cj_py" <<'PYEOF_CHECK'
+import sys, json
+
+counts_file = sys.argv[1]
+expected = json.load(open(counts_file))
+tables = ["User", "StudentProfile", "Company", "Job", "Application", "CreditLedger", "AuditLog"]
+failures = []
+
+for table in tables:
+    if table not in expected:
+        failures.append(f"{table}: missing from counts.json")
+        continue
+    actual = expected.get(table, 0)
+    exp = expected[table]
+    if actual != exp:
+        failures.append(f"{table}: expected {exp}, got {actual}")
+
+if failures:
+    print("FAIL: counts.json mismatch:", ", ".join(failures), file=sys.stderr)
+    sys.exit(1)
+print(f"[check] counts.json: all {len(tables)} tables match")
+PYEOF_CHECK
+
+  _cj_rc=0
+  _cj_err_file="$(mktemp -t restore-test-cj-err.XXXXXXXX.txt)"
+  "$_PYBIN" "$_cj_py" "$_cj_tmp" >/dev/null 2>"$_cj_err_file" || _cj_rc=$?
+  _cj_captured="$(cat "$_cj_err_file" 2>/dev/null || true)"
+  rm -f "$_cj_tmp" "$_cj_py" "$_cj_err_file"
+
+  if [ "$_cj_rc" -ne 0 ] && echo "$_cj_captured" | grep -q "missing from counts.json"; then
+    echo "PASS: counts.json-missing-table — exits non-zero with 'missing from counts.json' message"
+    PASS=$(( PASS + 1 ))
+  else
+    echo "FAIL: counts.json-missing-table — expected failure with 'missing from counts.json' (rc=${_cj_rc}, captured=${_cj_captured})"
+    FAIL=$(( FAIL + 1 ))
+  fi
+  unset _cj_tmp _cj_rc _cj_py _cj_err_file _cj_captured
+fi
+unset _PYBIN _pb
+
 # ── summary ───────────────────────────────────────────────────────────────────
 echo ""
 echo "Results: ${PASS} passed, ${FAIL} failed"

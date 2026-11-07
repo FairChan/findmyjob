@@ -91,8 +91,8 @@ describe('needsReconsent', () => {
     expect(result).toBe(true)
   })
 
-  it('returns true when consented to old version only', async () => {
-    // DB returns null because version filter does not match old-version records
+  it('returns true when no consent records exist (new user)', async () => {
+    // No records found — always requires reconsent
     mockConsentFindFirst.mockResolvedValue(null)
 
     const result = await needsReconsent('u-old')
@@ -120,6 +120,59 @@ describe('needsReconsent', () => {
       const whereArg = (call[0] as { where?: Record<string, unknown> })?.where
       expect(whereArg).not.toHaveProperty('granted')
     })
+  })
+
+  it('does not filter query by version (checks latest record regardless of version)', async () => {
+    mockConsentFindFirst.mockResolvedValue(null)
+    await needsReconsent('u-check-version')
+    mockConsentFindFirst.mock.calls.forEach((call) => {
+      const whereArg = (call[0] as { where?: Record<string, unknown> })?.where
+      // Version filter must be absent from the DB query; version is checked on the returned record
+      expect(whereArg).not.toHaveProperty('version')
+    })
+  })
+
+  it('returns true when user revoked consent under a different version', async () => {
+    // User granted at v1, then revoked at v1 — but current version is v2.
+    // The revocation (granted=false) must be detected even though it is under v1.
+    mockConsentFindFirst
+      .mockResolvedValueOnce({
+        id: 'c-revoke', userId: 'u-rev', type: 'TERMS', version: 'v1',
+        granted: false, ip: null, userAgent: null, createdAt: new Date(),
+      })
+      .mockResolvedValueOnce({
+        id: 'c-priv', userId: 'u-rev', type: 'PRIVACY', version: 'v1',
+        granted: true, ip: null, userAgent: null, createdAt: new Date(),
+      })
+    // Current version is v2, so both should require reconsent
+    mockSettingFindUnique.mockResolvedValue({
+      key: 'legal.currentVersion',
+      value: 'v2',
+      updatedById: null,
+      updatedAt: new Date(),
+    })
+    const result = await needsReconsent('u-rev')
+    expect(result).toBe(true)
+  })
+
+  it('returns true when consent version does not match current version', async () => {
+    mockConsentFindFirst
+      .mockResolvedValueOnce({
+        id: 'c-old', userId: 'u-stale', type: 'TERMS', version: 'v1',
+        granted: true, ip: null, userAgent: null, createdAt: new Date(),
+      })
+      .mockResolvedValueOnce({
+        id: 'c-priv-old', userId: 'u-stale', type: 'PRIVACY', version: 'v1',
+        granted: true, ip: null, userAgent: null, createdAt: new Date(),
+      })
+    mockSettingFindUnique.mockResolvedValue({
+      key: 'legal.currentVersion',
+      value: 'v2',
+      updatedById: null,
+      updatedAt: new Date(),
+    })
+    const result = await needsReconsent('u-stale')
+    expect(result).toBe(true)
   })
 })
 

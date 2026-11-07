@@ -454,7 +454,22 @@ describe('team management authz (M3-T04)', () => {
     const { removeMember } = await import('@/server/services/team')
     await expect(
       removeMember({ userId: ownerA, companyId: companyA, role: 'OWNER' }, { memberId: memberB!.id }),
-    ).rejects.toThrow()
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('cross-company: cannot change role of member in a different company', async () => {
+    await seedTeamSettings()
+    const { userId: ownerA, companyId: companyA } = await createEmployer(testDb)
+    const { companyId: companyB } = await createEmployer(testDb)
+    // Add a RECRUITER to company B
+    const userB = await testDb.user.create({
+      data: { name: 'BRec', email: 'brec-xco@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    const memberB = await testDb.companyMember.create({ data: { companyId: companyB, userId: userB.id, role: 'RECRUITER' } })
+    const { changeRole } = await import('@/server/services/team')
+    await expect(
+      changeRole({ userId: ownerA, companyId: companyA, role: 'OWNER' }, { memberId: memberB.id, role: 'ADMIN' }),
+    ).rejects.toBeInstanceOf(NotFoundError)
   })
 
   it('invite email mismatch → ForbiddenError on accept', async () => {
@@ -479,9 +494,12 @@ describe('company service authz (M3-T01)', () => {
     await expect(createCompany({ userId }, { legalName: 'No Co' })).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it('createCompany: employer already member → ValidationError', async () => {
+  it('createCompany: employer already member → AppError ALREADY_MEMBER', async () => {
     const { userId } = await createEmployer(testDb)
-    await expect(createCompany({ userId }, { legalName: 'Second Co' })).rejects.toBeInstanceOf(ValidationError)
+    const err = await createCompany({ userId }, { legalName: 'Second Co' }).catch(e => e)
+    const { AppError: AE } = await import('@/server/errors')
+    expect(err).toBeInstanceOf(AE)
+    expect((err as InstanceType<typeof AE>).code).toBe('ALREADY_MEMBER')
   })
 
   it('createCompany: employer without company → creates company', async () => {
@@ -508,6 +526,27 @@ describe('company service authz (M3-T01)', () => {
     // cid2 was not touched
     const co2 = await testDb.company.findUnique({ where: { id: cid2 } })
     expect(co2?.legalName).not.toBe('NewNameFromAction')
+  })
+
+  it('updateCompanyAction Hijack: passing another company\'s companyId in raw input is ignored — cid2 unchanged', async () => {
+    // Verifies that even if a future schema change adds companyId to the input,
+    // the action always uses ctx.companyId from requireCompanyMember, not client-supplied companyId.
+    const { userId: uid1, companyId: cid1 } = await createEmployer(testDb)
+    const { companyId: cid2 } = await createEmployer(testDb)
+    const co2Before = await testDb.company.findUnique({ where: { id: cid2 }, select: { legalName: true } })
+    mockSession(uid1)
+    const { updateCompanyAction } = await import('@/server/actions/company')
+    // Pass cid2 explicitly in the raw input object — it must be ignored
+    const result = await updateCompanyAction({ legalName: 'HijackAttempt', companyId: cid2 } as never)
+    expect(result.ok).toBe(true)
+
+    // cid2 must be unchanged (the write went to cid1)
+    const co2After = await testDb.company.findUnique({ where: { id: cid2 }, select: { legalName: true } })
+    expect(co2After?.legalName).toBe(co2Before?.legalName)
+
+    // cid1 got the update
+    const co1 = await testDb.company.findUnique({ where: { id: cid1 }, select: { legalName: true } })
+    expect(co1?.legalName).toBe('HijackAttempt')
   })
 
   it('updateCompanyAction: RECRUITER → FORBIDDEN', async () => {
@@ -992,6 +1031,31 @@ describe('managed-company authz (M6-T07)', () => {
     })
     await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
   })
+
+  it('acceptInvite: non-OWNER invite for managed company → ForbiddenError', async () => {
+    const { acceptInvite } = await import('@/server/services/team')
+    const { createManagedCompany } = await import('@/server/services/managed-company')
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC4', email: `admin-mc4-matrix-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const company = await createManagedCompany({ userId: admin.id }, { legalName: `MCo-NOwnerInv-${Date.now()}` })
+    const email = `noninv-${Date.now()}@example.test`
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    await testDb.companyInvite.create({
+      data: { companyId: company.id, email, role: 'ADMIN', tokenHash: hash, expiresAt: new Date(Date.now() + 86_400_000), createdById: admin.id },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target MC', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+    // Company must remain managed with no members
+    const updated = await testDb.company.findUnique({ where: { id: company.id } })
+    expect(updated!.isManaged).toBe(true)
+    const member = await testDb.companyMember.findFirst({ where: { companyId: company.id } })
+    expect(member).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -1020,6 +1084,7 @@ describe('jobs authz (M5-T01)', () => {
     const job = await makeJobForCompany(owner.companyId, owner.userId)
 
     const { updateJob: svcUpdateJob } = await import('@/server/services/jobs')
+    const { NotFoundError: NFE } = await import('@/server/errors')
     const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
     await expect(
       svcUpdateJob(attackerCtx, job.id, {
@@ -1027,7 +1092,7 @@ describe('jobs authz (M5-T01)', () => {
         workMode: 'ONSITE', submit: false, salaryVisible: true,
         acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
       }),
-    ).rejects.toThrow()
+    ).rejects.toBeInstanceOf(NFE)
 
     const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
     expect(unchanged?.title).toBe('Authz Job')
@@ -1039,8 +1104,9 @@ describe('jobs authz (M5-T01)', () => {
     const job = await makeJobForCompany(owner.companyId, owner.userId)
 
     const { closeJob: svcCloseJob } = await import('@/server/services/jobs')
+    const { NotFoundError: NFE } = await import('@/server/errors')
     const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
-    await expect(svcCloseJob(attackerCtx, job.id)).rejects.toThrow()
+    await expect(svcCloseJob(attackerCtx, job.id)).rejects.toBeInstanceOf(NFE)
 
     const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
     expect(unchanged?.status).toBe('PUBLISHED')
