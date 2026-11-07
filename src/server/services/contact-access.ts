@@ -1,7 +1,7 @@
 import 'server-only'
 import { z } from 'zod'
 import { db } from '../db'
-import { NotFoundError } from '../errors'
+import { NotFoundError, ForbiddenError } from '../errors'
 import { encryptField, decryptField } from '../lib/crypto'
 import type { UserCtx } from '../authz'
 
@@ -98,6 +98,138 @@ export async function getOwnContact(ctx: UserCtx): Promise<ContactData> {
   if (!row) {
     return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
   }
+  return {
+    phone: decryptIfPresent(row.phone, 'phone', studentId),
+    email: decryptIfPresent(row.email, 'email', studentId),
+    whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
+    wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
+    linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
+  }
+}
+
+/**
+ * Batch version: returns a Set of studentIds for which the given company can see full identity.
+ * Checks: company isActive + VERIFIED, TalentUnlock exists, student not blocked, student ACTIVE.
+ * M4-T09 and M5 callers that need a single-student check should use canSeeIdentity (delegates here).
+ */
+export async function canSeeIdentityMany(companyId: string, studentIds: string[]): Promise<Set<string>> {
+  if (studentIds.length === 0) return new Set()
+
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { isActive: true, verificationStatus: true },
+  })
+  if (!company || !company.isActive || company.verificationStatus !== 'VERIFIED') return new Set()
+
+  const [unlocks, blocked, profiles] = await Promise.all([
+    db.talentUnlock.findMany({
+      where: { companyId, studentId: { in: studentIds } },
+      select: { studentId: true },
+    }),
+    db.blockedCompany.findMany({
+      where: { companyId, studentId: { in: studentIds } },
+      select: { studentId: true },
+    }),
+    db.studentProfile.findMany({
+      where: { id: { in: studentIds } },
+      select: { id: true, userId: true },
+    }),
+  ])
+
+  // Query User separately to avoid Prisma "Inconsistent query result" on orphaned profiles.
+  const userIds = profiles.map((p) => p.userId)
+  const users = await db.user.findMany({
+    where: { id: { in: userIds } },
+    select: { id: true, status: true },
+  })
+  const userStatusMap = new Map(users.map((u) => [u.id, u.status]))
+
+  const unlockedSet = new Set(unlocks.map((u) => u.studentId))
+  const blockedSet = new Set(blocked.map((b) => b.studentId))
+  const activeSet = new Set(
+    profiles.filter((p) => userStatusMap.get(p.userId) === 'ACTIVE').map((p) => p.id),
+  )
+
+  return new Set(studentIds.filter((id) => unlockedSet.has(id) && !blockedSet.has(id) && activeSet.has(id)))
+}
+
+/**
+ * Fine-grained identity access check returning one of:
+ *  'ok'        — company may see the student's identity
+ *  'no_unlock' — no TalentUnlock exists (or company not active/verified)
+ *  'gone'      — student blocked the company, or student account SUSPENDED/DELETED,
+ *                or student profile no longer exists
+ *
+ * Use the return value to map gone → 404 and no_unlock → 403 in HTTP handlers.
+ */
+export async function identityAccess(
+  companyId: string,
+  studentId: string,
+): Promise<'ok' | 'no_unlock' | 'gone'> {
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { isActive: true, verificationStatus: true },
+  })
+  if (!company || !company.isActive || company.verificationStatus !== 'VERIFIED') {
+    return 'no_unlock'
+  }
+
+  const [unlock, blocked, profile] = await Promise.all([
+    db.talentUnlock.findUnique({
+      where: { companyId_studentId: { companyId, studentId } },
+      select: { id: true },
+    }),
+    db.blockedCompany.findFirst({
+      where: { companyId, studentId },
+      select: { studentId: true },
+    }),
+    db.studentProfile.findUnique({
+      where: { id: studentId },
+      select: { id: true, userId: true },
+    }),
+  ])
+
+  if (!unlock) return 'no_unlock'
+  if (blocked) return 'gone'
+  if (!profile) return 'gone'
+
+  const user = await db.user.findUnique({
+    where: { id: profile.userId },
+    select: { status: true },
+  })
+  if (!user || user.status !== 'ACTIVE') return 'gone'
+
+  return 'ok'
+}
+
+/**
+ * Returns true when a company can see a student's full identity (name + contact):
+ * - Company isActive + VERIFIED
+ * - TalentUnlock exists for this company+student
+ * - Student has NOT blocked this company
+ * - Student account is ACTIVE
+ */
+export async function canSeeIdentity(companyId: string, studentId: string): Promise<boolean> {
+  return (await identityAccess(companyId, studentId)) === 'ok'
+}
+
+/**
+ * Returns decrypted contact data for a student, gated by canSeeIdentity.
+ * Throws ForbiddenError if the company is not allowed to see the contact.
+ * This is the ONLY function that may read and decrypt student contact fields.
+ */
+export async function getContactForCompany(
+  companyId: string,
+  studentId: string,
+): Promise<ContactData> {
+  const canSee = await canSeeIdentity(companyId, studentId)
+  if (!canSee) throw new ForbiddenError()
+
+  const row = await db.studentContact.findUnique({ where: { studentId } })
+  if (!row) {
+    return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
+  }
+
   return {
     phone: decryptIfPresent(row.phone, 'phone', studentId),
     email: decryptIfPresent(row.email, 'email', studentId),

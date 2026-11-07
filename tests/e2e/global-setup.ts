@@ -7,29 +7,22 @@
  */
 import { createE2eDb } from './helpers/db'
 import { writeCurrentVersionConsent } from './helpers/consent'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { randomBytes, scrypt } from 'node:crypto'
+import { LedgerReason } from '@prisma/client'
+import { loadEnvConfig } from '@next/env'
+import { encryptWithKeyring } from '../../src/server/lib/crypto-core'
+import { PDFDocument } from 'pdf-lib'
 
-// Bootstrap env vars from .env if the shell didn't export them (local dev convenience).
-// Only parse if TEST_DATABASE_URL is not already set — in CI it comes from the environment.
-if (!process.env.TEST_DATABASE_URL) {
-  try {
-    const env = readFileSync(resolve(process.cwd(), '.env'), 'utf-8')
-    for (const line of env.split('\n')) {
-      const eq = line.indexOf('=')
-      if (eq <= 0 || line.trimStart().startsWith('#')) continue
-      const k = line.slice(0, eq).trim()
-      let v = line.slice(eq + 1).trim()
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-        v = v.slice(1, -1)
-      }
-      if (k && !(k in process.env)) process.env[k] = v
-    }
-  } catch {}
-}
+// Load env vars using same file priority as Next.js dev server:
+// .env.development.local → .env.local → .env.development → .env
+// This ensures E2E-side PII_KEYS match what Next.js uses to decrypt.
+// Store combinedEnv to access S3 creds — loadEnvConfig skips vars already in process.env,
+// so we use combinedEnv for S3 to avoid picking up stale system-level env vars.
+const { combinedEnv: loadedEnv } = loadEnvConfig(process.cwd())
 
-// Also set SKIP_ENV_VALIDATION so the env.ts module doesn't fail during setup
+// Suppress env.ts validation — global-setup is not a Next.js runtime context.
 process.env.SKIP_ENV_VALIDATION = '1'
 
 async function hashPassword(password: string): Promise<string> {
@@ -50,12 +43,19 @@ export interface E2EFixtures {
   verifiedEmployer: { email: string; password: string; companyId: string }
   unverifiedEmployer: { email: string; password: string; companyId: string }
   student: { profileId: string }
+  unlockedStudent: { profileId: string; resumeId: string; phone: string }
   folder: { folderId: string }
+  m4t12Student: { email: string; password: string; profileId: string }
 }
 
 const VERIFIED_EMAIL = 'e2e-verified-employer@example.test'
 const UNVERIFIED_EMAIL = 'e2e-unverified-employer@example.test'
 const STUDENT_EMAIL = 'e2e-talent-student@example.test'
+const UNLOCKED_STUDENT_EMAIL = 'e2e-talent-student-unlocked@example.test'
+const M4T12_STUDENT_EMAIL = 'e2e-m4t12-student@example.test'
+
+// Known phone for unlocked student — asserted visible in m4-t18-smoke.spec.ts
+const UNLOCKED_STUDENT_PHONE = '+60115550001'
 
 export default async function globalSetup() {
   // 与 helpers/db.ts 同一个工厂：库名必须以 _test 结尾、主机必须是本机，APP_ENV=production/staging 直接拒绝
@@ -64,24 +64,14 @@ export default async function globalSetup() {
   // Generate random passwords each run; stored in fixtures.json read by auth.setup.ts
   const verifiedPassword = randomBytes(16).toString('base64url') + 'Aa1!'
   const unverifiedPassword = randomBytes(16).toString('base64url') + 'Aa1!'
+  const m4t12StudentPassword = randomBytes(16).toString('base64url') + 'Aa1!'
   const verifiedHashedPw = await hashPassword(verifiedPassword)
   const unverifiedHashedPw = await hashPassword(unverifiedPassword)
+  const m4t12StudentHashedPw = await hashPassword(m4t12StudentPassword)
 
   try {
-    // ---- Cleanup: delete any stale fixture data from interrupted runs ----
-    // Orphaned records from a previous partial run cause FK constraint failures.
-    // Delete companies first (cascade: TalentFolder, TalentFolderItem, CompanyMember, …),
-    // then users (cascade: Account, StudentProfile, Consent, …).
-    const fixtureEmails = [VERIFIED_EMAIL, UNVERIFIED_EMAIL, STUDENT_EMAIL] as const
-    const staleUsers = await prisma.user.findMany({
-      where: { email: { in: [...fixtureEmails] } },
-      include: { memberships: { select: { companyId: true } } },
-    })
-    const staleCompanyIds = staleUsers.flatMap(u => u.memberships).map(m => m.companyId)
-    if (staleCompanyIds.length > 0) {
-      await prisma.company.deleteMany({ where: { id: { in: staleCompanyIds } } })
-    }
-    await prisma.user.deleteMany({ where: { email: { in: [...fixtureEmails] } } })
+    // 不按邮箱删用户和企业：CreditLedger 对钱包是 Restrict，findmyjob_app 不能删账本行，一旦有账本行第二次运行就会抛错（M4-T16 第 6 条）。
+    // 线 B 当初加删除清理是误诊：真正原因是 vitest 在后台跑的同时启动了 E2E，TRUNCATE 清掉了刚建的行。下面全部用幂等写法。
 
     // ---- Helper: create or update employer user + company + member ----
     async function ensureEmployer(
@@ -127,6 +117,16 @@ export default async function globalSetup() {
         where: { userId: user.id },
         include: { company: true },
       })
+
+      // Guard: member might reference a deleted company (orphaned row). Discard it.
+      if (member) {
+        const companyExists = await prisma.company.findUnique({ where: { id: member.companyId } })
+        if (!companyExists) {
+          await prisma.companyMember.deleteMany({ where: { userId: user.id } })
+          member = null
+        }
+      }
+
       if (!member) {
         const company = await prisma.company.create({
           data: {
@@ -215,6 +215,38 @@ export default async function globalSetup() {
       })
     }
 
+    // ---- Ensure CreditWallet for verified employer (M4-T07: unlock) ----
+    // Use proper ledger entries to maintain reconciliation (balance = sum of all deltas)
+    const TARGET_BALANCE = 100
+    let wallet = await prisma.creditWallet.findUnique({
+      where: { companyId: verifiedEmp.companyId },
+      select: { id: true, balance: true },
+    })
+    if (!wallet) {
+      const created = await prisma.creditWallet.create({
+        data: { companyId: verifiedEmp.companyId, balance: 0 },
+        select: { id: true, balance: true },
+      })
+      wallet = created
+    }
+    if (wallet.balance !== TARGET_BALANCE) {
+      const delta = TARGET_BALANCE - wallet.balance
+      await prisma.creditLedger.create({
+        data: {
+          walletId: wallet.id,
+          delta,
+          balanceAfter: TARGET_BALANCE,
+          reason: LedgerReason.ADMIN_ADJUST,
+        },
+      })
+      await prisma.creditWallet.update({
+        where: { id: wallet.id },
+        data: { balance: TARGET_BALANCE },
+      })
+    }
+    // Clear any TalentUnlock records so the unlock button is always visible each run
+    await prisma.talentUnlock.deleteMany({ where: { companyId: verifiedEmp.companyId } })
+
     // ---- Create/update a folder with the student added ----
     let folder = await prisma.talentFolder.findFirst({
       where: { companyId: verifiedEmp.companyId, name: 'E2E Test Folder' },
@@ -235,6 +267,201 @@ export default async function globalSetup() {
       update: {},
     })
 
+    // ---- Create/update unlocked student with a resume (M4-T09: download watermark smoke test) ----
+    let unlockedStudentUser = await prisma.user.findUnique({ where: { email: UNLOCKED_STUDENT_EMAIL } })
+    if (!unlockedStudentUser) {
+      unlockedStudentUser = await prisma.user.create({
+        data: {
+          name: 'E2E Unlocked Student',
+          email: UNLOCKED_STUDENT_EMAIL,
+          emailVerified: true,
+          role: 'STUDENT',
+          status: 'ACTIVE',
+        },
+      })
+    }
+
+    await writeCurrentVersionConsent(unlockedStudentUser.id)
+
+    let unlockedProfile = await prisma.studentProfile.findUnique({ where: { userId: unlockedStudentUser.id } })
+    if (!unlockedProfile) {
+      unlockedProfile = await prisma.studentProfile.create({
+        data: {
+          userId: unlockedStudentUser.id,
+          fullName: 'E2E Unlocked Student',
+          visibility: 'PUBLIC',
+          completeness: 85,
+          schoolId: school?.id ?? null,
+          schoolVerifiedAt: new Date(),
+          major: 'Computer Science',
+          degreeLevel: 'BACHELOR',
+          graduationYear: 2025,
+          skills: ['Python'],
+          workAuth: 'STUDENT_PASS',
+          intents: ['INTERNSHIP'],
+          lastActiveAt: new Date(),
+        },
+      })
+    } else {
+      unlockedProfile = await prisma.studentProfile.update({
+        where: { id: unlockedProfile.id },
+        data: { visibility: 'PUBLIC', completeness: 85, schoolVerifiedAt: new Date() },
+      })
+    }
+
+    // Create or reuse a resume file for the unlocked student, and upload a real PDF
+    // to MinIO so the download route can actually sanitize and watermark it.
+    // Use S3Client directly — storage.ts has 'server-only' and cannot be imported here.
+    // Use loadedEnv (combinedEnv from loadEnvConfig) instead of process.env — loadEnvConfig
+    // does not override pre-existing process.env values, so loadedEnv has the definitive creds.
+    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3')
+    const s3 = new S3Client({
+      endpoint: loadedEnv.S3_ENDPOINT,
+      region: loadedEnv.S3_REGION ?? 'us-east-1',
+      credentials: {
+        accessKeyId: loadedEnv.S3_ACCESS_KEY_ID ?? '',
+        secretAccessKey: loadedEnv.S3_SECRET_ACCESS_KEY ?? '',
+      },
+      forcePathStyle: true,
+    })
+    const putObject = async (key: string, body: Buffer, contentType: string) => {
+      await s3.send(new PutObjectCommand({
+        Bucket: loadedEnv.S3_BUCKET ?? 'findmyjob-files',
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }))
+    }
+
+    let unlockedResume = await prisma.resumeFile.findFirst({
+      where: { studentId: unlockedProfile.id },
+    })
+    const minimalPdfDoc = await PDFDocument.create()
+    minimalPdfDoc.addPage([612, 792])
+    const minimalPdfBytes = Buffer.from(await minimalPdfDoc.save())
+    const resumeStorageKey = `resumes/e2e-unlocked/${unlockedProfile.id}/cv.pdf`
+
+    // Upload the real PDF to MinIO (idempotent — overwrites each run)
+    await putObject(resumeStorageKey, minimalPdfBytes, 'application/pdf')
+
+    if (!unlockedResume) {
+      unlockedResume = await prisma.resumeFile.create({
+        data: {
+          studentId: unlockedProfile.id,
+          storageKey: resumeStorageKey,
+          fileName: 'cv.pdf',
+          mimeType: 'application/pdf',
+          sizeBytes: minimalPdfBytes.length,
+          isPrimary: true,
+        },
+      })
+    } else {
+      unlockedResume = await prisma.resumeFile.update({
+        where: { id: unlockedResume.id },
+        data: { sizeBytes: minimalPdfBytes.length, storageKey: resumeStorageKey },
+      })
+    }
+
+    // Write encrypted phone for unlocked student so the detail page can show contact info.
+    // Uses the same key as Next.js dev server (loaded via loadEnvConfig above).
+    const piiKeys = process.env.PII_KEYS
+    if (piiKeys) {
+      const activeKeyId = process.env.PII_ACTIVE_KEY_ID ?? 'v1'
+      const encPhone = encryptWithKeyring(
+        UNLOCKED_STUDENT_PHONE,
+        `StudentContact.phone:${unlockedProfile.id}`,
+        piiKeys,
+        activeKeyId,
+      )
+      await prisma.studentContact.upsert({
+        where: { studentId: unlockedProfile.id },
+        create: { studentId: unlockedProfile.id, phone: encPhone },
+        update: { phone: encPhone },
+      })
+    }
+
+    // Create TalentUnlock so the detail page shows the download link
+    await prisma.talentUnlock.upsert({
+      where: {
+        companyId_studentId: {
+          companyId: verifiedEmp.companyId,
+          studentId: unlockedProfile.id,
+        },
+      },
+      create: {
+        companyId: verifiedEmp.companyId,
+        studentId: unlockedProfile.id,
+        unlockedById: verifiedEmp.userId,
+        source: 'CREDIT',
+        creditsSpent: 0,
+      },
+      update: {},
+    })
+
+    // ---- Create/update M4-T12 student with credentials (notification flow test) ----
+    let m4t12StudentUser = await prisma.user.findUnique({ where: { email: M4T12_STUDENT_EMAIL } })
+    if (!m4t12StudentUser) {
+      m4t12StudentUser = await prisma.$transaction(async (tx) => {
+        const u = await tx.user.create({
+          data: {
+            name: 'E2E M4T12 Student',
+            email: M4T12_STUDENT_EMAIL,
+            emailVerified: true,
+            role: 'STUDENT',
+            status: 'ACTIVE',
+          },
+        })
+        await tx.account.create({
+          data: {
+            userId: u.id,
+            accountId: u.id,
+            providerId: 'credential',
+            password: m4t12StudentHashedPw,
+          },
+        })
+        return u
+      })
+    } else {
+      m4t12StudentUser = await prisma.user.update({
+        where: { id: m4t12StudentUser.id },
+        data: { emailVerified: true, role: 'STUDENT', status: 'ACTIVE' },
+      })
+      await prisma.account.updateMany({
+        where: { userId: m4t12StudentUser.id, providerId: 'credential' },
+        data: { password: m4t12StudentHashedPw },
+      })
+    }
+
+    await writeCurrentVersionConsent(m4t12StudentUser.id)
+
+    let m4t12Profile = await prisma.studentProfile.findUnique({ where: { userId: m4t12StudentUser.id } })
+    if (!m4t12Profile) {
+      m4t12Profile = await prisma.studentProfile.create({
+        data: {
+          userId: m4t12StudentUser.id,
+          fullName: 'E2E M4T12 Student',
+          visibility: 'PUBLIC',
+          completeness: 80,
+          schoolId: school?.id ?? null,
+          schoolVerifiedAt: new Date(),
+          major: 'Computer Science',
+          degreeLevel: 'BACHELOR',
+          graduationYear: 2026,
+          skills: ['Java'],
+          workAuth: 'STUDENT_PASS',
+          intents: ['INTERNSHIP'],
+          lastActiveAt: new Date(),
+        },
+      })
+    }
+
+    // M4-T21: Do NOT pre-seed TalentUnlock or Notification for m4t12 student.
+    // The E2E test performs the real unlock flow: employer clicks unlock → student sees notification.
+    // Clear any stale notifications from previous runs so each run starts fresh.
+    await prisma.notification.deleteMany({
+      where: { userId: m4t12StudentUser.id, type: 'talent.unlock' },
+    })
+
     // ---- Write fixtures (passwords stored here for auth.setup.ts) ----
     const fixtures: E2EFixtures = {
       verifiedEmployer: {
@@ -248,7 +475,13 @@ export default async function globalSetup() {
         companyId: unverifiedEmp.companyId,
       },
       student: { profileId: profile.id },
+      unlockedStudent: { profileId: unlockedProfile.id, resumeId: unlockedResume.id, phone: UNLOCKED_STUDENT_PHONE },
       folder: { folderId: folder.id },
+      m4t12Student: {
+        email: M4T12_STUDENT_EMAIL,
+        password: m4t12StudentPassword,
+        profileId: m4t12Profile.id,
+      },
     }
     writeFileSync(
       resolve(process.cwd(), 'tests/e2e/fixtures.json'),

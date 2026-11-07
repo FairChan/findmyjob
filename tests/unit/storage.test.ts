@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 
 // Mock env before importing storage (storage.ts reads env at module level)
 vi.mock('@/env', () => ({
@@ -11,9 +11,10 @@ vi.mock('@/env', () => ({
   },
 }))
 
-import { SIGNED_URL_EXPIRES_SECONDS, getSignedDownloadUrl } from '@/lib/storage'
+import { SIGNED_URL_EXPIRES_SECONDS, getSignedDownloadUrl, getObjectBytes } from '@/lib/storage'
 import { detectFileType, checkPdf } from '@/server/lib/pdf'
 import { PDFDocument } from 'pdf-lib'
+import { S3Client } from '@aws-sdk/client-s3'
 
 // ---------------------------------------------------------------------------
 // TTL: the signed URL must carry X-Amz-Expires ≤ 300 and attachment disposition
@@ -120,5 +121,50 @@ describe('checkPdf', () => {
     const buf = Buffer.from('%PDF-1.4\ncorrupted garbage that is not a valid PDF\n')
     const result = await checkPdf(buf, 20)
     expect(result).toMatchObject({ ok: false, reason: 'parse_failed' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// getObjectBytes maxBytes guard
+// ---------------------------------------------------------------------------
+describe('getObjectBytes maxBytes guard', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('throws FILE_TOO_LARGE when S3 ContentLength exceeds maxBytes (body never read)', async () => {
+    const transformToByteArray = vi.fn()
+    vi.spyOn(S3Client.prototype, 'send').mockResolvedValueOnce({
+      Body: { transformToByteArray },
+      ContentLength: 1000,
+    } as unknown as never)
+
+    await expect(getObjectBytes('any/key', { maxBytes: 500 })).rejects.toMatchObject({
+      code: 'FILE_TOO_LARGE',
+    })
+    // body must NOT be read when ContentLength already exceeds the cap
+    expect(transformToByteArray).not.toHaveBeenCalled()
+  })
+
+  it('reads body when ContentLength is within maxBytes', async () => {
+    const smallPayload = new Uint8Array([1, 2, 3])
+    vi.spyOn(S3Client.prototype, 'send').mockResolvedValueOnce({
+      Body: { transformToByteArray: async () => smallPayload },
+      ContentLength: 3,
+    } as unknown as never)
+
+    const buf = await getObjectBytes('any/key', { maxBytes: 500 })
+    expect(buf).toEqual(Buffer.from(smallPayload))
+  })
+
+  it('reads body when maxBytes is not set (no ContentLength guard)', async () => {
+    const payload = new Uint8Array([10, 20, 30])
+    vi.spyOn(S3Client.prototype, 'send').mockResolvedValueOnce({
+      Body: { transformToByteArray: async () => payload },
+      ContentLength: 9999,
+    } as unknown as never)
+
+    const buf = await getObjectBytes('any/key')
+    expect(buf).toEqual(Buffer.from(payload))
   })
 })

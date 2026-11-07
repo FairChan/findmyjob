@@ -11,8 +11,11 @@ export interface AuditParams {
   ip?: string
 }
 
-export async function logAudit(params: AuditParams): Promise<void> {
-  await db.auditLog.create({
+export async function logAudit(
+  params: AuditParams,
+  client: Prisma.TransactionClient | typeof db = db,
+): Promise<void> {
+  await client.auditLog.create({
     data: {
       ...params,
       metadata: params.metadata as Prisma.InputJsonValue | undefined,

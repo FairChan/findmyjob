@@ -8,9 +8,11 @@ import { requireCompanyMember } from '@/server/authz'
 import { ForbiddenError, NotFoundError, RateLimitedError } from '@/server/errors'
 import { db } from '@/server/db'
 import { viewTalentProfile } from '@/server/services/talent-view'
+import { getSetting } from '@/server/services/settings'
 import type { TalentDetail, TalentEducation, TalentExperience } from '@/server/serializers/talent-card'
 import { Button } from '@/components/ui/button'
 import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
+import { UnlockButton } from '@/components/talent/UnlockButton'
 
 // ---- Label maps ----
 
@@ -133,11 +135,13 @@ function TalentDetailBody({
   locale,
   tLabel,
   tFolders,
+  costCredits,
 }: {
   detail: TalentDetail
   locale: string
-  tLabel: (key: string) => string
+  tLabel: (key: string, values?: Record<string, string | number>) => string
   tFolders: (key: string) => string
+  costCredits: number
 }) {
   return (
     <div className="space-y-6">
@@ -194,11 +198,22 @@ function TalentDetailBody({
                 errorOccurred: tFolders('errorOccurred'),
               }}
             />
-            {/* Unlock area (placeholder; M4-T07 will add the button) */}
             {!detail.unlocked && (
-              <div className="rounded-lg border border-dashed p-3 text-center text-sm text-muted-foreground">
-                {tLabel('unlockHint')}
-              </div>
+              <UnlockButton
+                studentId={detail.id}
+                costCredits={costCredits}
+                labels={{
+                  button: tLabel('unlockButton'),
+                  confirmTitle: tLabel('unlockConfirmTitle'),
+                  confirmDesc: tLabel('unlockConfirmDesc'),
+                  confirmCost: tLabel('unlockConfirmCost', { cost: costCredits }),
+                  confirmOk: tLabel('unlockConfirmOk'),
+                  confirmCancel: tLabel('unlockConfirmCancel'),
+                  errorInsufficient: tLabel('unlockErrorInsufficient'),
+                  errorRateLimit: tLabel('unlockErrorRateLimit'),
+                  errorGeneric: tLabel('unlockErrorGeneric'),
+                }}
+              />
             )}
           </div>
         </div>
@@ -231,17 +246,84 @@ function TalentDetailBody({
       <EducationList educations={detail.educations} tLabel={tLabel} />
       <ExperienceList experiences={detail.experiences} tLabel={tLabel} />
 
-      {/* Resume count */}
+      {/* Contact details — only shown when unlocked */}
+      {detail.unlocked && detail.contact && (
+        <section aria-labelledby="contact-heading">
+          <h2 id="contact-heading" className="mb-3 text-base font-semibold">
+            {tLabel('sectionContact')}
+          </h2>
+          <div className="rounded-lg border bg-card p-4 space-y-2 text-sm">
+            {detail.contact.phone && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactPhone')}</span>
+                <span className="font-medium">{detail.contact.phone}</span>
+              </div>
+            )}
+            {detail.contact.email && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactEmail')}</span>
+                <a href={`mailto:${detail.contact.email}`} className="font-medium underline underline-offset-2">
+                  {detail.contact.email}
+                </a>
+              </div>
+            )}
+            {detail.contact.whatsapp && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactWhatsapp')}</span>
+                <span className="font-medium">{detail.contact.whatsapp}</span>
+              </div>
+            )}
+            {detail.contact.wechat && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactWechat')}</span>
+                <span className="font-medium">{detail.contact.wechat}</span>
+              </div>
+            )}
+            {detail.contact.linkedinUrl && (
+              <div className="flex gap-2">
+                <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactLinkedin')}</span>
+                <a
+                  href={detail.contact.linkedinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-medium underline underline-offset-2"
+                >
+                  {detail.contact.linkedinUrl}
+                </a>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Resume download */}
       {detail.resumeCount > 0 && (
         <section aria-labelledby="resume-heading">
           <h2 id="resume-heading" className="mb-2 text-base font-semibold">
             {tLabel('sectionResume')}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            {detail.unlocked
-              ? tLabel('resumeUnlockedHint')
-              : tLabel('resumeLockedHint')}
-          </p>
+          {detail.unlocked && detail.resumeIds.length > 0 ? (
+            <ul className="space-y-2">
+              {detail.resumeIds.map((resumeId, idx) => (
+                <li key={resumeId}>
+                  <a
+                    href={`/api/resumes/${resumeId}/download`}
+                    download="resume.pdf"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                    data-testid={`resume-download-${idx}`}
+                  >
+                    {tLabel('resumeDownload')}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {detail.unlocked
+                ? tLabel('resumeUnlockedHint')
+                : tLabel('resumeLockedHint')}
+            </p>
+          )}
         </section>
       )}
     </div>
@@ -257,7 +339,10 @@ export default async function TalentDetailPage({
 }) {
   const { locale, id } = await params
   const t = await getTranslations('talentDetail')
-  const tLabel = (key: string) => t(key as Parameters<typeof t>[0])
+  const tLabel = (key: string, values?: Record<string, string | number>) =>
+    values
+      ? (t as (k: string, v: Record<string, string | number>) => string)(key, values)
+      : t(key as Parameters<typeof t>[0])
   const tFoldersMsg = await getTranslations('talentFolders')
   const tFolders = (key: string) => tFoldersMsg(key as Parameters<typeof tFoldersMsg>[0])
 
@@ -290,6 +375,8 @@ export default async function TalentDetailPage({
       </main>
     )
   }
+
+  const costCredits = await getSetting<number>('unlock.costCredits', 1)
 
   let detail: TalentDetail
   try {
@@ -325,7 +412,7 @@ export default async function TalentDetailPage({
         </Button>
       </nav>
 
-      <TalentDetailBody detail={detail} locale={locale} tLabel={tLabel} tFolders={tFolders} />
+      <TalentDetailBody detail={detail} locale={locale} tLabel={tLabel} tFolders={tFolders} costCredits={costCredits} />
     </main>
   )
 }

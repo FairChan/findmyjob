@@ -144,12 +144,23 @@ describe('verifySchoolOtp — concurrent brute-force prevention (M2-T12 fix 1)',
       (r) => r.status === 'rejected' && r.reason instanceof RateLimitedError,
     ).length
 
+    // After lockout, the OTP record is deleted; subsequent requests get otp_expired_or_not_found
+    // which is also a valid rejection (the OTP is gone) — count them together with rateLimitErrors.
+    const expiredOrNotFoundErrors = results.filter(
+      (r) =>
+        r.status === 'rejected' &&
+        r.reason instanceof ValidationError &&
+        r.reason.message === 'otp_expired_or_not_found',
+    ).length
+
     // At most 5 requests passed hitBucket and reached OTP comparison
     expect(validationErrors).toBeLessThanOrEqual(5)
-    // The rest were rate-limited
-    expect(rateLimitErrors).toBeGreaterThanOrEqual(15)
-    // 20 个都必须被拒；OTP 记录被锁定删除后，个别请求会报 otp_expired_or_not_found，也算被拒
+    // rateLimit + otp_expired_or_not_found together must be at least 15
+    expect(rateLimitErrors + expiredOrNotFoundErrors).toBeGreaterThanOrEqual(15)
+    // All 20 must be rejected
     expect(results.every((r) => r.status === 'rejected')).toBe(true)
+    // No other error types (only otp_invalid, rate_limited, otp_expired_or_not_found)
+    expect(validationErrors + rateLimitErrors + expiredOrNotFoundErrors).toBe(results.length)
   })
 
   it('re-requesting OTP does not reset the attempt counter (M2-T13 item 3)', async () => {

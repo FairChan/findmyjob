@@ -7,7 +7,10 @@
     "login": "Login",
     "register": "Sign Up",
     "openMenu": "Open menu",
-    "closeMenu": "Close menu"
+    "closeMenu": "Close menu",
+    "notifications": "Notifications",
+    "privacy": "Privacy Centre",
+    "myProfile": "My Profile"
   },
   "localeSwitcher": {
     "label": "Switch language",
@@ -309,6 +312,20 @@
     "saveError": "Save failed, please try again",
     "errorValidation": "Please check your input format (phone must include country code, e.g. +60)"
   },
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "See what companies have done with your profile.",
+    "empty": "No notifications yet.",
+    "talentUnlock": "A company unlocked your contact details",
+    "companyVerified": "Your company has been verified",
+    "companyRejected": "Your company verification was rejected",
+    "jobApproved": "Your job has been approved",
+    "jobRejected": "Your job was rejected",
+    "systemAlert": "System notification",
+    "unknownType": "Notification",
+    "privacyLink": "View Privacy Centre for details",
+    "unread": "Unread"
+  },
   "privacy": {
     "title": "Privacy Centre",
     "subtitle": "Manage your talent pool visibility, blocked companies, and who has viewed your profile.",
@@ -478,12 +495,22 @@
     "backToSearch": "Back to Talent Pool",
     "unlocked": "Unlocked",
     "unlockHint": "Unlock to view full profile and contact details",
+    "unlockButton": "Unlock",
+    "unlockConfirmTitle": "Unlock Candidate",
+    "unlockConfirmDesc": "Unlocking allows you to view the candidate's full profile and contact details.",
+    "unlockConfirmCost": "This will use {cost} credit(s)",
+    "unlockConfirmOk": "Confirm Unlock",
+    "unlockConfirmCancel": "Cancel",
+    "unlockErrorInsufficient": "Insufficient credits",
+    "unlockErrorRateLimit": "Daily unlock limit reached. Please try again tomorrow.",
+    "unlockErrorGeneric": "Unlock failed, please try again",
     "sectionSummary": "Summary",
     "sectionEducation": "Education",
     "sectionExperience": "Experience",
     "sectionResume": "Resume",
     "resumeLockedHint": "Unlock to view and download the resume",
     "resumeUnlockedHint": "Unlocked — download resume here",
+    "resumeDownload": "Download Resume",
     "degreeLevelFoundation": "Foundation",
     "degreeLevelDiploma": "Diploma",
     "degreeLevelBachelor": "Bachelor",
@@ -493,7 +520,13 @@
     "expKindWork": "Work",
     "expKindProject": "Project",
     "expKindCampus": "Campus",
-    "expKindAward": "Award"
+    "expKindAward": "Award",
+    "sectionContact": "Contact Details",
+    "contactPhone": "Phone",
+    "contactEmail": "Email",
+    "contactWhatsapp": "WhatsApp",
+    "contactWechat": "WeChat",
+    "contactLinkedin": "LinkedIn"
   },
   "resume": {
     "title": "My Resume",

@@ -8,6 +8,8 @@ import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createCompanySchema } from './company'
 import { jobFormSchema } from './jobs'
+import { grantPilotCreditsOnVerification } from '../jobs/pilot-monthly-credits'
+import { logger } from '../lib/logger'
 import type { UserCtx } from '../authz'
 
 export type CreateManagedCompanyInput = z.infer<typeof createCompanySchema>
@@ -73,6 +75,7 @@ export async function createManagedCompany(
       isManaged: true,
       verificationStatus: 'VERIFIED',
       verifiedAt: new Date(),
+      wallet: { create: { balance: 0 } },
     },
   })
 
@@ -82,6 +85,11 @@ export async function createManagedCompany(
     targetType: 'Company',
     targetId: company.id,
     metadata: { legalName: company.legalName },
+  })
+
+  // Grant initial pilot credits (best-effort)
+  await grantPilotCreditsOnVerification(company.id).catch(err => {
+    logger.error({ err, companyId: company.id }, 'pilot-credits: managed company initial grant failed')
   })
 
   return company

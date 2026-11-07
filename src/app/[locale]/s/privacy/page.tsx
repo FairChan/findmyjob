@@ -1,5 +1,5 @@
 import { headers } from 'next/headers'
-import { getTranslations } from 'next-intl/server'
+import { getTranslations, getLocale } from 'next-intl/server'
 import { requireStudent } from '@/server/authz'
 import {
   getLatestTalentPoolConsent,
@@ -8,9 +8,11 @@ import {
   getUnlocks,
 } from '@/server/services/privacy'
 import PrivacyCenter from '@/components/privacy/PrivacyCenter'
+import { formatKLDate } from '@/lib/format-date'
 
 export default async function PrivacyPage() {
   const t = await getTranslations('privacy')
+  const locale = await getLocale()
   const { userId } = await requireStudent(await headers())
 
   const [consentGranted, blocked, views, unlocks] = await Promise.all([
@@ -20,6 +22,20 @@ export default async function PrivacyPage() {
     getUnlocks({ userId }),
   ])
 
+  const formattedViews = views.map((v) => ({
+    companyId: v.companyId,
+    companyName: v.companyName,
+    viewedAt: formatKLDate(v.viewedAt, locale),
+    viewedAtKey: v.viewedAt.toISOString(),
+  }))
+
+  const formattedUnlocks = unlocks.map((u) => ({
+    companyId: u.companyId,
+    companyName: u.companyName,
+    unlockedAt: formatKLDate(u.unlockedAt, locale),
+    unlockedAtKey: u.unlockedAt.toISOString(),
+  }))
+
   return (
     <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
@@ -27,8 +43,8 @@ export default async function PrivacyPage() {
       <PrivacyCenter
         initialVisible={consentGranted === true}
         initialBlocked={blocked}
-        profileViews={views}
-        unlocks={unlocks}
+        profileViews={formattedViews}
+        unlocks={formattedUnlocks}
       />
     </main>
   )

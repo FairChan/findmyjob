@@ -116,6 +116,21 @@ describe('createManagedCompany', () => {
     const c2 = await createManagedCompany(ctx, { legalName: `MCo-B-${Date.now()}` })
     expect(c1.id).not.toBe(c2.id)
   })
+
+  it('M4-T20: new managed company has wallet with balance equal to pilot.monthlyCredits (default 30)', async () => {
+    const ctx = await makeAdminCtx()
+    const company = await createManagedCompany(ctx, { legalName: `MCo-Wallet-${Date.now()}` })
+
+    const wallet = await testDb.creditWallet.findUnique({ where: { companyId: company.id } })
+    expect(wallet).not.toBeNull()
+    expect(wallet?.balance).toBe(30)
+
+    const ledger = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: company.id } },
+    })
+    expect(ledger).toHaveLength(1)
+    expect(ledger[0].refType).toBe('PilotPeriod')
+  })
 })
 
 // ---------------------------------------------------------------------------

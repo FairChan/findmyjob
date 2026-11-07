@@ -143,6 +143,25 @@ const eslintConfig = [
     },
   },
 
+  // Ban tautological assertions: expect(<literal>) is always a bug or placeholder
+  {
+    files: ['tests/**/*.ts', 'tests/**/*.spec.ts', '**/*.test.ts', '**/*.test.tsx', '**/*.spec.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...RAW_UNSAFE_SELECTORS,
+        {
+          selector: "CallExpression[callee.name='expect'][arguments.0.type='Literal']",
+          message: "expect(<literal>) is a tautological assertion — use a computed value or remove the test.",
+        },
+        {
+          selector: "CallExpression[callee.name='expect'][arguments.0.type='Identifier'][arguments.0.name='undefined']",
+          message: "expect(undefined) is a tautological assertion — use a computed value or remove the test.",
+        },
+      ],
+    },
+  },
+
   // no-console is an error inside server-side code
   {
     files: ['src/server/**/*.ts', 'src/worker.ts', 'src/app/api/**/*.ts'],

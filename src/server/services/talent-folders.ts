@@ -5,6 +5,7 @@ import { NotFoundError, ValidationError } from '../errors'
 import { assertCompanyVerified } from '../authz'
 import { toTalentCard } from '../serializers/talent-card'
 import type { TalentCard } from '../serializers/talent-card'
+import { canSeeIdentityMany } from './contact-access'
 
 export interface FolderSummary {
   id: string
@@ -144,11 +145,6 @@ export async function getFolderItems(
           student: {
             include: {
               school: { select: { id: true, nameZh: true, nameEn: true } },
-              unlocks: {
-                where: { companyId: ctx.companyId },
-                take: 1,
-                select: { companyId: true },
-              },
             },
           },
         },
@@ -158,14 +154,19 @@ export async function getFolderItems(
   })
   if (!folder || folder.companyId !== ctx.companyId) throw new NotFoundError('Folder not found')
 
-  const items: FolderItem[] = []
+  const visibleItems: typeof folder.items = []
   for (const item of folder.items) {
     const visible = await isStudentVisibleToCompany(item.studentId, ctx.companyId)
-    if (!visible) continue
-    const unlocked = item.student.unlocks.length > 0
-    const card = toTalentCard(item.student, { unlocked })
-    items.push({ studentId: item.studentId, note: item.note, addedAt: item.createdAt, card })
+    if (visible) visibleItems.push(item)
   }
+
+  const unlockedSet = await canSeeIdentityMany(ctx.companyId, visibleItems.map((i) => i.studentId))
+
+  const items: FolderItem[] = visibleItems.map((item) => {
+    const unlocked = unlockedSet.has(item.studentId)
+    const card = toTalentCard(item.student, { unlocked })
+    return { studentId: item.studentId, note: item.note, addedAt: item.createdAt, card }
+  })
 
   return {
     folder: {

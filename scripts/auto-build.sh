@@ -95,6 +95,14 @@ GUARD=('*CLAUDE.md' .claude .githooks scripts/auto-build.sh scripts/unattended.m
 
 total=0
 for ((i = 1; i <= MAX_ROUNDS; i++)); do
+  # 暂停开关：AUTO_BUILD_PAUSE_FILE 指向的文件存在时，在两轮之间等待（每 20 秒看一次），并写 <文件>.ack 表示已停在轮间
+  if [[ -n "${AUTO_BUILD_PAUSE_FILE:-}" && -f "$AUTO_BUILD_PAUSE_FILE" ]]; then
+    log "暂停：$AUTO_BUILD_PAUSE_FILE 存在，等它被删除"
+    : >"${AUTO_BUILD_PAUSE_FILE}.ack"
+    while [[ -f "$AUTO_BUILD_PAUSE_FILE" ]]; do sleep 20; done
+    rm -f -- "${AUTO_BUILD_PAUSE_FILE}.ack"
+    log "继续：暂停文件已删除"
+  fi
   next="$(py next "$MILESTONE" ${AUTO_BUILD_SKIP_P1:+--skip-p1})" || stop 1 "解析 docs/TASKS.md 失败"
   read -r kind id rest <<<"$next"
   case "$kind" in
