@@ -7,58 +7,23 @@
  * storageKey in any HTML, RSC, or JSON response from /e/talent and /e/talent/[id].
  */
 import { test, expect, type Page } from '@playwright/test'
-import { createCipheriv, randomBytes } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { faker } from '@faker-js/faker'
+import { loadEnvConfig } from '@next/env'
+import { encryptWithKeyring } from '../../src/server/lib/crypto-core'
 import { e2eDb } from './helpers/db'
 import { loginAs } from './helpers/session'
+
+// Load env vars with the same priority as Next.js dev server so PII_KEYS matches.
+loadEnvConfig(process.cwd())
 
 // Verified employer storageState (written by auth.setup.ts, depends on global-setup fixtures)
 const VERIFIED_STATE = resolve(process.cwd(), 'tests/e2e/auth-verified.json')
 
-/**
- * Loads PII_KEYS and PII_ACTIVE_KEY_ID from process.env (CI / shell) or from the
- * local .env file (developer convenience).  Throws if neither source has the keys.
- */
 function loadPiiKeys(): { piiKeys: string; activeKeyId: string } {
-  if (process.env.PII_KEYS) {
-    return { piiKeys: process.env.PII_KEYS, activeKeyId: process.env.PII_ACTIVE_KEY_ID ?? 'v1' }
-  }
-  try {
-    const env = readFileSync(resolve(process.cwd(), '.env'), 'utf-8')
-    let piiKeys = ''
-    let activeKeyId = 'v1'
-    for (const line of env.split('\n')) {
-      const eq = line.indexOf('=')
-      if (eq <= 0 || line.trimStart().startsWith('#')) continue
-      const k = line.slice(0, eq).trim()
-      let v = line.slice(eq + 1).trim()
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1)
-      if (k === 'PII_KEYS') piiKeys = v
-      if (k === 'PII_ACTIVE_KEY_ID') activeKeyId = v
-    }
-    if (!piiKeys) throw new Error('PII_KEYS not found in .env')
-    return { piiKeys, activeKeyId }
-  } catch (e) {
-    throw new Error(`PII_KEYS unavailable: ${(e as Error).message}`)
-  }
-}
-
-/**
- * Replicates the AES-256-GCM encryption from src/server/lib/crypto.ts (without
- * the server-only restriction) so test setup can write encrypted contact rows.
- */
-function encryptLocal(plaintext: string, aad: string, piiKeys: string, keyId: string): string {
-  const keyPart = piiKeys.split(',').find((p) => p.startsWith(`${keyId}:`))
-  if (!keyPart) throw new Error(`PII key not found: ${keyId}`)
-  const key = Buffer.from(keyPart.slice(keyId.length + 1), 'base64')
-  const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', key, iv)
-  cipher.setAAD(Buffer.from(aad, 'utf8'))
-  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
-  const tag = cipher.getAuthTag()
-  return `enc:${keyId}:${Buffer.concat([iv, ct, tag]).toString('base64')}`
+  const piiKeys = process.env.PII_KEYS
+  if (!piiKeys) throw new Error('PII_KEYS not found in env (loadEnvConfig ran above)')
+  return { piiKeys, activeKeyId: process.env.PII_ACTIVE_KEY_ID ?? 'v1' }
 }
 
 const SENTINEL = {
@@ -309,11 +274,11 @@ test.describe('PII leak – talent search/detail (M4-T13, unlocked=false employe
     await e2eDb.studentContact.create({
       data: {
         studentId: piiStudentId,
-        phone: encryptLocal(SENTINEL.phone, aad('phone'), piiKeys, activeKeyId),
-        email: encryptLocal(SENTINEL.email, aad('email'), piiKeys, activeKeyId),
-        whatsapp: encryptLocal(SENTINEL.phone, aad('whatsapp'), piiKeys, activeKeyId),
-        wechat: encryptLocal(WECHAT_SENTINEL, aad('wechat'), piiKeys, activeKeyId),
-        linkedinUrl: encryptLocal(LINKEDIN_SENTINEL, aad('linkedinUrl'), piiKeys, activeKeyId),
+        phone: encryptWithKeyring(SENTINEL.phone, aad('phone'), piiKeys, activeKeyId),
+        email: encryptWithKeyring(SENTINEL.email, aad('email'), piiKeys, activeKeyId),
+        whatsapp: encryptWithKeyring(SENTINEL.phone, aad('whatsapp'), piiKeys, activeKeyId),
+        wechat: encryptWithKeyring(WECHAT_SENTINEL, aad('wechat'), piiKeys, activeKeyId),
+        linkedinUrl: encryptWithKeyring(LINKEDIN_SENTINEL, aad('linkedinUrl'), piiKeys, activeKeyId),
       },
     })
 

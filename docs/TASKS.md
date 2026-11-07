@@ -793,7 +793,7 @@
 > 完成 2026-11-07：全部 6 项均已实现。单元+集成：70 文件 / 1347 用例全通过，0 失败，0 跳过（pnpm test 842s）。E2E（全部 spec）：107 用例，106 通过，1 失败（onboarding.spec.ts:84 单独跑时 6/6 通过，只在全量并发跑时偶发超时，与本任务无关），0 跳过；本任务相关 spec（smoke-m4-t07、m4-t08-smoke、m4-t12-smoke、pii-leak、talent-search）：16 通过，0 失败，0 跳过。
 > 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，见 M7 段之后的 M4-T17）：解锁的可见性检查放进事务、`applyLedgerEntry` 改成带条件的 updateMany、adminAdjust 的运行时校验、reconcileWallet 一致性读、设置值校验、按钮文案「（消耗 N 点）」和试点期补发提示、`unlock.enabled=false` 时隐藏按钮、APPLICATION 来源解锁的 P2002 处理、`credits.adjust` metadata 里的自由文本。
 
-#### [ ] M4-T18 补修 M4-T08 合并前复查发现的问题：所有企业侧调用都用 canSeeIdentity、详情页的解锁与 TM-003 测试
+#### [x] M4-T18 补修 M4-T08 合并前复查发现的问题：所有企业侧调用都用 canSeeIdentity、详情页的解锁与 TM-003 测试
 依赖：M4-T08
 > 总控 2026-11-07 加入：复查（按 b4c0d88 读的代码）结论是 BLOCKED。现在没有泄露：解密只在 contact-access.ts、AAD 正确，companyId 来自服务端，详情页是服务端渲染，客户端组件拿不到联系方式；所有调用方之前都先过了 `isStudentVisibleToCompany`。但下面两条验收没做到，规则现在散在四个地方，以后任何一处放宽可见性预筛，就会把全名给到已屏蔽或已删号学生的解锁企业。每条测试都要做到「把修复撤掉，测试就失败」。
 做 / 验收：
@@ -809,6 +809,11 @@
 3. 越权矩阵（M1-T03 的要求，和 M4-T16 第 2 条同一个问题）：现在新增的 5 行是直接调 `getContactForCompany` 并自己传 companyId，和 contact-access.test.ts 一一重复。改为走真实的权限路径：`mockSession(...)` 之后用 `requireCompanyMember('RECRUITER')` 或 `requireVerifiedCompany()` 拿 ctx，再调 `viewTalentProfile(ctx, studentId)`。覆盖：访客被拒、学生被拒、已停用的企业成员被拒、其他企业（会话属于 B，学生只被 A 解锁）→ 看不到全名和联系方式、认证被撤销但以前解锁过的企业 → 看不到联系方式、本企业已解锁 → 能看到。
 4. E2E：global-setup 给已认证企业准备一个已解锁的学生（只用 example.test 邮箱和虚构号码）。加密不要在测试里再复制一份（pii-leak.spec.ts 和 scripts/db/verify-decrypt.ts 已经各有一份）：把纯算法抽到 `src/server/lib/crypto-core.ts`（不带 `server-only`、不 import `@/env`，导出 `encryptWithKeyring(plaintext, aad, keyring, activeKeyId)` 和 `decryptWithKeyring(...)`），`crypto.ts` 的 encryptField/decryptField 改为调用它；global-setup 和 pii-leak.spec.ts 都 import 它；E2E 侧的密钥要和 next dev 读环境文件的顺序一致（.env.development.local → .env.local → .env.development → .env），避免写进库的密文 dev server 解不开：用 `@next/env` 的 `loadEnvConfig(process.cwd())`（pnpm 下它不是直接依赖，要 `pnpm add -D @next/env@<与 next 相同的精确版本>`，并在 DECISIONS 记一行：包名、用途、备选是手工按这个顺序解析）；冒烟用例打开这个学生的详情页，断言联系方式标题和手机号可见；原来那个永远匹配不到的 `/发生了错误/` 正则删掉，改成断言没有 Next 错误页。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 完成 2026-11-07：全部 4 项均已实现。
+> (1) `canSeeIdentityMany` 加入 `contact-access.ts`，要求 `isActive+VERIFIED`；`talent-search.ts`、`talent-folders.ts` 用 Many 版本，`talent-view.ts` 用单个版本，全部删除 `unlocks.length > 0`；详情页 ForbiddenError race 按 `unlocked=false` 处理。
+> (2) `talent-view.test.ts` 加 6 条身份暴露/屏蔽/撤销集成测试；`contact-access.test.ts` 补认证撤销测试；`talent-identity-gate.test.ts` 新建身份门测试，mock canSeeIdentity 返回 false，断言三个服务均掩码。
+> (3) `authz-matrix.test.ts` 加 6 条 `mockSession → requireVerifiedCompany → viewTalentProfile` 真实鉴权路径测试。
+> (4) `crypto-core.ts` 抽出纯 AES-256-GCM（无 server-only、无 @/env），`crypto.ts` 改调它；`global-setup.ts` 和 `pii-leak.spec.ts` 改用 `@next/env` `loadEnvConfig` + `encryptWithKeyring`；`unlockedStudent` 写入加密手机号；冒烟用例断言联系方式标题和手机号可见。自查清单：(a) companyId 来自 requireCompanyMember ✓；(b) 外部输入 zod 校验 ✓（服务层无新输入）；(c) 新单元/集成测试 71 文件 1358 通过 0 失败 0 跳过；(d) 相关 E2E（m4-t18-smoke、pii-leak）14 通过 0 失败 0 跳过；(e) `git status --porcelain` 结尾为空。
 > 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，并入 M4-T17）：单个字段解密失败时整页 500；物理删除 User/StudentProfile 行的测试；`buildEmployerStudentPayload({canSeeName})` 将来的调用方必须用 canSeeIdentity；`/e` 页面的 `X-Robots-Tag: noindex` 和 `Cache-Control: private, no-store`（M7-T05 要优先做，详情页现在会输出解密后的联系方式）；隐私政策 §6.4「HIDDEN 但已解锁的企业仍能看到」与实现（更严）不一致，等律师稿 T15 一并改。
 
 #### [ ] M4-T19 补修 M4-T09 合并前复查发现的问题：PDF 解析限额、去掉页面里的脚本和附件、TM-003 返回 404、真实 PDF 测试

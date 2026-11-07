@@ -73,7 +73,6 @@ import {
   getFolderItems,
   getStudentFolderIds,
 } from '@/server/services/talent-folders'
-import { getContactForCompany } from '@/server/services/contact-access'
 
 setupTestDb()
 
@@ -779,10 +778,11 @@ describe('未认证企业查看收藏夹被拒', () => {
 })
 
 // ---------------------------------------------------------------------------
-// contact-access authz (M4-T08)
+// talent.view: viewTalentProfile contact-access authz (M4-T18)
+// Tests go through the real auth path: mockSession → requireVerifiedCompany → viewTalentProfile.
 // ---------------------------------------------------------------------------
 
-describe('contact-access: getContactForCompany authz', () => {
+describe('talent.view: viewTalentProfile contact-access authz (M4-T18)', () => {
   async function makeVisible(profileId: string) {
     await testDb.studentProfile.update({
       where: { id: profileId },
@@ -801,52 +801,70 @@ describe('contact-access: getContactForCompany authz', () => {
     })
   }
 
-  it('not unlocked → ForbiddenError', async () => {
-    const { profileId } = await createStudent(testDb)
-    const emp = await createEmployer(testDb)
-    await makeVisible(profileId)
-
-    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+  it('guest → ForbiddenError (via requireVerifiedCompany)', async () => {
+    mockSession(null)
+    await expect(requireVerifiedCompany('RECRUITER', noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it('unlocked → returns contact (even if null fields)', async () => {
-    const { profileId } = await createStudent(testDb)
-    const emp = await createEmployer(testDb)
-    await makeVisible(profileId)
-    await createUnlock(emp.companyId, profileId, emp.userId)
-
-    const contact = await getContactForCompany(emp.companyId, profileId)
-    expect(contact).toMatchObject({ phone: null, email: null })
+  it('student → ForbiddenError (via requireVerifiedCompany)', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    await expect(requireVerifiedCompany('RECRUITER', noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it('student blocks company after unlock → ForbiddenError (TM-003)', async () => {
-    const { profileId } = await createStudent(testDb)
-    const emp = await createEmployer(testDb)
-    await makeVisible(profileId)
-    await createUnlock(emp.companyId, profileId, emp.userId)
-    await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
-
-    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
-  })
-
-  it('student suspended after unlock → ForbiddenError (TM-003)', async () => {
-    const { profileId, userId } = await createStudent(testDb)
-    const emp = await createEmployer(testDb)
-    await makeVisible(profileId)
-    await createUnlock(emp.companyId, profileId, emp.userId)
+  it('suspended company member → ForbiddenError (via requireVerifiedCompany)', async () => {
+    const { userId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'VERIFIED' } })
     await testDb.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } })
-
-    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+    mockSession(userId)
+    await expect(requireVerifiedCompany('RECRUITER', noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it('cross-company: company B cannot access student unlocked by company A', async () => {
-    const { profileId } = await createStudent(testDb)
+  it('other company (B session, student only unlocked by A) → cannot see full name or contact', async () => {
     const empA = await createEmployer(testDb)
     const empB = await createEmployer(testDb)
+    const { profileId, name } = await createStudent(testDb)
+    await testDb.company.update({ where: { id: empA.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.company.update({ where: { id: empB.companyId }, data: { verificationStatus: 'VERIFIED' } })
     await makeVisible(profileId)
     await createUnlock(empA.companyId, profileId, empA.userId)
 
-    await expect(getContactForCompany(empB.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+    mockSession(empB.userId)
+    const ctx = await requireVerifiedCompany('RECRUITER', noHeaders)
+    const detail = await viewTalentProfile(ctx, profileId)
+
+    expect(detail.unlocked).toBe(false)
+    expect(detail.name).not.toBe(name)
+    expect(detail.contact).toBeNull()
+  })
+
+  it('company with revoked verification (previously unlocked) → ForbiddenError (via requireVerifiedCompany)', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId } = await createStudent(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+
+    // Revoke company verification after the unlock
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'REJECTED' } })
+
+    mockSession(emp.userId)
+    await expect(requireVerifiedCompany('RECRUITER', noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('own company + unlocked → unlocked=true, full name visible', async () => {
+    const emp = await createEmployer(testDb)
+    const { profileId, name } = await createStudent(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+
+    mockSession(emp.userId)
+    const ctx = await requireVerifiedCompany('RECRUITER', noHeaders)
+    const detail = await viewTalentProfile(ctx, profileId)
+
+    expect(detail.unlocked).toBe(true)
+    expect(detail.name).toBe(name)
   })
 })
 

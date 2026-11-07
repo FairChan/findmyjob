@@ -29,6 +29,13 @@ async function makeVisible(profileId: string) {
   })
 }
 
+async function verifyCompany(companyId: string) {
+  await testDb.company.update({
+    where: { id: companyId },
+    data: { verificationStatus: 'VERIFIED' },
+  })
+}
+
 // Create a TalentUnlock record for the company+student
 async function createUnlock(companyId: string, studentId: string, userId: string) {
   // Ensure wallet exists
@@ -60,6 +67,7 @@ describe('canSeeIdentity', () => {
   it('returns true when TalentUnlock exists, student is active and not blocked', async () => {
     const { profileId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
 
@@ -70,6 +78,7 @@ describe('canSeeIdentity', () => {
   it('returns false when student has blocked the company (even if unlocked)', async () => {
     const { profileId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
     // Student blocks company after unlock
@@ -82,6 +91,7 @@ describe('canSeeIdentity', () => {
   it('returns false when student account is SUSPENDED', async () => {
     const { profileId, userId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
     await testDb.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } })
@@ -93,6 +103,7 @@ describe('canSeeIdentity', () => {
   it('returns false when student account is DELETED', async () => {
     const { profileId, userId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
     await testDb.user.update({ where: { id: userId }, data: { status: 'DELETED' } })
@@ -105,11 +116,27 @@ describe('canSeeIdentity', () => {
     const { profileId } = await createStudent(testDb)
     const empA = await createEmployer(testDb)
     const empB = await createEmployer(testDb)
+    await verifyCompany(empA.companyId)
+    await verifyCompany(empB.companyId)
     await makeVisible(profileId)
     await createUnlock(empA.companyId, profileId, empA.userId)
 
     // Company B has no unlock
     const result = await canSeeIdentity(empB.companyId, profileId)
+    expect(result).toBe(false)
+  })
+
+  it('returns false when company verification is revoked (even if TalentUnlock exists)', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+
+    // Revoke verification
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'REJECTED' } })
+
+    const result = await canSeeIdentity(emp.companyId, profileId)
     expect(result).toBe(false)
   })
 })
@@ -126,6 +153,7 @@ describe('getContactForCompany', () => {
   it('returns decrypted contact when unlocked', async () => {
     const { profileId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
 
@@ -144,6 +172,7 @@ describe('getContactForCompany', () => {
   it('returns all-null contact when student has no contact record', async () => {
     const { profileId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
 
@@ -158,6 +187,7 @@ describe('getContactForCompany', () => {
   it('throws ForbiddenError when student blocks company after unlock (TM-003)', async () => {
     const { profileId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
     // Student blocks company
@@ -169,6 +199,7 @@ describe('getContactForCompany', () => {
   it('throws ForbiddenError when student is suspended after unlock (TM-003)', async () => {
     const { profileId, userId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
     await testDb.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } })
@@ -179,6 +210,7 @@ describe('getContactForCompany', () => {
   it('throws ForbiddenError when student is deleted after unlock (TM-003)', async () => {
     const { profileId, userId } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
     await testDb.user.update({ where: { id: userId }, data: { status: 'DELETED' } })

@@ -6,30 +6,19 @@
  * a *_test database on localhost (same rules as tests/setup/db.ts).
  */
 import { createE2eDb } from './helpers/db'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { randomBytes, scrypt } from 'node:crypto'
 import { LedgerReason } from '@prisma/client'
+import { loadEnvConfig } from '@next/env'
+import { encryptWithKeyring } from '../../src/server/lib/crypto-core'
 
-// Bootstrap env vars from .env if the shell didn't export them (local dev convenience).
-// Only parse if TEST_DATABASE_URL is not already set — in CI it comes from the environment.
-if (!process.env.TEST_DATABASE_URL) {
-  try {
-    const env = readFileSync(resolve(process.cwd(), '.env'), 'utf-8')
-    for (const line of env.split('\n')) {
-      const eq = line.indexOf('=')
-      if (eq <= 0 || line.trimStart().startsWith('#')) continue
-      const k = line.slice(0, eq).trim()
-      let v = line.slice(eq + 1).trim()
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-        v = v.slice(1, -1)
-      }
-      if (k && !(k in process.env)) process.env[k] = v
-    }
-  } catch {}
-}
+// Load env vars using same file priority as Next.js dev server:
+// .env.development.local → .env.local → .env.development → .env
+// This ensures E2E-side PII_KEYS match what Next.js uses to decrypt.
+loadEnvConfig(process.cwd())
 
-// Also set SKIP_ENV_VALIDATION so the env.ts module doesn't fail during setup
+// Suppress env.ts validation — global-setup is not a Next.js runtime context.
 process.env.SKIP_ENV_VALIDATION = '1'
 
 async function hashPassword(password: string): Promise<string> {
@@ -50,7 +39,7 @@ export interface E2EFixtures {
   verifiedEmployer: { email: string; password: string; companyId: string }
   unverifiedEmployer: { email: string; password: string; companyId: string }
   student: { profileId: string }
-  unlockedStudent: { profileId: string; resumeId: string }
+  unlockedStudent: { profileId: string; resumeId: string; phone: string }
   folder: { folderId: string }
   m4t12Student: { email: string; password: string; profileId: string }
 }
@@ -60,6 +49,9 @@ const UNVERIFIED_EMAIL = 'e2e-unverified-employer@example.test'
 const STUDENT_EMAIL = 'e2e-talent-student@example.test'
 const UNLOCKED_STUDENT_EMAIL = 'e2e-talent-student-unlocked@example.test'
 const M4T12_STUDENT_EMAIL = 'e2e-m4t12-student@example.test'
+
+// Known phone for unlocked student — asserted visible in m4-t18-smoke.spec.ts
+const UNLOCKED_STUDENT_PHONE = '+60115550001'
 
 export default async function globalSetup() {
   // 与 helpers/db.ts 同一个工厂：库名必须以 _test 结尾、主机必须是本机，APP_ENV=production/staging 直接拒绝
@@ -321,6 +313,24 @@ export default async function globalSetup() {
       })
     }
 
+    // Write encrypted phone for unlocked student so the detail page can show contact info.
+    // Uses the same key as Next.js dev server (loaded via loadEnvConfig above).
+    const piiKeys = process.env.PII_KEYS
+    if (piiKeys) {
+      const activeKeyId = process.env.PII_ACTIVE_KEY_ID ?? 'v1'
+      const encPhone = encryptWithKeyring(
+        UNLOCKED_STUDENT_PHONE,
+        `StudentContact.phone:${unlockedProfile.id}`,
+        piiKeys,
+        activeKeyId,
+      )
+      await prisma.studentContact.upsert({
+        where: { studentId: unlockedProfile.id },
+        create: { studentId: unlockedProfile.id, phone: encPhone },
+        update: { phone: encPhone },
+      })
+    }
+
     // Create TalentUnlock so the detail page shows the download link
     await prisma.talentUnlock.upsert({
       where: {
@@ -440,7 +450,7 @@ export default async function globalSetup() {
         companyId: unverifiedEmp.companyId,
       },
       student: { profileId: profile.id },
-      unlockedStudent: { profileId: unlockedProfile.id, resumeId: unlockedResume.id },
+      unlockedStudent: { profileId: unlockedProfile.id, resumeId: unlockedResume.id, phone: UNLOCKED_STUDENT_PHONE },
       folder: { folderId: folder.id },
       m4t12Student: {
         email: M4T12_STUDENT_EMAIL,

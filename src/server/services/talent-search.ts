@@ -10,6 +10,7 @@ import { ValidationError, RateLimitedError, ForbiddenError } from '../errors'
 import { redact } from '@/lib/redact'
 import { toTalentCard, employerFreeText } from '../serializers/talent-card'
 import type { TalentCard } from '../serializers/talent-card'
+import { canSeeIdentityMany } from './contact-access'
 
 // ---- Language level ordering ----
 
@@ -206,19 +207,15 @@ export async function searchTalents(
         take: PAGE_SIZE,
         include: {
           school: { select: { id: true, nameZh: true, nameEn: true } },
-          unlocks: {
-            where: { companyId: ctx.companyId },
-            take: 1,
-            select: { companyId: true },
-          },
         },
       }),
     ])
 
+    const unlockedSet = await canSeeIdentityMany(ctx.companyId, rows.map((r) => r.id))
     const students = rows.map((s) =>
       toTalentCard(
         { ...s, cgpa: s.cgpa, lastActiveAt: s.lastActiveAt },
-        { unlocked: s.unlocks.length > 0 },
+        { unlocked: unlockedSet.has(s.id) },
       ),
     )
     return { students, total, page: input.page, pageSize: PAGE_SIZE, maxPage }
@@ -230,11 +227,6 @@ export async function searchTalents(
     orderBy,
     include: {
       school: { select: { id: true, nameZh: true, nameEn: true } },
-      unlocks: {
-        where: { companyId: ctx.companyId },
-        take: 1,
-        select: { companyId: true },
-      },
       experiences: { select: { title: true } },
     },
   })
@@ -254,10 +246,11 @@ export async function searchTalents(
 
   const total = matched.length
   const paginated = matched.slice((input.page - 1) * PAGE_SIZE, input.page * PAGE_SIZE)
+  const unlockedSet = await canSeeIdentityMany(ctx.companyId, paginated.map((s) => s.id))
   const students = paginated.map((s) =>
     toTalentCard(
       { ...s, cgpa: s.cgpa, lastActiveAt: s.lastActiveAt },
-      { unlocked: s.unlocks.length > 0 },
+      { unlocked: unlockedSet.has(s.id) },
     ),
   )
   return { students, total, page: input.page, pageSize: PAGE_SIZE, maxPage }
