@@ -4,6 +4,7 @@ import { action } from '@/server/action'
 import { transferCompany, transferInputSchema } from '@/server/services/managed-company'
 import { createEmailProvider } from '@/lib/email'
 import { env } from '@/env'
+import { logger } from '@/server/lib/logger'
 import { after } from 'next/server'
 
 export const transferManagedCompanyAction = action(
@@ -32,8 +33,8 @@ export const transferManagedCompanyAction = action(
 <p>链接 7 天内有效。</p>`,
           text: `您已被指定为 FindMYJob 平台上一家企业的新负责人。\n\n接受链接：${acceptUrl}\n\n链接 7 天内有效。`,
         })
-      } catch {
-        // email failure is non-fatal
+      } catch (err) {
+        logger.error({ err }, 'transferManagedCompanyAction: email send failed')
       }
     })
     return {}

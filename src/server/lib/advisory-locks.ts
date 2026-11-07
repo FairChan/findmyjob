@@ -4,6 +4,7 @@ import type { Prisma } from '@prisma/client'
 export const LOCK_NS = {
   JOB_VIEW_QUOTA: 1001,
   PROFILE_VIEW: 1002,
+  MANAGED_TRANSFER: 1003,
 } as const
 
 /**

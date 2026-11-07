@@ -992,6 +992,31 @@ describe('managed-company authz (M6-T07)', () => {
     })
     await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
   })
+
+  it('acceptInvite: non-OWNER invite for managed company → ForbiddenError', async () => {
+    const { acceptInvite } = await import('@/server/services/team')
+    const { createManagedCompany } = await import('@/server/services/managed-company')
+    const admin = await testDb.user.create({
+      data: { name: 'Admin MC4', email: `admin-mc4-matrix-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const company = await createManagedCompany({ userId: admin.id }, { legalName: `MCo-NOwnerInv-${Date.now()}` })
+    const email = `noninv-${Date.now()}@example.test`
+    const { createHash, randomBytes } = await import('crypto')
+    const rawToken = randomBytes(32).toString('base64url')
+    const hash = createHash('sha256').update(rawToken).digest('hex')
+    await testDb.companyInvite.create({
+      data: { companyId: company.id, email, role: 'ADMIN', tokenHash: hash, expiresAt: new Date(Date.now() + 86_400_000), createdById: admin.id },
+    })
+    const target = await testDb.user.create({
+      data: { name: 'Target MC', email, emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    await expect(acceptInvite({ userId: target.id }, rawToken)).rejects.toBeInstanceOf(ForbiddenError)
+    // Company must remain managed with no members
+    const updated = await testDb.company.findUnique({ where: { id: company.id } })
+    expect(updated!.isManaged).toBe(true)
+    const member = await testDb.companyMember.findFirst({ where: { companyId: company.id } })
+    expect(member).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -123,6 +123,10 @@ export async function acceptInvite(ctx: UserCtx, token: string): Promise<void> {
   if (invite.role === 'OWNER') {
     throw new ForbiddenError('OWNER can only be assigned via managed company transfer')
   }
+  // Non-OWNER invites for managed companies must not go through the normal member flow
+  if (invite.company.isManaged) {
+    throw new ForbiddenError('Cannot accept member invite for a platform-managed company')
+  }
 
   // Email must match (case-insensitive)
   const user = await db.user.findUnique({
