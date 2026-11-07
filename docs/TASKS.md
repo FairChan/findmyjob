@@ -841,10 +841,11 @@
 验收：与原型 C2 的测试用例一致（同一职位只出现一次、精确在前、不区分大小写、"Finance" 能搜到「财务」组）；pg_trgm 索引生效（EXPLAIN 里能看到 Bitmap Index Scan）；查看者打不开的职位，不能靠描述里的词被搜出来（对应原型测试 `locked jobs are not matched by their description`）；按薪资排序时隐藏薪资的职位排在最后
 > 完成 2026-11-07：实现 searchJobs（EXACT/RELATED 模式、pg_trgm ILIKE、同义词展开、canSeeDescription 安全参数、薪资排序、游标分页）；/jobs 页接入 service；unit 19/19、integration 10/10、E2E smoke 7/7 通过。偏差：$queryRaw 返回 skills/languages 为 null（空数组列）需加 `?? []` 防护；已修复。
 
-#### [ ] M5-T10 扩展筛选
+#### [x] M5-T10 扩展筛选
 依赖：M5-T09
 做：两级行业（选大类包含全部子类）、公司定位标签（任一命中）、公司规模、薪资档（`jobs.salaryBands`）。
 验收：与原型 C3 的测试用例一致；选了薪资档时隐藏薪资的职位不出现，也不能借筛选反推出它的薪资
+> 完成 2026-11-07：industryMatches（父级包含子级）；searchJobs 增加 industry/tags/size/salaryAtLeast 四个筛选（empty-query 走 Prisma company filter，keyword 走 SQL AND 片段）；jobs page listParamsSchema 增加四个 URL 参数；单元 29 条 + 集成 C3 9 条 + E2E 8 条全部通过；失败输出见提交说明。
 
 ---
 
