@@ -316,10 +316,12 @@ jobs:
         run: echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build and push app image
+        env:
+          SENTRY_DSN: ${{ vars.NEXT_PUBLIC_SENTRY_DSN }}
         run: |
           docker build \
             --target runner \
-            --build-arg NEXT_PUBLIC_SENTRY_DSN="${{ vars.NEXT_PUBLIC_SENTRY_DSN }}" \
+            --build-arg NEXT_PUBLIC_SENTRY_DSN="$SENTRY_DSN" \
             --build-arg NEXT_PUBLIC_APP_TAG="${{ github.sha }}" \
             --build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT="production" \
             --tag "ghcr.io/fairchan/findmyjob:${{ github.sha }}" \
@@ -389,3 +391,121 @@ jobs:
             --no-banner --report-format json --report-path - || true)
           echo "$result" | jq -e 'map(select(.RuleID == "findmyjob-app-secrets")) | length > 0' \
             || { echo "::error::Self-test failed: findmyjob-app-secrets rule did not fire"; exit 1; }
+
+  scan-semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Semgrep registry scan
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            semgrep/semgrep:1.106.0 \
+            semgrep scan --config=auto --metrics=off --error /src
+
+  scan-dependencies:
+    name: Dependency vulnerability scan
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check if pnpm-lock.yaml changed
+        id: lockfile
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch --depth=1 origin "$BASE_REF"
+          CHANGED=$(git diff --name-only "origin/$BASE_REF...HEAD" -- pnpm-lock.yaml 2>/dev/null || true)
+          echo "changed=$([ -n "$CHANGED" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: OSV dependency scan
+        if: steps.lockfile.outputs.changed == 'true'
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            ghcr.io/google/osv-scanner:v2.0.0 \
+            --config=/src/osv-scanner.toml \
+            --lockfile=/src/pnpm-lock.yaml
+
+  scan-actions:
+    name: GitHub Actions security lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: actionlint
+        run: |
+          ACTIONLINT_VERSION=1.7.4
+          curl -sSfL \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar xz actionlint
+          ./actionlint -oneline .github/workflows/*.yml
+
+      - name: zizmor
+        run: |
+          pip install --quiet zizmor==1.26.1
+          zizmor --min-severity high .github/
+
+  scan-image:
+    name: Image & Dockerfile scan
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [image]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: hadolint
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/src:ro" \
+            hadolint/hadolint:v2.12.0 \
+            hadolint /src/deploy/Dockerfile
+
+      - name: Login to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+
+      - name: Trivy image scan
+        env:
+          APP_SHA: ${{ github.sha }}
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$GITHUB_WORKSPACE/.trivyignore:/.trivyignore:ro" \
+            aquasecurity/trivy:0.57.1 \
+            image \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            --ignore-unfixed \
+            --ignorefile /.trivyignore \
+            "ghcr.io/fairchan/findmyjob:$APP_SHA"

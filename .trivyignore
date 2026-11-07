@@ -1,0 +1,5 @@
+# Trivy ignore list for findmyjob
+# Format: CVE-YYYY-NNNNN [expiry: YYYY-MM-DD] [reason]
+# All exemptions MUST have an expiry date and be recorded in docs/DECISIONS.md.
+# Entries without an expiry date will cause CI to fail (pnpm db:check scans this file).
+# No current exemptions.

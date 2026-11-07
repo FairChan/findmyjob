@@ -1139,7 +1139,7 @@
 - HSTS_MAX_AGE 改为 31536000；确认所有子域都已经是 https 之后，再加 includeSubDomains。
 验收：强制模式下，375px 和 1280px 两种宽度走完「注册 → 上传」，控制台没有 CSP 报错；每次请求的 nonce 都不同
 
-#### [ ] M7-T16 CI 扩展扫描（P1，M7 之后）
+#### [x] M7-T16 CI 扩展扫描（P1，M7 之后）
 依赖：M7-T06
 做：
 - semgrep 用 registry 规则集做 PR 扫描，加 `--metrics=off` 和 `--error`。
@@ -1150,6 +1150,8 @@
   - `.github/workflows/ci.yml` 构建步骤里直接插值的 `${{ vars.NEXT_PUBLIC_SENTRY_DSN }}`，改成经 `env:` 传入，再在 run 里用 shell 变量引用；
   - 删掉多余的 devDependency `@types/psl`（psl 自带类型，现在靠 tsconfig 的 paths 映射；这个包已经废弃），并在 DECISIONS 里补一句。
 验收：各 job 都通过，豁免文件里没有已过期的条目
+
+> 完成 2026-11-07：新增 scan-semgrep/scan-dependencies/scan-actions/scan-image 四个 CI job；创建 .trivyignore 和 osv-scanner.toml；修复 NEXT_PUBLIC_SENTRY_DSN 直接插值→env 传入；删除 @types/psl devDep（tsconfig paths 映射已足够）；失败输出见提交说明
 
 #### [ ] M7-T17 质量包：a11y 全覆盖、锁版本 Lighthouse、SEO 元数据、Logo 缓存（P1，E2 之前）
 依赖：M7-T01
