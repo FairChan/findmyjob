@@ -1,18 +1,24 @@
 import 'server-only'
 import { z } from 'zod'
-import { PDFDocument, StandardFonts, rgb, degrees, PDFName } from 'pdf-lib'
 import { route } from '@/server/route'
-import { ForbiddenError, NotFoundError, RateLimitedError } from '@/server/errors'
+import { NotFoundError, RateLimitedError } from '@/server/errors'
 import { db } from '@/server/db'
-import { canSeeIdentity } from '@/server/services/contact-access'
+import { identityAccess } from '@/server/services/contact-access'
 import { logAudit } from '@/server/services/audit'
 import { getObjectBytes } from '@/lib/storage'
+import { getSetting } from '@/server/services/settings'
 import { logger } from '@/server/lib/logger'
+import { sanitizePdf } from '@/server/lib/pdf-sanitize'
+import { watermarkPdf } from '@/server/lib/pdf-watermark'
+import { RESUME_MAX_BYTES } from '@/server/lib/upload-constants'
 
-// Module-level in-process concurrent download limit per company member.
-// Soft limit: resets on process restart. Max 2 concurrent watermark tasks per member.
+// Module-level in-process concurrent download limits.
+// Both limits are soft (reset on process restart).
+
 const activeDownloads = new Map<string, number>()
 const MAX_CONCURRENT_PER_MEMBER = 2
+
+let activeGlobal = 0
 
 function acquireSlot(userId: string): boolean {
   const current = activeDownloads.get(userId) ?? 0
@@ -27,20 +33,43 @@ function releaseSlot(userId: string): void {
   else activeDownloads.set(userId, current - 1)
 }
 
+async function acquireGlobalSlot(): Promise<boolean> {
+  const max = await getSetting('resume.watermarkGlobalConcurrency', 4)
+  if (activeGlobal >= max) return false
+  activeGlobal++
+  return true
+}
+
+function releaseGlobalSlot(): void {
+  if (activeGlobal > 0) activeGlobal--
+}
+
 // Return the most printable ASCII label for the company (Helvetica is Latin-only).
-// Decision: M4-T09 — pdf-lib standard fonts are WinAnsi (Latin-1 only); CJK characters
-// require an embedded font. Until a font is added, ASCII-safe label is used.
+// Falls back to company.id when both legalName and displayNameEn contain non-ASCII.
 function safeCompanyLabel(company: {
   id: string
   legalName: string
   displayNameEn: string | null
 }): string {
-  if (company.displayNameEn) return company.displayNameEn.slice(0, 50)
+  if (company.displayNameEn && /^[\x20-\x7E]*$/.test(company.displayNameEn)) {
+    return company.displayNameEn.slice(0, 50)
+  }
   if (/^[\x20-\x7E]*$/.test(company.legalName)) return company.legalName.slice(0, 50)
   return company.id
 }
 
 const idSchema = z.string().cuid()
+
+function errorJson(code: string, status: number): Response {
+  return new Response(JSON.stringify({ ok: false, code }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'private, no-store',
+      'X-Robots-Tag': 'noindex',
+    },
+  })
+}
 
 export const GET = route({ auth: { type: 'company', verified: true } }, async (req, ctx) => {
   const userId = ctx.userId!
@@ -51,40 +80,46 @@ export const GET = route({ auth: { type: 'company', verified: true } }, async (r
   const rawId = pathParts[pathParts.length - 2] ?? ''
   const parsed = idSchema.safeParse(rawId)
   if (!parsed.success) {
-    return new Response(JSON.stringify({ ok: false, code: 'NOT_FOUND' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
-    })
+    return errorJson('NOT_FOUND', 404)
   }
   const resumeId = parsed.data
 
-  // Load the resume record
+  // Load the resume record — include sizeBytes for pre-fetch size guard
   const resume = await db.resumeFile.findUnique({
     where: { id: resumeId },
-    select: { id: true, storageKey: true, fileName: true, studentId: true },
+    select: { id: true, storageKey: true, fileName: true, studentId: true, sizeBytes: true },
   })
   if (!resume) {
-    return new Response(JSON.stringify({ ok: false, code: 'NOT_FOUND' }), {
-      status: 404,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
-    })
+    return errorJson('NOT_FOUND', 404)
   }
 
-  // Check access: TalentUnlock must exist, student must not have blocked the company
-  const canSee = await canSeeIdentity(companyId, resume.studentId)
-  if (!canSee) {
-    return new Response(JSON.stringify({ ok: false, code: 'FORBIDDEN' }), {
-      status: 403,
-      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
-    })
+  // Size guard: reject before fetching bytes if the stored size already exceeds the limit
+  if (resume.sizeBytes > RESUME_MAX_BYTES) {
+    logger.warn({ resumeId, sizeBytes: resume.sizeBytes }, 'resume sizeBytes exceeds limit — rejecting download')
+    return errorJson('FILE_TOO_LARGE', 422)
   }
 
-  // Enforce concurrent watermark task limit per company member
+  // Access check: TalentUnlock must exist, student must not have blocked the company
+  const access = await identityAccess(companyId, resume.studentId)
+  if (access === 'gone') {
+    return errorJson('NOT_FOUND', 404)
+  }
+  if (access === 'no_unlock') {
+    return errorJson('FORBIDDEN', 403)
+  }
+
+  // Enforce concurrent watermark task limits (per-member and global)
   if (!acquireSlot(userId)) {
     throw new RateLimitedError('Too many concurrent download requests')
   }
 
+  let globalAcquired = false
   try {
+    globalAcquired = await acquireGlobalSlot()
+    if (!globalAcquired) {
+      throw new RateLimitedError('Server is busy — too many concurrent downloads')
+    }
+
     // Load company info for watermark label
     const company = await db.company.findUnique({
       where: { id: companyId },
@@ -95,14 +130,18 @@ export const GET = route({ auth: { type: 'company', verified: true } }, async (r
     // Fetch raw PDF bytes from S3
     const pdfBytes = await getObjectBytes(resume.storageKey)
 
-    // Rebuild PDF: create new document, copy pages (strips OpenAction, JavaScript, attachments)
-    const sourceDoc = await PDFDocument.load(pdfBytes)
-    const newDoc = await PDFDocument.create()
-    const pageCount = sourceDoc.getPageCount()
-    const pageIndices = Array.from({ length: pageCount }, (_, i) => i)
-    const copiedPages = await newDoc.copyPages(sourceDoc, pageIndices)
+    // Sanitize: strip JS, macros, attachments, dangerous actions
+    const sanitized = await sanitizePdf(pdfBytes)
+    if (!sanitized.ok) {
+      logger.error({ resumeId, reason: sanitized.reason }, 'PDF sanitization failed — blocking download')
+      if (sanitized.reason === 'too_large') return errorJson('FILE_TOO_LARGE', 422)
+      return new Response(null, {
+        status: 500,
+        headers: { 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex' },
+      })
+    }
 
-    // Build watermark text (ASCII-safe; see DECISIONS M4-T09)
+    // Watermark: add diagonal label
     const companyLabel = safeCompanyLabel(company)
     const dateStr = Intl.DateTimeFormat('en-CA', {
       timeZone: 'Asia/Kuala_Lumpur',
@@ -112,34 +151,14 @@ export const GET = route({ auth: { type: 'company', verified: true } }, async (r
     }).format(new Date())
     const watermarkText = `For ${companyLabel} only · ${dateStr} · ${userId}`
 
-    const font = await newDoc.embedFont(StandardFonts.Helvetica)
-
-    for (const page of copiedPages) {
-      newDoc.addPage(page)
-      const { width, height } = page.getSize()
-      const fontSize = Math.max(8, Math.min(width, height) * 0.025)
-      const textWidth = font.widthOfTextAtSize(watermarkText, fontSize)
-      page.drawText(watermarkText, {
-        x: (width - textWidth) / 2,
-        y: height / 2,
-        size: fontSize,
-        font,
-        color: rgb(0.5, 0.5, 0.5),
-        opacity: 0.3,
-        rotate: degrees(45),
+    const watermarked = await watermarkPdf(sanitized.pdf, { text: watermarkText })
+    if (!watermarked.ok) {
+      logger.error({ resumeId, reason: watermarked.reason }, 'PDF watermark failed — blocking download')
+      if (watermarked.reason === 'too_large') return errorJson('FILE_TOO_LARGE', 422)
+      return new Response(null, {
+        status: 500,
+        headers: { 'Cache-Control': 'private, no-store', 'X-Robots-Tag': 'noindex' },
       })
-    }
-
-    const outputBytes = await newDoc.save()
-
-    // Verify output: no OpenAction, no JavaScript in Names
-    const outputDoc = await PDFDocument.load(outputBytes)
-    if (
-      outputDoc.catalog.has(PDFName.of('OpenAction')) ||
-      outputDoc.catalog.has(PDFName.of('Names'))
-    ) {
-      logger.error({ resumeId, companyId }, 'Watermarked PDF unexpectedly contains OpenAction or Names — blocking download')
-      throw new ForbiddenError()
     }
 
     // Audit
@@ -151,15 +170,17 @@ export const GET = route({ auth: { type: 'company', verified: true } }, async (r
       metadata: { companyId, studentId: resume.studentId },
     })
 
-    return new Response(Buffer.from(outputBytes), {
+    return new Response(new Uint8Array(watermarked.pdf), {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': 'attachment; filename="resume.pdf"',
         'Cache-Control': 'private, no-store',
+        'X-Robots-Tag': 'noindex',
       },
     })
   } finally {
     releaseSlot(userId)
+    if (globalAcquired) releaseGlobalSlot()
   }
 })

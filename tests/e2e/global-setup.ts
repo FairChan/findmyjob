@@ -12,11 +12,14 @@ import { randomBytes, scrypt } from 'node:crypto'
 import { LedgerReason } from '@prisma/client'
 import { loadEnvConfig } from '@next/env'
 import { encryptWithKeyring } from '../../src/server/lib/crypto-core'
+import { PDFDocument } from 'pdf-lib'
 
 // Load env vars using same file priority as Next.js dev server:
 // .env.development.local → .env.local → .env.development → .env
 // This ensures E2E-side PII_KEYS match what Next.js uses to decrypt.
-loadEnvConfig(process.cwd())
+// Store combinedEnv to access S3 creds — loadEnvConfig skips vars already in process.env,
+// so we use combinedEnv for S3 to avoid picking up stale system-level env vars.
+const { combinedEnv: loadedEnv } = loadEnvConfig(process.cwd())
 
 // Suppress env.ts validation — global-setup is not a Next.js runtime context.
 process.env.SKIP_ENV_VALIDATION = '1'
@@ -296,20 +299,56 @@ export default async function globalSetup() {
       })
     }
 
-    // Create or reuse a resume file for the unlocked student
+    // Create or reuse a resume file for the unlocked student, and upload a real PDF
+    // to MinIO so the download route can actually sanitize and watermark it.
+    // Use S3Client directly — storage.ts has 'server-only' and cannot be imported here.
+    // Use loadedEnv (combinedEnv from loadEnvConfig) instead of process.env — loadEnvConfig
+    // does not override pre-existing process.env values, so loadedEnv has the definitive creds.
+    const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3')
+    const s3 = new S3Client({
+      endpoint: loadedEnv.S3_ENDPOINT,
+      region: loadedEnv.S3_REGION ?? 'us-east-1',
+      credentials: {
+        accessKeyId: loadedEnv.S3_ACCESS_KEY_ID ?? '',
+        secretAccessKey: loadedEnv.S3_SECRET_ACCESS_KEY ?? '',
+      },
+      forcePathStyle: true,
+    })
+    const putObject = async (key: string, body: Buffer, contentType: string) => {
+      await s3.send(new PutObjectCommand({
+        Bucket: loadedEnv.S3_BUCKET ?? 'findmyjob-files',
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+      }))
+    }
+
     let unlockedResume = await prisma.resumeFile.findFirst({
       where: { studentId: unlockedProfile.id },
     })
+    const minimalPdfDoc = await PDFDocument.create()
+    minimalPdfDoc.addPage([612, 792])
+    const minimalPdfBytes = Buffer.from(await minimalPdfDoc.save())
+    const resumeStorageKey = `resumes/e2e-unlocked/${unlockedProfile.id}/cv.pdf`
+
+    // Upload the real PDF to MinIO (idempotent — overwrites each run)
+    await putObject(resumeStorageKey, minimalPdfBytes, 'application/pdf')
+
     if (!unlockedResume) {
       unlockedResume = await prisma.resumeFile.create({
         data: {
           studentId: unlockedProfile.id,
-          storageKey: `resumes/e2e-unlocked/${unlockedProfile.id}/cv.pdf`,
+          storageKey: resumeStorageKey,
           fileName: 'cv.pdf',
           mimeType: 'application/pdf',
-          sizeBytes: 1024,
+          sizeBytes: minimalPdfBytes.length,
           isPrimary: true,
         },
+      })
+    } else {
+      unlockedResume = await prisma.resumeFile.update({
+        where: { id: unlockedResume.id },
+        data: { sizeBytes: minimalPdfBytes.length, storageKey: resumeStorageKey },
       })
     }
 

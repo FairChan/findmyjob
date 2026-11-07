@@ -816,7 +816,7 @@
 > (4) `crypto-core.ts` 抽出纯 AES-256-GCM（无 server-only、无 @/env），`crypto.ts` 改调它；`global-setup.ts` 和 `pii-leak.spec.ts` 改用 `@next/env` `loadEnvConfig` + `encryptWithKeyring`；`unlockedStudent` 写入加密手机号；冒烟用例断言联系方式标题和手机号可见。自查清单：(a) companyId 来自 requireCompanyMember ✓；(b) 外部输入 zod 校验 ✓（服务层无新输入）；(c) 新单元/集成测试 71 文件 1358 通过 0 失败 0 跳过；(d) 相关 E2E（m4-t18-smoke、pii-leak）14 通过 0 失败 0 跳过；(e) `git status --porcelain` 结尾为空。
 > 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，并入 M4-T17）：单个字段解密失败时整页 500；物理删除 User/StudentProfile 行的测试；`buildEmployerStudentPayload({canSeeName})` 将来的调用方必须用 canSeeIdentity；`/e` 页面的 `X-Robots-Tag: noindex` 和 `Cache-Control: private, no-store`（M7-T05 要优先做，详情页现在会输出解密后的联系方式）；隐私政策 §6.4「HIDDEN 但已解锁的企业仍能看到」与实现（更严）不一致，等律师稿 T15 一并改。
 
-#### [ ] M4-T19 补修 M4-T09 合并前复查发现的问题：PDF 解析限额、去掉页面里的脚本和附件、TM-003 返回 404、真实 PDF 测试
+#### [x] M4-T19 补修 M4-T09 合并前复查发现的问题：PDF 解析限额、去掉页面里的脚本和附件、TM-003 返回 404、真实 PDF 测试
 依赖：M4-T09、M4-T18
 > 总控 2026-11-07 加入：复查（按 a4a0d04 读的代码）结论是 BLOCKED。权限这一层是对的：companyId 来自 requireVerifiedCompany，简历必须属于该学生（没有 IDOR），出错一律 500、不会退回原文件，`export const GET = route(...)`。但两条验收没做到，另有两个 High。复查用探针实测过：1.3KB 的双层 Flate ObjStm 在 641ms 内解出 128MB；load → create → copyPages → save 之后，页面上的 `/JavaScript`、`/AA`、`/FileAttachment`、`/EF` 都还在。每条测试都要做到「把修复撤掉，测试就失败」。
 > 前置：总控已把线 B 的 `src/server/lib/pdf-worker.ts`（`runCappedPdfWorker`，main 7ee7740）合进 milestone/M4（a458483）；`next.config.ts` 的 serverExternalPackages 里的 pdf-lib 要保留。这个文件不存在时，直接输出 `STATUS: BLOCKED M4-T19 DEPS pdf-worker`。
@@ -845,6 +845,7 @@
    - 所有响应（含错误响应）加 `X-Robots-Tag: noindex`；
    - E2E：global-setup 往 MinIO 测试桶放一个真实的小 PDF，冒烟用例真正请求下载链接，断言 200、`application/pdf`、带 `Cache-Control: private, no-store`。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 完成 2026-11-07：全部 6 项均已实现。(1) sanitizePdf worker：SANITIZE_PDF_SCRIPT 静态常量，resolveName 修正 pdf-lib 1.17.x asString() 带前导斜杠问题；(2) watermarkPdf worker：水印文字经 params 传，45° 旋转居中，ASCII 回落 safeCompanyLabel；(3) identityAccess 加入 contact-access.ts，gone→404、no_unlock→403；(4) authz-matrix 去掉 vi.mock('pdf-lib')，改 mock getObjectBytes 返回真实小 PDF；(5) resume-download-watermark.test.ts 新建，结构检查净化结果；(6) global-setup 往 MinIO 上传真实 PDF，冒烟用例断言 200/application/pdf/no-store。单元+集成：73 文件 / 1380 通过 / 0 失败 / 0 跳过（pnpm test 537s）。E2E（m4-t09-smoke.spec.ts）：2 通过 / 0 失败 / 0 跳过（含 3 条 setup 共 5 通过）。自查：(a) companyId 来自 requireVerifiedCompany ✓；(b) 外部输入 zod 校验 ✓；(c) 新单元/集成测试 73 文件 1380 通过；(d) E2E 2+3=5 通过 0 失败；(e) git status --porcelain 为空。
 > 延后（并入 M4-T17）：响应改成真正的流式返回；进程内并发 Map 在多实例下不共享（ARCHITECTURE §5.8 允许单实例）；404/403 区分构成简历 id 的存在性探测（cuid，难利用）。
 
 #### [ ] M4-T20 补修 M4-T10 合并前复查发现的问题：同月重复执行多发、并发解锁后的对账、定时任务按吉隆坡时间

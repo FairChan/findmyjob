@@ -27,31 +27,8 @@ vi.mock('@/lib/storage', () => ({
   getObjectBytes: vi.fn(),
 }))
 
-vi.mock('pdf-lib', () => {
-  function makeDoc() {
-    return {
-      getPageCount: vi.fn().mockReturnValue(1),
-      copyPages: vi.fn().mockResolvedValue([{
-        getSize: vi.fn().mockReturnValue({ width: 612, height: 792 }),
-        drawText: vi.fn(),
-      }]),
-      embedFont: vi.fn().mockResolvedValue({ widthOfTextAtSize: vi.fn().mockReturnValue(100) }),
-      addPage: vi.fn(),
-      save: vi.fn().mockResolvedValue(new Uint8Array()),
-      catalog: { has: vi.fn().mockReturnValue(false) },
-    }
-  }
-  return {
-    PDFDocument: {
-      load: vi.fn().mockImplementation(() => Promise.resolve(makeDoc())),
-      create: vi.fn().mockImplementation(() => Promise.resolve(makeDoc())),
-    },
-    StandardFonts: { Helvetica: 'Helvetica' },
-    rgb: vi.fn().mockReturnValue({}),
-    degrees: vi.fn().mockReturnValue(0),
-    PDFName: { of: vi.fn().mockReturnValue({}) },
-  }
-})
+// pdf-lib is NOT mocked — the download route tests use real PDF processing.
+// getObjectBytes is mocked to return a real minimal PDF buffer (see helper below).
 
 vi.mock('next/headers', () => ({
   headers: vi.fn().mockResolvedValue(new Headers()),
@@ -1486,7 +1463,7 @@ describe('resume.download (M4-T09)', () => {
     expect(res.status).toBe(403)
   })
 
-  it('student blocks company after unlock → 403 (TM-003)', async () => {
+  it('student blocks company after unlock → 404 (TM-003 gone)', async () => {
     const { profileId, resumeId } = await makeStudentWithResume()
     const emp = await createEmployer(testDb)
     await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
@@ -1495,23 +1472,29 @@ describe('resume.download (M4-T09)', () => {
     mockSession(emp.userId)
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
     const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
-    expect(res.status).toBe(403)
+    expect(res.status).toBe(404)
   })
 
-  it('valid access + mocked PDF → 200 application/pdf, Cache-Control: no-store', async () => {
+  it('valid access + real PDF → 200 application/pdf, Cache-Control: no-store', async () => {
+    const { PDFDocument: PD } = await import('pdf-lib')
+    const doc = await PD.create()
+    doc.addPage([612, 792])
+    const minPdf = Buffer.from(await doc.save())
+
     const { profileId, resumeId } = await makeStudentWithResume()
     const emp = await createEmployer(testDb)
     await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
     await createUnlock(emp.companyId, profileId, emp.userId)
     const { getObjectBytes } = await import('@/lib/storage')
-    vi.mocked(getObjectBytes).mockResolvedValueOnce(Buffer.from([37, 80, 68, 70]))
+    vi.mocked(getObjectBytes).mockResolvedValueOnce(minPdf)
     mockSession(emp.userId)
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
     const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toBe('application/pdf')
     expect(res.headers.get('cache-control')).toContain('no-store')
-  })
+    expect(res.headers.get('x-robots-tag')).toBe('noindex')
+  }, 30_000)
 
   it('resume not in DB → 404', async () => {
     const emp = await createEmployer(testDb)
@@ -1522,5 +1505,55 @@ describe('resume.download (M4-T09)', () => {
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
     const res = await GET(new Request(`http://localhost/api/resumes/${fakeId}/download`))
     expect(res.status).toBe(404)
+  })
+
+  // --- M4-T19 additional authz rows ---
+
+  it('guest (no session) → 403', async () => {
+    const { resumeId } = await makeStudentWithResume()
+    mockSession(null)
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(403)
+  })
+
+  it('student session (not employer) → 403', async () => {
+    const { resumeId } = await makeStudentWithResume()
+    const { profileId: studentProfileId } = await createStudent(testDb)
+    const studentProfile = await testDb.studentProfile.findUnique({
+      where: { id: studentProfileId },
+      select: { userId: true },
+    })
+    mockSession(studentProfile!.userId)
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(403)
+  })
+
+  it('unverified company member (even with unlock in DB) → 403 (guards: route verified:true + identityAccess)', async () => {
+    const { profileId, resumeId } = await makeStudentWithResume()
+    const emp = await createEmployer(testDb)
+    // Company left as UNSUBMITTED (not VERIFIED) — both route auth and identityAccess block this
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    mockSession(emp.userId)
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(403)
+  })
+
+  it('IDOR: company unlocked student X but downloads student Y resume → 403', async () => {
+    const { profileId: xProfile } = await makeStudentWithResume()
+    const { profileId: yProfile, resumeId: yResumeId } = await makeStudentWithResume()
+
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    // Only unlock student X
+    await createUnlock(emp.companyId, xProfile, emp.userId)
+    mockSession(emp.userId)
+
+    // Attempt to download student Y's resume
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${yResumeId}/download`))
+    expect(res.status).toBe(403)
   })
 })

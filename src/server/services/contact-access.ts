@@ -154,6 +154,55 @@ export async function canSeeIdentityMany(companyId: string, studentIds: string[]
 }
 
 /**
+ * Fine-grained identity access check returning one of:
+ *  'ok'        — company may see the student's identity
+ *  'no_unlock' — no TalentUnlock exists (or company not active/verified)
+ *  'gone'      — student blocked the company, or student account SUSPENDED/DELETED,
+ *                or student profile no longer exists
+ *
+ * Use the return value to map gone → 404 and no_unlock → 403 in HTTP handlers.
+ */
+export async function identityAccess(
+  companyId: string,
+  studentId: string,
+): Promise<'ok' | 'no_unlock' | 'gone'> {
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { isActive: true, verificationStatus: true },
+  })
+  if (!company || !company.isActive || company.verificationStatus !== 'VERIFIED') {
+    return 'no_unlock'
+  }
+
+  const [unlock, blocked, profile] = await Promise.all([
+    db.talentUnlock.findUnique({
+      where: { companyId_studentId: { companyId, studentId } },
+      select: { id: true },
+    }),
+    db.blockedCompany.findFirst({
+      where: { companyId, studentId },
+      select: { studentId: true },
+    }),
+    db.studentProfile.findUnique({
+      where: { id: studentId },
+      select: { id: true, userId: true },
+    }),
+  ])
+
+  if (!unlock) return 'no_unlock'
+  if (blocked) return 'gone'
+  if (!profile) return 'gone'
+
+  const user = await db.user.findUnique({
+    where: { id: profile.userId },
+    select: { status: true },
+  })
+  if (!user || user.status !== 'ACTIVE') return 'gone'
+
+  return 'ok'
+}
+
+/**
  * Returns true when a company can see a student's full identity (name + contact):
  * - Company isActive + VERIFIED
  * - TalentUnlock exists for this company+student
@@ -161,8 +210,7 @@ export async function canSeeIdentityMany(companyId: string, studentIds: string[]
  * - Student account is ACTIVE
  */
 export async function canSeeIdentity(companyId: string, studentId: string): Promise<boolean> {
-  const result = await canSeeIdentityMany(companyId, [studentId])
-  return result.has(studentId)
+  return (await identityAccess(companyId, studentId)) === 'ok'
 }
 
 /**

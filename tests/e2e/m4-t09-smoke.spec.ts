@@ -69,4 +69,27 @@ test.describe('M4-T09 smoke: talent detail resume download link', () => {
       await ctx.close()
     }
   })
+
+  test('smoke /api/resumes/[id]/download: 200, application/pdf, Cache-Control: private, no-store (M4-T19)', async ({ browser }) => {
+    // Uses the verified employer session to request the sanitized+watermarked PDF
+    const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+
+    try {
+      const downloadUrl = `/api/resumes/${fixtures.unlockedStudent.resumeId}/download`
+      const response = await ctx.request.get(downloadUrl, { timeout: 60_000 })
+
+      expect(response.status()).toBe(200)
+      expect(response.headers()['content-type']).toBe('application/pdf')
+      expect(response.headers()['cache-control'] ?? '').toContain('no-store')
+      expect(response.headers()['x-robots-tag']).toBe('noindex')
+
+      // Response body should be a non-empty PDF
+      const bodyBuf = await response.body()
+      expect(bodyBuf.length).toBeGreaterThan(0)
+      // PDF magic bytes
+      expect(bodyBuf.subarray(0, 5).toString('latin1')).toBe('%PDF-')
+    } finally {
+      await ctx.close()
+    }
+  })
 })
