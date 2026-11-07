@@ -3,6 +3,11 @@ export async function register() {
     const { init } = await import('@sentry/nextjs')
     const { sentryOptions } = await import('./lib/sentry-options')
     init(sentryOptions)
+    // One structured line per boot: ops can see restarts, and the E2E PII log check
+    // (tests/e2e/global-teardown.ts) can prove app logger output reached the collected log
+    // even when a green run hits no error path.
+    const { logger } = await import('./server/lib/logger')
+    logger.info({ event: 'server.start' }, 'server started')
   }
 }
 

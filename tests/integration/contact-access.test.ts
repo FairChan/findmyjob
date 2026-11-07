@@ -147,7 +147,7 @@ describe('getContactForCompany', () => {
     const emp = await createEmployer(testDb)
     await makeVisible(profileId)
 
-    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(getContactForCompany(emp.companyId, profileId, { userId: emp.userId })).rejects.toBeInstanceOf(ForbiddenError)
   })
 
   it('returns decrypted contact when unlocked', async () => {
@@ -165,7 +165,7 @@ describe('getContactForCompany', () => {
       update: { phone: encryptedPhone },
     })
 
-    const contact = await getContactForCompany(emp.companyId, profileId)
+    const contact = await getContactForCompany(emp.companyId, profileId, { userId: emp.userId })
     expect(contact.phone).toBe('+60123456789')
   })
 
@@ -176,7 +176,7 @@ describe('getContactForCompany', () => {
     await makeVisible(profileId)
     await createUnlock(emp.companyId, profileId, emp.userId)
 
-    const contact = await getContactForCompany(emp.companyId, profileId)
+    const contact = await getContactForCompany(emp.companyId, profileId, { userId: emp.userId })
     expect(contact.phone).toBeNull()
     expect(contact.email).toBeNull()
     expect(contact.whatsapp).toBeNull()
@@ -193,7 +193,7 @@ describe('getContactForCompany', () => {
     // Student blocks company
     await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
 
-    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(getContactForCompany(emp.companyId, profileId, { userId: emp.userId })).rejects.toBeInstanceOf(ForbiddenError)
   })
 
   it('throws ForbiddenError when student is suspended after unlock (TM-003)', async () => {
@@ -204,7 +204,7 @@ describe('getContactForCompany', () => {
     await createUnlock(emp.companyId, profileId, emp.userId)
     await testDb.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } })
 
-    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(getContactForCompany(emp.companyId, profileId, { userId: emp.userId })).rejects.toBeInstanceOf(ForbiddenError)
   })
 
   it('throws ForbiddenError when student is deleted after unlock (TM-003)', async () => {
@@ -215,7 +215,53 @@ describe('getContactForCompany', () => {
     await createUnlock(emp.companyId, profileId, emp.userId)
     await testDb.user.update({ where: { id: userId }, data: { status: 'DELETED' } })
 
-    await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+    await expect(getContactForCompany(emp.companyId, profileId, { userId: emp.userId })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('contact.read audit: creates 1 audit record with no PII in metadata when access granted', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+
+    const encryptedPhone = encPhone('+60198765432', profileId)
+    await testDb.studentContact.upsert({
+      where: { studentId: profileId },
+      create: { studentId: profileId, phone: encryptedPhone },
+      update: { phone: encryptedPhone },
+    })
+
+    await getContactForCompany(emp.companyId, profileId, { userId: emp.userId })
+
+    const audits = await testDb.auditLog.findMany({
+      where: { action: 'contact.read', targetId: profileId },
+    })
+    expect(audits).toHaveLength(1)
+    expect(audits[0].actorId).toBe(emp.userId)
+    const meta = audits[0].metadata as Record<string, string>
+    // Metadata must not contain decrypted phone/email/etc.
+    expect(Object.keys(meta).sort()).toEqual(['companyId', 'studentId'].sort())
+    expect(meta.studentId).toBe(profileId)
+    expect(meta.companyId).toBe(emp.companyId)
+    expect(JSON.stringify(meta)).not.toContain('+60198765432')
+  })
+
+  it('contact.read audit: no audit written when access denied (ForbiddenError)', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    await makeVisible(profileId)
+    // No TalentUnlock — access denied
+
+    await expect(
+      getContactForCompany(emp.companyId, profileId, { userId: emp.userId })
+    ).rejects.toBeInstanceOf(ForbiddenError)
+
+    const audits = await testDb.auditLog.findMany({
+      where: { action: 'contact.read', targetId: profileId },
+    })
+    expect(audits).toHaveLength(0)
   })
 })
 

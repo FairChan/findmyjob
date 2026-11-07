@@ -148,7 +148,7 @@ describe('applyToJob', () => {
     await applyToJob({ userId }, { jobId: job.id })
 
     // Company can now read contact
-    const contact = await getContactForCompany(emp.companyId, profileId)
+    const contact = await getContactForCompany(emp.companyId, profileId, { userId: emp.userId })
     expect(contact.phone).toBe('+60123456789')
 
     // Still no wallet / credits spent

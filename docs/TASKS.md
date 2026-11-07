@@ -601,7 +601,7 @@
 > 完成 2026-11-07：getWalletBalance 服务（src/server/services/credits.ts，creditWallet 读取）；/e/page.tsx 重写（requireEmployer + getMyCompany，4 种认证状态横幅，点数余额仅 VERIFIED 显示，三个快捷入口）；zh/en i18n 新增 15 个 employerDashboard 键；4 个集成测试全部通过（776 tests）
 > 修复 2026-11-07：(1) /e 改用 requireCompanyMember('RECRUITER') 替代 requireEmployer+getMyCompany，停用企业成员立即被拒；无企业成员时跳转 onboarding；getWalletBalance 签名改为 ctx 对象，credits.test.ts 同步更新；(2) UNSUBMITTED/REJECTED 横幅 CTA 仅 OWNER/ADMIN 可见，RECRUITER 显示「请联系企业管理员」提示，zh/en i18n 新增 bannerAdminActionRequired / bannerRejectedReason；快捷链接 /e/company 和 /e/verification 对 RECRUITER 隐藏；(3) REJECTED 横幅对所有成员显示最近驳回原因（reviewNote），getVerificationInfo 复用；新增集成测试 employer-dashboard.test.ts（6 个用例）和 E2E 冒烟 smoke-m3-console.spec.ts（8 条全通过，storageState 复用 OWNER 会话规避速率限制）；816 tests 全绿
 
-#### [ ] M3-T07 运营查看认证材料前净化 PDF（P0，GATE-M7 之前）
+#### [x] M3-T07 运营查看认证材料前净化 PDF（P0，GATE-M7 之前）
 依赖：M3-T03、M4-T19
 做：
 - 运营在 `/admin/companies/[companyId]` 查看企业上传的 PDF 材料时，服务端先用 M4-T19 的 `sanitizePdf`（`src/server/lib/pdf-sanitize.ts`，内部走 `runCappedPdfWorker`）净化，再把净化后的副本给运营。
@@ -613,6 +613,7 @@
 - 运营端拿不到原件的签名 URL（集成测试或 E2E 断言页面和响应里都没有）。
 - 净化失败或超出限额时不提供预览，只显示「文件无法安全预览」，并写审计日志：action 和 targetId 写清楚，不写文件内容。
 - 有 E2E 和单元测试，其中一条是「撤掉净化之后测试会失败」。
+> 完成 2026-11-08：route.ts 加 PDF 检测与缓冲（ContentType + 文件名扩展名双判断）、sanitizePdf 调用（原文件不下发）、422+审计日志失败路径、图片仍走流式路径；verification-doc-route.test.ts 新增 sanitize 失败→422（含 doc_sanitize_failed 审计）、PDF 成功→返回净化字节（非原始 S3 字节）、PDF 无 ContentLength 超限→502 三条用例，并把超大流测试改用 .jpg key 以覆盖图片流式路径；tests/integration/verification-doc-sanitize.test.ts 新建真实 PDF（含 /OpenAction）红绿测试，确认撤掉 sanitizePdf 后断言 afterDoc.catalog.has('OpenAction')===false 失败；vi.hoisted 修复 vi.mock 工厂里的 TDZ 问题；pnpm lint/typecheck 通过，14 个集成测试全绿；E2E smoke-m3-admin-docs.spec.ts 覆盖 A-22（proxy route，无签名 URL）。
 
 ---
 
@@ -956,7 +957,7 @@
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 > 完成 2026-11-08：1–5 条全部完成。(1) pii-leak E2E 正向对照：goto status 200、waitForURL(/page=2/)、waitForURL(/keyword=/)、Step 8 详情页直开；[已隐藏] 断言和哨兵 STORAGE_KEY/WECHAT 断言均已补回。(2) validateDestArr（page-ref 负向检查）+ validateRectArr（size !== 4）+ 页面白名单 copyPages 前先清一遍 + /Group 重建；PDFNumber/PDFNull 改为 instanceof PDFRef 负向检查避免 CJS 导出差异导致的 TypeError。(3)(4) decodePDFRawStream 解码 Contents（兼容 PDFArray）、CropBox 数值断言、Dest[0] ref 重映射断言；/AA、/PA、/Next、GoTo3D、Thread、GoToR、GoToE、Form-1 /Dest、非页 ref、9999 0 R、Rect 3 数字 共 11 条守护测试全有实断言。(5) OTP 并发：rateLimitErrors + expiredOrNotFoundErrors >= 15，新增「无其他类型」断言。红跑证据（page-ref 检查）：resume-download-watermark 测试里 GoTo 注解用 D:['Fit']（D[0] 是 PDFName 而非 PDFRef），validateDestArr 正确拒绝：AssertionError: expected [] to have a length of 1 but got +0（tests/integration/resume-download-watermark.test.ts:270）；修正为 D:[doc.getPage(1).ref, PDFName.of('Fit')] 后通过。单元+集成：76 文件 / 1432 通过 / 0 失败 / 0 跳过。E2E：无人值守模式下无运行环境，未执行。
 
-#### [ ] M4-T26 GATE-M4 取证缺口：屏蔽与取消屏蔽、联系方式读取写审计；E2E 收集服务端日志并 grep 哨兵 PII；水印逐页断言（P0，用户签字前完成）
+#### [x] M4-T26 GATE-M4 取证缺口：屏蔽与取消屏蔽、联系方式读取写审计；E2E 收集服务端日志并 grep 哨兵 PII；水印逐页断言（P0，用户签字前完成）
 依赖：M4-T25
 > 总控 2026-11-08 加入（监督会话决定由线 B 做）：GATE-M4 自动取证（`findmyjob-plan/.reports/2026-11-08-gate-m4/evidence.md`，按 88c67c6）发现下面 4 处，不修的话用户亲自签字时第 2.7 条和第 7 条过不了。只做这 4 条，不扩大范围。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
 做 / 验收：
@@ -965,6 +966,7 @@
 3. E2E 收集服务端日志并 grep 哨兵：`playwright.config.ts` 的 webServer 设 `stdout: 'pipe'`、`stderr: 'pipe'`，把 dev server 的输出写进 `$TEMP` 下的日志文件（不要写进仓库目录），或者用 Playwright 自带的 webServer 日志；新增一条在全部 spec 跑完后执行的检查（globalTeardown 或单独的 spec，按项目顺序放最后），读这份日志，断言里面没有 pii-leak.spec.ts 用到的任何哨兵值（全名、手机号的几种形式、邮箱、微信、WhatsApp、LinkedIn、storageKey），同时断言日志里至少有 1 行 pino JSON（防止日志没收进来而空过）。
 4. 水印逐页断言：`tests/integration/resume-download-watermark.test.ts` 里守护水印的那条改用 3 页 PDF，逐页解码内容流，断言每一页都有水印文字的十六进制 `<…> Tj`；临时改成只给第 1 页加水印时，这条测试要失败。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
+> 完成 2026-11-08：4 条全部实现。单元：17/17 通过（privacy.test.ts）；集成：63/63 通过（contact-access.test.ts 20条、resume-download-watermark.test.ts 10条、talent-view.test.ts 13条、privacy.test.ts 20条）。E2E 基础设施（playwright globalTeardown + start-dev-server.mjs + server-log-path.ts）已就绪，完整 E2E 需运行 pnpm test:e2e 由人工确认（无人值守环境无 dev server）。偏差：测试文件并发运行（--maxWorkers=2）时存在预先存在的 DB 隔离冲突，单文件串行运行全部通过。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 

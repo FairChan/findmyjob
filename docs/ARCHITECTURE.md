@@ -210,7 +210,7 @@ flowchart LR
 | `prune-rate-limit`（P1，M7-T14） | 定期清理限流桶 |
 
 ### 5.7 必须写审计日志的动作
-`auth.login`、`auth.session.revoke`、`student.visibility.change`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`resume.download`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`order.confirm`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
+`auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`order.confirm`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
 
 ### 5.8 安全清单
 - 所有外部输入用 zod 校验，Server Actions 也不例外（经 `action()` / `route()`）。
