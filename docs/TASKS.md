@@ -601,7 +601,7 @@
 > 完成 2026-11-07：getWalletBalance 服务（src/server/services/credits.ts，creditWallet 读取）；/e/page.tsx 重写（requireEmployer + getMyCompany，4 种认证状态横幅，点数余额仅 VERIFIED 显示，三个快捷入口）；zh/en i18n 新增 15 个 employerDashboard 键；4 个集成测试全部通过（776 tests）
 > 修复 2026-11-07：(1) /e 改用 requireCompanyMember('RECRUITER') 替代 requireEmployer+getMyCompany，停用企业成员立即被拒；无企业成员时跳转 onboarding；getWalletBalance 签名改为 ctx 对象，credits.test.ts 同步更新；(2) UNSUBMITTED/REJECTED 横幅 CTA 仅 OWNER/ADMIN 可见，RECRUITER 显示「请联系企业管理员」提示，zh/en i18n 新增 bannerAdminActionRequired / bannerRejectedReason；快捷链接 /e/company 和 /e/verification 对 RECRUITER 隐藏；(3) REJECTED 横幅对所有成员显示最近驳回原因（reviewNote），getVerificationInfo 复用；新增集成测试 employer-dashboard.test.ts（6 个用例）和 E2E 冒烟 smoke-m3-console.spec.ts（8 条全通过，storageState 复用 OWNER 会话规避速率限制）；816 tests 全绿
 
-#### [ ] M3-T07 运营查看认证材料前净化 PDF（P0，GATE-M7 之前）
+#### [x] M3-T07 运营查看认证材料前净化 PDF（P0，GATE-M7 之前）
 依赖：M3-T03、M4-T19
 做：
 - 运营在 `/admin/companies/[companyId]` 查看企业上传的 PDF 材料时，服务端先用 M4-T19 的 `sanitizePdf`（`src/server/lib/pdf-sanitize.ts`，内部走 `runCappedPdfWorker`）净化，再把净化后的副本给运营。
@@ -613,6 +613,7 @@
 - 运营端拿不到原件的签名 URL（集成测试或 E2E 断言页面和响应里都没有）。
 - 净化失败或超出限额时不提供预览，只显示「文件无法安全预览」，并写审计日志：action 和 targetId 写清楚，不写文件内容。
 - 有 E2E 和单元测试，其中一条是「撤掉净化之后测试会失败」。
+> 完成 2026-11-08：route.ts 加 PDF 检测与缓冲（ContentType + 文件名扩展名双判断）、sanitizePdf 调用（原文件不下发）、422+审计日志失败路径、图片仍走流式路径；verification-doc-route.test.ts 新增 sanitize 失败→422（含 doc_sanitize_failed 审计）、PDF 成功→返回净化字节（非原始 S3 字节）、PDF 无 ContentLength 超限→502 三条用例，并把超大流测试改用 .jpg key 以覆盖图片流式路径；tests/integration/verification-doc-sanitize.test.ts 新建真实 PDF（含 /OpenAction）红绿测试，确认撤掉 sanitizePdf 后断言 afterDoc.catalog.has('OpenAction')===false 失败；vi.hoisted 修复 vi.mock 工厂里的 TDZ 问题；pnpm lint/typecheck 通过，14 个集成测试全绿；E2E smoke-m3-admin-docs.spec.ts 覆盖 A-22（proxy route，无签名 URL）。
 
 ---
 
