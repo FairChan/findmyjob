@@ -718,6 +718,7 @@
 依赖：M4-T07
 做：`/s/privacy` 的「谁看过我」（90 天内 ProfileView，按企业 + 日期去重）、「谁解锁了我」接入真实数据；学生被解锁时收到通知。
 验收：E2E：企业解锁 → 学生在通知和隐私中心都能看到
+> 总控 2026-11-07：第一次跑（run22 第 6 轮）到 90 分钟上限被停，已完成的部分提交成 2134f68 `wip(M4-T12)`：`listNotifications` / `markAllNotificationsRead`、`/s/notifications` 页面骨架、中英文案、global-setup 和 auth.setup 里的测试学生、`m4-t12-smoke.spec.ts`。从这里接着做，先读一遍这些改动，不要从头重写；storageState 文件已加进 .gitignore（`tests/e2e/auth-*.json`）。
 
 #### [ ] M4-T13 人才侧防泄漏 E2E（扫描全部网络响应）
 依赖：M4-T08
@@ -763,6 +764,94 @@
 7. 冒烟用例：M4-T14 和本任务改动过的页面，都要断言 `page.goto` 返回 200。
 8. 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数；E2E 要按 spec 文件分别列出，并且要跑全部 spec，不只是本任务的。
 > 总控补充 2026-11-07：第 1 条：E2E 全部改走测试库——合入 lane B 的 e2eDb / validateTestDbUrl 后，global-setup 改用 createE2eDb()，smoke-m2-student-pages 改用 e2eDb，tests/e2e 下除 helpers/db.ts 外不再 new PrismaClient()；playwright.config 以 lane B 版本为底，补回 globalSetup、setup 项目，默认端口 3000，reuseExistingServer:false。开发库里此前 E2E 留下的测试账号共 53 个（e2e-student 31、e2e-employer 9、m2t12-smoke 3、m2t11-smoke 2、e2e-admin 2，以及 e2e-verified/unverified/hidden/owner/emp/talent 各 1；都是 example.test 合成邮箱），本任务不删，是否清理由总控和用户决定。第 8 条的数字：单元 40 个文件 832 个用例、集成 20 个文件 372 个用例、E2E 19 个文件 73 个用例（auth.setup 2、m4-t15-smoke 13、smoke-m3-console 8、talent-search 7、locale 5、smoke-m5-review-jobs 4、smoke-m5-jobs 4、smoke-m3-admin 4、smoke-m2-student-pages 4、auth-redirect 4、smoke-m3-verification 3、onboarding 3、m4-t14-smoke 3、smoke-m3-team 2、smoke-m3-company 2、m2-t11-smoke 2、smoke-m2-resume 1、m2-t12-smoke 1、example 1），全部通过，0 失败 0 跳过（2026-11-07 05:58，milestone/M2 合入 lane B 第三轮之后，总控在主会话实际运行）。另：跑全量时发现并修了真实 bug——LoginForm、ResetPasswordForm 用 next-intl 的 router 去 push 已带 /<locale> 的路径，登录后跳到 /zh/zh/s/onboarding（404）；改用 next/navigation，auth-redirect E2E 改为精确匹配 URL 并断言 fullName 输入框可见。注册/登录类 E2E 每条用例设独立 x-real-ip（helpers/client-ip.ts），避免共用限流桶。
+
+#### [ ] M4-T16 补修 M4-T06/T07 合并前复查发现的问题：账本只追加的测试、解锁 action 的越权行、审计进事务
+依赖：M4-T07
+> 总控 2026-11-07 加入：复查（按 0ce2510 读的代码）结论是 BLOCKED。扣点主线是守住的：不会重复扣、不会免费解锁，余额 3 点并发解锁 10 次恰好成功 3 次，action 不返回联系方式。下面第 1–3 条不修完，M4 不能合并，也不能进 GATE-M4。每条测试都要做到「把修复撤掉，测试就失败」。
+> 总控已核实：本机测试库 findmyjob_test 里 findmyjob_app 对 CreditLedger、AuditLog 原本还有 UPDATE、DELETE 权限（开发库没有），总控已在测试库补执行了 init 迁移里的 REVOKE。第 1 条的测试就是为了以后不再出现这种漂移。
+做 / 验收：
+1. 账本只追加没有测试（M4-T06 验收 c）：init 迁移里的 REVOKE 包在 `DO` 块里，角色不存在时会被悄悄跳过，现在没有任何测试证明它生效。在 `tests/integration/credits.test.ts` 里加测试：testDb（以 findmyjob_app 连接）对 "CreditLedger" 执行 `$executeRaw` 的 UPDATE、DELETE，两条都被拒，错误码 42501（Prisma 报 P2010，`meta.code === '42501'`，或错误信息含 `permission denied for table`）；对 "AuditLog" 同样测 UPDATE、DELETE。先插入一行再测，确保不是「没有行可改」而通过。
+2. 越权矩阵里的解锁行是空转的（M4-T07 验收、ARCHITECTURE §5.1）：`authz-matrix.test.ts` 里现有的 4 行都直接调 service 并自己传 companyId，把 action 的 `auth` 改成普通 company 或改成读 input 里的 companyId，这些测试照样通过。按文件里已有的 `mockSession(...)` + `await import('@/server/actions/unlock')` 写法（参考 updateCompanyAction 那几行），加 action 级别的行：
+   - 未认证企业调 `unlockStudentAction` → `code === 'FORBIDDEN'`，没有新建 TalentUnlock，余额不变；
+   - 学生调用 → `FORBIDDEN`；
+   - 未登录 → 被拒（`ok === false`，code 按 action() 的实际行为断言）；
+   - 已认证企业 A 发送 `{ studentId, companyId: <B 的 id> }` → TalentUnlock.companyId 是 A，扣的是 A 的余额，B 的余额和账本都不变；
+   - 已停用（SUSPENDED）的企业成员调用 → 被拒，不扣点（M1-T03 要求每个敏感动作覆盖访客、学生、本企业、其他企业、已停用账号）。
+   把原来那条「A 传自己的 id 再断言是 A」的同义反复用例删掉或改成上面这条。
+3. 审计写在事务外面（ARCHITECTURE §5.3 第 4 步、PRD §3.3、CLAUDE.md 审计红线）：扣点提交后才写 `talent.unlock` 审计，这时写失败就会出现「扣了点、没有审计」，用户重试只会返回「已解锁」，这条审计永远补不回来。`adminAdjust` 的 `credits.adjust` 同样有这个问题。要改成：
+   - `logAudit` 增加可选的第二个参数 `client: Prisma.TransactionClient | typeof db = db`（或新增 tx 版本），`talent.unlock` 和 `credits.adjust` 都在同一个 `$transaction` 里、`applyLedgerEntry` 之后写；`talent.limit.hit` 维持在事务外；
+   - 给学生的通知仍在提交之后发，但包在 try/catch 里，失败只用 `logger` 记一条（只记内部 ID），不能把成功的解锁变成报错；
+   - 测试：(a) 解锁成功后恰好有 1 条 `talent.unlock` 审计，targetId 是 unlockId，metadata 里没有联系方式；把审计调用删掉时这条测试失败；(b) 让 `createNotification` 抛错（vi.mock 或 spy），解锁照样返回成功，审计和账本都在；(c) 让审计写入抛错（单独的测试文件里 vi.mock `@/server/services/audit`），解锁报错，并且没有留下 TalentUnlock、没有新账本行、余额不变；(d) `adminAdjust` 成功后有 1 条 `credits.adjust` 审计。
+4. 事务里不要再借第二个连接（复查 M2）：`unlockStudent` 在 `$transaction` 里调用的 `getSetting`（`limits.unlocksPerDay`、`unlock.costCredits`）用的是全局 db，会在持有一个连接的同时再借一个；生产 `connection_limit=5`、设置缓存冷的时候，5 个以上并发解锁会卡到事务超时。把这两个设置挪到 `db.$transaction` 之前读。
+5. 补齐断言（复查 M4）：`unlock.test.ts` 里建钱包的 helper 现在直接 upsert 余额、不写账本，跑完测试对账必然不平；改成先建余额 0 的钱包，再在 `testDb.$transaction` 里用 `applyLedgerEntry`（`ADMIN_ADJUST`）充值。余额不足那条要断言没有留下 TalentUnlock 和账本行；并发 10 次那条要断言恰好 3 条 TalentUnlock、3 条 UNLOCK 账本行、`reconcileWallet` 返回 ok。
+6. E2E 准备数据不破坏对账（复查 Low，GATE-M4 要求对账 0 行）：`tests/e2e/global-setup.ts` 把余额直接设成 100、不写账本。改为：读当前余额，差额不为 0 时插一条 `ADMIN_ADJUST` 账本行（balanceAfter = 100），再把余额设成 100；只写测试库，不改 CreditLedger 的已有行。
+- 冒烟用例：本任务改动过的页面（如果有），各加一条 Playwright 用例，断言 `page.goto` 返回 200、没有错误页、控制台没有 error。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，见 M7 段之后的 M4-T17）：解锁的可见性检查放进事务、`applyLedgerEntry` 改成带条件的 updateMany、adminAdjust 的运行时校验、reconcileWallet 一致性读、设置值校验、按钮文案「（消耗 N 点）」和试点期补发提示、`unlock.enabled=false` 时隐藏按钮、APPLICATION 来源解锁的 P2002 处理、`credits.adjust` metadata 里的自由文本。
+
+#### [ ] M4-T18 补修 M4-T08 合并前复查发现的问题：所有企业侧调用都用 canSeeIdentity、详情页的解锁与 TM-003 测试
+依赖：M4-T08
+> 总控 2026-11-07 加入：复查（按 b4c0d88 读的代码）结论是 BLOCKED。现在没有泄露：解密只在 contact-access.ts、AAD 正确，companyId 来自服务端，详情页是服务端渲染，客户端组件拿不到联系方式；所有调用方之前都先过了 `isStudentVisibleToCompany`。但下面两条验收没做到，规则现在散在四个地方，以后任何一处放宽可见性预筛，就会把全名给到已屏蔽或已删号学生的解锁企业。每条测试都要做到「把修复撤掉，测试就失败」。
+做 / 验收：
+1. 企业侧所有调用 `toTalentCard` / `toTalentDetail` 的地方都用 `canSeeIdentity` 计算 `unlocked`（M4-T08 验收第 2 条，M4-T11 的完成说明也写了要由本任务收口）：现在 `talent-view.ts:166`、`talent-search.ts:221` 和 `:260`、`talent-folders.ts:165` 还是 `unlocks.length > 0`。
+   - 在 contact-access.ts 里加 `canSeeIdentityMany(companyId, studentIds): Promise<Set<string>>`（一次查 TalentUnlock、BlockedCompany 和 User.status），`canSeeIdentity` 调它；人才搜索和收藏夹用 Many 版本，详情页用单个版本；去掉这几处 `unlocks` 的 include 和「等价」那段注释。
+   - `canSeeIdentity` 同时要求企业 `isActive` 且 `verificationStatus === 'VERIFIED'`（认证被撤销的企业即使以前解锁过，也看不到联系方式；M4-T09 的简历下载和 M5 会直接调它）。
+   - 详情页：`canSeeIdentity` 为 true 才调 `getContactForCompany`；两次检查之间学生屏蔽了企业导致 `getContactForCompany` 抛 ForbiddenError 时，按未解锁显示（`unlocked=false`、`contact=null`），不能报 500。
+   - 测试：用 `vi.mock('@/server/services/contact-access', async (orig) => ({ ...(await orig()), canSeeIdentity: vi.fn().mockResolvedValue(false), canSeeIdentityMany: vi.fn().mockResolvedValue(new Set()) }))`，再建一条真实的 TalentUnlock：`searchTalents`、`getFolderItems` 返回的卡片 name 不是全名，`viewTalentProfile` 返回的 name 不是全名、contact 为 null。任何一处改回 `unlocks.length > 0`，这条测试都要失败。
+2. 详情页的解锁和 TM-003 要在 `viewTalentProfile` 这一层测（M4-T08 验收第 2 条）：现在把 talent-view.ts 改回 `contact: null`，整个测试集照样全绿。在 `tests/integration/talent-view.test.ts` 加：
+   - (a) 已认证企业、有 TalentUnlock、StudentContact 里加密存了 phone、email、whatsapp、wechat、linkedinUrl → `unlocked === true`，name 是全名，五个字段都是明文；
+   - (b) 没有解锁 → name 是遮挡后的、`contact === null`；
+   - (c) 解锁之后分别：学生屏蔽该企业 / 账号 SUSPENDED / 账号 DELETED / 企业认证被撤销 → `viewTalentProfile` 抛 NotFoundError 或 ForbiddenError；如果返回了内容，它的 JSON 里既没有全名也没有手机号。
+3. 越权矩阵（M1-T03 的要求，和 M4-T16 第 2 条同一个问题）：现在新增的 5 行是直接调 `getContactForCompany` 并自己传 companyId，和 contact-access.test.ts 一一重复。改为走真实的权限路径：`mockSession(...)` 之后用 `requireCompanyMember('RECRUITER')` 或 `requireVerifiedCompany()` 拿 ctx，再调 `viewTalentProfile(ctx, studentId)`。覆盖：访客被拒、学生被拒、已停用的企业成员被拒、其他企业（会话属于 B，学生只被 A 解锁）→ 看不到全名和联系方式、认证被撤销但以前解锁过的企业 → 看不到联系方式、本企业已解锁 → 能看到。
+4. E2E：global-setup 给已认证企业准备一个已解锁的学生（加密的联系方式由 global-setup 用 `encryptField` 写入测试库，只用 example.test 邮箱和虚构号码），冒烟用例打开这个学生的详情页，断言联系方式标题和手机号可见；原来那个永远匹配不到的 `/发生了错误/` 正则删掉，改成断言没有 Next 错误页。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，并入 M4-T17）：单个字段解密失败时整页 500；物理删除 User/StudentProfile 行的测试；`buildEmployerStudentPayload({canSeeName})` 将来的调用方必须用 canSeeIdentity；`/e` 页面的 `X-Robots-Tag: noindex` 和 `Cache-Control: private, no-store`（M7-T05 要优先做，详情页现在会输出解密后的联系方式）；隐私政策 §6.4「HIDDEN 但已解锁的企业仍能看到」与实现（更严）不一致，等律师稿 T15 一并改。
+
+#### [ ] M4-T19 补修 M4-T09 合并前复查发现的问题：PDF 解析限额、去掉页面里的脚本和附件、TM-003 返回 404、真实 PDF 测试
+依赖：M4-T09、M4-T18
+> 总控 2026-11-07 加入：复查（按 a4a0d04 读的代码）结论是 BLOCKED。权限这一层是对的：companyId 来自 requireVerifiedCompany，简历必须属于该学生（没有 IDOR），出错一律 500、不会退回原文件，`export const GET = route(...)`。但两条验收没做到，另有两个 High。复查用探针实测过：1.3KB 的双层 Flate ObjStm 在 641ms 内解出 128MB；load → create → copyPages → save 之后，页面上的 `/JavaScript`、`/AA`、`/FileAttachment`、`/EF` 都还在。每条测试都要做到「把修复撤掉，测试就失败」。
+> 前置：总控已把线 B 的 `src/server/lib/pdf-worker.ts`（`runCappedPdfWorker`，main 7ee7740）合进 milestone/M4（a458483）；`next.config.ts` 的 serverExternalPackages 里的 pdf-lib 要保留。这个文件不存在时，直接输出 `STATUS: BLOCKED M4-T19 DEPS pdf-worker`。
+做 / 验收：
+1. 解压炸弹会拖垮整个服务（High）：现在 `PDFDocument.load` 在 Next 主进程里同步解开所有流，没有大小、时间和全局并发上限，任何一个已解锁的企业都能反复触发。要改成：
+   - 读对象之前先看 `resume.sizeBytes`（以及 GetObject 的 ContentLength），超过上传时的简历上限（`src/app/api/uploads/[purpose]/route.ts` 里 RESUME 的 maxBytes，5MB；抽成共享常量，两处一起用）直接拒绝，不读 body；
+   - 所有 pdf-lib 解析都经第 2 条的 `sanitizePdf` 和 `watermarkPdf`，它们内部调 `runCappedPdfWorker`（`import { runCappedPdfWorker } from '@/server/lib/pdf-worker'`；script 必须是模块里的静态字符串常量，水印文字、userId 这些值一律经 params 传，不能拼进 script；写法参考 `src/server/lib/pdf.ts` 的 CHECK_PDF_SCRIPT 和 `tests/unit/pdf-worker.test.ts`；解码字节数上限用默认的 `upload.pdfMaxInflatedBytes`，timeoutMs 10000）。路由文件里不再 import pdf-lib；
+   - 去掉对输出文件的第二次 `load`（清理的正确性由第 2 条的单元测试保证）；
+   - 进程内再加一个全局并发上限（`resume.watermarkGlobalConcurrency`，默认 4），和每个成员 2 个的上限一起，在 finally 里释放；
+   - 测试：嵌套 Flate 的 ObjStm 炸弹样本 → 在超时内返回非 200，且响应不是原文件；`sizeBytes` 超限 → 在调用 `getObjectBytes` 之前就被拒（spy 断言没被调用）。
+2. 页面里的脚本和附件被原样带给企业（High，ARCHITECTURE §5.5）：`copyPages` 会把页面字典整个复制过去。威胁模型 A-22 已定为「先净化再查看」（总控 2026-11-07 默认决定，用户可推翻），线 B 的 M3-T07（运营查看认证材料）会复用这里的接口，所以净化和水印分开做：
+   - `src/server/lib/pdf-sanitize.ts`：`sanitizePdf(input: Buffer, opts?: { timeoutMs?: number }): Promise<{ ok: true; pdf: Buffer } | { ok: false; reason: 'too_large' | 'timeout' | 'malformed' | 'encrypted' }>`。内部用一个静态 script 常量调 `runCappedPdfWorker`：新建文档、copyPages，再逐页删掉 `/AA`，`/Annots` 只保留 `/Subtype /Link` 且动作是 `/GoTo`（文档内跳转；GoToR、GoToE 一律去掉）的注释，Launch、URI、JavaScript、SubmitForm、ImportData 等动作和 FileAttachment、Widget 注释全部去掉；新文档不带 `/OpenAction`、`/AA`、`/Names`（整个去掉：用命名目标的 GoTo 链接会失效，只影响目录跳转，不涉及安全；在 DECISIONS 记一行）、`/AcroForm`（含 XFA）。加密文件由 script 返回 `{ kind: 'encrypted' }`（worker 的错误信息不会透传，不能靠抛错区分），映射成 `encrypted`；runCappedPdfWorker 的 `failed` 映射成 `malformed`。
+   - `src/server/lib/pdf-watermark.ts`：`watermarkPdf(input: Buffer, wm: { text: string }): Promise<{ ok: true; pdf: Buffer } | { ok: false; reason: 'too_large' | 'timeout' | 'malformed' }>`，同样走 runCappedPdfWorker，水印文字经 params 传。
+   - 下载路由：先 `sanitizePdf`，成功后再 `watermarkPdf`，任一步 `ok:false` 都 fail closed（too_large → 422，其余 → 500），绝不退回原文件。
+   - 单元测试 `tests/unit/pdf-sanitize.test.ts`：按类别各一条，每条用 pdf-lib 现场生成只带这一类内容的样本，净化后重新 load 断言它不在：页面 `/AA`、catalog `/AA`、`/OpenAction`、`/Names` 下的 JavaScript、Launch 动作、URI 动作、`/Names` 下的 EmbeddedFiles、FileAttachment 注释、AcroForm/XFA；另加一条「`/GoTo` Link 保留、页数不变」和一条「加密文件 → encrypted」。把净化里对应的那一步删掉时，对应的那条测试要失败。
+   - 做完后，总控把这两个函数的签名发给线 B。
+3. TM-003 要返回 404（M4-T09 验收第 3 条）：现在 `canSeeIdentity=false` 一律 403，测试也断言 403。在 contact-access.ts 加 `identityAccess(companyId, studentId): Promise<'ok' | 'no_unlock' | 'gone'>`（学生屏蔽了该企业、账号 SUSPENDED 或 DELETED、档案不存在都算 gone），`canSeeIdentity` 改为 `(await identityAccess(...)) === 'ok'`，规则仍只在这一个文件里。下载路由：gone → 404，no_unlock → 403。测试：屏蔽 → 404、SUSPENDED → 404、DELETED → 404、没解锁 → 403。
+4. 用真实 PDF 测水印和清理（M4-T09 验收第 1、2 条）：现在 authz-matrix.test.ts 顶部 `vi.mock('pdf-lib')` 是整个文件生效的，没有任何测试解析过真实输出。
+   - 把 pdf-lib 的 mock 从 authz-matrix.test.ts 去掉（那几行改为 mock `getObjectBytes` 返回真实的小 PDF）；
+   - 新建 `tests/integration/resume-download-watermark.test.ts`，不 mock pdf-lib，只 mock `getObjectBytes`。样本用 pdf-lib 现场生成一个 3 页 PDF，带 catalog 的 `/OpenAction` JS、`/Names /JavaScript`、`/Names /EmbeddedFiles`，页面的 `/AA /O` JS，一个 `/S /JavaScript` 的 Link 注释，一个 FileAttachment 注释，再加一个 `/URI` Link；
+   - 调真实的 `GET`，重新解析响应：页数是 3；每一页解码后的内容流里都有水印文字（pdf-lib 写的是十六进制 `<…> Tj`，按 WinAnsi 编码后比对）；catalog 没有 OpenAction、Names、AcroForm；没有页面带 `/AA`；注释只剩那个 `/URI` Link；有 1 条 `resume.download` 审计，metadata 只有内部 ID。
+5. 越权矩阵（M1-T03 的要求）：补上访客、学生会话、未认证企业、已停用的企业成员、IDOR（企业对学生 X 有解锁，用学生 Y 的简历 id 下载 → 403）这几行，都走真实的 `GET` 加 mockSession；把 route 的 `auth` 放宽成普通 company 时要有测试失败。
+6. 其他（复查 Medium，顺手修）：
+   - 水印按 45° 旋转后的实际宽度居中，太长时缩小字号或拆成两行，保证整段落在页面内；
+   - `displayNameEn` 含 WinAnsi 编码不了的字符时，同样回落（和 legalName 一样走 `safeCompanyLabel` 的检查），不能让该企业所有下载都 500；测试：displayNameEn 是中文时下载成功；
+   - 所有响应（含错误响应）加 `X-Robots-Tag: noindex`；
+   - E2E：global-setup 往 MinIO 测试桶放一个真实的小 PDF，冒烟用例真正请求下载链接，断言 200、`application/pdf`、带 `Cache-Control: private, no-store`。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 延后（并入 M4-T17）：响应改成真正的流式返回；进程内并发 Map 在多实例下不共享（ARCHITECTURE §5.8 允许单实例）；404/403 区分构成简历 id 的存在性探测（cuid，难利用）。
+
+#### [ ] M4-T20 补修 M4-T10 合并前复查发现的问题：同月重复执行多发、并发解锁后的对账、定时任务按吉隆坡时间
+依赖：M4-T10、M4-T16
+> 总控 2026-11-07 加入：复查（按 8bcbc23 读的代码）结论是 BLOCKED。加锁、设置读取和对账 SQL 都是对的：余额只经 applyLedgerEntry、同一事务里先 `lockXact` 再检查，对账是一条 SQL。但两条验收没做到。每条测试都要做到「把修复撤掉，测试就失败」。
+做 / 验收：
+1. 同月重复执行会多发（M4-T10 验收第 1 条，PRD §3.1「每月 1 日补足一次」）：现在只有真的发了点才算「本月已处理」，`topUp <= 0` 时什么都不记。常见情况：11 月 1 日余额还有 30（上月没用完），任务什么都不写；10 日用掉 10 点；12 日任务被重跑（运维补跑、pg-boss 重试），又补了 10 点。要改成：
+   - 在同一个事务、同一把锁里，每家企业每个吉隆坡月份都写一条记录：调用 `applyLedgerEntry`，`delta = max(0, 额度 − 余额)`，`reason PILOT_GRANT`，`refType 'PilotPeriod'`，`refId 'YYYY-MM'`（吉隆坡月份）；是否已处理改为按 `refType` + `refId` 查，不再按 createdAt。delta 为 0 的行表示「查过了，不用补」，以后企业端的账本列表不显示这种行（在 DECISIONS 记一行）。不加新表、不改 schema；
+   - 认证通过时的立即补足走同一个函数、用同一个月份标记。
+   - 测试：(a) 用 ADMIN_ADJUST 账本行把余额充到 30 → 跑任务 → 解锁用掉 10 → 再跑任务 → 余额 20，没有 delta > 0 的 PILOT_GRANT（现在这条会失败）；(b) 跑任务 → 用掉 5 → 再跑 → 余额 25，只有 1 条补点行；(c) `Promise.all([runPilotMonthlyCredits(), runPilotMonthlyCredits(), grantPilotCreditsOnVerification(id)])` → 只有一条补点行、余额 30（去掉外层 `lockXact` 时这条要失败）。
+2. 并发解锁后对账 0 行（M4-T10 验收第 2 条）：现在那条测试是顺序执行、直接调 `applyLedgerEntry`，没有经过 `unlockStudent`。在 `unlock.test.ts` 的两个并发用例（余额 3 并发 10 次、同一学生并发重复解锁）最后：mock `@/server/lib/alert`，调用 `runReconcileWallets()`，断言 alert 没被调用；再用 `testDb.$queryRaw` 跑 RUNBOOK 场景 3 的对账 SQL，断言结果是 `[]`（依赖 M4-T16 第 5 条已经把建钱包的 helper 改成写账本）。
+3. 定时任务按吉隆坡时间（复查 M1、M2，ARCHITECTURE §5.6）：`'10 0 1 * *'` 现在按 UTC 算，实际是吉隆坡早上 8:10。`pilot-monthly-credits` 改为 `boss.schedule(name, '10 0 1 * *', {}, { tz: 'Asia/Kuala_Lumpur' })`，`reconcile-wallets` 改为 `'0 3 * * *'` 加同样的 tz；两者都设 pg-boss 的 `missed: 'once'`（先确认 node_modules 里 pg-boss 版本的选项名），worker 停机错过时间点时补跑一次（有了第 1 条的月份标记，补跑不会多发）。测试：mock boss，断言这两个 schedule 调用的 cron 和选项。
+4. 一家失败不能拖累整批（复查 M3）：`runPilotMonthlyCredits` 的循环里每家企业单独 try/catch，失败时 `logger` 记内部 ID 并 `alert('pilot.grant.failed', { companyId })`，继续处理下一家，最后有失败就抛错让 pg-boss 记失败。测试：让其中一家抛错，其余企业照样补到 30，alert 被调用一次。
+5. 认证后补点失败（复查 M4、M5）：`grantPilotCreditsOnVerification` 失败时除了 logger，还要 `alert('pilot.grant.failed', { companyId })`；managed-company 建企业和建钱包改成一次写入（`company.create` 里嵌套 `wallet: { create: {} }`），并补一条测试：新建代管企业后有钱包、余额等于 `pilot.monthlyCredits`。代管企业每月也补点这一点，在 DECISIONS 记一行（PRD 没写，按普通认证企业处理）。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 延后（并入 M4-T17）：jobs 文件去掉 `import 'server-only'`（ARCHITECTURE §5.1）；`grantPilotCreditsOnVerification` 和 `klMonthStartUtc` 从 jobs/ 挪到 services/；`pilot.monthlyCredits` 校验为非负整数；对账补一条「余额大于 0、没有账本行」的测试；RUNBOOK 场景 3 用 adminAdjust 修不平对账（余额和账本同时变），要改写修复步骤。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 
@@ -1285,6 +1374,22 @@
 > 进度 2026-11-07 第 1/7 轮复查补修（2deecea，lane B 会话手工）：pdf-lib 解析器会捕获无效对象的错误继续解析，ObjStm 里抛出的限额错误到不了 script，合法 PDF 后追加的 ObjStm 炸弹会 load 成功、被 checkPdf 放行（内存已被限住，但文件会被存下）。worker 记录限额是否触发过，触发过一律回 too_large；新增用例「valid PDF + 追加 ObjStm 炸弹」（tests/unit/pdf-worker.test.ts），修之前失败、修之后 34/34 通过。另在 pdf-worker.ts 注释写明 script 只能是服务端静态常量，用户数据只走 params。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
+
+#### [ ] M4-T17 点数与解锁加固（P1，收费前，即 M8 之前）
+依赖：M4-T16
+> 总控 2026-11-07 加入：来自 M4-T06/T07 复查的 Medium 和 Low，按收尾规则不挡 GATE-M4。
+做 / 验收：
+1. 可见性检查进事务（PRD §3.3「校验在原子事务里」）：`unlockStudent` 在拿到锁之后，用 tx 版本的可见性检查再判断一次；测试：在第一次检查和事务之间把学生设为 HIDDEN 或屏蔽该企业（用 spy 注入），解锁被拒、不扣点。
+2. `applyLedgerEntry` 按 §5.3 改成带条件的 `updateMany({ where: { id, balance: { gte: -delta } }, data: { balance: { increment: delta } } })`，count 不等于 1 时抛 InsufficientCreditsError；balanceAfter 从更新后的值取；并发测试保持通过。
+3. `adminAdjust`：note 去掉空白后不能为空、delta 必须是非 0 整数，service 内检查调用者是 ADMIN；`credits.adjust` 的 metadata 不放 note 原文（只放长度或放进单独字段并在 DECISIONS 记一行）。
+4. `reconcileWallet` 用一条 SQL（SUM(delta)）或在带 `lockXact` 的事务里读，避免并发时误报。
+5. `unlock.costCredits` 和 `limits.unlocksPerDay` 读取后校验为非负整数，不合法时按默认值并记 logger 警告。
+6. 界面：解锁按钮显示「（消耗 N 点）」；余额不足提示带试点期「下月 1 日补发」；`unlock.enabled=false` 时不显示按钮；去掉 UnlockButton.tsx 里多余的 `.replace('{cost}')`。中英文案同步。
+7. 预留的 APPLICATION 来源解锁：创建 TalentUnlock 遇到 P2002 时按 `alreadyUnlocked` 返回，不报 INTERNAL_ERROR。
+8. 来自 M4-T08 复查（Low）：`decryptIfPresent` 单个字段解密失败时，该字段返回 null 并调用 `alert('contact.decrypt_failed', { studentId, field })`，不让整个详情页 500；补一条物理删除 User/StudentProfile 行之后 `canSeeIdentity` 返回 false 的测试；`buildEmployerStudentPayload` 有了生产调用方时，`canSeeName` 必须来自 canSeeIdentity（加一条测试或架构测试）。
+9. 来自 M4-T09 复查：简历下载改成真正的流式返回（Readable → Response body），不再整个 Buffer.from；水印并发上限改为存在 PostgreSQL（或 M7-T14 的 RateLimitBucket），多实例时也生效。
+10. 来自 M4-T10 复查（Low）：jobs/pilot-monthly-credits.ts 和 reconcile-wallets.ts 去掉 `import 'server-only'`；`grantPilotCreditsOnVerification`、`klMonthStartUtc` 挪到 services/；`pilot.monthlyCredits` 读取后校验为非负整数；对账加「余额 > 0、零账本行」的测试；改写 RUNBOOK 场景 3 的修复步骤（adminAdjust 会让余额和账本同时变，修不平）。
+11. 来自线 B（TM-016，A-22 定了之后做）：运营在 /admin/companies/[companyId] 查看的企业认证材料，现在给的是原文件的签名 URL；PDF 改成先经 `sanitizePdf`（M4-T19）清理再下发，图片维持原样。
 
 ---
 
