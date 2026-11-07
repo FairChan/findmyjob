@@ -39,6 +39,16 @@ log() { echo "[deploy] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 err() { echo "[deploy] ERROR: $*" >&2; }
 die() { err "$*"; exit 1; }
 
+# Global temp-file registry — cleaned on EXIT regardless of how the script dies.
+_CLEANUP_FILES=()
+_cleanup_all() {
+  local _f
+  for _f in "${_CLEANUP_FILES[@]:-}"; do
+    rm -f "$_f"
+  done
+}
+trap _cleanup_all EXIT
+
 cd "$WORKDIR"
 
 dc() {
@@ -136,11 +146,25 @@ check_pending_migrations() {
     db_url=$(grep -m1 '^DATABASE_URL=' "$MIGRATE_ENV" 2>/dev/null | cut -d= -f2- || true)
   [ -z "$db_url" ] && die "Cannot read MIGRATE_DATABASE_URL from ${MIGRATE_ENV}."
 
-  # Write URL to a 600-mode temp file so it never appears in 'ps' output.
+  # Parse URL into individual PG* vars so the password never appears on the
+  # psql command line inside the container (visible via 'ps' or 'docker inspect').
+  # The password must not contain '@'; use %40 if needed.
+  local pg_user pg_password pg_host pg_port pg_database
+  local _pg="${db_url#postgresql://}"; _pg="${_pg#postgres://}"
+  pg_user="${_pg%%:*}"; _pg="${_pg#*:}"
+  pg_password="${_pg%%@*}"; _pg="${_pg#*@}"
+  pg_host="${_pg%%:*}"; _pg="${_pg#*:}"
+  pg_port="${_pg%%/*}"; _pg="${_pg#*/}"
+  pg_database="${_pg%%\?*}"
+
+  # Write individual PG* vars to a 600-mode temp file; registered for cleanup
+  # via the global EXIT trap so it is removed even if the script is signalled.
   local tmp_env
   tmp_env=$(mktemp "${WORKDIR}/.mig-check.XXXXXX")
   chmod 600 "$tmp_env"
-  printf 'MIGRATE_DATABASE_URL=%s\n' "$db_url" > "$tmp_env"
+  _CLEANUP_FILES+=("$tmp_env")
+  printf 'PGUSER=%s\nPGPASSWORD=%s\nPGHOST=%s\nPGPORT=%s\nPGDATABASE=%s\n' \
+    "$pg_user" "$pg_password" "$pg_host" "$pg_port" "$pg_database" > "$tmp_env"
 
   # Query the DB for applied migrations. Errors are fatal.
   local db_migs query_ok
@@ -149,8 +173,8 @@ check_pending_migrations() {
     --network "$NETWORK" \
     --env-file "$tmp_env" \
     "postgres:16.6-bookworm" \
-    sh -c 'psql "$MIGRATE_DATABASE_URL" -t -A \
-      -c "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL"' \
+    psql -t -A \
+      -c "SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL" \
     | sort) || query_ok=false
 
   rm -f "$tmp_env"
@@ -398,6 +422,8 @@ case "$COMMAND" in
         *)
           if [[ "${1:-}" =~ ^[0-9a-f]{40}$ ]]; then
             ROLLBACK_SHA="$1"
+          else
+            die "Unexpected argument '${1}'. Did you mean a 40-char lowercase hex SHA? Usage: findmyjob-deploy rollback [<40-char-sha>] [--expect-digest sha256:…]"
           fi
           ;;
       esac
