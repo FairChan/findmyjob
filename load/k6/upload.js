@@ -9,7 +9,7 @@
  *   docker run --rm -i \
  *     -e BASE_URL=http://host.docker.internal:3001 \
  *     -v "$(pwd -W)/load":/load \
- *     grafana/k6:latest run /load/k6/upload.js
+ *     grafana/k6:0.54.0 run /load/k6/upload.js
  */
 import http from 'k6/http'
 import { check } from 'k6'

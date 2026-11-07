@@ -8,7 +8,7 @@
  *   docker run --rm -i \
  *     -e BASE_URL=http://host.docker.internal:3001 \
  *     -v "$(pwd -W)/load":/load \
- *     grafana/k6:latest run /load/k6/apply.js
+ *     grafana/k6:0.54.0 run /load/k6/apply.js
  *
  * NOTE: The /api/s/jobs/:jobId/apply endpoint is planned for a future milestone.
  * Until it is implemented this script will return 404 for all requests; that is expected.

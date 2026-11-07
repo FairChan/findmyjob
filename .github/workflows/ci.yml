@@ -409,7 +409,15 @@ jobs:
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/src:ro" \
             semgrep/semgrep:1.106.0 \
-            semgrep scan --config=auto --metrics=off --error /src
+            semgrep scan \
+              --config p/typescript \
+              --config p/react \
+              --config p/nodejsscan \
+              --config p/secrets \
+              --config p/owasp-top-ten \
+              --metrics=off \
+              --error \
+              /src
 
   scan-dependencies:
     name: Dependency vulnerability scan
@@ -455,11 +463,11 @@ jobs:
 
       - name: actionlint
         run: |
-          ACTIONLINT_VERSION=1.7.4
-          curl -sSfL \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            | tar xz actionlint
-          ./actionlint -oneline .github/workflows/*.yml
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -w /repo \
+            rhysd/actionlint:1.7.4 \
+            -oneline .github/workflows/*.yml
 
       - name: zizmor
         run: |

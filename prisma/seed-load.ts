@@ -41,7 +41,8 @@ type JobRef = { jobId: string; companyId: string }
 
 async function createSession(userId: string): Promise<string> {
   const token = crypto.randomBytes(32).toString('base64url')
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+  // 1 day: staging load-test sessions don't need to outlive a test run.
+  const expiresAt = new Date(Date.now() + 1 * 24 * 60 * 60 * 1000)
   await db.session.deleteMany({ where: { userId, userAgent: 'k6/load-test' } })
   const session = await db.session.create({
     data: { userId, token, expiresAt, ipAddress: '127.0.0.1', userAgent: 'k6/load-test' },

@@ -25,6 +25,9 @@ const schema = z
       return 'development'
     }),
     APP_URL: z.string().url(),
+    // Internal loopback base URL for middleware → app requests (e.g. reconsent check).
+    // Must never be derived from request headers. Defaults to 127.0.0.1:3000.
+    INTERNAL_BASE_URL: z.string().url().optional(),
 
     DATABASE_URL: dbUrl,
     MIGRATE_DATABASE_URL: dbUrl,

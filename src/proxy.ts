@@ -4,6 +4,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSessionCookie } from 'better-auth/cookies'
 
+// Fixed loopback address for the internal reconsent check.
+// Never derive this from the incoming Host/X-Forwarded-Host headers — that would
+// allow an attacker to redirect the session cookie to an arbitrary host.
+// staging/prod: set INTERNAL_BASE_URL=http://127.0.0.1:<PORT> in the app env.
+// The direct loopback connection bypasses Caddy's basic_auth (DECISIONS A22).
+const INTERNAL_BASE_URL = process.env.INTERNAL_BASE_URL ?? 'http://127.0.0.1:3000'
+
 const intlMiddleware = createMiddleware(routing)
 
 // 只做「有没有会话 cookie」的乐观判断，真正的会话校验在页面和 action 里。
@@ -64,7 +71,7 @@ async function checkReconsent(
   if (pathname.includes('/legal/reconsent')) return null
 
   try {
-    const checkUrl = new URL('/api/internal/needs-reconsent', request.nextUrl.origin)
+    const checkUrl = new URL('/api/internal/needs-reconsent', INTERNAL_BASE_URL)
     const res = await fetch(checkUrl.toString(), {
       headers: {
         cookie: request.headers.get('cookie') ?? '',
