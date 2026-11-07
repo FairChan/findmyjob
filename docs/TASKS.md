@@ -714,11 +714,12 @@
 
 > 完成 2026-11-07：`services/talent-folders.ts`（listFolders/createFolder/renameFolder/deleteFolder/addToFolder/removeFromFolder/updateNote/getFolderItems/getStudentFolderIds）；`actions/folders.ts`（9 个 action）；`/e/folders`（FolderManager 客户端组件）；`/e/folders/[id]`（FolderItemActions 客户端组件，每次打开重新判断 isStudentVisibleToCompany 和 unlocked 状态）；`SaveToFolderButton` 加入人才卡片和详情页；`components/ui/dialog.tsx`（@radix-ui/react-dialog）；中英文案；单元测试 14 个；authz-matrix 新增 7 行；pnpm lint/typecheck/test/db:check 全部通过（889 tests）；偏差：canSeeIdentity 由 M4-T08 正式定义，本任务用 `unlocks.length > 0` 实现相同语义
 
-#### [ ] M4-T12 学生端查看记录
+#### [x] M4-T12 学生端查看记录
 依赖：M4-T07
 做：`/s/privacy` 的「谁看过我」（90 天内 ProfileView，按企业 + 日期去重）、「谁解锁了我」接入真实数据；学生被解锁时收到通知。
 验收：E2E：企业解锁 → 学生在通知和隐私中心都能看到
 > 总控 2026-11-07：第一次跑（run22 第 6 轮）到 90 分钟上限被停，已完成的部分提交成 2134f68 `wip(M4-T12)`：`listNotifications` / `markAllNotificationsRead`、`/s/notifications` 页面骨架、中英文案、global-setup 和 auth.setup 里的测试学生、`m4-t12-smoke.spec.ts`。从这里接着做，先读一遍这些改动，不要从头重写；storageState 文件已加进 .gitignore（`tests/e2e/auth-*.json`）。
+> 完成 2026-11-07：补写 `tests/unit/notifications.test.ts`（8 个单元测试，覆盖 `listNotifications`、`markAllNotificationsRead`、`createNotification`）；pnpm lint/typecheck/test 全部通过；E2E `m4-t12-smoke.spec.ts` 8/8 通过 0 失败 0 跳过。自查：(a) 鉴权 — 通知服务由 `/s/notifications` Server Component 调用，`requireStudent()` 在服务端守门，无 companyId，无客户端输入；(b) 无点数/额度写操作；(c) 单元测试用 mock 验证 findMany/updateMany 调用参数，实现改错即失败；(d) 验收标准全部满足（E2E 测试 2 和 5 分别验证通知页和隐私中心均能看到解锁记录）；(e) E2E 8/8 通过。
 
 #### [ ] M4-T13 人才侧防泄漏 E2E（扫描全部网络响应）
 依赖：M4-T08
