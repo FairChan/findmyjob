@@ -44,7 +44,7 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
   const rawPurpose = new URL(req.url).pathname.split('/').pop()?.toUpperCase() ?? ''
   const parsedPurpose = purposeSchema.safeParse(rawPurpose)
   if (!parsedPurpose.success) {
-    return rejectJson('NOT_FOUND', 404)
+    return rejectJson('INVALID_PURPOSE', 400)
   }
   const purpose = parsedPurpose.data
   const config = PURPOSE_CONFIGS[purpose]
@@ -60,8 +60,10 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
     }
   } else if (purpose === 'LOGO' || purpose === 'VERIFICATION' || purpose === 'PAYMENT_PROOF') {
     const { requireCompanyMember } = await import('@/server/authz')
+    // PAYMENT_PROOF tied to purchases which are OWNER-only (PRD §billing)
+    const minRole = purpose === 'PAYMENT_PROOF' ? 'OWNER' : 'ADMIN'
     try {
-      const companyCtx = await requireCompanyMember('ADMIN', req.headers as unknown as Headers)
+      const companyCtx = await requireCompanyMember(minRole, req.headers as unknown as Headers)
       companyId = companyCtx.companyId
     } catch {
       return rejectJson('FORBIDDEN', 403)
@@ -125,7 +127,10 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
   // PDF-specific checks (fail closed: parse errors are rejected)
   let pageCount: number | undefined
   if (detectedType === 'pdf') {
-    const maxPages = purpose === 'RESUME' ? await getSetting<number>('resume.maxPages', 20) : 9999
+    const maxPages =
+      purpose === 'RESUME'
+        ? await getSetting<number>('resume.maxPages', 20)
+        : await getSetting<number>('upload.maxPdfPages', 9999)
     const pdfResult = await checkPdf(buf, maxPages)
     if (!pdfResult.ok) {
       await logAudit({
@@ -148,12 +153,27 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
     }
   }
 
+  // For RESUME: look up studentId (cuid) before key generation so the key follows
+  // ARCHITECTURE §4 key rule: resumes/{studentId}/{uuid}.pdf
+  let studentProfileId: string | undefined
+  if (purpose === 'RESUME') {
+    const profile = await db.studentProfile.findUnique({
+      where: { userId },
+      select: { id: true },
+    })
+    if (!profile) {
+      return rejectJson('NOT_FOUND', 404)
+    }
+    studentProfileId = profile.id
+  }
+
   // Server-generated object key (never trust client input for path)
-  // Key rules: resumes/{userId}/, logos/{companyId}/, verifications/{companyId}/
   let key: string
   if ((purpose === 'LOGO' || purpose === 'VERIFICATION' || purpose === 'PAYMENT_PROOF') && companyId) {
     const folder = purpose === 'LOGO' ? 'logos' : purpose === 'VERIFICATION' ? 'verifications' : 'payment_proofs'
     key = `${folder}/${companyId}/${randomUUID()}.${EXT[detectedType]}`
+  } else if (purpose === 'RESUME' && studentProfileId) {
+    key = `resumes/${studentProfileId}/${randomUUID()}.${EXT[detectedType]}`
   } else {
     key = `${purpose.toLowerCase()}s/${userId}/${randomUUID()}.${EXT[detectedType]}`
   }
@@ -173,19 +193,11 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
   // All checks passed — upload to object storage
   await putObject(key, buf, MIME_TYPES[detectedType])
 
-  // For RESUME purpose: create or update ResumeFile record
+  // For RESUME purpose: create ResumeFile record (studentProfileId already validated above)
   if (purpose === 'RESUME') {
-    const profile = await db.studentProfile.findUnique({
-      where: { userId },
-      select: { id: true },
-    })
-    if (!profile) {
-      return rejectJson('NOT_FOUND', 404)
-    }
-
     const resume = await db.resumeFile.create({
       data: {
-        studentId: profile.id,
+        studentId: studentProfileId!,
         storageKey: key,
         fileName: fileNameResult.name,
         mimeType: MIME_TYPES[detectedType],

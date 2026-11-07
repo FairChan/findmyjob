@@ -112,11 +112,11 @@ describe('GET /api/resumes/[id] ownership guard (M2-T05)', () => {
     expect(mockGetSignedDownloadUrl).toHaveBeenCalledWith(storageKey, 'my-cv.pdf')
   })
 
-  it('invalid id (not-a-cuid) → 404, getSignedDownloadUrl not called', async () => {
+  it('invalid id (not-a-cuid) → 400, getSignedDownloadUrl not called', async () => {
     const a = await createStudent(testDb)
     mockSession(a.userId)
     const res = await GET(makeRequest('not-a-cuid'))
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(400)
     expect(mockGetSignedDownloadUrl).not.toHaveBeenCalled()
   })
 

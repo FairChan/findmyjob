@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 export const purposeSchema = z.enum(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO'])
 
+export const idSchema = z.string().cuid()
+
 export type UploadPurpose = z.infer<typeof purposeSchema>
 
 // C0 control chars (U+0000–U+001F), DEL (U+007F), C1 control chars (U+0080–U+009F),

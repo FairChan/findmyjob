@@ -1100,4 +1100,14 @@ describe('resume download ownership (M2-T05)', () => {
     expect(res.status).toBe(404)
     expect(vi.mocked(getSignedDownloadUrl)).not.toHaveBeenCalled()
   })
+
+  it('invalid (non-cuid) resume id → 400, getSignedDownloadUrl not called', async () => {
+    const { userId } = await createStudent(testDb)
+    const { getSignedDownloadUrl } = await import('@/lib/storage')
+    mockSession(userId)
+    const { GET } = await import('@/app/api/resumes/[id]/route')
+    const res = await GET(new Request('http://localhost/api/resumes/not-a-cuid'))
+    expect(res.status).toBe(400)
+    expect(vi.mocked(getSignedDownloadUrl)).not.toHaveBeenCalled()
+  })
 })

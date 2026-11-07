@@ -778,7 +778,7 @@
 > 修复 2026-11-07：详情页补全所有字段（requirements/benefits/salary/location/workMode/languages/skills/headcount/deadline）；salaryVisible=false 也显示薪资并标注「不对外显示」；approveJob/rejectJob 加 updatedAt 乐观锁（updateMany 版本检查）；并发两次通过只成功一次；ReviewJobForm 传 updatedAt 并处理 stale 错误；新增 4 条集成测试（stale/并发）；E2E 增加哨兵字段断言；919 测试/4 E2E 全部通过
 > 修复 2026-11-07（最终复查）：详情页补上 category（100 字自由文本，学生看得到，TM-007 同一类问题）；冒烟用例加 category、languages 哨兵和「不对外显示」字样的断言，先确认用例失败再修。
 
-#### [ ] M5-T03 公开职位页（白名单输出、额度锁、noindex）
+#### [x] M5-T03 公开职位页（白名单输出、额度锁、noindex）
 依赖：M5-T01、M2-T10
 做：
 - `/jobs` 列表（PRD §2.4 的筛选）：只经 `serializers/job.ts` 的 `toJobListItem()` 输出，不含 description、requirements、benefits；`salaryVisible=false` 时也不含 salaryMin 和 salaryMax。指向职位详情的 Link 设 `prefetch={false}`。
@@ -790,6 +790,8 @@
 - 打开 /jobs 等 3 秒，学生额度和 ProfileView 都没有变化
 - 访客打开详情页，HTML 里有 noindex，没有 ld+json；隐藏薪资职位的列表页、详情页和 metadata 里都没有金额
 - 企业成员打开其他企业的职位详情，只能看到锁定卡片（从 M2-T10 移入，见 DECISIONS 2026-11-07 M2-T12 fix 4）
+> 完成 2026-11-07：serializers/job.ts（toJobListItem/toJobDetail 白名单）；/jobs 列表（PUBLISHED+未过期，salaryVisible=false 不输出薪资，带筛选参数设 noindex,follow）；/jobs/[id] 详情（访客重定向登录，学生走 openJob，额度耗尽/跨企业 employer 显示 LockedJobCard，viewCount +1）；robots noindex；E2E smoke-m5-t03 8/8 通过，pii-leak 4/4 通过；lint/typecheck/db:check 全部通过；单元 1223/1224 通过（1 条 pre-existing team.test.ts）。
+> 修复 2026-11-07：1) 带 q 时 deadline 过滤被 OR 展开覆盖→改为 AND[deadline, q]；2) searchParams/id 缺 zod 校验→用 listParamsSchema/jobIdSchema safeParse，非法值当无效处理不报 500；3) LockedJobCard 邀请按钮 href 双加 locale→改为 /s/invite 由 i18n Link 加前缀；4) isSafePath 不放行 /jobs/<cuid>→提取 is-safe-path.ts 并加 jobs path 允许规则（带编码/backslash 拒绝）；详情页和锁定卡片加复制分享链接按钮；E2E smoke-m5-t03 17/17 通过，pii-leak 4/4 通过，单元 1246/1246 通过。
 
 #### [ ] M5-T04 投递
 依赖：M5-T03、M4-T07
@@ -1214,7 +1216,52 @@
   - `tests/e2e/helpers/smoke.ts` 检查错误浮层和错误页的字符串，在 Next 16.4.5 上对不上：global-error 显示的是「A server error occurred」。崩溃目前靠 200 状态码和 console、pageerror 检查抓到；改成和 Next 实际显示的文案一致。
   - 控制台冒烟只断言 RECRUITER 看不到「认证材料」链接，没断言横幅 CTA 和提示文案。
   - 「过期邀请不占名额」的测试，要两个过滤条件都去掉才会失败。
+- M5-T01 职位管理（2026-11-07 复查和最终复查延后的项）：
+  - deadline 按 UTC 0 点存，比马来西亚时间早 16 小时过期；应按 Asia/Kuala_Lumpur 当天结束换算。
+  - DRAFT 也显示「关闭」按钮，点了必然失败。
+  - 没有测试证明未认证企业能存草稿。
+  - 保存已发布职位、会回到待审时，没有提示「保存后会下线等待审核」。
+  - category 是自由文本，应改成枚举或受控列表。
+  - REJECTED 的职位不能修改后重新提交。
+  - 服务端没校验 salaryMin ≤ salaryMax。
+  - 列表和详情把州显示成原始代码（KUL 等）。
+  - 关闭、复制用了 window.confirm，没用 shadcn Dialog。
+  - 回到待审时 publishedAt 仍保留旧值。
+  - hasSensitiveChange 仍是逐个列出敏感字段，以后新加字段会默认不审。改成类型层面的穷举（例如 `satisfies Record<keyof JobFormInput, 'review' | 'skip'>`），或者真正的白名单。
+  - jobFormSchema 里的 updatedAt 是可选的，不带它的调用方会跳过版本检查。编辑应要求必带。
+  - copyJob 的默认后缀仍写死「 (复制)」，只有 action 传入了按 locale 取的后缀。
+  - authz-matrix 跨企业用例只断言 toThrow，应断言 NotFoundError。
+  - 「旧 updatedAt 被拒」的用例没断言库里不变；deadline 没有白名单用例。
+- M5-T02 职位审核：
+  - 再次通过同一个职位（驳回后改好再提交，或编辑后回到待审）时，approvedJobCount 会重复加。
+  - 待审列表的「类型」列显示有误；日期没有指定时区。
+  - 只有空白字符的 reviewNote 能通过 min(1)。
+  - 驳回和通过不发邮件（M5-T08 统一处理）。
+  - 审核时没有重新检查企业的认证状态和 isActive。
+  - ReviewJobForm.tsx 的文件名不是 kebab-case；jobId 路由参数没经 zod 校验。
+  - 审核页响应的 Cache-Control 等 M7-T05。
+  - 审核页的 deadline 用 toLocaleDateString('en-MY')，没指定时区；acceptsStudentPass、sponsorsWorkPass 两个布尔字段没显示。
+  - approveJob 的 publishedAt 取自事务外读到的值。
+- M6-T07 代管企业：
+  - 导入脚本写的审计没有 targetId，并且用最早的管理员当 actor。
+  - 导入脚本没复用 createManagedCompany。
+  - logAudit 在事务外执行（全项目写法，见上面 M3-T03）。
+  - 并发插入同一个 SSM 号时，P2002 会返回 500；没有 SSM 号的重复行不去重。
+  - 导入脚本可能把 err.message 原样打印出来。
+  - assertAdmin 只看 role，不看 status。
+  - approvedJobCount 把平台代发的职位也算进去了。
+  - 没有 dry-run 的测试。
+  - 「两个移交邀请并发接受」的用例其实是顺序执行的：第二次接受被事务外的 isManaged 检查挡下，没测到事务里带条件的 updateMany。应改成 Promise.all。
+  - 两个邀请同时被接受时，两个事务按相反顺序锁邀请行，可能死锁。结果仍然只有一个 OWNER，但失败的那个会返回 500。
+  - transferManagedCompanyAction 发邮件失败时直接吞掉，没记日志；邮件的 locale 写死 zh，正文是中文（M5-T08 统一处理）。
+  - 代管企业的非 OWNER 邀请会走普通的加成员流程。
+  - DOMAIN_MATCH 的域名比较没按公共后缀判断（例如 co.uk）。
+  - verificationRecord 是运营填的自由文本，会原样写进审计 metadata。要提醒运营不要在里面写个人电话。
+  - 运营后台还没有代管企业的页面（创建、代发职位、移交），需要总控另排任务。
+- E2E 测试库（fix(M3-T01) e2e-testdb，最终复查）：validateTestDbUrl 把 0.0.0.0 也当成本机。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
+> 进度 2026-11-07 第 1/7 轮（M2-T05 上传 + 第二轮遗留 idSchema）：修掉：pdf-lib 解压炸弹→worker_threads resourceLimits（tests/unit/pdf-check.test.ts，12 条）；加密检测绕过→hasRawEncryptionMarkers 原始字节扫描；0 页 PDF 被接受→checkPdf pageCount<1 拒收；PAYMENT_PROOF 允许 ADMIN→改为 OWNER（tests/unit/upload-authz.test.ts，7 条，含 authz-matrix 新行）；key 用 randomUUID+userId→改用 studentProfileId；非法 purpose/id 返回 404→改为 400；下载响应缺 X-Robots-Tag→已加；idSchema 从 upload-input.ts 导入（route.ts）；deploy/Caddyfile 新增 resp_headers>Location delete 防签名 URL 进日志（需真机验证，见 DECISIONS）。接受的风险：孤儿对象、请求体读进内存（均见 DECISIONS 第 1 轮条目）。转给别的任务：无。
+> 进度 2026-11-07 第 1/7 轮补修：（1）FlateDecode 炸弹真正修好：在 pdf.ts 加 checkInflateBomb()，用 zlib.inflateSync maxOutputLength 预扫描所有 FlateDecode 流，超过 getSetting('upload.pdfMaxInflatedBytes', 50MB) 就拒收；炸弹检查在 Worker 之前、加密检查之后执行；worker/resourceLimits 保留作第二道防线。测试文件 tests/unit/pdf-check.test.ts（17 条），含 checkPdf 炸弹拒收测试（10ms 内返回）和 checkInflateBomb 单元测试（包括单流超限、累计超限、非 FlateDecode 不受影响）；去掉了原先名不副实的 large-stream 用例。默认值 52428800（50 MB）记进 DECISIONS。（2）生产镜像里找不到 pdf-lib：在 pdf.ts 加 `import 'pdf-lib'` 静态导入，使 Next.js nft 跟踪 pnpm 符号链接并在 standalone 里建立正确的 symlink 结构（含 tslib 等传递依赖），pdf-lib 加入 serverExternalPackages；build 验证：`.next/standalone/node_modules/pdf-lib/cjs/` 存在（symlink 到 pnpm store），Worker 在 standalone 目录下 `require('pdf-lib')` 实际解析 1 页 PDF 返回 `{ok:true, pageCount:1}`。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
 
