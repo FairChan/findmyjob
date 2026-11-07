@@ -43,6 +43,17 @@ GitHub 不持有部署私钥。镜像由 CI `image` job 在 push 到 main 时自
 - `ghcr.io/fairchan/findmyjob-backup:<sha>`
 - `ghcr.io/fairchan/findmyjob-tools:<sha>`
 
+**没有 registry 时（本机构建、docker load 到服务器）**（2026-11-08 起）：
+- 在一台能 build 的机器上（服务器内存不够），按上面 4 个镜像名，用 `docker build -f deploy/Dockerfile --target runner|migrate|backup|tools --platform linux/amd64 -t <镜像名>:<40位sha> .` 分别构建。runner 要带 `NEXT_PUBLIC_*` 的 build-arg，这些值只在构建时生效。
+- 传到服务器：`docker save <镜像名>:<sha> … | gzip | ssh <admin>@43.134.49.247 "gunzip | docker load"`。
+- 部署时加 `FINDMYJOB_SKIP_PULL=1`：脚本不再 pull，改成检查镜像在本机都存在，缺了就报错退出。这种镜像没有 registry digest，history 里记成 `unknown`，`--expect-digest` 不可用。
+
+```bash
+ssh <admin>@43.134.49.247 sudo -u deploy env FINDMYJOB_SKIP_PULL=1 /opt/findmyjob/bin/findmyjob-deploy deploy <sha> --approve-migrations
+```
+- rollback 也是一样：加上 `FINDMYJOB_SKIP_PULL=1`，目标 sha 的镜像必须还留在服务器上。
+
+
 ## 回滚
 
 ```bash

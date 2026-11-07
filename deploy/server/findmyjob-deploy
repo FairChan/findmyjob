@@ -23,7 +23,8 @@
 # function call. Without -E, bash exits via set -e but skips the trap.
 set -Eeuo pipefail
 
-WORKDIR="/opt/findmyjob"
+# FINDMYJOB_WORKDIR overrides the install directory (used by findmyjob-deploy.test.sh).
+WORKDIR="${FINDMYJOB_WORKDIR:-/opt/findmyjob}"
 COMPOSE_FILE="${WORKDIR}/docker-compose.prod.yml"
 ENV_FILE="${WORKDIR}/.env"
 HISTORY_LOG="${WORKDIR}/deploy-history.log"
@@ -38,6 +39,18 @@ HEALTH_TIMEOUT=60
 log() { echo "[deploy] $(date -u +%Y-%m-%dT%H:%M:%SZ) $*"; }
 err() { echo "[deploy] ERROR: $*" >&2; }
 die() { err "$*"; exit 1; }
+
+# FINDMYJOB_SKIP_PULL=1: images were built elsewhere and docker load'ed onto this host
+# (there is no registry to pull from). Check they are present instead of pulling.
+fetch_image() {
+  local ref="$1"
+  if [ "${FINDMYJOB_SKIP_PULL:-0}" = "1" ]; then
+    docker image inspect "$ref" >/dev/null 2>&1 \n      || die "Image ${ref} not present locally (FINDMYJOB_SKIP_PULL=1): docker load it first."
+    log "Using local image ${ref} (FINDMYJOB_SKIP_PULL=1)"
+  else
+    docker pull "$ref"
+  fi
+}
 
 # Global temp-file registry — cleaned on EXIT regardless of how the script dies.
 _CLEANUP_FILES=()
@@ -235,9 +248,9 @@ cmd_deploy() {
 
   # 1. Pull images
   log "Pulling images..."
-  docker pull "${IMAGE_APP}:${sha}"
-  docker pull "${IMAGE_MIGRATE}:${sha}"
-  docker pull "${IMAGE_BACKUP}:${sha}"
+  fetch_image "${IMAGE_APP}:${sha}"
+  fetch_image "${IMAGE_MIGRATE}:${sha}"
+  fetch_image "${IMAGE_BACKUP}:${sha}"
 
   # 2. Capture app image digest; optionally verify against --expect-digest.
   # docker inspect returns "repo@sha256:..." — strip the "repo@" prefix so we
@@ -246,6 +259,8 @@ cmd_deploy() {
   actual_digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
     "${IMAGE_APP}:${sha}" 2>/dev/null | head -1 || echo "unknown")
   actual_digest="${actual_digest#*@}"   # strip "registry/repo@" prefix; no-op if already bare
+  # A docker-load'ed image has no RepoDigests: record "unknown", never an empty field.
+  [ -n "$actual_digest" ] || actual_digest="unknown"
 
   if [ -n "$expect_digest" ]; then
     if [ "$actual_digest" != "$expect_digest" ]; then
@@ -351,7 +366,9 @@ cmd_rollback() {
   # Pull app image by digest when available (guarantees exact content), else by tag.
   # history records bare sha256:... so regex check is reliable after the fix.
   log "Pulling app image..."
-  if [[ "${target_digest:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+  if [ "${FINDMYJOB_SKIP_PULL:-0}" = "1" ]; then
+    fetch_image "${IMAGE_APP}:${target_sha}"
+  elif [[ "${target_digest:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
     docker pull "${IMAGE_APP}@${target_digest}"
     docker tag  "${IMAGE_APP}@${target_digest}" "${IMAGE_APP}:${target_sha}"
   else
@@ -362,6 +379,8 @@ cmd_rollback() {
   actual_digest=$(docker inspect --format='{{index .RepoDigests 0}}' \
     "${IMAGE_APP}:${target_sha}" 2>/dev/null | head -1 || echo "unknown")
   actual_digest="${actual_digest#*@}"   # strip "registry/repo@" prefix; no-op if already bare
+  # A docker-load'ed image has no RepoDigests: record "unknown", never an empty field.
+  [ -n "$actual_digest" ] || actual_digest="unknown"
 
   local check_digest="${expect_digest:-}"
   if [ -z "$check_digest" ] && [[ "${target_digest:-}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
