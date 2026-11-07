@@ -880,7 +880,7 @@
 > 完成 2026-11-07：(1) unlock→通知集成测试 3 条全新（+NotificationWriter 类型修复 TS 报错）；(2) getProfileViews 改用 DISTINCT ON (companyId, KL-date) 原生 SQL，6 条集成测试；(3) format-date.ts 服务端 KL 时区格式化，4 条单元测试；(4) markNotificationsReadAction server action + NotificationsClient useEffect，StudentNav 加未读徽标；E2E：4 tests 全通过 0 失败 0 跳过；单元：29 通过；集成：14 通过（unlock）+ 6 通过（privacy-views）；pnpm test 1366 通过 1 文件套件错误（auth-real-config.test.ts 模块解析，与 M4-T21 无关，pre-existing）。
 > 延后（并入 M4-T17）：「被解锁」的邮件通知（PRD §6，看 M5-T08 是否覆盖）；APPLICATION 来源的解锁在隐私中心单独标注；学生屏蔽企业之后，它以前的查看记录要不要隐藏（PRD 没写，先保留并在 DECISIONS 记一行）。
 
-#### [ ] M4-T22 补修 M4-T13 合并前复查发现的问题：防泄漏 E2E 要真能抓到 serializer 漏出联系方式
+#### [x] M4-T22 补修 M4-T13 合并前复查发现的问题：防泄漏 E2E 要真能抓到 serializer 漏出联系方式
 依赖：M4-T13、M4-T18
 > 总控 2026-11-07 加入：复查（按 587ce3d 读的代码）结论是 BLOCKED。验收「故意让 serializer 漏出 phone 时，测试失败」没有做到：未解锁时 serializer 根本拿不到 phone，哨兵学生也没有任何自由文本，redact() 没有东西可保护，所以任何 serializer 层面的漏出都抓不到。完成说明里的「把 unlocked 改成 true」只做了代码分析，实际会走到 `getContactForCompany` 抛 ForbiddenError、页面 500，测试照样通过。CI 已经跑全部 spec（`pnpm test:e2e`），这条不用改。
 做 / 验收：
@@ -891,6 +891,7 @@
 5. 真的跑红一次：临时把 `toTalentCard` 的 headline（或 `toTalentDetail` 的 summary）改成不经 redact 的原文，跑这个 spec，确认 `not.toContain(<手机>)` 失败，再改回来；把失败的那条断言和报错贴进完成说明，并改写 spec 里那段错误的注释。
 6. 顺手修：`beforeAll` 里的邮箱用 `randomUUID()`，不要用 `Date.now()`（fullyParallel 下多个 worker 会撞 P2002）；加密改用 M4-T18 第 4 条抽出的 `crypto-core.ts`，删掉 spec 里自己复刻的 `encryptLocal`。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 完成 2026-11-07：(1) 哨兵学生 headline/summary/education/experience 均含不同 PII 值（7 个哨兵），账号邮箱和去空格/E.164 手机形式各单独断言；(2) 交互流程：list→翻第 2 页→回第 1 页→keyword 搜索→点详情卡→SaveToFolder 弹层→解锁弹层，RSC 和 SA 响应均被扫描；(3) collectPageText 改用 pending 数组 + allSettled；RSC 响应用 `res.body().then(buf => buf.toString('utf8'))` 避免 Latin-1 解码问题；(4) `[已隐藏]` 改 DOM 检查（`[aria-labelledby="summary-heading"] p`）绕过 RSC 编码问题；(5) `encryptWithKeyring` from crypto-core.ts，`randomUUID()` 防 P2002；(6) 红跑结果：临时改 `toTalentCard.headline` 为 `profile.headline`（不过 redact），测试在 `expect(all).not.toContain("+60 12-000 0420")` 处失败，错误原文："Expected substring: not "+60 12-000 0420" / Received string: "<!DOCTYPE html>...[broken headline: 联系 +60 12-000 0420 ...]..."，恢复后全绿，失败注释已写进 spec。自查：(a) 无新 service/action/route，不适用；(b) 无点数变动；(c) 红跑见 spec 注释 ✓；(d) 验收 1-6 均满足 ✓；(e) pii-leak.spec.ts 3 通过 0 失败 0 跳过（含 3 条 setup 共 6 通过）✓。单元：48 文件 / 918 通过 / 0 失败 / 0 跳过。集成：27 文件 / 448 通过 / 0 失败 / 0 跳过（auth-real-config.test.ts 套件错误为 M4-T21 引入的 pre-existing 问题，待 M4-T24 修复）。E2E 全部 spec（26 文件 / 111 tests，2.7 分钟）：110 通过 / 1 失败 / 0 跳过；失败在 onboarding.spec.ts › "complete 4-step wizard, save-and-exit resumes at correct step, values persist after refresh"，原因为 page.reload() 超时 30 s（flaky timing，与 M4-T22 无关，待 M4-T24 修复）；pii-leak.spec.ts 3/0/0。各文件：auth.setup.ts 3/0/0、example.spec.ts 1/0/0、locale.spec.ts 5/0/0、auth-redirect.spec.ts 5/0/0、m2-t11-smoke.spec.ts 2/0/0、m2-t12-smoke.spec.ts 1/0/0、m4-t08-smoke.spec.ts 1/0/0、m4-t09-smoke.spec.ts 2/0/0、m4-t12-smoke.spec.ts 4/0/0、m4-t14-smoke.spec.ts 3/0/0、m4-t15-smoke.spec.ts 13/0/0、m4-t18-smoke.spec.ts 4/0/0、m4-t20-smoke.spec.ts 1/0/0、onboarding.spec.ts 2/1/0、pii-leak.spec.ts 3/0/0、smoke-m2-resume.spec.ts 1/0/0、smoke-m2-student-pages.spec.ts 4/0/0、smoke-m3-admin.spec.ts 4/0/0、smoke-m3-company.spec.ts 2/0/0、smoke-m3-console.spec.ts 8/0/0、smoke-m3-team.spec.ts 2/0/0、smoke-m3-verification.spec.ts 3/0/0、smoke-m4-t07.spec.ts 3/0/0、smoke-m5-jobs.spec.ts 4/0/0、smoke-m5-review-jobs.spec.ts 3/0/0、smoke-m5-t03.spec.ts 13/0/0、talent-search.spec.ts 6/0/0。git status --porcelain 为空。
 
 #### [ ] M4-T23 sanitizePdf 改成严格白名单（线 B 的 M3-T07 要复用，修好才交出去）
 依赖：M4-T19
@@ -902,8 +903,25 @@
 4. 测试（在 `tests/unit/pdf-sanitize.test.ts` 里补，原有的断言一条都不删）：
    - 正向，确认会保留：页面文字内容（净化后抽取内容流，还能看到原来的文字）、字体资源、MediaBox 和 CropBox 的数值、Rotate、显式数组目标的 GoTo 链接（而且它的字典只剩上面那几个键）；
    - 反向，确认会删除：URI 动作的 Link、Link 上的 `/PA`、命名目标的 GoTo、GoTo3D、Thread、页面的 `/Thumb` 和 `/PieceInfo`、XFA（AcroForm 里的 /XFA）。
+   - 注意：现有的「去掉注释上的 /AA」和「去掉 /Next 链上的 JavaScript」两条测试，样本用的是会被保留的 URI 链接；URI 去掉以后这两条会空过（注释整条都没了，自然没有 /AA）。把这两条的样本改成显式数组目标的 GoTo 链接，并断言该链接仍然保留、只是 /AA 或 /Next 没了。
 5. 做完以后，在完成说明里写清 `sanitizePdf` 和 `watermarkPdf` 的最终签名；总控会转给线 B。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+
+#### [ ] M4-T24 M4 修复任务的收尾核对：补齐缺失或空过的守护测试，修好集成测试
+依赖：M4-T21、M4-T23
+> 总控 2026-11-07 加入：对 M4-T16、T18～T21 做了最终核对（按 0ded445 读的代码）。代码层面的修复都在：审计进了事务、canSeeIdentity 统一把关、PDF 走 worker、补点按吉隆坡月份打标记、谁看过我用 DISTINCT ON；已有断言没有被削弱。但下面这些是那几个任务明确要求、却缺失或空过的守护测试，另外有一处 verify 不绿。每条都按 ROUND_NOTE 把「撤掉实现后的失败输出原文」贴进提交说明。
+做 / 验收：
+1. 修好 `tests/integration/auth-real-config.test.ts`（verify 不绿）：M4-T21 的 `s/layout.tsx` 引入了 StudentNav，它会带进 `@/i18n/navigation` 和 `next-intl/server`，而这个测试对 `next/navigation` 的 mock 只有 `redirect`。按 `employer-dashboard.test.ts` 的做法补 mock（或者 mock 掉 StudentNav）。`pnpm test` 全量 0 失败、0 报错（suite error 也算失败），在完成说明里写出文件数和用例数。
+2. 解压炸弹的守护测试（M4-T19 第 1 条）：在 `resume-download-watermark.test.ts` 里加嵌套 Flate 的 ObjStm 炸弹样本（复用 pdf-check.test.ts 或 pdf-worker.test.ts 里的构造函数），断言状态码不是 200（应为 422）、响应体不是原文件字节、10 秒内返回。把路由改回进程内 `PDFDocument.load` 时这条要失败。另外给 `getObjectBytes` 加 `{ maxBytes }` 选项，GetObject 的 ContentLength 超过上限时不读 body 直接拒绝，并写单元测试。
+3. 水印文字的守护测试（M4-T09 验收第 1 条、M4-T19 第 4 条）：真实 PDF 测试里，逐页解码内容流（`decodePDFRawStream(...).decode()`），断言里面有 `For <企业名> only · <吉隆坡日期> · <userId>` 按 latin1（WinAnsi，`·` 是 0xB7）编码后的十六进制 `<…> Tj`。去掉 `watermarkPdf` 那一步时这条要失败。
+4. 「加密文件 → encrypted」不能是 `expect(true).toBe(true)`：用 `doc.context.trailerInfo.Encrypt = doc.context.obj({ Filter: 'Standard', V: 1, R: 2, O: PDFHexString.of('00'.repeat(32)), U: PDFHexString.of('00'.repeat(32)), P: -4 })` 生成一个加密样本，保存后断言 `sanitizePdf` 返回 `{ ok: false, reason: 'encrypted' }`。
+5. 简历下载的越权行补齐（M4-T19 第 5 条）：已停用（SUSPENDED）的企业成员（已认证企业、有解锁）→ 403；未认证企业、简历 sizeBytes 为 6MB → 403，并且 `getObjectBytes` 没被调用（把路由的 auth 放宽成普通 company 时，这条会变成 422 而失败）。顺手把 sizeBytes 检查挪到 `identityAccess` 之后，避免没解锁的企业通过 422 探测简历大小。
+6. 关键词搜索分支（M4-T18 第 1 条）：`talent-identity-gate.test.ts` 加一条带 keyword 的 `searchTalents`（真实的 TalentUnlock，`canSeeIdentityMany` mock 成空集合），断言名字被遮挡、`unlocked === false`。
+7. 测试里的定时炸弹（M4-T21 第 2 条）：`privacy-views.test.ts` 写死了 2026-11-04/05，而窗口是 `Date.now() − 90 天`，2027 年 2 月起必然失败。用 `vi.useFakeTimers({ now: new Date('2026-11-06T00:00:00Z'), toFake: ['Date'] })` 包住这几条，或者改成相对时间。
+8. 小项（复查 Medium，顺手修）：unlockStudentAction 的「未登录」那一行补上 `code` 断言，并断言 A 的余额被扣、账本多一条；删掉 authz-matrix 里那条「A 传自己的 id 再断言是 A」的同义反复用例；`canSeeIdentityMany` 的 VERIFIED、屏蔽、账号状态三种过滤各补一条直接测试（M4-T19 把 `canSeeIdentity` 改成走 `identityAccess` 之后，Many 版本没有直接测试了）；m4-t08-smoke 和 m4-t18-smoke 里那个永远匹配不到的 `/发生了错误/` 正则，改成断言没有 Next 错误页（保留原有的其它断言）；`route()` 包装产生的 403、429、500 响应也带上 `X-Robots-Tag: noindex`。
+9. E2E 连续跑两次全部 spec（M4-T16 第 6 条）：第二次 global-setup 不报错，两次都 0 失败、0 跳过，按文件列出两次的通过数。
+10. 用 ESLint 拦住恒真断言（总控 2026-11-07，ROUND_NOTE 同步）：在 `eslint.config.mjs` 针对测试文件（`tests/**`、`**/*.test.ts(x)`、`**/*.spec.ts`）加 `no-restricted-syntax`，禁止 `expect(<字面量>)`（选择器 `CallExpression[callee.name='expect'][arguments.0.type='Literal']`）和 `expect(undefined)`（`[arguments.0.type='Identifier'][arguments.0.name='undefined']`）。注意 flat config 里同一条规则在后面的配置块会整体覆盖前面的：如果测试文件原本也继承了 `RAW_UNSAFE_SELECTORS`，要把两组选择器合并在一起，不能丢掉原来的。验证：临时写一个 `expect(true).toBe(true)`，`pnpm lint` 报错（把报错原文贴进提交说明），删掉后 `pnpm lint` 通过。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 
@@ -1443,6 +1461,7 @@
 10. 来自 M4-T10 复查（Low）：jobs/pilot-monthly-credits.ts 和 reconcile-wallets.ts 去掉 `import 'server-only'`；`grantPilotCreditsOnVerification`、`klMonthStartUtc` 挪到 services/；`pilot.monthlyCredits` 读取后校验为非负整数；对账加「余额 > 0、零账本行」的测试；改写 RUNBOOK 场景 3 的修复步骤（adminAdjust 会让余额和账本同时变，修不平）。
 11. （已转给线 B 的 M3-T07：A-22 已定为「先净化再查看」，复用 M4-T19 的 `sanitizePdf`；这里只留作记录）来自线 B（TM-016）：运营在 /admin/companies/[companyId] 查看的企业认证材料，现在给的是原文件的签名 URL；PDF 改成先经 `sanitizePdf`（M4-T19）清理再下发，图片维持原样。
 12. 来自 M4-T12 复查（Low）：「被解锁」邮件通知（PRD §6，若 M5-T08 没覆盖就在这里做）；隐私中心里 APPLICATION 来源的解锁单独标注；学生屏蔽企业后它以前的查看记录是否隐藏（先保留，DECISIONS 记一行）。
+13. 来自 M4 修复任务的最终核对（Low）：`credits.adjust` 审计写入失败时整笔回滚的测试；解锁后查学生 userId 的那次 `studentProfile.findUnique` 也放进通知的 try/catch；global-setup 里补账本行和改余额放进同一个事务；水印考虑页面 /Rotate；format-date 的断言改成完整字符串比较，admin 页面的日期也走 format-date；mark-as-read action 加「传别人的通知 id 不生效」的测试；解锁通知 payload 断言完整形状；StudentNav 的 aria-label 改成导航用途的名字。
 
 ---
 
