@@ -2,10 +2,13 @@ import 'server-only'
 import zlib from 'node:zlib'
 import { Worker } from 'worker_threads'
 import { getSetting } from '../services/settings'
-// Static import so Next.js standalone file-tracing follows the pnpm symlink and
+// Static imports so Next.js standalone file-tracing follows the pnpm symlinks and
 // creates the correct symlink structure (with tslib/pako as siblings) in standalone.
 // Runtime usage is inside the eval worker string below; nft cannot see eval strings.
 import 'pdf-lib'
+// nft: ensure DecodeStream sub-path is traced for the eval worker (no exports field in pdf-lib)
+// @ts-ignore
+import 'pdf-lib/cjs/core/streams/DecodeStream'
 
 // Magic bytes for supported file types
 export const MAGIC_PDF = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]) // %PDF-
@@ -30,14 +33,46 @@ export function detectFileType(buf: Buffer): AllowedMimeKey | null {
 
 export type PdfCheckResult =
   | { ok: true; pageCount: number }
-  | { ok: false; reason: 'parse_failed' | 'encrypted' | 'too_many_pages' }
+  | { ok: false; reason: 'parse_failed' | 'encrypted' | 'too_many_pages' | 'too_large' }
 
 // pdf-lib runs inside a Worker so decompression bombs cannot exhaust server heap.
 // CJS require() is used because pdf-lib ships as CJS and eval workers default to CJS mode.
 const PDF_WORKER_CODE = `
 const { parentPort } = require('worker_threads');
+
+// Patch DecodeStream.prototype.ensureBuffer BEFORE requiring pdf-lib.
+// All decoders (FlateStream, LZWStream, RunLengthStream, Ascii85Stream, AsciiHexStream)
+// inherit ensureBuffer from DecodeStream and never override it.  Since require() uses
+// the module cache, pdf-lib will see the patched prototype on every decode operation.
+// This is the definitive defence: catches bombs that bypass checkInflateBomb via
+// indirect /Filter refs, hex-escaped names, padded dicts, stored-block endstream
+// tricks, filter chains (double FlateDecode), LZWDecode, or missing stream newlines.
+const DecodeStream = require('pdf-lib/cjs/core/streams/DecodeStream').default;
+
+let inflatedTotal = 0;
+let inflatedBudget = 50 * 1024 * 1024; // overwritten per message
+
+const _origEnsureBuffer = DecodeStream.prototype.ensureBuffer;
+DecodeStream.prototype.ensureBuffer = function ensureBufferWithBudget(requested) {
+  if (requested > inflatedBudget) {
+    throw new Error('[pdf-inflate-bomb] single request exceeds budget');
+  }
+  const before = this.buffer.byteLength;
+  const result = _origEnsureBuffer.call(this, requested);
+  if (this.buffer.byteLength > before) {
+    inflatedTotal += (this.buffer.byteLength - before);
+    if (inflatedTotal > inflatedBudget) {
+      throw new Error('[pdf-inflate-bomb] cumulative budget exceeded');
+    }
+  }
+  return result;
+};
+
 const { PDFDocument } = require('pdf-lib');
-parentPort.once('message', async (buf) => {
+
+parentPort.once('message', async ({ buf, maxInflatedBytes }) => {
+  inflatedBudget = maxInflatedBytes;
+  inflatedTotal = 0;
   try {
     const doc = await PDFDocument.load(Buffer.from(buf), {
       ignoreEncryption: true,
@@ -53,8 +88,12 @@ parentPort.once('message', async (buf) => {
       return;
     }
     parentPort.postMessage({ ok: true, pageCount });
-  } catch {
-    parentPort.postMessage({ ok: false, reason: 'parse_failed' });
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith('[pdf-inflate-bomb]')) {
+      parentPort.postMessage({ ok: false, reason: 'too_large' });
+    } else {
+      parentPort.postMessage({ ok: false, reason: 'parse_failed' });
+    }
   }
 });
 `
@@ -135,14 +174,22 @@ export function checkInflateBomb(buf: Buffer, maxBytes: number): boolean {
 
     const streamData = buf.subarray(dataStart, endKw)
 
-    // Try zlib inflate (PDF FlateDecode uses zlib format; some use raw deflate)
+    // Try zlib inflate (PDF FlateDecode uses zlib format; some use raw deflate).
+    // Z_SYNC_FLUSH: return partial output on truncated input instead of throwing,
+    // so the partial bytes count toward the budget (closes the stored-block bypass).
     let inflated: Buffer | null = null
     try {
-      inflated = zlib.inflateSync(streamData, { maxOutputLength: budget })
+      inflated = zlib.inflateSync(streamData, {
+        maxOutputLength: budget,
+        finishFlush: zlib.constants.Z_SYNC_FLUSH,
+      })
     } catch (e: unknown) {
       if (isBombError(e)) return true
       try {
-        inflated = zlib.inflateRawSync(streamData, { maxOutputLength: budget })
+        inflated = zlib.inflateRawSync(streamData, {
+          maxOutputLength: budget,
+          finishFlush: zlib.constants.Z_SYNC_FLUSH,
+        })
       } catch (e2: unknown) {
         if (isBombError(e2)) return true
         // Corrupt or non-deflate data — let pdf-lib handle it
@@ -171,10 +218,10 @@ export async function checkPdf(buf: Buffer, maxPages: number): Promise<PdfCheckR
     return { ok: false, reason: 'encrypted' }
   }
 
-  // FlateDecode bomb check: pdf-lib inflates all streams without an upper bound;
-  // a 5–10 MB compressed file can expand to gigabytes via Uint8Array (off-heap).
-  // The Worker's resourceLimits.maxOldGenerationSizeMb only covers the JS heap,
-  // so off-heap allocations can still exhaust the whole process. We scan first.
+  // checkInflateBomb is a fast first-pass filter for simple FlateDecode bombs.
+  // It can be bypassed (indirect /Filter refs, hex-escaped names, padded dicts,
+  // stored-block endstream tricks, filter chains, LZWDecode, missing newlines).
+  // The definitive defence is ensureBuffer patched inside the Worker below.
   const maxInflatedBytes = await getSetting('upload.pdfMaxInflatedBytes', 50 * 1024 * 1024)
   if (checkInflateBomb(buf, maxInflatedBytes)) {
     return { ok: false, reason: 'parse_failed' }
@@ -213,12 +260,12 @@ export async function checkPdf(buf: Buffer, maxPages: number): Promise<PdfCheckR
         if (code !== 0) resolve({ ok: false, reason: 'parse_failed' })
       })
 
-      worker.postMessage(buf)
+      worker.postMessage({ buf, maxInflatedBytes })
     },
   )
 
   if (!result.ok) {
-    const knownReasons = ['parse_failed', 'encrypted', 'too_many_pages'] as const
+    const knownReasons = ['parse_failed', 'encrypted', 'too_many_pages', 'too_large'] as const
     type FailReason = (typeof knownReasons)[number]
     const rawReason = result.reason ?? 'parse_failed'
     const reason: FailReason = knownReasons.includes(rawReason as FailReason)
