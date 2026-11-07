@@ -696,12 +696,14 @@
 
 > 完成 2026-11-07：`/api/resumes/[id]/download/route.ts`（route() company+verified 鉴权、canSeeIdentity 检查、每成员最多 2 并发水印任务、pdf-lib copyPages+Helvetica 水印、catalog 验证无 OpenAction/Names、logAudit resume.download）；`storage.ts` 新增 `getObjectBytes`；`talent-card.ts` 新增 `resumeIds`（仅 unlocked=true 时填充）；详情页新增简历下载链接；中英文案各加 1 个 key；authz-matrix 新增 4 行（vi.mock pdf-lib + 4 用例）；talent-card 新增 2 个 resumeIds 断言；global-setup 新增 unlockedStudent 夹具（含 TalentUnlock + ResumeFile）；E2E m4-t09-smoke.spec.ts：1 passed / 0 failed / 0 skipped；DECISIONS 记录 ASCII 水印决策（pdf-lib WinAnsi 限制）；偏差：水印文字用 ASCII 格式 "For {companyLabel} only · {date} · {userId}"，原因见 DECISIONS M4-T09
 
-#### [ ] M4-T10 公益期发点与对账任务
+#### [x] M4-T10 公益期发点与对账任务
 依赖：M4-T06、M0-T11
 做：worker 启动已在 M0-T11 完成，本任务只做两个任务：`pilot-monthly-credits`（补足制，`billing.enabled=true` 时跳过；企业认证通过时立即补足一次）和 `reconcile-wallets`（每日；按 SUM(delta) 核对，不一致时调用 `alert('wallet.mismatch', { companyId, expected, actual })`）。
 验收：
 - 同月重复执行不会多发；余额已超过额度的企业不扣减；billing 开启时不发
 - 跑完并发解锁测试后，对账 SQL 返回 0 行
+
+> 完成 2026-11-07：`grantPilotCredits`/`createWallet` 加入 `services/credits.ts`；`jobs/pilot-monthly-credits.ts`（补足制，同月幂等，认证时立即触发）；`jobs/reconcile-wallets.ts`（SUM(delta) 核对，不一致调 alert）；注册到 `jobs/registry.ts`（cron 0 0 1 * * / 0 19 * * *）；`review-company.ts` 和 `managed-company.ts` 认证后调 `grantPilotCreditsOnVerification`；单元测试 15 个（pilot 10 + reconcile 5）；64 个测试文件 1268 个测试全通过；E2E smoke-m3-verification 5 通过 0 失败 0 跳过。
 
 #### [x] M4-T11 收藏夹
 依赖：M4-T05

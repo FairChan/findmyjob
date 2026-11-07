@@ -100,6 +100,60 @@ export async function adminAdjust(
   return result
 }
 
+/** Creates a fresh wallet with zero balance for a newly verified company. */
+export async function createWallet(companyId: string): Promise<void> {
+  await db.creditWallet.create({ data: { companyId, balance: 0 } })
+}
+
+export interface GrantPilotCreditsResult {
+  granted: number
+  reason: 'ok' | 'already_granted' | 'balance_sufficient' | 'no_wallet'
+}
+
+/**
+ * Top-up system (补足制): grant enough PILOT_GRANT credits to bring the wallet up to
+ * monthlyCredits. Skips if already granted this KL month (idempotency) or if the
+ * balance is already at or above the quota.
+ * Must NOT be called inside an existing db.$transaction.
+ */
+export async function grantPilotCredits(
+  companyId: string,
+  monthlyCredits: number,
+  monthStart: Date,
+): Promise<GrantPilotCreditsResult> {
+  return db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, companyId)
+
+    // Idempotency: skip if already granted a PILOT_GRANT in this KL month
+    const alreadyGranted = await tx.creditLedger.findFirst({
+      where: {
+        wallet: { companyId },
+        reason: LedgerReason.PILOT_GRANT,
+        createdAt: { gte: monthStart },
+      },
+      select: { id: true },
+    })
+    if (alreadyGranted) return { granted: 0, reason: 'already_granted' as const }
+
+    const wallet = await tx.creditWallet.findUnique({
+      where: { companyId },
+      select: { balance: true },
+    })
+    if (!wallet) return { granted: 0, reason: 'no_wallet' as const }
+
+    const topUp = monthlyCredits - wallet.balance
+    if (topUp <= 0) return { granted: 0, reason: 'balance_sufficient' as const }
+
+    await applyLedgerEntry(tx, {
+      companyId,
+      delta: topUp,
+      reason: LedgerReason.PILOT_GRANT,
+    })
+
+    return { granted: topUp, reason: 'ok' as const }
+  })
+}
+
 export async function reconcileWallet(ctx: { companyId: string }): Promise<{
   ok: boolean
   expected: number

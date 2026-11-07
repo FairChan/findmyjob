@@ -6,6 +6,8 @@ import { db } from '../db'
 import { logger } from '../lib/logger'
 import { runPurgeUnverified } from './purge-unverified'
 import { runRequalifyReferrals } from './requalify-referrals'
+import { runPilotMonthlyCredits } from './pilot-monthly-credits'
+import { runReconcileWallets } from './reconcile-wallets'
 import { pingHealthcheck } from '../lib/healthchecks'
 
 export async function registerJobs(boss: PgBoss): Promise<void> {
@@ -56,6 +58,35 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
     try {
       await runRequalifyReferrals()
       pingHealthcheck('requalify-referrals')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
+  })
+
+  // ── pilot-monthly-credits ─────────────────────────────────────────────────
+  // Top up all verified company wallets on the 1st of each month at 00:10 UTC
+  // (08:10 Asia/Kuala_Lumpur). Skipped when billing.enabled=true.
+  await boss.createQueue('pilot-monthly-credits')
+  await boss.schedule('pilot-monthly-credits', '10 0 1 * *', {})
+  await boss.work('pilot-monthly-credits', async () => {
+    try {
+      await runPilotMonthlyCredits()
+      pingHealthcheck('pilot-monthly-credits')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
+  })
+
+  // ── reconcile-wallets ──────────────────────────────────────────────────────
+  // Daily at 03:00 Asia/Kuala_Lumpur (19:00 UTC previous day).
+  await boss.createQueue('reconcile-wallets')
+  await boss.schedule('reconcile-wallets', '0 19 * * *', {})
+  await boss.work('reconcile-wallets', async () => {
+    try {
+      await runReconcileWallets()
+      pingHealthcheck('reconcile-wallets')
     } catch (err) {
       Sentry.captureException(err)
       throw err

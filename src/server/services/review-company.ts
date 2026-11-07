@@ -4,6 +4,8 @@ import { db } from '../db'
 import { logAudit } from './audit'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createNotification } from './notifications'
+import { grantPilotCreditsOnVerification } from '../jobs/pilot-monthly-credits'
+import { logger } from '../lib/logger'
 import type { UserCtx } from '../authz'
 
 async function assertAdminUser(userId: string): Promise<void> {
@@ -99,6 +101,11 @@ export async function approveCompany(ctx: UserCtx, input: ApproveCompanyInput): 
       verificationResult: input.verificationResult,
       reviewNote,
     },
+  })
+
+  // Grant initial pilot credits immediately (best-effort; monthly job picks up any gaps)
+  await grantPilotCreditsOnVerification(cv.companyId).catch(err => {
+    logger.error({ err, companyId: cv.companyId }, 'pilot-credits: immediate grant failed')
   })
 
   // Email notification enqueued in M5-T08

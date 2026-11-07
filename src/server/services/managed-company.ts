@@ -6,6 +6,9 @@ import { logAudit } from './audit'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createCompanySchema } from './company'
 import { jobFormSchema } from './jobs'
+import { createWallet } from './credits'
+import { grantPilotCreditsOnVerification } from '../jobs/pilot-monthly-credits'
+import { logger } from '../lib/logger'
 import type { UserCtx } from '../authz'
 
 export type CreateManagedCompanyInput = z.infer<typeof createCompanySchema>
@@ -69,12 +72,20 @@ export async function createManagedCompany(
     },
   })
 
+  // Create wallet for managed company (same as the approval flow)
+  await createWallet(company.id)
+
   await logAudit({
     actorId: ctx.userId,
     action: 'company.managed.create',
     targetType: 'Company',
     targetId: company.id,
     metadata: { legalName: company.legalName },
+  })
+
+  // Grant initial pilot credits (best-effort)
+  await grantPilotCreditsOnVerification(company.id).catch(err => {
+    logger.error({ err, companyId: company.id }, 'pilot-credits: managed company initial grant failed')
   })
 
   return company
