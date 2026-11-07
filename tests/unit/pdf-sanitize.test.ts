@@ -295,6 +295,64 @@ describe('sanitizePdf', () => {
     expect((await getAnnotActionTypes(result.pdf)).includes('GoTo')).toBe(true)
   }, 30_000)
 
+  it('removes /Next-chained JavaScript on a Link annotation', async () => {
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    const page = doc.getPage(0)
+    // A URI Link with a /Next JavaScript action — the Next chain must be blocked
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      A: { S: 'URI', URI: PDFHexString.fromText('https://example.com'),
+           Next: { S: 'JavaScript', JS: PDFHexString.fromText('app.alert(1)') } },
+    }))
+    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // The chained annotation must be removed (no annots or no URI link remains)
+    const afterDoc = await PDFDocument.load(result.pdf)
+    const ar = afterDoc.getPage(0).node.get(PDFName.of('Annots'))
+    expect(ar).toBeUndefined()
+  }, 30_000)
+
+  it('removes annotation-level /AA', async () => {
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    const page = doc.getPage(0)
+    // A URI Link annotation that also has its own /AA
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      A: { S: 'URI', URI: PDFHexString.fromText('https://example.com') },
+      AA: { E: { S: 'JavaScript', JS: PDFHexString.fromText('app.alert(1)') } },
+    }))
+    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    // After sanitization, no annot should have /AA
+    const afterDoc = await PDFDocument.load(result.pdf)
+    const afterPage = afterDoc.getPage(0)
+    const ar = afterPage.node.get(PDFName.of('Annots'))
+    if (ar) {
+      let annotsArr: PDFArray | undefined
+      if (ar instanceof PDFArray) annotsArr = ar
+      else if (ar instanceof PDFRef) { try { annotsArr = afterDoc.context.lookup(ar, PDFArray) } catch {} }
+      if (annotsArr) {
+        for (let j = 0; j < annotsArr.size(); j++) {
+          const item = annotsArr.get(j)
+          let annotDict: PDFDict | undefined
+          if (item instanceof PDFDict) annotDict = item
+          else if (item instanceof PDFRef) { try { annotDict = afterDoc.context.lookup(item, PDFDict) } catch {} }
+          if (annotDict) expect(annotDict.has(PDFName.of('AA'))).toBe(false)
+        }
+      }
+    }
+  }, 30_000)
+
   it('returns encrypted for password-protected PDF', async () => {
     // Build a minimal PDF with an /Encrypt dictionary hint so pdf-lib sees it as encrypted.
     // Using a simple PDF with /Encrypt flag is complex; instead test via the 'encrypted' path

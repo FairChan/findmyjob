@@ -41,7 +41,7 @@ function resolveArray(ctx, val) {
 // for the loaded input, so lookup is reliable here. After sanitizing, copy cleaned pages
 // to outDoc — only referenced objects are deep-copied, so orphaned annotation dicts
 // (those we removed) are never carried into outDoc.
-const dangerousActions = ['JavaScript', 'Launch', 'SubmitForm', 'ImportData', 'Named', 'GoToE', 'GoToR', 'SetOCGState', 'Trans', 'Sound', 'Movie', 'Hide', 'ResetForm', 'Rendition'];
+const allowedActions = new Set(['GoTo', 'URI']);
 for (let p = 0; p < pageCount; p++) {
   const page = srcDoc.getPage(p);
   page.node.delete(PDFName.of('AA'));
@@ -54,14 +54,18 @@ for (let p = 0; p < pageCount; p++) {
     const item = annotsArr.get(i);
     const annotDict = resolveDict(srcDoc.context, item);
     if (!annotDict) continue;
+    // Strip annotation-level /AA
+    annotDict.delete(PDFName.of('AA'));
     const subtypeName = resolveName(srcDoc.context, annotDict.get(PDFName.of('Subtype')));
     if (subtypeName !== 'Link') continue;
     const aVal = annotDict.get(PDFName.of('A'));
     if (aVal) {
       const actionDict = resolveDict(srcDoc.context, aVal);
       if (!actionDict) continue;
+      // Reject chained actions (/Next) — they could bypass the allowlist
+      if (actionDict.has(PDFName.of('Next'))) continue;
       const sName = resolveName(srcDoc.context, actionDict.get(PDFName.of('S')));
-      if (!sName || dangerousActions.includes(sName)) continue;
+      if (!sName || !allowedActions.has(sName)) continue;
     }
     kept.push(item);
   }
