@@ -12,7 +12,7 @@ function escapeRegex(s: string): string {
  *  1. Final HTTP status is 200.
  *  2. Final URL contains expectUrl (default: path).
  *  3. No Next.js dev-mode error overlay ("Unhandled Runtime Error").
- *  4. No production error boundary text ("Application error").
+ *  4. No production error page text ("A server error occurred", "Application error").
  *  5. No Next.js default 404 page text.
  *  6. No console errors or uncaught page errors after networkidle.
  *
@@ -42,8 +42,10 @@ export async function expectPageHealthy(
   // Playwright text locators pierce open shadow DOM (nextjs-portal uses an open root).
   await expect(page.getByText('Unhandled Runtime Error')).not.toBeVisible({ timeout: 3000 })
 
-  // Production error boundary (Next 16.4.5 global-error shows "A server error occurred")
+  // Production error pages: Next 16.4.5 global-error shows "A server error occurred"; a client-side
+  // crash in a production build still shows "Application error: a client-side exception has occurred".
   await expect(page.getByText('A server error occurred')).not.toBeVisible()
+  await expect(page.getByText('Application error')).not.toBeVisible()
 
   // Next.js default 404
   await expect(page.getByText('This page could not be found')).not.toBeVisible()
