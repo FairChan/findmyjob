@@ -922,6 +922,7 @@
 9. E2E 连续跑两次全部 spec（M4-T16 第 6 条）：第二次 global-setup 不报错，两次都 0 失败、0 跳过，按文件列出两次的通过数。
 10. 用 ESLint 拦住恒真断言（总控 2026-11-07，ROUND_NOTE 同步）：在 `eslint.config.mjs` 针对测试文件（`tests/**`、`**/*.test.ts(x)`、`**/*.spec.ts`）加 `no-restricted-syntax`，禁止 `expect(<字面量>)`（选择器 `CallExpression[callee.name='expect'][arguments.0.type='Literal']`）和 `expect(undefined)`（`[arguments.0.type='Identifier'][arguments.0.name='undefined']`）。注意 flat config 里同一条规则在后面的配置块会整体覆盖前面的：如果测试文件原本也继承了 `RAW_UNSAFE_SELECTORS`，要把两组选择器合并在一起，不能丢掉原来的。验证：临时写一个 `expect(true).toBe(true)`，`pnpm lint` 报错（把报错原文贴进提交说明），删掉后 `pnpm lint` 通过。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数。
+> 总控 2026-11-08：第一次跑（run23 第 10 轮）到单轮 $15 预算上限被停，已完成的部分提交成 169ad53 `wip(M4-T24)`（lint、typecheck 通过）。从这里接着做，先读一遍这次提交的改动，逐条对照上面 1–10 条，只补还没做完的部分；全量测试和两次 E2E 都还没跑。
 
 #### [ ] M4-T25 最后一轮收尾：防泄漏 E2E 的正向对照、sanitizePdf 的目标与字典校验、空过的守护测试、学校 OTP 并发测试不稳定
 依赖：M4-T22、M4-T23、M4-T24
