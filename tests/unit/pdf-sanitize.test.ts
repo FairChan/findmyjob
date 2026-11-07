@@ -5,7 +5,7 @@
  * Per M4-T19/M4-T23: "把净化里对应的那一步删掉时，对应的那条测试要失败."
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { PDFDocument, PDFName, PDFHexString, PDFArray, PDFDict, PDFRef } from 'pdf-lib'
+import { PDFDocument, PDFName, PDFHexString, PDFArray, PDFDict, PDFRef, PDFNumber, PDFNull, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
 
 const mockGetSetting = vi.hoisted(() => vi.fn())
 vi.mock('@/server/services/settings', () => ({ getSetting: mockGetSetting }))
@@ -297,16 +297,18 @@ describe('sanitizePdf', () => {
   }, 30_000)
 
   it('preserves /GoTo Link annotation and page count — rebuilt as minimal /Dest dict', async () => {
-    // Create a 2-page PDF with a GoTo link on page 0 (explicit array destination)
+    // Create a 2-page PDF with a GoTo link on page 0 pointing to page 1.
+    // D[0] must be a PDFRef of a page in this document — use getPage(1).ref.
     const doc = await PDFDocument.create()
     doc.addPage([612, 792])
     doc.addPage([612, 792])
     const page = doc.getPage(0)
+    const page1 = doc.getPage(1)
     const annotRef = doc.context.register(doc.context.obj({
       Type: 'Annot',
       Subtype: 'Link',
       Rect: [10, 700, 200, 720],
-      A: { S: 'GoTo', D: ['XYZ', null, null, null] },
+      A: { S: 'GoTo', D: doc.context.obj([page1.ref, PDFName.of('XYZ'), null, null, null]) },
     }))
     page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
     const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
@@ -327,14 +329,18 @@ describe('sanitizePdf', () => {
   it('removes /Next-chained JavaScript on a Link annotation — GoTo link itself preserved', async () => {
     // A GoTo Link with a /Next JavaScript action — the Next chain must be blocked.
     // After sanitization, the link is rebuilt as a minimal /Dest dict (no /A, no /Next).
+    // D[0] must be a page PDFRef so only the /Next removal step is tested here.
     // Red-run: skip annotation rebuild → no /Annots after copy → expect(ar).not.toBeUndefined() fails.
     const doc = await PDFDocument.create()
     doc.addPage([612, 792])
+    doc.addPage([612, 792])
     const page = doc.getPage(0)
+    const page1 = doc.getPage(1)
     const annotRef = doc.context.register(doc.context.obj({
       Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
       A: {
-        S: 'GoTo', D: ['XYZ', null, null, null],
+        S: 'GoTo',
+        D: [page1.ref, PDFName.of('XYZ'), null, null, null],
         Next: { S: 'JavaScript', JS: PDFHexString.fromText('app.alert(1)') },
       },
     }))
@@ -360,13 +366,16 @@ describe('sanitizePdf', () => {
   it('removes annotation-level /AA — GoTo link itself preserved', async () => {
     // A GoTo Link annotation that also has its own /AA.
     // After sanitization, the link is rebuilt as a minimal /Dest dict (no /AA).
+    // D[0] must be a page PDFRef so only the /AA removal step is tested here.
     // Red-run: skip annotation rebuild → no /Annots after copy → expect(ar).not.toBeUndefined() fails.
     const doc = await PDFDocument.create()
     doc.addPage([612, 792])
+    doc.addPage([612, 792])
     const page = doc.getPage(0)
+    const page1 = doc.getPage(1)
     const annotRef = doc.context.register(doc.context.obj({
       Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
-      A: { S: 'GoTo', D: ['XYZ', null, null, null] },
+      A: { S: 'GoTo', D: [page1.ref, PDFName.of('XYZ'), null, null, null] },
       AA: { E: { S: 'JavaScript', JS: PDFHexString.fromText('app.alert(1)') } },
     }))
     page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
@@ -448,13 +457,16 @@ describe('sanitizePdf', () => {
 
   it('removes /PA from Link annotation — GoTo link itself preserved', async () => {
     // /PA (print action) must not appear in the rebuilt annotation.
+    // D[0] must be a page PDFRef so only the /PA removal step is tested here.
     // Red-run: skip annotation rebuild (keep original dict) → /PA remains in output → test fails.
     const doc = await PDFDocument.create()
     doc.addPage([612, 792])
+    doc.addPage([612, 792])
     const page = doc.getPage(0)
+    const page1 = doc.getPage(1)
     const annotRef = doc.context.register(doc.context.obj({
       Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
-      A: { S: 'GoTo', D: ['XYZ', null, null, null] },
+      A: { S: 'GoTo', D: [page1.ref, PDFName.of('XYZ'), null, null, null] },
       PA: { S: 'URI', URI: PDFHexString.fromText('https://print.evil.example/') },
     }))
     page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
@@ -497,6 +509,7 @@ describe('sanitizePdf', () => {
 
   it('removes GoTo3D Link annotation', async () => {
     // GoTo3D is not GoTo → rejected.
+    // D has a valid page ref so only "must be GoTo" can reject it.
     // Red-run: change acceptance to allow any action type (remove s === 'GoTo' check) →
     //   GoTo3D link is kept → getAnnotActionTypes contains 'GoTo3D' → expect fails.
     const doc = await PDFDocument.create()
@@ -504,7 +517,7 @@ describe('sanitizePdf', () => {
     const page = doc.getPage(0)
     const annotRef = doc.context.register(doc.context.obj({
       Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
-      A: { S: 'GoTo3D', TB: { T: PDFHexString.fromText('3DAnnotation') } },
+      A: doc.context.obj({ S: PDFName.of('GoTo3D'), D: doc.context.obj([doc.getPage(0).ref, PDFName.of('Fit')]) }),
     }))
     page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
     const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
@@ -518,6 +531,7 @@ describe('sanitizePdf', () => {
 
   it('removes Thread Link annotation', async () => {
     // Thread action is not GoTo → rejected.
+    // D has a valid page ref so only "must be GoTo" can reject it.
     // Red-run: change acceptance to allow any action type →
     //   Thread link kept → getAnnotActionTypes contains 'Thread' → expect fails.
     const doc = await PDFDocument.create()
@@ -525,7 +539,7 @@ describe('sanitizePdf', () => {
     const page = doc.getPage(0)
     const annotRef = doc.context.register(doc.context.obj({
       Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
-      A: { S: 'Thread', D: { it: PDFHexString.fromText('ThreadId') } },
+      A: doc.context.obj({ S: PDFName.of('Thread'), D: doc.context.obj([doc.getPage(0).ref, PDFName.of('Fit')]) }),
     }))
     page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
     const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
@@ -534,6 +548,46 @@ describe('sanitizePdf', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect((await getAnnotActionTypes(result.pdf)).includes('Thread')).toBe(false)
+    expect((await getAnnotSubtypes(result.pdf)).includes('Link')).toBe(false)
+  }, 30_000)
+
+  it('removes GoToR Link annotation', async () => {
+    // GoToR (remote GoTo) is not GoTo → rejected.
+    // D has a valid page ref so only "must be GoTo" can reject it.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    const page = doc.getPage(0)
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      A: doc.context.obj({ S: PDFName.of('GoToR'), D: doc.context.obj([doc.getPage(0).ref, PDFName.of('Fit')]) }),
+    }))
+    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((await getAnnotActionTypes(result.pdf)).includes('GoToR')).toBe(false)
+    expect((await getAnnotSubtypes(result.pdf)).includes('Link')).toBe(false)
+  }, 30_000)
+
+  it('removes GoToE Link annotation', async () => {
+    // GoToE (embedded GoTo) is not GoTo → rejected.
+    // D has a valid page ref so only "must be GoTo" can reject it.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    const page = doc.getPage(0)
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      A: doc.context.obj({ S: PDFName.of('GoToE'), D: doc.context.obj([doc.getPage(0).ref, PDFName.of('Fit')]) }),
+    }))
+    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((await getAnnotActionTypes(result.pdf)).includes('GoToE')).toBe(false)
     expect((await getAnnotSubtypes(result.pdf)).includes('Link')).toBe(false)
   }, 30_000)
 
@@ -596,6 +650,8 @@ describe('sanitizePdf', () => {
     // Page content streams must survive; sanitization must not corrupt the page body.
     // Red-run: remove copyPages (do not transfer page content) →
     //   output is empty → PDF has 0 pages → pageCount check fails.
+    // Red-run for hex assertion: remove the drawText call →
+    //   decoded stream has no Tj → hex assertion fails.
     const doc = await PDFDocument.create()
     const page = doc.addPage([612, 792])
     page.drawText('Hello sanitize test', { x: 50, y: 700, size: 12 })
@@ -607,12 +663,52 @@ describe('sanitizePdf', () => {
     const afterDoc = await PDFDocument.load(result.pdf)
     // Page count preserved
     expect(afterDoc.getPageCount()).toBe(1)
-    // /Resources still present (embeds font metrics)
-    expect(afterDoc.getPage(0).node.has(PDFName.of('Resources'))).toBe(true)
+    // /Resources still present and has a Font entry with /BaseFont /Helvetica
+    const resources = afterDoc.getPage(0).node.get(PDFName.of('Resources'))
+    expect(resources).toBeDefined()
+    const resourcesDict = resources instanceof PDFDict ? resources
+      : afterDoc.context.lookup(resources as PDFRef, PDFDict)
+    const fontDict = resourcesDict?.get(PDFName.of('Font'))
+    const fontDictResolved: PDFDict | null = fontDict instanceof PDFDict ? fontDict
+      : (fontDict instanceof PDFRef ? afterDoc.context.lookup(fontDict, PDFDict) : null)
+    expect(fontDictResolved).not.toBeNull()
+    const helveticaEntries = fontDictResolved!.keys().filter((k) => {
+      const fontEntryVal = fontDictResolved!.get(k)
+      const fontEntry: PDFDict | null = fontEntryVal instanceof PDFDict ? fontEntryVal
+        : (fontEntryVal instanceof PDFRef ? (() => { try { return afterDoc.context.lookup(fontEntryVal as PDFRef, PDFDict) } catch { return null } })() : null)
+      const baseFontVal = fontEntry?.get(PDFName.of('BaseFont'))
+      return baseFontVal instanceof PDFName && baseFontVal.asString().includes('Helvetica')
+    })
+    expect(helveticaEntries.length).toBeGreaterThan(0)
+    // Decoded content stream must contain the text as WinAnsi hex-encoded string with Tj operator.
+    // pdf-lib may produce a single PDFRef or a PDFArray of refs depending on internal state.
+    const contentsVal = afterDoc.getPage(0).node.get(PDFName.of('Contents'))
+    expect(contentsVal).toBeDefined()
+    const contentsRefs: PDFRef[] = []
+    if (contentsVal instanceof PDFRef) {
+      contentsRefs.push(contentsVal)
+    } else if (contentsVal instanceof PDFArray) {
+      for (let j = 0; j < contentsVal.size(); j++) {
+        const el = contentsVal.get(j)
+        if (el instanceof PDFRef) contentsRefs.push(el)
+      }
+    }
+    expect(contentsRefs.length).toBeGreaterThan(0)
+    const streamTexts = contentsRefs.map((ref) => {
+      try {
+        const obj = afterDoc.context.lookup(ref)
+        if (!(obj instanceof PDFRawStream)) return ''
+        return Buffer.from(decodePDFRawStream(obj).decode()).toString('latin1')
+      } catch { return '' }
+    })
+    const allStreams = streamTexts.join('\n')
+    const textHex = Buffer.from('Hello sanitize test', 'latin1').toString('hex').toUpperCase()
+    expect(allStreams).toContain(`<${textHex}>`)
+    expect(allStreams).toContain('Tj')
   }, 30_000)
 
   it('preserves MediaBox and CropBox values after sanitization', async () => {
-    // These are in PAGE_KEY_ALLOW → must survive.
+    // These are in PAGE_KEY_ALLOW → must survive with exact numeric values.
     // Red-run: remove PAGE_KEY_ALLOW (drop all page keys including MediaBox) →
     //   MediaBox gone → page renders with zero size → check below fails.
     const doc = await PDFDocument.create()
@@ -628,7 +724,19 @@ describe('sanitizePdf', () => {
     const { width, height } = afterPage.getSize()
     expect(Math.round(width)).toBe(595)
     expect(Math.round(height)).toBe(842)
-    expect(afterPage.node.has(PDFName.of('CropBox'))).toBe(true)
+    // CropBox must be preserved with its exact original values
+    const cropBoxVal = afterPage.node.get(PDFName.of('CropBox'))
+    expect(cropBoxVal).toBeDefined()
+    // getCropBox() returns { x, y, width, height } where width/height are dimensions
+    const cropBox = afterPage.getCropBox()
+    expect(Math.round(cropBox.x)).toBe(10)
+    expect(Math.round(cropBox.y)).toBe(10)
+    // setCropBox(x, y, width, height) → width=575-10=565, height=822-10=812... actually
+    // pdf-lib's setCropBox(x, y, width, height) where width and height are the actual
+    // dimension values (not the upper-right corner). setCropBox(10, 10, 575, 822) sets
+    // the box from (10,10) with width=575 and height=822.
+    expect(Math.round(cropBox.width)).toBe(575)
+    expect(Math.round(cropBox.height)).toBe(822)
   }, 30_000)
 
   it('preserves page /Rotate after sanitization', async () => {
@@ -645,5 +753,160 @@ describe('sanitizePdf', () => {
     const afterPage = (await PDFDocument.load(result.pdf)).getPage(0)
     expect(afterPage.node.has(PDFName.of('Rotate'))).toBe(true)
     expect(afterPage.getRotation().angle).toBe(90)
+  }, 30_000)
+
+  // -------------------------------------------------------------------------
+  // M4-T25 new tests: target validation, /Dest Form 1, Rect validation, ref remapping
+  // -------------------------------------------------------------------------
+
+  it('preserves /Dest [pageRef /Fit] Form-1 link (direct /Dest array on annotation)', async () => {
+    // Form 1: annotation has /Dest array directly (no /A dict).
+    // D[0] is a PDFRef pointing to page 1 — must be preserved.
+    // Red-run: remove srcRefToIdx.has check → named dests would also pass →
+    //   but more directly: change validateDestArr to always return false →
+    //   link is dropped → subtypes empty → expect(...).toContain('Link') fails.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    doc.addPage([612, 792])
+    const page0 = doc.getPage(0)
+    const page1 = doc.getPage(1)
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      Dest: doc.context.obj([page1.ref, PDFName.of('Fit')]),
+    }))
+    page0.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((await getAnnotSubtypes(result.pdf)).includes('Link')).toBe(true)
+    // Rebuilt as /Dest link (no /A key)
+    const annotKeys = await getFirstAnnotKeys(result.pdf)
+    expect(annotKeys).toContain('Dest')
+    expect(annotKeys).not.toContain('A')
+  }, 30_000)
+
+  it('removes GoTo link when /D first element is a non-page object ref', async () => {
+    // /A /S /GoTo /D where D[0] is a PDFRef to a Font dict (not a page) → rejected.
+    // Red-run: remove srcRefToIdx check in validateDestArr → non-page refs accepted →
+    //   link is kept → subtypes contains 'Link' → expect().not.toContain fails.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    // Register a non-page object (a plain dict)
+    const nonPageRef = doc.context.register(doc.context.obj({ Type: 'Font', Subtype: 'Type1', BaseFont: 'Helvetica' }))
+    const page = doc.getPage(0)
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      A: doc.context.obj({ S: PDFName.of('GoTo'), D: doc.context.obj([nonPageRef, PDFName.of('Fit')]) }),
+    }))
+    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((await getAnnotSubtypes(result.pdf)).includes('Link')).toBe(false)
+  }, 30_000)
+
+  it('removes GoTo link when /D first element is ref 9999 0 R (not in document)', async () => {
+    // /A /S /GoTo /D where D[0] is a PDFRef with object number 9999 (not in this doc) → rejected.
+    // Red-run: remove srcRefToIdx check → non-existent ref accepted →
+    //   link kept → expect().not.toContain('Link') fails.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    const page = doc.getPage(0)
+    // PDFRef.of(objectNumber, generationNumber)
+    const ghostRef = PDFRef.of(9999, 0)
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      A: doc.context.obj({ S: PDFName.of('GoTo'), D: doc.context.obj([ghostRef, PDFName.of('Fit')]) }),
+    }))
+    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((await getAnnotSubtypes(result.pdf)).includes('Link')).toBe(false)
+  }, 30_000)
+
+  it('removes Link annotation when /Rect has only 3 numbers', async () => {
+    // /Rect must be exactly 4 PDFNumber elements; a Rect with 3 elements is invalid → rejected.
+    // Red-run: remove validateRectArr check → 3-element Rect passes →
+    //   link kept → subtypes contains 'Link' → expect().not.toContain fails.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    doc.addPage([612, 792])
+    const page = doc.getPage(0)
+    const page1 = doc.getPage(1)
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link',
+      Rect: doc.context.obj([10, 10, 100]),  // only 3 numbers
+      A: doc.context.obj({ S: PDFName.of('GoTo'), D: doc.context.obj([page1.ref, PDFName.of('Fit')]) }),
+    }))
+    page.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((await getAnnotSubtypes(result.pdf)).includes('Link')).toBe(false)
+  }, 30_000)
+
+  it('remaps srcDoc page refs to outDoc page refs in rebuilt Dest[0] (object number shift)', async () => {
+    // After sanitize, Dest[0] must point to outDoc's page 1, not srcDoc's page 1.
+    // We add extra dummy objects in srcDoc before the pages so page refs have higher numbers.
+    // In the fresh outDoc, objects are numbered from scratch — the page refs differ.
+    // Red-run: remove ref remapping (push srcFirst instead of copiedPages[idx].ref) →
+    //   Dest[0].toString() equals srcDoc page1 ref string → not.toBe check fails.
+    const doc = await PDFDocument.create()
+    // Extra objects to shift page ref numbers in srcDoc
+    for (let i = 0; i < 5; i++) doc.context.register(doc.context.obj({ dummy: i }))
+    doc.addPage([612, 792]) // page 0
+    doc.addPage([612, 792]) // page 1
+    const srcPage0 = doc.getPage(0)
+    const srcPage1 = doc.getPage(1)
+    const annotRef = doc.context.register(doc.context.obj({
+      Type: 'Annot', Subtype: 'Link', Rect: [10, 10, 100, 30],
+      A: doc.context.obj({ S: PDFName.of('GoTo'), D: doc.context.obj([srcPage1.ref, PDFName.of('Fit')]) }),
+    }))
+    srcPage0.node.set(PDFName.of('Annots'), doc.context.obj([annotRef]))
+    const pdfBuf = Buffer.from(await doc.save({ useObjectStreams: false }))
+
+    const result = await sanitizePdf(pdfBuf)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    const outDoc = await PDFDocument.load(result.pdf)
+    expect(outDoc.getPageCount()).toBe(2)
+
+    const outPage0 = outDoc.getPage(0)
+    const annotsVal = outPage0.node.get(PDFName.of('Annots'))
+    expect(annotsVal).toBeDefined()
+    let annotsArr: PDFArray | undefined
+    if (annotsVal instanceof PDFArray) annotsArr = annotsVal
+    else if (annotsVal instanceof PDFRef) { try { annotsArr = outDoc.context.lookup(annotsVal, PDFArray) } catch {} }
+    expect(annotsArr).toBeDefined()
+    expect(annotsArr!.size()).toBe(1)
+
+    const item = annotsArr!.get(0)
+    let annotDict: PDFDict | undefined
+    if (item instanceof PDFDict) annotDict = item
+    else if (item instanceof PDFRef) { try { annotDict = outDoc.context.lookup(item, PDFDict) } catch {} }
+    expect(annotDict).toBeDefined()
+
+    const destVal = annotDict!.get(PDFName.of('Dest'))
+    let destArr: PDFArray | undefined
+    if (destVal instanceof PDFArray) destArr = destVal
+    else if (destVal instanceof PDFRef) { try { destArr = outDoc.context.lookup(destVal, PDFArray) } catch {} }
+    expect(destArr).toBeDefined()
+
+    const destFirst = destArr!.get(0)
+    expect(destFirst).toBeInstanceOf(PDFRef)
+    // Dest[0] must equal outDoc's page 1 ref
+    expect((destFirst as PDFRef).toString()).toBe(outDoc.getPage(1).ref.toString())
+    // And must NOT equal srcDoc's page 1 ref (they were renumbered)
+    expect((destFirst as PDFRef).toString()).not.toBe(srcPage1.ref.toString())
   }, 30_000)
 })

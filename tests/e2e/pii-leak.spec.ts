@@ -398,16 +398,20 @@ test.describe('PII leak – talent search/detail (M4-T22, free-text coverage + i
         page.on('response', (res) => {
           const ct = res.headers()['content-type'] ?? ''
           if (ct.includes('text/html') || ct.includes('application/json') || ct.includes('text/x-component')) {
-            if (ct.includes('text/html')) htmlCount++
-            // Use buf.toString('utf8') — RSC responses may omit charset so res.text() defaults to Latin-1.
+            // htmlCount is incremented inside .then() so it only counts bodies that were actually collected.
             pending.push(
-              res.body().then((buf) => { bodies.push(buf.toString('utf8')) }).catch(() => {})
+              res.body().then((buf) => {
+                bodies.push(buf.toString('utf8'))
+                if (ct.includes('text/html')) htmlCount++
+              }).catch(() => {})
             )
           }
         })
 
-        // 1. Initial list page (HTML): pii student is first (future lastActiveAt)
-        await page.goto('/zh/e/talent')
+        // 1. Initial list page (HTML): pii student is first (future lastActiveAt).
+        // Assert status 200 — confirms the talent list page loads, not an error boundary.
+        const r = await page.goto('/zh/e/talent')
+        expect(r?.status()).toBe(200)
         await page.waitForLoadState('networkidle')
 
         // Positive: list page renders (not error boundary)
@@ -415,22 +419,26 @@ test.describe('PII leak – talent search/detail (M4-T22, free-text coverage + i
         // Positive: pii student card link visible on page 1
         await expect(page.locator(`a[href*="/e/talent/${piiStudentId}"]`).first()).toBeVisible()
 
-        // 2. Navigate to page 2 (RSC response)
+        // 2. Navigate to page 2 (RSC response).
+        // waitForURL(/page=2/) ensures the navigation is reflected in the URL before continuing.
         await page.getByRole('link', { name: '下一页' }).click()
+        await page.waitForURL(/page=2/)
         await page.waitForLoadState('networkidle')
 
         // 3. Navigate back to page 1 (RSC response — "navigate back")
         await page.getByRole('link', { name: '上一页' }).click()
         await page.waitForLoadState('networkidle')
 
-        // 4. Submit keyword search "Python" via filter panel (router.push → RSC response)
+        // 4. Submit keyword search "Python" via filter panel (router.push → RSC response).
+        // waitForURL(/keyword=/) ensures the search params are reflected before clicking the card.
         await page.locator('#filter-keyword').waitFor({ state: 'visible' })
         await page.locator('#filter-keyword').fill('Python')
         await page.keyboard.press('Enter')
+        await page.waitForURL(/keyword=/)
         await page.waitForLoadState('networkidle')
 
-        // 5. Click pii student card link (client-side navigation → RSC detail response)
-        // pii student is first in keyword results (future lastActiveAt)
+        // 5. Click pii student card link (client-side navigation → RSC detail response).
+        // pii student is first in keyword results (future lastActiveAt).
         await page.locator(`a[href*="/e/talent/${piiStudentId}"]`).first().click()
         await page.waitForURL(`**/e/talent/${piiStudentId}`)
         await page.waitForLoadState('networkidle')
@@ -438,12 +446,16 @@ test.describe('PII leak – talent search/detail (M4-T22, free-text coverage + i
         // 5a. DOM: masking is visible in rendered page — encoding-safe check (Playwright's
         //     Unicode DOM bypasses RSC text/x-component charset issues).
         //     Passes even with broken headline: summary is independently redacted.
-        // Summary section paragraph contains redacted content (summary is never broken in this test).
         await expect(page.locator('[aria-labelledby="summary-heading"] p')).toContainText('[已隐藏]')
 
-        // 6. Open SaveToFolder dialog (triggers server action – folders list)
+        // 6. Open SaveToFolder dialog — waitForResponse ensures the folders Server Action
+        // response (next-action request) is collected before closing the dialog.
+        const saResponsePromise = page.waitForResponse(
+          (r) => !!r.request().headers()['next-action'],
+        )
         await page.locator('button[aria-haspopup="dialog"]').first().click()
         await page.locator('[role="dialog"]').waitFor({ state: 'visible' })
+        await saResponsePromise.catch(() => {})  // tolerate timeout: dialog may not trigger SA
         await page.keyboard.press('Escape')
         await page.locator('[role="dialog"]').waitFor({ state: 'hidden' })
 
@@ -454,16 +466,26 @@ test.describe('PII leak – talent search/detail (M4-T22, free-text coverage + i
 
         await Promise.allSettled(pending)
 
+        // 8. Direct detail page navigation — restores original M4-T22 coverage where the
+        // detail page was opened directly via goto (not client-side navigation) so its
+        // HTML document response is included in the PII scan.
+        // Also asserts STORAGE_KEY and WECHAT sentinel values individually.
+        const r2 = await page.goto(`/zh/e/talent/${piiStudentId}`)
+        expect(r2?.status()).toBe(200)
+        await page.waitForLoadState('networkidle')
+        await Promise.allSettled(pending)
+
         const all = bodies.join('\n')
 
         // ── Positive assertions ──
 
-        // At least 1 HTML response collected
+        // At least 1 HTML response collected (counted after body resolved)
         expect(htmlCount).toBeGreaterThan(0)
         // Sentinel student id appears in responses (ASCII, encoding-safe)
         expect(all).toContain(piiStudentId)
-        // Note: [已隐藏] in responses is verified via DOM check (step 5a) above;
-        // RSC text/x-component bodies may have charset issues in res.body().
+        // At least one body contains both the sentinel id AND '[已隐藏]' — confirms responses
+        // are real talent-library pages and masking is actually in effect.
+        expect(bodies.some((b) => b.includes(piiStudentId) && b.includes('[已隐藏]'))).toBe(true)
 
         // ── Negative: 7 PII values must not appear in any form ──
         // Run BEFORE the h1 check so a broken serializer is caught here first.
@@ -478,13 +500,16 @@ test.describe('PII leak – talent search/detail (M4-T22, free-text coverage + i
         expect(all).not.toContain(SENTINEL.email)
         // 4. WhatsApp (distinct from phone)
         expect(all).not.toContain(WHATSAPP_SENTINEL)
-        // 5. WeChat handle + storage key + LinkedIn all share the 'pii-m4t13' prefix
+        // 5. StorageKey and WeChat: individual assertions (逐个补回 per M4-T25)
+        expect(all).not.toContain(STORAGE_KEY_SENTINEL)
+        expect(all).not.toContain(WECHAT_SENTINEL)
+        // 6. LinkedIn prefix covers STORAGE_KEY, WECHAT, LINKEDIN in one check
         expect(all).not.toContain('pii-m4t13')
-        // 6. Account email (User.email, never serialized to employer side)
+        // 7. Account email (User.email, never serialized to employer side)
         expect(all).not.toContain(piiStudentAccountEmail)
 
         // Positive: detail h1 shows masked name — checked last (live DOM assertion on
-        // current page, which is the detail page at this point in the test)
+        // current page, which is the detail page after the direct goto in step 8)
         const h1Text = await page.locator('h1').first().textContent()
         expect(h1Text).toContain('哨同学')
         expect(h1Text).not.toContain(SENTINEL.name)

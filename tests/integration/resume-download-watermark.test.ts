@@ -131,11 +131,12 @@ async function buildDangerousPdf(): Promise<Buffer> {
 
   // 6. GoTo Link annotation (should be preserved as /Dest link, rebuilt without /A)
   // URI links are rejected since M4-T23. Only in-document GoTo/Dest links are kept.
+  // D[0] must be a PDFRef pointing to a page in this document (validateDestArr requirement).
   const gotoAnnotRef = doc.context.register(doc.context.obj({
     Type: 'Annot',
     Subtype: 'Link',
     Rect: [10, 600, 200, 620],
-    A: { S: 'GoTo', D: ['Fit'] },
+    A: { S: 'GoTo', D: [doc.getPage(1).ref, PDFName.of('Fit')] },
   }))
 
   page0.node.set(PDFName.of('Annots'), doc.context.obj([jsAnnotRef, faAnnotRef, gotoAnnotRef]))

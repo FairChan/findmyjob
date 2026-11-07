@@ -49,6 +49,38 @@ for (let i = 0; i < pageCount; i++) {
   srcRefToIdx.set(srcDoc.getPage(i).ref.toString(), i);
 }
 
+// Validate that a destination array is acceptable:
+//   element 0 must be a PDFRef pointing to a page in this document;
+//   elements 1+ must NOT be PDFRef (scalars only: name, number, null, bool).
+// Using a negative PDFRef check avoids a dependency on PDFNumber/PDFNull which
+// may not be in scope in every pdf-lib CJS build variant used by the worker.
+function validateDestArr(ctx, arr) {
+  if (!arr || arr.size() === 0) return false;
+  const first = arr.get(0);
+  if (!(first instanceof PDFRef) || !srcRefToIdx.has(first.toString())) return false;
+  for (let k = 1; k < arr.size(); k++) {
+    if (arr.get(k) instanceof PDFRef) return false;
+  }
+  return true;
+}
+
+// Validate /Rect: must be exactly 4 elements, none of which is a PDFRef.
+function validateRectArr(arr) {
+  if (!arr || arr.size() !== 4) return false;
+  for (let k = 0; k < 4; k++) {
+    if (arr.get(k) instanceof PDFRef) return false;
+  }
+  return true;
+}
+
+// Page key whitelist — all other keys (/AA, /Thumb, /PieceInfo, /Trans, /Metadata, /B …) are dropped.
+const PAGE_KEY_ALLOW = new Set([
+  'Type', 'Parent', 'Resources', 'Contents', 'MediaBox', 'CropBox',
+  'BleedBox', 'TrimBox', 'ArtBox', 'Rotate', 'UserUnit', 'Group'
+]);
+// /Group allowed sub-keys — rebuilt from scratch, not copied whole.
+const GROUP_KEY_ALLOW = new Set(['Type', 'S', 'CS', 'I', 'K']);
+
 // Pass 1: collect annotations to keep from each srcDoc page, then clear all
 // srcDoc page annotations.  Clearing before copyPages ensures that no original
 // annotation objects (URI, GoTo3D, /AA, /PA, /Next chains, etc.) are
@@ -73,24 +105,20 @@ for (let p = 0; p < pageCount; p++) {
         const rectVal = annotDict.get(PDFName.of('Rect'));
         if (!rectVal) continue;
         const rectArr = resolveArray(srcDoc.context, rectVal);
-        if (!rectArr) continue;
+        if (!validateRectArr(rectArr)) continue;
 
         let destArr = null;
 
-        // Form 1: /Dest is an explicit array whose first element is a page PDFRef.
+        // Form 1: /Dest is an explicit array whose first element is a page PDFRef
+        // in this document, and whose remaining elements are PDFName/PDFNumber/PDFNull.
         // Named destinations (/Dest is a name or string) are rejected.
         const destDirect = annotDict.get(PDFName.of('Dest'));
         if (destDirect) {
           const dArr = resolveArray(srcDoc.context, destDirect);
-          if (dArr && dArr.size() > 0) {
-            const firstEl = dArr.get(0);
-            if (firstEl instanceof PDFRef && srcRefToIdx.has(firstEl.toString())) {
-              destArr = dArr;
-            }
-          }
+          if (validateDestArr(srcDoc.context, dArr)) destArr = dArr;
         }
 
-        // Form 2: /A /S /GoTo with explicit /D array.
+        // Form 2: /A /S /GoTo with explicit /D array satisfying the same constraints.
         // URI, GoToR, GoToE, GoTo3D, Thread, RichMediaExecute and all other action
         // types are rejected.  /Next chains are stripped by the rebuild step below.
         if (!destArr) {
@@ -102,7 +130,7 @@ for (let p = 0; p < pageCount; p++) {
               if (s === 'GoTo') {
                 const dVal = actionDict.get(PDFName.of('D'));
                 const dArr = resolveArray(srcDoc.context, dVal);
-                if (dArr) destArr = dArr;
+                if (validateDestArr(srcDoc.context, dArr)) destArr = dArr;
               }
             }
           }
@@ -117,38 +145,50 @@ for (let p = 0; p < pageCount; p++) {
   preservedPerPage.push(kept);
 }
 
+// Apply page whitelist on srcDoc pages BEFORE copyPages so that orphaned /AA, /Thumb, etc.
+// objects are not deep-copied into outDoc (they would otherwise exist as unreferenced objects).
+for (let p = 0; p < pageCount; p++) {
+  const srcPage = srcDoc.getPage(p);
+  const srcKeysToDelete = srcPage.node.keys().filter(k => !PAGE_KEY_ALLOW.has(k.asString().replace(/^\\//, '')));
+  for (const k of srcKeysToDelete) srcPage.node.delete(k);
+}
+
 // Copy sanitized pages into the fresh outDoc (no annotation objects are carried over).
 const copiedPages = await outDoc.copyPages(srcDoc, Array.from({ length: pageCount }, (_, i) => i));
-
-// Page key whitelist — all other keys (/AA, /Thumb, /PieceInfo, /Trans, /Metadata, /B …) are dropped.
-const PAGE_KEY_ALLOW = new Set([
-  'Type', 'Parent', 'Resources', 'Contents', 'MediaBox', 'CropBox',
-  'BleedBox', 'TrimBox', 'ArtBox', 'Rotate', 'UserUnit', 'Group'
-]);
 
 for (let p = 0; p < pageCount; p++) {
   const page = copiedPages[p];
   outDoc.addPage(page);
 
+  // Belt-and-suspenders whitelist on the copied page (removes any keys that slipped through).
   const keysToDelete = page.node.keys().filter(k => !PAGE_KEY_ALLOW.has(k.asString().replace(/^\\//, '')));
   for (const k of keysToDelete) page.node.delete(k);
+
+  // Rebuild /Group with only allowed sub-keys — do not copy whole (may carry /PZ, /ColorSpace, etc.).
+  const groupVal = page.node.get(PDFName.of('Group'));
+  if (groupVal) {
+    const groupDict = resolveDict(outDoc.context, groupVal);
+    if (groupDict) {
+      const newGroupEntries = {};
+      for (const k of groupDict.keys()) {
+        const keyStr = k.asString().replace(/^\\//, '');
+        if (GROUP_KEY_ALLOW.has(keyStr)) newGroupEntries[keyStr] = groupDict.get(k);
+      }
+      page.node.set(PDFName.of('Group'), outDoc.context.obj(newGroupEntries));
+    }
+  }
 
   // Rebuild kept annotations as minimal /Dest dicts.
   // This strips /AA, /PA, /Next chains, and all other extra keys by construction.
   const annotData = preservedPerPage[p];
   if (annotData.length > 0) {
     const newAnnotRefs = annotData.map(({ rectArr, destArr }) => {
-      // Remap srcDoc page PDFRefs in the destination array to outDoc page PDFRefs.
-      const newDest = [];
-      for (let k = 0; k < destArr.size(); k++) {
-        const el = destArr.get(k);
-        if (el instanceof PDFRef) {
-          const idx = srcRefToIdx.get(el.toString());
-          newDest.push(idx !== undefined ? copiedPages[idx].ref : el);
-        } else {
-          newDest.push(el);
-        }
-      }
+      // Element 0 is a validated PDFRef in srcRefToIdx — remap to outDoc page ref.
+      // Elements 1+ are PDFName/PDFNumber/PDFNull value types — push as-is (no fallback branch).
+      const srcFirst = destArr.get(0);
+      const idx = srcRefToIdx.get(srcFirst.toString());
+      const newDest = [copiedPages[idx].ref];
+      for (let k = 1; k < destArr.size(); k++) newDest.push(destArr.get(k));
       const rectElems = [];
       for (let k = 0; k < rectArr.size(); k++) rectElems.push(rectArr.get(k));
       return outDoc.context.register(outDoc.context.obj({
