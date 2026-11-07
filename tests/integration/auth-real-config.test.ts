@@ -111,6 +111,14 @@ vi.mock('@/server/lib/logger', () => ({
   pinoOptions: {},
 }))
 
+// StudentNav (pulled in by StudentLayout) uses next-intl and @/i18n/navigation
+vi.mock('next-intl/server', () => ({
+  getTranslations: vi.fn().mockResolvedValue((key: string) => key),
+}))
+vi.mock('@/i18n/navigation', () => ({
+  Link: ({ children }: { children: unknown }) => children,
+}))
+
 // --- Imports (after mocks are set up) ---
 
 import { createHash } from 'node:crypto'

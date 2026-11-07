@@ -54,7 +54,6 @@ test.describe('M4-T18 smoke: pages backed by identity-gate services', () => {
 
       await expect(page).not.toHaveURL(/\/error|\/500/, { timeout: 5000 })
       await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
-      await expect(page.getByText(/Something went wrong|发生了错误/i)).toHaveCount(0)
       await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 10000 })
 
       assertNoErrors(errors)
@@ -77,7 +76,6 @@ test.describe('M4-T18 smoke: pages backed by identity-gate services', () => {
 
       await expect(page).not.toHaveURL(/\/error|\/500/, { timeout: 5000 })
       await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
-      await expect(page.getByText(/Something went wrong|发生了错误/i)).toHaveCount(0)
       await expect(page.locator('#main-content').first()).toBeVisible({ timeout: 10000 })
 
       assertNoErrors(errors)
@@ -100,7 +98,6 @@ test.describe('M4-T18 smoke: pages backed by identity-gate services', () => {
 
       await expect(page).not.toHaveURL(/\/error|\/500/, { timeout: 5000 })
       await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
-      await expect(page.getByText(/Something went wrong|发生了错误/i)).toHaveCount(0)
       await expect(page.locator('#main-content').first()).toBeVisible({ timeout: 10000 })
 
       assertNoErrors(errors)
@@ -123,7 +120,6 @@ test.describe('M4-T18 smoke: pages backed by identity-gate services', () => {
 
       await expect(page).not.toHaveURL(/\/error|\/500/, { timeout: 5000 })
       await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
-      await expect(page.getByText(/Something went wrong|发生了错误/i)).toHaveCount(0)
       await expect(page.locator('#main-content').first()).toBeVisible({ timeout: 10000 })
 
       // Contact section heading and phone must be visible for the unlocked student

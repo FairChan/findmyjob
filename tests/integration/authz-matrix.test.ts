@@ -1239,7 +1239,7 @@ describe('talent.unlock: unlockStudentAction action-level authz', () => {
     expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
   })
 
-  it('unauthenticated (no session) → rejected (ok false)', async () => {
+  it('unauthenticated (no session) → rejected (ok false, FORBIDDEN)', async () => {
     await setupActionUnlockSettings()
     const profileId = await makeVisibleStudent()
 
@@ -1247,6 +1247,7 @@ describe('talent.unlock: unlockStudentAction action-level authz', () => {
     const { unlockStudentAction } = await import('@/server/actions/unlock')
     const result = await unlockStudentAction({ studentId: profileId })
     expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
   })
 
   it('company A session with extra companyId B in input → unlock belongs to A, B unaffected', async () => {
@@ -1263,6 +1264,14 @@ describe('talent.unlock: unlockStudentAction action-level authz', () => {
 
     const unlock = await testDb.talentUnlock.findFirst({ where: { studentId: profileId } })
     expect(unlock?.companyId).toBe(empA.companyId)
+
+    // A's balance was deducted; A's ledger has one new UNLOCK entry
+    const walletA = await testDb.creditWallet.findUnique({ where: { companyId: empA.companyId } })
+    expect(walletA?.balance).toBe(4)
+    const ledgerA = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: empA.companyId }, reason: 'UNLOCK' },
+    })
+    expect(ledgerA).toHaveLength(1)
 
     // B's balance and ledger are untouched
     const walletB = await testDb.creditWallet.findUnique({ where: { companyId: empB.companyId } })
@@ -1328,26 +1337,6 @@ describe('talent.unlock: unlockStudent authz', () => {
     const { unlockStudent } = await import('@/server/services/unlock')
     const result = await unlockStudent({ userId: emp.userId, companyId: emp.companyId }, profileId)
     expect(result.alreadyUnlocked).toBe(false)
-  })
-
-  it('company A cannot unlock student by passing company B id — companyId fixed by authz', async () => {
-    await setupUnlockSettings()
-    const empA = await createEmployer(testDb)
-    const empB = await createEmployer(testDb)
-    await testDb.company.update({ where: { id: empA.companyId }, data: { verificationStatus: 'VERIFIED' } })
-    await testDb.creditWallet.create({ data: { companyId: empA.companyId, balance: 5 } })
-    const { profileId } = await createStudent(testDb, { completeness: 80 })
-    await testDb.studentProfile.update({
-      where: { id: profileId },
-      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() },
-    })
-    // empA's unlock uses empA.companyId, cannot pass empB.companyId via action
-    const { unlockStudent } = await import('@/server/services/unlock')
-    const result = await unlockStudent({ userId: empA.userId, companyId: empA.companyId }, profileId)
-    expect(result.alreadyUnlocked).toBe(false)
-    const unlock = await testDb.talentUnlock.findFirst({ where: { studentId: profileId } })
-    expect(unlock?.companyId).toBe(empA.companyId)
-    expect(unlock?.companyId).not.toBe(empB.companyId)
   })
 
   it('blocked student → NotFoundError (TM-003)', async () => {
@@ -1554,6 +1543,46 @@ describe('resume.download (M4-T09)', () => {
     // Attempt to download student Y's resume
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
     const res = await GET(new Request(`http://localhost/api/resumes/${yResumeId}/download`))
+    expect(res.status).toBe(403)
+  })
+
+  it('SUSPENDED company member (even with unlock) → 403', async () => {
+    const { profileId, resumeId } = await makeStudentWithResume()
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    await testDb.user.update({ where: { id: emp.userId }, data: { status: 'SUSPENDED' } })
+    mockSession(emp.userId)
+
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(403)
+  })
+
+  it('no TalentUnlock + oversized resume → 403 not 422 (sizeBytes check is after identityAccess)', async () => {
+    // Create a resume whose sizeBytes exceeds RESUME_MAX_BYTES (5 MB)
+    const { profileId } = await createStudent(testDb)
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() },
+    })
+    const oversizedResume = await testDb.resumeFile.create({
+      data: {
+        studentId: profileId,
+        storageKey: 'resumes/dl-authz-oversized/cv.pdf',
+        fileName: 'cv.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 6 * 1024 * 1024, // 6 MB > RESUME_MAX_BYTES
+      },
+    })
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    // Intentionally no TalentUnlock — identityAccess blocks before sizeBytes
+    mockSession(emp.userId)
+
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${oversizedResume.id}/download`))
+    // 403 (no unlock), not 422 (file too large) — sizeBytes check moved after identityAccess
     expect(res.status).toBe(403)
   })
 })

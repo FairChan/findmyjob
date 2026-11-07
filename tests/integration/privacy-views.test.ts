@@ -3,7 +3,7 @@
  *
  * Tests the SQL deduplication by KL calendar day (UTC+8), not just per-company.
  */
-import { vi, describe, it, expect } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/env', () => ({ env: {} }))
 
@@ -20,6 +20,46 @@ import { createStudent, createEmployer } from '../factories'
 import { getProfileViews } from '@/server/services/privacy'
 
 setupTestDb()
+
+/**
+ * Return two UTC timestamps that:
+ *  - both fall on the SAME KL (UTC+8) calendar day
+ *  - are daysAgo KL-days in the past (always within the 90-day rolling window)
+ *
+ * UTC 16:00 is KL midnight, so a KL-day spans [prevUTC16:00, UTC16:00).
+ * We pick:
+ *   t1 = KL-midnight-offset + 30 min  (UTC 16:30 = KL 00:30 of that day)
+ *   t2 = t1 + 2.5 hours                (UTC 19:00 = KL 03:00 of the same day)
+ */
+function klSameDayPair(daysAgo: number): [Date, Date] {
+  const KL_OFFSET_MS = 8 * 3600 * 1000
+  const DAY_MS = 24 * 3600 * 1000
+  // UTC timestamp of the KL midnight that is `daysAgo` KL-days before now
+  const nowKlDay = Math.floor((Date.now() + KL_OFFSET_MS) / DAY_MS)
+  const targetKlDayMs = (nowKlDay - daysAgo) * DAY_MS - KL_OFFSET_MS
+  const t1 = new Date(targetKlDayMs + 30 * 60 * 1000)      // UTC 00:30 past KL midnight
+  const t2 = new Date(targetKlDayMs + 2.5 * 3600 * 1000)   // UTC 02:30 past KL midnight (same KL day)
+  return [t1, t2]
+}
+
+/**
+ * Two UTC timestamps on DIFFERENT KL calendar days, `daysAgo` KL-days ago.
+ *   t1 = 30 min before KL midnight  (UTC 15:30 = KL 23:30 of day-1)
+ *   t2 = 30 min after  KL midnight  (UTC 16:30 = KL 00:30 of day)
+ */
+function klDifferentDayPair(daysAgo: number): [Date, Date] {
+  const KL_OFFSET_MS = 8 * 3600 * 1000
+  const DAY_MS = 24 * 3600 * 1000
+  const nowKlDay = Math.floor((Date.now() + KL_OFFSET_MS) / DAY_MS)
+  const targetKlDayMs = (nowKlDay - daysAgo) * DAY_MS - KL_OFFSET_MS
+  const t1 = new Date(targetKlDayMs - 30 * 60 * 1000)  // 30 min before KL midnight (prev KL day)
+  const t2 = new Date(targetKlDayMs + 30 * 60 * 1000)  // 30 min after  KL midnight (this KL day)
+  return [t1, t2]
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 async function setupStudentAndCompany() {
   const student = await createStudent(testDb, { completeness: 80 })
@@ -58,24 +98,25 @@ describe('getProfileViews: DISTINCT ON KL-date deduplication', () => {
   it('two views by company A on same KL day → 1 row', async () => {
     const { student, companyAId, empAUser } = await setupStudentAndCompany()
 
-    // 2026-11-04T16:30Z and 2026-11-05T03:00Z → both are 2026-11-05 in KL (UTC+8)
-    await insertView(student.profileId, companyAId, empAUser, new Date('2026-11-04T16:30:00Z'))
-    await insertView(student.profileId, companyAId, empAUser, new Date('2026-11-05T03:00:00Z'))
+    // Both timestamps fall on the same KL (UTC+8) calendar day, 2 days ago
+    const [t1, t2] = klSameDayPair(2)
+    await insertView(student.profileId, companyAId, empAUser, t1)
+    await insertView(student.profileId, companyAId, empAUser, t2)
 
     const views = await getProfileViews({ userId: student.userId })
     const aViews = views.filter((v) => v.companyId === companyAId)
     expect(aViews).toHaveLength(1)
     // Should pick the later timestamp within the KL-day bucket
-    expect(aViews[0].viewedAt.toISOString()).toBe('2026-11-05T03:00:00.000Z')
+    expect(aViews[0].viewedAt.getTime()).toBe(t2.getTime())
   })
 
   it('company A on two different KL days → 2 rows', async () => {
     const { student, companyAId, empAUser } = await setupStudentAndCompany()
 
-    // 2026-11-04T15:30Z = 2026-11-04 23:30 KL (same day)
-    // 2026-11-04T16:30Z = 2026-11-05 00:30 KL (next day)
-    await insertView(student.profileId, companyAId, empAUser, new Date('2026-11-04T15:30:00Z'))
-    await insertView(student.profileId, companyAId, empAUser, new Date('2026-11-04T16:30:00Z'))
+    // t1 is on KL day X-1, t2 is on KL day X (they straddle a KL midnight, 2 days ago)
+    const [t1, t2] = klDifferentDayPair(2)
+    await insertView(student.profileId, companyAId, empAUser, t1)
+    await insertView(student.profileId, companyAId, empAUser, t2)
 
     const views = await getProfileViews({ userId: student.userId })
     const aViews = views.filter((v) => v.companyId === companyAId)

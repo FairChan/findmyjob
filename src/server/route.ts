@@ -93,6 +93,7 @@ export function route(
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
+              'X-Robots-Tag': 'noindex',
             },
           })
         }
@@ -108,6 +109,7 @@ export function route(
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
+              'X-Robots-Tag': 'noindex',
             },
           })
         }
@@ -131,6 +133,7 @@ export function route(
               headers: {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'private, no-store',
+                'X-Robots-Tag': 'noindex',
               },
             })
           }
@@ -142,6 +145,7 @@ export function route(
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
+              'X-Robots-Tag': 'noindex',
             },
           })
         }
@@ -169,6 +173,7 @@ export function route(
           headers: {
             'Content-Type': 'application/json',
             'Cache-Control': 'private, no-store',
+            'X-Robots-Tag': 'noindex',
           },
         })
       }
@@ -184,6 +189,7 @@ export function route(
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'private, no-store',
+          'X-Robots-Tag': 'noindex',
         },
       })
     }

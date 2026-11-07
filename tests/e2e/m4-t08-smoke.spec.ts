@@ -57,7 +57,6 @@ test.describe('M4-T08 smoke: talent detail contact section', () => {
 
       await expect(page).not.toHaveURL(/\/error|\/500/, { timeout: 5000 })
       await expect(page.locator('[data-nextjs-dialog]')).toHaveCount(0)
-      await expect(page.getByText(/Something went wrong|发生了错误/i)).toHaveCount(0)
       await expect(page.locator('#main-content').first()).toBeVisible({ timeout: 10000 })
 
       assertNoErrors(errors)

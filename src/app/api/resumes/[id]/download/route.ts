@@ -84,7 +84,7 @@ export const GET = route({ auth: { type: 'company', verified: true } }, async (r
   }
   const resumeId = parsed.data
 
-  // Load the resume record — include sizeBytes for pre-fetch size guard
+  // Load the resume record — include sizeBytes for post-access size guard
   const resume = await db.resumeFile.findUnique({
     where: { id: resumeId },
     select: { id: true, storageKey: true, fileName: true, studentId: true, sizeBytes: true },
@@ -93,19 +93,20 @@ export const GET = route({ auth: { type: 'company', verified: true } }, async (r
     return errorJson('NOT_FOUND', 404)
   }
 
-  // Size guard: reject before fetching bytes if the stored size already exceeds the limit
-  if (resume.sizeBytes > RESUME_MAX_BYTES) {
-    logger.warn({ resumeId, sizeBytes: resume.sizeBytes }, 'resume sizeBytes exceeds limit — rejecting download')
-    return errorJson('FILE_TOO_LARGE', 422)
-  }
-
   // Access check: TalentUnlock must exist, student must not have blocked the company
+  // (checked before sizeBytes to avoid leaking file metadata to unverified callers)
   const access = await identityAccess(companyId, resume.studentId)
   if (access === 'gone') {
     return errorJson('NOT_FOUND', 404)
   }
   if (access === 'no_unlock') {
     return errorJson('FORBIDDEN', 403)
+  }
+
+  // Size guard: reject after access check so unlocked sizeBytes don't leak to unverified companies
+  if (resume.sizeBytes > RESUME_MAX_BYTES) {
+    logger.warn({ resumeId, sizeBytes: resume.sizeBytes }, 'resume sizeBytes exceeds limit — rejecting download')
+    return errorJson('FILE_TOO_LARGE', 422)
   }
 
   // Enforce concurrent watermark task limits (per-member and global)

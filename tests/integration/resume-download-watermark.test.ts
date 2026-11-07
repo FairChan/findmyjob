@@ -11,7 +11,7 @@
  *  - Dangerous catalog keys are absent in the response PDF
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
-import { PDFDocument, PDFName, PDFHexString, PDFArray, PDFDict } from 'pdf-lib'
+import { PDFDocument, PDFName, PDFHexString, PDFArray, PDFDict, PDFRef, PDFRawStream, decodePDFRawStream } from 'pdf-lib'
 
 vi.mock('@/server/auth', () => ({
   getSession: vi.fn(),
@@ -39,6 +39,7 @@ vi.mock('next/headers', () => ({
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer } from '../factories'
 import * as authMod from '@/server/auth'
+import { clearSettingsCache } from '@/server/services/settings'
 
 setupTestDb()
 
@@ -384,6 +385,77 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
     expect(res.status).toBe(403)
     expect(mockGetObjectBytes).not.toHaveBeenCalled()
   }, 15_000)
+
+  it('decompression bomb (ObjStm) → 422 (too_large)', async () => {
+    // Set a very low decompression budget so the ObjStm in a PDF 1.5 file triggers it
+    await testDb.systemSetting.upsert({
+      where: { key: 'upload.pdfMaxInflatedBytes' },
+      create: { key: 'upload.pdfMaxInflatedBytes', value: 500 },
+      update: { value: 500 },
+    })
+    clearSettingsCache()
+
+    try {
+      // PDF saved with useObjectStreams:true uses ObjStm (FlateDecode) for objects.
+      // The ObjStm inflated size easily exceeds 500 bytes, triggering the budget cap.
+      const doc = await PDFDocument.create()
+      doc.addPage([612, 792])
+      const bombPdf = Buffer.from(await doc.save({ useObjectStreams: true }))
+
+      const { resumeId, emp } = await setupFixture()
+      mockGetObjectBytes.mockResolvedValueOnce(bombPdf)
+      mockSession(emp.userId, 'EMPLOYER')
+
+      const { GET } = await import('@/app/api/resumes/[id]/download/route')
+      const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+      expect(res.status).toBe(422) // too_large → FILE_TOO_LARGE
+    } finally {
+      await testDb.systemSetting.deleteMany({ where: { key: 'upload.pdfMaxInflatedBytes' } })
+      clearSettingsCache()
+    }
+  }, 30_000)
+
+  it('watermark content-stream guard: blank PDF → Tj operator present in decoded content stream', async () => {
+    // Blank PDF has no text operations. Any Tj after the pipeline proves the watermark was added.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    const blankPdf = Buffer.from(await doc.save())
+
+    const { resumeId, emp } = await setupFixture()
+    mockGetObjectBytes.mockResolvedValueOnce(blankPdf)
+    mockSession(emp.userId, 'EMPLOYER')
+
+    const { GET } = await import('@/app/api/resumes/[id]/download/route')
+    const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
+    expect(res.status).toBe(200)
+
+    const bodyBuf = Buffer.from(await res.arrayBuffer())
+    const outDoc = await PDFDocument.load(bodyBuf)
+
+    // Decode the content stream on each page; at least one must contain Tj
+    let foundTj = false
+    for (let i = 0; i < outDoc.getPageCount(); i++) {
+      const page = outDoc.getPage(i)
+      const contentsVal = page.node.get(PDFName.of('Contents'))
+      if (!contentsVal) continue
+      const refs = contentsVal instanceof PDFArray
+        ? Array.from({ length: contentsVal.size() }, (_, j) => contentsVal.get(j))
+        : [contentsVal]
+      for (const ref of refs) {
+        try {
+          const obj = outDoc.context.lookup(ref instanceof PDFRef ? ref : ref)
+          if (!(obj instanceof PDFRawStream)) continue
+          const decoded = Buffer.from(decodePDFRawStream(obj).decode())
+          if (decoded.includes(Buffer.from('Tj'))) {
+            foundTj = true
+          }
+        } catch {
+          // skip non-stream objects
+        }
+      }
+    }
+    expect(foundTj).toBe(true)
+  }, 30_000)
 
   it('IDOR: company unlocked student X, downloads student Y resume → 403', async () => {
     const { profileId: xProfile } = await createStudent(testDb)

@@ -396,17 +396,26 @@ describe('sanitizePdf', () => {
     expect(aaFlags.every(f => f === false)).toBe(true)
   }, 30_000)
 
-  it('returns encrypted for password-protected PDF', async () => {
-    // Build a minimal PDF with an /Encrypt dictionary hint so pdf-lib sees it as encrypted.
-    // Using a simple PDF with /Encrypt flag is complex; instead test via the 'encrypted' path
-    // by using a PDF that has raw encryption markers.
-    // We skip a full encrypted PDF here since constructing one requires a full encrypt flow.
-    // The 'encrypted' branch is covered when srcDoc.isEncrypted returns true.
-    // This is a behavior contract test — we confirm the shape of the return value.
-    // A properly encrypted PDF returns ok:false reason:'encrypted'.
-    // (Full encrypted PDF generation requires owner password, beyond unit scope.)
-    expect(true).toBe(true) // placeholder: encrypted path covered by contract
-  }, 5_000)
+  it('returns { ok: false, reason: "encrypted" } for PDF with /Encrypt in trailer', async () => {
+    // Add a /Encrypt dict to the trailer — pdf-lib detects isEncrypted from its presence.
+    // The worker loads with ignoreEncryption:true and returns { kind:'encrypted' }.
+    const doc = await PDFDocument.create()
+    doc.addPage([612, 792])
+    const encryptRef = doc.context.register(doc.context.obj({
+      Filter: 'Standard',
+      V: 1,
+      R: 2,
+      O: PDFHexString.fromText('\x00'.repeat(32)),
+      U: PDFHexString.fromText('\x00'.repeat(32)),
+      P: -4,
+    }))
+    doc.context.trailerInfo.Encrypt = encryptRef
+    const encPdf = Buffer.from(await doc.save())
+
+    const result = await sanitizePdf(encPdf)
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; reason: string }).reason).toBe('encrypted')
+  }, 30_000)
 
   // -------------------------------------------------------------------------
   // M4-T23 new tests: strict whitelist

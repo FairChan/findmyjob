@@ -17,7 +17,7 @@ vi.mock('@/server/db', async () => {
 setupTestDb()
 
 import { createStudent, createEmployer } from '../factories'
-import { canSeeIdentity, getContactForCompany } from '@/server/services/contact-access'
+import { canSeeIdentity, canSeeIdentityMany, getContactForCompany } from '@/server/services/contact-access'
 import { ForbiddenError } from '@/server/errors'
 import { encryptField } from '@/server/lib/crypto'
 
@@ -216,5 +216,41 @@ describe('getContactForCompany', () => {
     await testDb.user.update({ where: { id: userId }, data: { status: 'DELETED' } })
 
     await expect(getContactForCompany(emp.companyId, profileId)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+describe('canSeeIdentityMany', () => {
+  it('returns empty Set when company is not verified', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    // Company NOT verified
+
+    const result = await canSeeIdentityMany(emp.companyId, [profileId])
+    expect(result.size).toBe(0)
+  })
+
+  it('returns profileId when company is verified and student is unlocked and active', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+
+    const result = await canSeeIdentityMany(emp.companyId, [profileId])
+    expect(result.has(profileId)).toBe(true)
+  })
+
+  it('excludes blocked students even if unlocked', async () => {
+    const { profileId } = await createStudent(testDb)
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+    await testDb.blockedCompany.create({ data: { studentId: profileId, companyId: emp.companyId } })
+
+    const result = await canSeeIdentityMany(emp.companyId, [profileId])
+    expect(result.has(profileId)).toBe(false)
   })
 })

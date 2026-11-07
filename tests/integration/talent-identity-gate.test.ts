@@ -81,6 +81,26 @@ describe('canSeeIdentityMany gate: TalentUnlock present but gate returns empty �
     expect(card!.unlocked).toBe(false)
   })
 
+  it('searchTalents keyword: canSeeIdentityMany returns empty → keyword result name is masked', async () => {
+    const { profileId, name } = await createStudent(testDb, { completeness: 80 })
+    const emp = await createEmployer(testDb)
+    await verifyCompany(emp.companyId)
+    await makeVisible(profileId)
+    await createUnlock(emp.companyId, profileId, emp.userId)
+
+    // Add a distinguishable skill keyword so the keyword search can find this student
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { skills: ['ReactJS', 'TypeScript'] },
+    })
+
+    const result = await searchTalents({ userId: emp.userId, companyId: emp.companyId }, { keyword: 'ReactJS' })
+    const card = result.students.find((s) => s.id === profileId)
+    expect(card).toBeDefined()
+    expect(card!.name).toBe(maskName(name))
+    expect(card!.unlocked).toBe(false)
+  })
+
   it('getFolderItems: TalentUnlock exists but canSeeIdentityMany returns empty → card name is masked', async () => {
     const { profileId, name } = await createStudent(testDb)
     const emp = await createEmployer(testDb)
