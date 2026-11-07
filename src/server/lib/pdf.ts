@@ -1,11 +1,7 @@
 import 'server-only'
 import zlib from 'node:zlib'
-import { Worker } from 'worker_threads'
 import { getSetting } from '../services/settings'
-// Static import so Next.js standalone file-tracing follows the pnpm symlink and
-// creates the correct symlink structure (with tslib/pako as siblings) in standalone.
-// Runtime usage is inside the eval worker string below; nft cannot see eval strings.
-import 'pdf-lib'
+import { runCappedPdfWorker } from './pdf-worker'
 
 // Magic bytes for supported file types
 export const MAGIC_PDF = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]) // %PDF-
@@ -30,33 +26,21 @@ export function detectFileType(buf: Buffer): AllowedMimeKey | null {
 
 export type PdfCheckResult =
   | { ok: true; pageCount: number }
-  | { ok: false; reason: 'parse_failed' | 'encrypted' | 'too_many_pages' }
+  | { ok: false; reason: 'parse_failed' | 'encrypted' | 'too_many_pages' | 'too_large' }
 
-// pdf-lib runs inside a Worker so decompression bombs cannot exhaust server heap.
-// CJS require() is used because pdf-lib ships as CJS and eval workers default to CJS mode.
-const PDF_WORKER_CODE = `
-const { parentPort } = require('worker_threads');
-const { PDFDocument } = require('pdf-lib');
-parentPort.once('message', async (buf) => {
-  try {
-    const doc = await PDFDocument.load(Buffer.from(buf), {
-      ignoreEncryption: true,
-      updateMetadata: false,
-    });
-    if (doc.isEncrypted) {
-      parentPort.postMessage({ ok: false, reason: 'encrypted' });
-      return;
-    }
-    let pageCount;
-    try { pageCount = doc.getPageCount(); } catch {
-      parentPort.postMessage({ ok: false, reason: 'parse_failed' });
-      return;
-    }
-    parentPort.postMessage({ ok: true, pageCount });
-  } catch {
-    parentPort.postMessage({ ok: false, reason: 'parse_failed' });
-  }
-});
+
+// Script body for checking a PDF via runCappedPdfWorker.
+// pdfLib, input, params are injected by the worker harness.
+const CHECK_PDF_SCRIPT = `
+  const { PDFDocument } = pdfLib;
+  const doc = await PDFDocument.load(input, {
+    ignoreEncryption: true,
+    updateMetadata: false,
+  });
+  if (doc.isEncrypted) return { kind: 'encrypted' };
+  let pageCount;
+  try { pageCount = doc.getPageCount(); } catch { return { kind: 'failed' }; }
+  return { kind: 'ok', pageCount };
 `
 
 /**
@@ -135,14 +119,22 @@ export function checkInflateBomb(buf: Buffer, maxBytes: number): boolean {
 
     const streamData = buf.subarray(dataStart, endKw)
 
-    // Try zlib inflate (PDF FlateDecode uses zlib format; some use raw deflate)
+    // Try zlib inflate (PDF FlateDecode uses zlib format; some use raw deflate).
+    // Z_SYNC_FLUSH: return partial output on truncated input instead of throwing,
+    // so the partial bytes count toward the budget (closes the stored-block bypass).
     let inflated: Buffer | null = null
     try {
-      inflated = zlib.inflateSync(streamData, { maxOutputLength: budget })
+      inflated = zlib.inflateSync(streamData, {
+        maxOutputLength: budget,
+        finishFlush: zlib.constants.Z_SYNC_FLUSH,
+      })
     } catch (e: unknown) {
       if (isBombError(e)) return true
       try {
-        inflated = zlib.inflateRawSync(streamData, { maxOutputLength: budget })
+        inflated = zlib.inflateRawSync(streamData, {
+          maxOutputLength: budget,
+          finishFlush: zlib.constants.Z_SYNC_FLUSH,
+        })
       } catch (e2: unknown) {
         if (isBombError(e2)) return true
         // Corrupt or non-deflate data — let pdf-lib handle it
@@ -161,8 +153,8 @@ export function checkInflateBomb(buf: Buffer, maxBytes: number): boolean {
 }
 
 /**
- * Parse the PDF via an isolated Worker with memory limits, then check page count.
- * Fail closed: timeout (10 s), OOM (resourceLimits), or any parse error → 'parse_failed'.
+ * Parse the PDF via runCappedPdfWorker, then check page count.
+ * Fail closed: timeout, OOM, or any parse error → 'parse_failed'.
  * Also rejects 0-page PDFs (invalid document) and pages exceeding maxPages.
  */
 export async function checkPdf(buf: Buffer, maxPages: number): Promise<PdfCheckResult> {
@@ -171,71 +163,34 @@ export async function checkPdf(buf: Buffer, maxPages: number): Promise<PdfCheckR
     return { ok: false, reason: 'encrypted' }
   }
 
-  // FlateDecode bomb check: pdf-lib inflates all streams without an upper bound;
-  // a 5–10 MB compressed file can expand to gigabytes via Uint8Array (off-heap).
-  // The Worker's resourceLimits.maxOldGenerationSizeMb only covers the JS heap,
-  // so off-heap allocations can still exhaust the whole process. We scan first.
+  // checkInflateBomb is a fast first-pass filter for simple FlateDecode bombs.
+  // The definitive defence is ensureBuffer patched inside runCappedPdfWorker.
   const maxInflatedBytes = await getSetting('upload.pdfMaxInflatedBytes', 50 * 1024 * 1024)
   if (checkInflateBomb(buf, maxInflatedBytes)) {
     return { ok: false, reason: 'parse_failed' }
   }
 
-  const result = await new Promise<{ ok: boolean; pageCount?: number; reason?: string }>(
-    (resolve) => {
-      const worker = new Worker(PDF_WORKER_CODE, {
-        eval: true,
-        resourceLimits: {
-          // 256 MB heap cap prevents a 5–10 MB compressed PDF from expanding to gigabytes
-          maxOldGenerationSizeMb: 256,
-          maxYoungGenerationSizeMb: 64,
-        },
-      })
-
-      const timer = setTimeout(() => {
-        worker.terminate()
-        resolve({ ok: false, reason: 'parse_failed' })
-      }, 10_000)
-
-      worker.once('message', (msg: { ok: boolean; pageCount?: number; reason?: string }) => {
-        clearTimeout(timer)
-        worker.terminate()
-        resolve(msg)
-      })
-
-      worker.on('error', () => {
-        clearTimeout(timer)
-        resolve({ ok: false, reason: 'parse_failed' })
-      })
-
-      // Non-zero exit means OOM or uncaught exception inside worker
-      worker.on('exit', (code) => {
-        clearTimeout(timer)
-        if (code !== 0) resolve({ ok: false, reason: 'parse_failed' })
-      })
-
-      worker.postMessage(buf)
-    },
+  type CheckResult = { kind: 'ok'; pageCount: number } | { kind: 'encrypted' | 'failed' }
+  const workerResult = await runCappedPdfWorker<CheckResult>(
+    CHECK_PDF_SCRIPT,
+    buf,
+    undefined,
+    { maxInflatedBytes },
   )
 
-  if (!result.ok) {
-    const knownReasons = ['parse_failed', 'encrypted', 'too_many_pages'] as const
-    type FailReason = (typeof knownReasons)[number]
-    const rawReason = result.reason ?? 'parse_failed'
-    const reason: FailReason = knownReasons.includes(rawReason as FailReason)
-      ? (rawReason as FailReason)
-      : 'parse_failed'
-    return { ok: false, reason }
-  }
-
-  const pageCount = result.pageCount ?? 0
-
-  if (pageCount < 1) {
+  if (!workerResult.ok) {
+    // too_large → preserve reason; timeout/failed → parse_failed (fail closed)
+    if (workerResult.reason === 'too_large') return { ok: false, reason: 'too_large' }
     return { ok: false, reason: 'parse_failed' }
   }
 
-  if (pageCount > maxPages) {
-    return { ok: false, reason: 'too_many_pages' }
-  }
+  const inner = workerResult.result
+  if (inner.kind === 'encrypted') return { ok: false, reason: 'encrypted' }
+  if (inner.kind === 'failed') return { ok: false, reason: 'parse_failed' }
+
+  const pageCount = inner.kind === 'ok' ? (inner.pageCount ?? 0) : 0
+  if (pageCount < 1) return { ok: false, reason: 'parse_failed' }
+  if (pageCount > maxPages) return { ok: false, reason: 'too_many_pages' }
 
   return { ok: true, pageCount }
 }

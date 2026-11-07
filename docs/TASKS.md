@@ -1259,9 +1259,21 @@
   - verificationRecord 是运营填的自由文本，会原样写进审计 metadata。要提醒运营不要在里面写个人电话。
   - 运营后台还没有代管企业的页面（创建、代发职位、移交），需要总控另排任务。
 - E2E 测试库（fix(M3-T01) e2e-testdb，最终复查）：validateTestDbUrl 把 0.0.0.0 也当成本机。
+- M5-T03 公开职位页（2026-11-07 复查和最终复查延后的项）：
+  - /jobs 列表没有游标分页，findMany 不设 take（M5-T09 做搜索 service 时一起处理）。
+  - 学生重复打开同一个职位，viewCount 每次都 +1；ADMIN 打开也计数。viewCount 的写入是不等待的 fire-and-forget。
+  - 列表搜索用 Prisma 的 `contains`：核实 q 里的 `%` 和 `_` 有没有被当成通配符。
+  - 登录态响应的 Cache-Control 和 X-Robots-Tag 等 M7-T05。
+  - ShareJobButton 复制成功只显示「✓」，没有文字；clipboard 不可用或被拒时没有处理。
+  - isSafePath 新加的「解码后必须和原串一致」对原有的 /s/、/e/、/admin 规则也生效，带编码字符的旧跳转会退回默认页。这只会更严，要不要对查询串放宽待定。
+  - ADMIN 规则是 `startsWith('/{locale}/admin')`，会放行 `/zh/administrator-x` 这类路径。这是原有规则；改成 `/{locale}/admin/` 或者完全等于 `/{locale}/admin`。
+- M7-T19 第 1 轮（上传）补修以后，复查仍不足的地方：checkInflateBomb 预扫描能被绕过（间接引用的 Filter、名字转义、超过 512 字节的填充、数据里嵌字面的 endstream、截断的流不计入额度、过滤器链、LZW、stream 后面没有换行）。由 fix-M7-T19-p1c 在 pdf-lib 的 `DecodeStream.ensureBuffer` 上统一限额。**上线前必须处理。**
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 > 进度 2026-11-07 第 1/7 轮（M2-T05 上传 + 第二轮遗留 idSchema）：修掉：pdf-lib 解压炸弹→worker_threads resourceLimits（tests/unit/pdf-check.test.ts，12 条）；加密检测绕过→hasRawEncryptionMarkers 原始字节扫描；0 页 PDF 被接受→checkPdf pageCount<1 拒收；PAYMENT_PROOF 允许 ADMIN→改为 OWNER（tests/unit/upload-authz.test.ts，7 条，含 authz-matrix 新行）；key 用 randomUUID+userId→改用 studentProfileId；非法 purpose/id 返回 404→改为 400；下载响应缺 X-Robots-Tag→已加；idSchema 从 upload-input.ts 导入（route.ts）；deploy/Caddyfile 新增 resp_headers>Location delete 防签名 URL 进日志（需真机验证，见 DECISIONS）。接受的风险：孤儿对象、请求体读进内存（均见 DECISIONS 第 1 轮条目）。转给别的任务：无。
 > 进度 2026-11-07 第 1/7 轮补修：（1）FlateDecode 炸弹真正修好：在 pdf.ts 加 checkInflateBomb()，用 zlib.inflateSync maxOutputLength 预扫描所有 FlateDecode 流，超过 getSetting('upload.pdfMaxInflatedBytes', 50MB) 就拒收；炸弹检查在 Worker 之前、加密检查之后执行；worker/resourceLimits 保留作第二道防线。测试文件 tests/unit/pdf-check.test.ts（17 条），含 checkPdf 炸弹拒收测试（10ms 内返回）和 checkInflateBomb 单元测试（包括单流超限、累计超限、非 FlateDecode 不受影响）；去掉了原先名不副实的 large-stream 用例。默认值 52428800（50 MB）记进 DECISIONS。（2）生产镜像里找不到 pdf-lib：在 pdf.ts 加 `import 'pdf-lib'` 静态导入，使 Next.js nft 跟踪 pnpm 符号链接并在 standalone 里建立正确的 symlink 结构（含 tslib 等传递依赖），pdf-lib 加入 serverExternalPackages；build 验证：`.next/standalone/node_modules/pdf-lib/cjs/` 存在（symlink 到 pnpm store），Worker 在 standalone 目录下 `require('pdf-lib')` 实际解析 1 页 PDF 返回 `{ok:true, pageCount:1}`。
+> 进度 2026-11-07 第 1/7 轮第二次补修：在 pdf-lib 的 `DecodeStream.prototype.ensureBuffer` 上统一限额，堵住以下 6 种绕过：（1）`/Filter 9 0 R` 间接引用→parse_failed（pdf-lib 在加载 XRef 流时无法解析间接 Filter，直接拒收）；（2）`/Fl#61teDecode` 十六进制名称转义→ensureBuffer 拦截（pdf-lib 解 hex 转义后建 FlateStream，分配超额抛出）；（3）dict >512 字节填充→ensureBuffer 拦截；（4）stored block 嵌 `endstream` 字节→indexOf 截断后预扫描通过，worker 解第二层时 ensureBuffer 拦截；（5）`[/FlateDecode /FlateDecode]` 双层→预扫描只解一层在限额内，worker 解两层后 ensureBuffer 拦截；（6）stream 后无换行→预扫描跳过，worker parse_failed。同时修复 checkInflateBomb 的 Z_SYNC_FLUSH 问题（截断流的部分输出也计入额度）。新增 `import 'pdf-lib/cjs/core/streams/DecodeStream'`（nft 追踪）。tests/unit/pdf-check.test.ts 共 26 条（新增 9 条：6 种绕过 + 3 种对照组）。build 实证：`SKIP_ENV_VALIDATION=1 pnpm build` 通过；`.next/standalone` 下 worker 加载 `pdf-lib/cjs/core/streams/DecodeStream`、解析 1 页 PDF 返回 `{"ok":true,"pageCount":1}`。
+> 进度 2026-11-07 第 1/7 轮第三次补修：抽出可复用的 `runCappedPdfWorker`（`src/server/lib/pdf-worker.ts`，签名：`runCappedPdfWorker<T>(script, input, params?, opts?) => CappedPdfResult<T>`）。worker 内顺序：先装 ensureBuffer 限额补丁，再 require pdf-lib，最后执行 script。checkPdf 改为调用 runCappedPdfWorker（CHECK_PDF_SCRIPT），行为和返回值不变。测试文件 `tests/unit/pdf-worker.test.ts`（7 条：正常解析 / 水印 save+reload / bomb 错误路由 / bomb XRef 拒收 / 超时 / 抛错 / params 透传）；pdf-check.test.ts 原有 26 条全部通过。build 实证：`SKIP_ENV_VALIDATION=1 pnpm build` 通过；`.next/standalone` 下 eval worker 加载 pdf-lib、解析 1 页 PDF 返回 `{"ok":true,"pageCount":1}`。ARCHITECTURE §5.5 新增「PDF 解析入口」规则。
+> 进度 2026-11-07 第 1/7 轮复查补修（2deecea，lane B 会话手工）：pdf-lib 解析器会捕获无效对象的错误继续解析，ObjStm 里抛出的限额错误到不了 script，合法 PDF 后追加的 ObjStm 炸弹会 load 成功、被 checkPdf 放行（内存已被限住，但文件会被存下）。worker 记录限额是否触发过，触发过一律回 too_large；新增用例「valid PDF + 追加 ObjStm 炸弹」（tests/unit/pdf-worker.test.ts），修之前失败、修之后 34/34 通过。另在 pdf-worker.ts 注释写明 script 只能是服务端静态常量，用户数据只走 params。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
 
