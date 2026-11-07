@@ -107,6 +107,38 @@ describe('submitVerification', () => {
     const cv = await testDb.companyVerification.findFirst({ where: { companyId: ctx.companyId } })
     expect(cv?.note).toBe('Business registration cert')
   })
+
+  it('deduplicates documentKeys before storing', async () => {
+    const ctx = await makeCtx(testDb)
+    const key = `verifications/${ctx.companyId}/dup.pdf`
+
+    await submitVerification(ctx, { documentKeys: [key, key] })
+
+    const cv = await testDb.companyVerification.findFirst({ where: { companyId: ctx.companyId } })
+    expect(cv?.documentKeys).toEqual([key])
+  })
+
+  it('concurrent submissions: only one PENDING record created', async () => {
+    const ctx = await makeCtx(testDb)
+    const key1 = `verifications/${ctx.companyId}/con1.pdf`
+    const key2 = `verifications/${ctx.companyId}/con2.pdf`
+
+    const results = await Promise.allSettled([
+      submitVerification(ctx, { documentKeys: [key1] }),
+      submitVerification(ctx, { documentKeys: [key2] }),
+    ])
+
+    const successes = results.filter(r => r.status === 'fulfilled')
+    const failures = results.filter(r => r.status === 'rejected')
+    expect(successes).toHaveLength(1)
+    expect(failures).toHaveLength(1)
+
+    const count = await testDb.companyVerification.count({ where: { companyId: ctx.companyId } })
+    expect(count).toBe(1)
+
+    const company = await testDb.company.findUnique({ where: { id: ctx.companyId } })
+    expect(company?.verificationStatus).toBe('PENDING')
+  })
 })
 
 describe('getVerificationInfo', () => {

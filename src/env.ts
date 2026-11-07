@@ -15,8 +15,19 @@ const dbUrl = z.string().url();
 
 const schema = z
   .object({
-    APP_ENV: z.enum(APP_ENV_VALUES).default("development"),
+    // Fall back to NODE_ENV so deployments that omit APP_ENV still get production
+    // safety checks (rate-limit DB storage, useSecureCookies, etc.). DECISIONS A23 explains
+    // why we use APP_ENV instead of NODE_ENV for runtime checks — the fallback only applies
+    // when APP_ENV is absent.
+    APP_ENV: z.enum(APP_ENV_VALUES).default(() => {
+      if (process.env.NODE_ENV === 'production') return 'production'
+      if (process.env.NODE_ENV === 'test') return 'ci'
+      return 'development'
+    }),
     APP_URL: z.string().url(),
+    // Internal loopback base URL for middleware → app requests (e.g. reconsent check).
+    // Must never be derived from request headers. Defaults to 127.0.0.1:3000.
+    INTERNAL_BASE_URL: z.string().url().optional(),
 
     DATABASE_URL: dbUrl,
     MIGRATE_DATABASE_URL: dbUrl,

@@ -79,14 +79,25 @@ unset _key_base
 : "${RESTORE_S3_ACCESS_KEY_ID:?RESTORE_S3_ACCESS_KEY_ID is required}"
 [ -n "${RESTORE_S3_SECRET_ACCESS_KEY:-}" ] || { echo "RESTORE_S3_SECRET_ACCESS_KEY is required" >&2; exit 1; }
 
+# Parse RESTORE_ADMIN_DATABASE_URL into PG* vars so credentials never appear on
+# psql / pg_restore command-line arguments (visible via ps or docker inspect).
+# The password must not contain '@'; use %40 if needed.
+_pg="${RESTORE_ADMIN_DATABASE_URL#postgresql://}"; _pg="${_pg#postgres://}"
+export PGUSER="${_pg%%:*}"; _pg="${_pg#*:}"
+export PGPASSWORD="${_pg%%@*}"; _pg="${_pg#*@}"
+export PGHOST="${_pg%%:*}"; _pg="${_pg#*:}"
+export PGPORT="${_pg%%/*}"; _pgdb="${_pg#*/}"
+PGDATABASE_ADMIN="${_pgdb%%\?*}"
+unset _pg _pgdb RESTORE_ADMIN_DATABASE_URL
+
 BACKUP_S3_REGION="${BACKUP_S3_REGION:-ap-southeast-5}"
 S3_ARGS=(--no-progress --region "$BACKUP_S3_REGION")
 if [ -n "${BACKUP_S3_ENDPOINT:-}" ]; then
   S3_ARGS+=(--endpoint-url "$BACKUP_S3_ENDPOINT")
 fi
-if [ -n "$VERSION_ID" ]; then
-  S3_ARGS+=(--version-id "$VERSION_ID")
-fi
+# Note: --version-id is NOT added to S3_ARGS here; for the dump download it is
+# handled separately via s3api get-object (see step 3); counts.json does not
+# need version pinning (timestamped keys are unique).
 
 export AWS_ACCESS_KEY_ID="$RESTORE_S3_ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$RESTORE_S3_SECRET_ACCESS_KEY"
@@ -108,18 +119,22 @@ COUNTS_LOCAL="${TMPDIR_LOCAL}/counts.json"
 # age private key lives only in this variable; unset on exit
 AGE_PRIVATE_KEY=""
 DRILL_DB_CREATED=0
+# Set to 1 only when every check passes; --keep only retains the DB on success.
+RESTORE_COMPLETE=0
 
 cleanup() {
   unset AGE_PRIVATE_KEY
   rm -rf "$TMPDIR_LOCAL"
   if [ "$DRILL_DB_CREATED" -eq 1 ]; then
-    local _drill_url="${RESTORE_ADMIN_DATABASE_URL%/*}/${DB_NAME}"
     # Always clear sessions to prevent session fixation, even when a check fails
     # or when --keep is passed for a real recovery.
-    psql "$_drill_url" -c 'DELETE FROM "Session";' 2>/dev/null || true
+    PGDATABASE="$DB_NAME" psql -c 'DELETE FROM "Session";' 2>/dev/null || true
     echo "[drill] sessions cleared"
-    if [ "$KEEP_DRILL_DB" -eq 0 ]; then
-      psql "$RESTORE_ADMIN_DATABASE_URL" -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";" 2>/dev/null || true
+    # Drop the drill DB unless --keep was passed AND the restore completed
+    # successfully (all checks passed). A half-finished restore is always dropped
+    # so it cannot be accidentally used as a recovery target.
+    if [ "$KEEP_DRILL_DB" -eq 0 ] || [ "$RESTORE_COMPLETE" -eq 0 ]; then
+      PGDATABASE="$PGDATABASE_ADMIN" psql -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";" 2>/dev/null || true
       echo "[drill] drill database dropped"
     fi
   fi
@@ -164,35 +179,53 @@ fi
 echo "[drill] age magic header verified"
 
 # ── 2. create drill database ──────────────────────────────────────────────────
-ADMIN_BASE="${RESTORE_ADMIN_DATABASE_URL%/*}"
-DRILL_DATABASE_URL="${ADMIN_BASE}/${DB_NAME}"
-
-psql "$RESTORE_ADMIN_DATABASE_URL" -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";"
-psql "$RESTORE_ADMIN_DATABASE_URL" -c "CREATE DATABASE \"${DB_NAME}\" OWNER findmyjob_owner;"
+# PG* vars are already exported; set PGDATABASE inline for each call.
+PGDATABASE="$PGDATABASE_ADMIN" psql -c "DROP DATABASE IF EXISTS \"${DB_NAME}\";"
+PGDATABASE="$PGDATABASE_ADMIN" psql -c "CREATE DATABASE \"${DB_NAME}\" OWNER findmyjob_owner;"
 DRILL_DB_CREATED=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-psql "$DRILL_DATABASE_URL" -f "${REPO_ROOT}/docker/postgres/db-setup.sql"
+PGDATABASE="$DB_NAME" psql -f "${REPO_ROOT}/docker/postgres/db-setup.sql"
 
 echo "[drill] drill database created"
 
 # ── 3. decrypt stream → pg_restore (no plaintext on disk) ────────────────────
 # S3 object is streamed through age decryption directly into pg_restore.
 # Private key is passed via process substitution (no temp file on disk).
-aws s3 cp "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}" - \
-  | age -d -i <(printf '%s\n' "$AGE_PRIVATE_KEY") \
-  | pg_restore -d "$DRILL_DATABASE_URL" \
-      --no-acl \
-      --role=findmyjob_owner \
-      --single-transaction \
-      -
+# When VERSION_ID is set, aws s3 cp does not support --version-id for streaming;
+# use s3api get-object to download the encrypted dump to a temp file instead
+# (the dump is already encrypted, so writing it to disk is safe).
+if [ -n "$VERSION_ID" ]; then
+  _DUMP_TMP="${TMPDIR_LOCAL}/restore.dump.age"
+  _S3API_DL_ARGS=(--region "$BACKUP_S3_REGION" --bucket "$BACKUP_S3_BUCKET" \
+    --key "$OBJECT_KEY" --version-id "$VERSION_ID")
+  [ -n "${BACKUP_S3_ENDPOINT:-}" ] && _S3API_DL_ARGS+=(--endpoint-url "$BACKUP_S3_ENDPOINT")
+  aws s3api get-object "${_S3API_DL_ARGS[@]}" "$_DUMP_TMP" >/dev/null
+  cat "$_DUMP_TMP" \
+    | age -d -i <(printf '%s\n' "$AGE_PRIVATE_KEY") \
+    | pg_restore -d "$DB_NAME" \
+        --no-acl \
+        --role=findmyjob_owner \
+        --single-transaction \
+        -
+  rm -f "$_DUMP_TMP"
+  unset _DUMP_TMP _S3API_DL_ARGS
+else
+  aws s3 cp "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/${OBJECT_KEY}" - \
+    | age -d -i <(printf '%s\n' "$AGE_PRIVATE_KEY") \
+    | pg_restore -d "$DB_NAME" \
+        --no-acl \
+        --role=findmyjob_owner \
+        --single-transaction \
+        -
+fi
 
 # Private key no longer needed after restore
 unset AGE_PRIVATE_KEY
 echo "[drill] decrypt + pg_restore complete"
 
 # ── 4. check: migration count ─────────────────────────────────────────────────
-MIGRATIONS_IN_DB=$(psql "$DRILL_DATABASE_URL" -t -A -c \
+MIGRATIONS_IN_DB=$(PGDATABASE="$DB_NAME" psql -t -A -c \
   "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NOT NULL;")
 MIGRATIONS_ON_DISK=$(ls "${REPO_ROOT}/prisma/migrations"/*/migration.sql 2>/dev/null | wc -l)
 
@@ -204,7 +237,7 @@ echo "[check] migrations: ${MIGRATIONS_IN_DB} ✓"
 
 # ── 5. check: key tables not empty ───────────────────────────────────────────
 for TABLE in User StudentProfile Company Job Application; do
-  COUNT=$(psql "$DRILL_DATABASE_URL" -t -A -c "SELECT count(*) FROM \"${TABLE}\";")
+  COUNT=$(PGDATABASE="$DB_NAME" psql -t -A -c "SELECT count(*) FROM \"${TABLE}\";")
   echo "[check] ${TABLE}: ${COUNT} rows"
 done
 
@@ -228,7 +261,7 @@ else
 fi
 
 # ── 7. check: reconciliation SQL returns 0 rows ───────────────────────────────
-RECON=$(psql "$DRILL_DATABASE_URL" -t -A -c "
+RECON=$(PGDATABASE="$DB_NAME" psql -t -A -c "
   SELECT w.\"id\"
   FROM \"CreditWallet\" w
   WHERE w.\"balance\" != (
@@ -248,21 +281,25 @@ echo "[check] reconciliation: 0 discrepancies ✓"
 aws s3 cp "${S3_ARGS[@]}" "s3://${BACKUP_S3_BUCKET}/${COUNTS_KEY}" "$COUNTS_LOCAL"
 echo "[drill] counts.json downloaded: s3://${BACKUP_S3_BUCKET}/${COUNTS_KEY}"
 
-# Pass counts.json path via argv — never interpolate S3 content into code
-python3 - "${DRILL_DATABASE_URL}" "${COUNTS_LOCAL}" <<'PYEOF'
+# PGDATABASE must be exported for the Python subprocess's psql calls.
+# Pass only the counts.json path via argv — never interpolate S3 content into code
+# and never pass the database URL as argv (would appear in 'ps').
+export PGDATABASE="$DB_NAME"
+python3 - "${COUNTS_LOCAL}" <<'PYEOF'
 import sys, json, subprocess
 
-db_url = sys.argv[1]
-counts_file = sys.argv[2]
+counts_file = sys.argv[1]
 expected = json.load(open(counts_file))
 tables = ["User", "StudentProfile", "Company", "Job", "Application", "CreditLedger", "AuditLog"]
 failures = []
 
 for table in tables:
     if table not in expected:
+        # A missing table in counts.json means the backup was incomplete.
+        failures.append(f"{table}: missing from counts.json")
         continue
     result = subprocess.run(
-        ["psql", db_url, "-t", "-A", "-c", f'SELECT count(*)::int FROM "{table}";'],
+        ["psql", "-t", "-A", "-c", f'SELECT count(*)::int FROM "{table}";'],
         capture_output=True, text=True
     )
     actual = int(result.stdout.strip())
@@ -280,11 +317,15 @@ PYEOF
 # This step is intentionally not run here because the tools image (which has tsx
 # and app code) is a separate container that connects via the backend network.
 # After this script completes, run verify-decrypt as an independent step:
-#   docker compose --profile ops run --rm -T \
-#     -e DATABASE_URL=postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill \
-#     -e PII_KEYS -e PII_ACTIVE_KEY_ID \
+#   DC="docker compose -f /opt/findmyjob/docker-compose.prod.yml --env-file /opt/findmyjob/.env"
+#   read -rs DATABASE_URL && export DATABASE_URL   # postgresql://findmyjob_owner:<pass>@postgres:5432/findmyjob_restore_drill
+#   $DC --profile ops run --rm -T \
+#     -e DATABASE_URL -e PII_KEYS -e PII_ACTIVE_KEY_ID \
 #     tools scripts/db/verify-decrypt.ts
 echo "[check] verify-decrypt: run separately via tools container (see RUNBOOK)"
+
+# All checks passed — set RESTORE_COMPLETE so --keep retains the drill database.
+RESTORE_COMPLETE=1
 
 # ── RTO ───────────────────────────────────────────────────────────────────────
 DRILL_END=$(date +%s)

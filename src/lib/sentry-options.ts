@@ -16,8 +16,8 @@ function urlToPathname(url: string): string {
   }
 }
 
-// Matches pure digits, UUID v4, cuid/cuid2 (alphanum ≥20 chars), long tokens (≥20 chars)
-const LIKELY_ID = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[a-z0-9]{20,})$/i
+// Matches pure digits, UUID v4, cuid/cuid2 (alphanum ≥20 chars), long tokens including base64url (≥20 chars, may contain - and _)
+const LIKELY_ID = /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[a-z0-9]{20,}|[a-z0-9][a-z0-9_-]{18,}[a-z0-9])$/i
 
 function sanitizePath(path: string): string {
   return path

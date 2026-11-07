@@ -3,10 +3,11 @@ import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
-import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { AppError, ForbiddenError, NotFoundError } from '../errors'
 import { getAllIndustryCodes } from '../lib/taxonomy/industries'
 import type { UserCtx, CompanyCtx } from '../authz'
 import { deleteAllVersions } from '@/lib/storage'
+import { logger } from '../lib/logger'
 
 const COMPANY_SIZES = ['S1_10', 'S11_50', 'S51_200', 'S201_1000', 'S1000_PLUS'] as const
 
@@ -22,7 +23,13 @@ export const createCompanySchema = z.object({
       message: 'Invalid industry code',
     }),
   size: z.enum(COMPANY_SIZES).optional(),
-  website: z.string().max(255).optional(),
+  website: z
+    .string()
+    .max(255)
+    .optional()
+    .refine(v => v === undefined || v === '' || /^https?:\/\//i.test(v), {
+      message: 'Website must start with http:// or https://',
+    }),
   state: z.string().max(50).optional(),
   city: z.string().max(100).optional(),
   address: z.string().max(500).optional(),
@@ -51,15 +58,18 @@ export async function createCompany(ctx: UserCtx, input: CreateCompanyInput) {
     where: { userId },
     select: { id: true },
   })
-  if (existing) throw new ValidationError('Already a member of a company')
+  if (existing) throw new AppError('Already a member of a company', 'ALREADY_MEMBER', 422)
+
+  // Normalize SSM: trim whitespace and uppercase (server-side canonical form)
+  const ssmRegNo = input.ssmRegNo ? input.ssmRegNo.trim().toUpperCase() : undefined
 
   // SSM uniqueness (soft-check; db constraint is the source of truth)
-  if (input.ssmRegNo) {
+  if (ssmRegNo) {
     const dup = await db.company.findUnique({
-      where: { ssmRegNo: input.ssmRegNo },
+      where: { ssmRegNo },
       select: { id: true },
     })
-    if (dup) throw new ValidationError('SSM registration number already in use')
+    if (dup) throw new AppError('SSM registration number already in use', 'SSM_DUPLICATE', 422)
   }
 
   let company: Awaited<ReturnType<typeof db.company.create>>
@@ -70,7 +80,7 @@ export async function createCompany(ctx: UserCtx, input: CreateCompanyInput) {
           legalName: input.legalName,
           displayNameZh: input.displayNameZh ?? null,
           displayNameEn: input.displayNameEn ?? null,
-          ssmRegNo: input.ssmRegNo || null,
+          ssmRegNo: ssmRegNo || null,
           industryCode: input.industryCode || null,
           size: input.size ?? null,
           website: input.website || null,
@@ -89,7 +99,12 @@ export async function createCompany(ctx: UserCtx, input: CreateCompanyInput) {
     })
   } catch (err) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-      throw new ValidationError('Already a member of a company')
+      // P2002 on ssmRegNo unique constraint (concurrent insert)
+      const target = (err.meta?.target as string[] | undefined) ?? []
+      if (target.includes('ssmRegNo')) {
+        throw new AppError('SSM registration number already in use', 'SSM_DUPLICATE', 422)
+      }
+      throw new AppError('Already a member of a company', 'ALREADY_MEMBER', 422)
     }
     throw err
   }
@@ -126,11 +141,14 @@ export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) 
   })
   if (!company) throw new NotFoundError()
 
+  // Normalize SSM: trim and uppercase
+  const ssmRegNo = input.ssmRegNo ? input.ssmRegNo.trim().toUpperCase() : undefined
+
   // Once PENDING or VERIFIED, identity fields are locked to prevent impersonation (TM-006)
   if (company.verificationStatus === 'PENDING' || company.verificationStatus === 'VERIFIED') {
     const changed =
       input.legalName !== company.legalName ||
-      (input.ssmRegNo ?? null) !== (company.ssmRegNo ?? null) ||
+      (ssmRegNo ?? null) !== (company.ssmRegNo ?? null) ||
       (input.displayNameZh ?? null) !== (company.displayNameZh ?? null) ||
       (input.displayNameEn ?? null) !== (company.displayNameEn ?? null)
     if (changed) {
@@ -143,13 +161,13 @@ export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) 
   }
 
   // SSM uniqueness: only check if value changed
-  if (input.ssmRegNo && input.ssmRegNo !== company.ssmRegNo) {
+  if (ssmRegNo && ssmRegNo !== company.ssmRegNo) {
     const dup = await db.company.findUnique({
-      where: { ssmRegNo: input.ssmRegNo },
+      where: { ssmRegNo },
       select: { id: true },
     })
     if (dup && dup.id !== companyId) {
-      throw new ValidationError('SSM registration number already in use')
+      throw new AppError('SSM registration number already in use', 'SSM_DUPLICATE', 422)
     }
   }
 
@@ -160,14 +178,10 @@ export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) 
     }
   }
 
-  // Delete old logo when it changes
-  if (
-    input.logoKey !== undefined &&
-    company.logoKey &&
-    input.logoKey !== company.logoKey
-  ) {
-    await deleteAllVersions(company.logoKey).catch(() => {})
-  }
+  const oldLogoKey =
+    input.logoKey !== undefined && company.logoKey && input.logoKey !== company.logoKey
+      ? company.logoKey
+      : null
 
   const updated = await db.company.update({
     where: { id: companyId },
@@ -175,7 +189,7 @@ export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) 
       legalName: input.legalName,
       displayNameZh: input.displayNameZh ?? null,
       displayNameEn: input.displayNameEn ?? null,
-      ssmRegNo: input.ssmRegNo || null,
+      ssmRegNo: ssmRegNo || null,
       industryCode: input.industryCode || null,
       size: input.size ?? null,
       website: input.website || null,
@@ -186,6 +200,13 @@ export async function updateCompany(ctx: CompanyCtx, input: UpdateCompanyInput) 
       ...(input.logoKey !== undefined ? { logoKey: input.logoKey || null } : {}),
     },
   })
+
+  // Delete old logo after DB is committed to avoid data loss if DB update fails
+  if (oldLogoKey) {
+    await deleteAllVersions(oldLogoKey).catch(err =>
+      logger.error({ err }, 'Failed to delete old logo'),
+    )
+  }
 
   await logAudit({
     actorId: userId,

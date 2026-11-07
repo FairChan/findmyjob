@@ -4,6 +4,7 @@ import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import type { JobListItem } from '@/app/[locale]/e/jobs/page'
 import { copyJobAction, closeJobAction } from '@/app/[locale]/e/jobs/actions'
+import { stateLabel } from '@/lib/my-states'
 
 interface Props {
   jobs: JobListItem[]
@@ -38,7 +39,7 @@ const STATUS_COLORS: Record<string, string> = {
   REJECTED: 'bg-red-100 text-red-700',
 }
 
-export default function JobListClient({ jobs, t }: Props) {
+export default function JobListClient({ jobs, locale, t }: Props) {
   const [localJobs, setLocalJobs] = useState(jobs)
   const [isPending, startTransition] = useTransition()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -108,8 +109,7 @@ export default function JobListClient({ jobs, t }: Props) {
       )}
       <div className="divide-y rounded-lg border">
         {localJobs.map(job => {
-          const canClose =
-            job.status === 'PUBLISHED' || job.status === 'PENDING_REVIEW' || job.status === 'DRAFT'
+          const canClose = job.status === 'PUBLISHED' || job.status === 'PENDING_REVIEW'
           return (
             <div key={job.id} className="flex items-start justify-between p-4">
               <div className="min-w-0 flex-1">
@@ -128,7 +128,7 @@ export default function JobListClient({ jobs, t }: Props) {
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {getTypeLabel(job.type)}
-                  {job.state ? ` · ${job.state}` : ''}
+                  {job.state ? ` · ${stateLabel(job.state, locale)}` : ''}
                   {job.city ? ` ${job.city}` : ''}
                   {' · '}
                   {t.applications}: {job._count.applications}

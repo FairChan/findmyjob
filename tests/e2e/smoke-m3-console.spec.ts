@@ -121,6 +121,10 @@ test.describe('M3-T06 employer console smoke', () => {
     await expect(page.getByText('Recruiter visible rejection note')).toBeVisible()
     // /e/verification CTA link must NOT appear for RECRUITER
     await expect(page.getByRole('link', { name: /认证材料|Verification/ })).not.toBeVisible()
+    // CTA link with href=/e/verification must NOT appear
+    await expect(page.locator('a[href*="/e/verification"]')).not.toBeVisible()
+    // Admin-action-required banner text must be visible (banner tells RECRUITER to contact admin)
+    await expect(page.getByText(/请联系企业管理员处理认证事宜|Please ask your company admin to handle verification/)).toBeVisible()
   })
 
   test('deactivated company member: /zh/e is denied (not 200)', async ({ page }) => {
@@ -159,6 +163,11 @@ test.describe('M3-T05 company public page smoke', () => {
       },
     })
     const res = await page.goto(`/zh/companies/${company.id}`)
+    expect(res?.status()).toBe(404)
+  })
+
+  test('invalid (non-cuid) company id returns 404', async ({ page }) => {
+    const res = await page.goto('/zh/companies/not-a-valid-cuid-!!!!')
     expect(res?.status()).toBe(404)
   })
 })

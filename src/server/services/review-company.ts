@@ -2,6 +2,7 @@ import 'server-only'
 import { z } from 'zod'
 import { db } from '../db'
 import { logAudit } from './audit'
+import { createWallet } from './credits'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createNotification } from './notifications'
 import { grantPilotCreditsOnVerification } from '../jobs/pilot-monthly-credits'
@@ -19,14 +20,14 @@ export type ReviewChannel = (typeof REVIEW_CHANNELS)[number]
 export const approveCompanySchema = z.object({
   verificationId: z.string().min(1),
   verifiedChannels: z.array(z.enum(REVIEW_CHANNELS)).min(1),
-  verificationResult: z.string().min(1).max(2000),
+  verificationResult: z.string().trim().min(1).max(2000),
 })
 
 export type ApproveCompanyInput = z.infer<typeof approveCompanySchema>
 
 export const rejectCompanySchema = z.object({
   verificationId: z.string().min(1),
-  reviewNote: z.string().min(1).max(2000),
+  reviewNote: z.string().trim().min(1).max(2000),
 })
 
 export type RejectCompanyInput = z.infer<typeof rejectCompanySchema>
@@ -40,17 +41,9 @@ export async function approveCompany(ctx: UserCtx, input: ApproveCompanyInput): 
 
   const cv = await db.companyVerification.findUnique({
     where: { id: input.verificationId },
-    select: { id: true, companyId: true, status: true },
+    select: { id: true, companyId: true },
   })
   if (!cv) throw new NotFoundError()
-  if (cv.status !== 'PENDING') throw new ValidationError('Verification is not in PENDING state')
-
-  // Check wallet does not already exist (idempotency guard)
-  const existingWallet = await db.creditWallet.findUnique({
-    where: { companyId: cv.companyId },
-    select: { id: true },
-  })
-  if (existingWallet) throw new ValidationError('Company wallet already exists')
 
   const channelLabel = input.verifiedChannels.join(', ')
   const reviewNote = `核实渠道：${channelLabel}；核实结果：${input.verificationResult}`
@@ -61,8 +54,10 @@ export async function approveCompany(ctx: UserCtx, input: ApproveCompanyInput): 
   })
 
   await db.$transaction(async tx => {
-    await tx.companyVerification.update({
-      where: { id: cv.id },
+    // Conditional update — only proceeds if the verification is still PENDING,
+    // preventing concurrent approvals from both succeeding.
+    const updated = await tx.companyVerification.updateMany({
+      where: { id: cv.id, status: 'PENDING' },
       data: {
         status: 'VERIFIED',
         reviewerId: userId,
@@ -70,6 +65,7 @@ export async function approveCompany(ctx: UserCtx, input: ApproveCompanyInput): 
         reviewedAt: new Date(),
       },
     })
+    if (updated.count === 0) throw new ValidationError('Verification is not in PENDING state')
 
     await tx.company.update({
       where: { id: cv.companyId },
@@ -79,9 +75,7 @@ export async function approveCompany(ctx: UserCtx, input: ApproveCompanyInput): 
       },
     })
 
-    await tx.creditWallet.create({
-      data: { companyId: cv.companyId, balance: 0 },
-    })
+    await createWallet(tx, cv.companyId)
 
     if (owner) {
       await createNotification(tx, owner.userId, 'company.verified', {
@@ -119,10 +113,9 @@ export async function rejectCompany(ctx: UserCtx, input: RejectCompanyInput): Pr
 
   const cv = await db.companyVerification.findUnique({
     where: { id: input.verificationId },
-    select: { id: true, companyId: true, status: true },
+    select: { id: true, companyId: true },
   })
   if (!cv) throw new NotFoundError()
-  if (cv.status !== 'PENDING') throw new ValidationError('Verification is not in PENDING state')
 
   const owner = await db.companyMember.findFirst({
     where: { companyId: cv.companyId, role: 'OWNER' },
@@ -130,8 +123,9 @@ export async function rejectCompany(ctx: UserCtx, input: RejectCompanyInput): Pr
   })
 
   await db.$transaction(async tx => {
-    await tx.companyVerification.update({
-      where: { id: cv.id },
+    // Conditional update — prevents concurrent approvals racing with this rejection.
+    const updated = await tx.companyVerification.updateMany({
+      where: { id: cv.id, status: 'PENDING' },
       data: {
         status: 'REJECTED',
         reviewerId: userId,
@@ -139,6 +133,7 @@ export async function rejectCompany(ctx: UserCtx, input: RejectCompanyInput): Pr
         reviewedAt: new Date(),
       },
     })
+    if (updated.count === 0) throw new ValidationError('Verification is not in PENDING state')
 
     await tx.company.update({
       where: { id: cv.companyId },

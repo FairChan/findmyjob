@@ -21,12 +21,13 @@ export default async function AcceptInvitePage({
     redirect(`/${locale}`)
   }
 
-  // Check user is logged in
+  // Check user is logged in; preserve the token so they land back here after auth.
   try {
     await requireUser(await headers())
   } catch (err) {
     if (err instanceof ForbiddenError) {
-      redirect(`/${locale}/login`)
+      const acceptUrl = `/${locale}/e/team/accept?token=${token}`
+      redirect(`/${locale}/login?redirect=${encodeURIComponent(acceptUrl)}`)
     }
     throw err
   }

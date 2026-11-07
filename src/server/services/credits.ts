@@ -101,9 +101,13 @@ export async function adminAdjust(
   })
 }
 
-/** Creates a fresh wallet with zero balance for a newly verified company. */
-export async function createWallet(companyId: string): Promise<void> {
-  await db.creditWallet.create({ data: { companyId, balance: 0 } })
+/**
+ * Creates the company's wallet at balance 0 inside the caller's transaction (review-company approve).
+ * Upsert so a repeated approval (e.g. after a revoked verification) does not fail on the unique companyId.
+ * Balance changes still go only through applyLedgerEntry.
+ */
+export async function createWallet(tx: Prisma.TransactionClient, companyId: string): Promise<void> {
+  await tx.creditWallet.upsert({ where: { companyId }, create: { companyId, balance: 0 }, update: {} })
 }
 
 export interface GrantPilotCreditsResult {

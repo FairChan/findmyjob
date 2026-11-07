@@ -28,12 +28,12 @@ export function validateTestDbUrl(url: string | undefined): string {
   const dbName = decodeURIComponent(parsed.pathname.replace(/^\//, ''))
   const host = parsed.hostname
   // Node.js WHATWG URL returns '[::1]' (with brackets) for IPv6 literals.
+  // 0.0.0.0 is NOT treated as local — it means "all interfaces" and can include public ones.
   const isLocal =
     host === 'localhost' ||
     host === '127.0.0.1' ||
     host === '::1' ||
-    host === '[::1]' ||
-    host === '0.0.0.0'
+    host === '[::1]'
 
   if (!dbName.endsWith('_test') || !isLocal) {
     throw new Error(

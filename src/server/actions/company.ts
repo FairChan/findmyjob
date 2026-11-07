@@ -22,10 +22,3 @@ export const updateCompanyAction = action(
   },
 )
 
-export const getMyCompanyAction = action(
-  { auth: 'user' },
-  async ctx => {
-    const { getMyCompany } = await import('@/server/services/company')
-    return getMyCompany({ userId: ctx.userId! })
-  },
-)

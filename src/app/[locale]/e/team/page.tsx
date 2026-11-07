@@ -39,6 +39,7 @@ export default async function TeamPage({
     removeButton: t('removeButton'),
     changeRoleButton: t('changeRoleButton'),
     confirmRemove: t('confirmRemove'),
+    cancelButton: t('cancelButton'),
     errorForbidden: t('errorForbidden'),
     errorLimitReached: t('errorLimitReached'),
     errorAlreadyMember: t('errorAlreadyMember'),

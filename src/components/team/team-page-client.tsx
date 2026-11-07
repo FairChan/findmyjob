@@ -6,6 +6,15 @@ import {
   removeMemberAction,
   changeRoleAction,
 } from '@/server/actions/team'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
 
 interface Props {
   members: TeamMember[]
@@ -27,6 +36,7 @@ interface Props {
     removeButton: string
     changeRoleButton: string
     confirmRemove: string
+    cancelButton: string
     errorForbidden: string
     errorLimitReached: string
     errorAlreadyMember: string
@@ -41,6 +51,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
   const [inviteError, setInviteError] = useState('')
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
 
   const canManage = currentRole === 'OWNER' || currentRole === 'ADMIN'
   const canChangeRole = currentRole === 'OWNER'
@@ -68,7 +79,13 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
   }
 
   function handleRemove(memberId: string) {
-    if (!window.confirm(t.confirmRemove)) return
+    setConfirmRemoveId(memberId)
+  }
+
+  function handleRemoveConfirmed() {
+    const memberId = confirmRemoveId
+    setConfirmRemoveId(null)
+    if (!memberId) return
     startTransition(async () => {
       const res = await removeMemberAction({ memberId })
       if (res.ok) {
@@ -94,6 +111,18 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
 
   return (
     <div>
+      <Dialog open={confirmRemoveId !== null} onOpenChange={open => { if (!open) setConfirmRemoveId(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t.confirmRemove}</DialogTitle>
+            <DialogDescription>{t.confirmRemove}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmRemoveId(null)}>{t.cancelButton}</Button>
+            <Button variant="destructive" onClick={handleRemoveConfirmed}>{t.removeButton}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       {/* Member list */}
       <div className="mb-8 overflow-x-auto rounded-lg border">
         <table className="min-w-full divide-y divide-border">

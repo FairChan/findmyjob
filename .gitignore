@@ -19,6 +19,9 @@ prisma/seed-data/*.local.*
 backups/
 load/results/
 load/accounts.local.json
+load/students.local.json
+load/jobs.local.json
+load/fixtures/
 
 # auto-build 运行记录、扫描报告
 .auto-build/

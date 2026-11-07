@@ -600,6 +600,19 @@
 > 完成 2026-11-07：getWalletBalance 服务（src/server/services/credits.ts，creditWallet 读取）；/e/page.tsx 重写（requireEmployer + getMyCompany，4 种认证状态横幅，点数余额仅 VERIFIED 显示，三个快捷入口）；zh/en i18n 新增 15 个 employerDashboard 键；4 个集成测试全部通过（776 tests）
 > 修复 2026-11-07：(1) /e 改用 requireCompanyMember('RECRUITER') 替代 requireEmployer+getMyCompany，停用企业成员立即被拒；无企业成员时跳转 onboarding；getWalletBalance 签名改为 ctx 对象，credits.test.ts 同步更新；(2) UNSUBMITTED/REJECTED 横幅 CTA 仅 OWNER/ADMIN 可见，RECRUITER 显示「请联系企业管理员」提示，zh/en i18n 新增 bannerAdminActionRequired / bannerRejectedReason；快捷链接 /e/company 和 /e/verification 对 RECRUITER 隐藏；(3) REJECTED 横幅对所有成员显示最近驳回原因（reviewNote），getVerificationInfo 复用；新增集成测试 employer-dashboard.test.ts（6 个用例）和 E2E 冒烟 smoke-m3-console.spec.ts（8 条全通过，storageState 复用 OWNER 会话规避速率限制）；816 tests 全绿
 
+#### [ ] M3-T07 运营查看认证材料前净化 PDF（P0，GATE-M7 之前）
+依赖：M3-T03、M4-T19
+做：
+- 运营在 `/admin/companies/[companyId]` 查看企业上传的 PDF 材料时，服务端先用 M4-T19 的 `sanitizePdf`（`src/server/lib/pdf-sanitize.ts`，内部走 `runCappedPdfWorker`）净化，再把净化后的副本给运营。
+- 原件不再直接给出签名 URL。图片原样返回，响应头照 M7-T19「A-22 临时缓解」那几个。
+- 来源：threat-model A-22、TM-016。监督会话 2026-11-07 提出，用户 2026-11-07 确认；理由是运营账号被盗属于 TM-026 的 High，对运营投放恶意 PDF 正是通往它的路径。
+- M8 的付款回单照同样的方式处理。
+验收：
+- 净化后的副本里没有这些东西：/AA、/OpenAction、JavaScript、Launch 动作、URI 动作、EmbeddedFile、FileAttachment。认证材料不需要外链，所以 URI 也去掉；如果 sanitizePdf 默认保留 http(s) 链接，就加一个选项关掉。单元测试要把净化后的文件再 load 一次，断言这些键都不在。
+- 运营端拿不到原件的签名 URL（集成测试或 E2E 断言页面和响应里都没有）。
+- 净化失败或超出限额时不提供预览，只显示「文件无法安全预览」，并写审计日志：action 和 targetId 写清楚，不写文件内容。
+- 有 E2E 和单元测试，其中一条是「撤掉净化之后测试会失败」。
+
 ---
 
 ## M4 · 人才库与解锁（核心，约 3.4 天）
@@ -1009,15 +1022,32 @@
 做：通知铃铛 + 未读数 + 列表 + 全部已读；按收件人语言渲染中 / 英邮件模板；接入 PRD §6 的全部事件；`employer-daily-digest` 任务。
 验收：PRD §6 每一行都有对应测试或 E2E 覆盖
 
-#### [ ] M5-T09 职位搜索 service（精确 / 关联）
+#### [x] M5-T09 职位搜索 service（精确 / 关联）
 依赖：M5-T03
 做：`services/job-search.ts`：`searchJobs({ q, mode, filters, page })`，实现 ARCHITECTURE §5.4；ILIKE 输入先转义反斜杠、`%` 和 `_`；默认模式和回退阈值读 `search.*`。
 验收：与原型 C2 的测试用例一致（同一职位只出现一次、精确在前、不区分大小写、"Finance" 能搜到「财务」组）；pg_trgm 索引生效（EXPLAIN 里能看到 Bitmap Index Scan）；查看者打不开的职位，不能靠描述里的词被搜出来（对应原型测试 `locked jobs are not matched by their description`）；按薪资排序时隐藏薪资的职位排在最后
+> 完成 2026-11-07：实现 searchJobs（EXACT/RELATED 模式、pg_trgm ILIKE、同义词展开、canSeeDescription 安全参数、薪资排序、游标分页）；/jobs 页接入 service；unit 19/19、integration 10/10、E2E smoke 7/7 通过。偏差：$queryRaw 返回 skills/languages 为 null（空数组列）需加 `?? []` 防护；已修复。
 
-#### [ ] M5-T10 扩展筛选
+#### [x] M5-T10 扩展筛选
 依赖：M5-T09
 做：两级行业（选大类包含全部子类）、公司定位标签（任一命中）、公司规模、薪资档（`jobs.salaryBands`）。
 验收：与原型 C3 的测试用例一致；选了薪资档时隐藏薪资的职位不出现，也不能借筛选反推出它的薪资
+> 完成 2026-11-07：industryMatches（父级包含子级）；searchJobs 增加 industry/tags/size/salaryAtLeast 四个筛选（empty-query 走 Prisma company filter，keyword 走 SQL AND 片段）；jobs page listParamsSchema 增加四个 URL 参数；单元 29 条 + 集成 C3 9 条 + E2E 8 条全部通过；失败输出见提交说明。
+
+#### [x] M5-T11 职位搜索性能：查询加 LIMIT、在数据库预筛候选（P1，E3 之前）
+依赖：M5-T09、M5-T10
+做：
+- 现状：`src/server/services/job-search.ts` 的 searchJobs 用 `$queryRaw` 把所有匹配的 PUBLISHED 职位（连同 description、requirements）都取出来，在应用里评分，再按游标切片，查询没有 LIMIT（2026-11-07 合并前复查记下的）。
+- 改成在数据库里预筛：
+  - 用 trigram 相似度，或者分段的 ORDER BY，先取有限的候选（例如前 N×页大小）；
+  - 必须返回 description 时才 select 它；
+  - 游标改成基于排序键，而不是在全量结果上切片。
+- 行为和现有测试保持一致：EXACT/RELATED 两种模式、同义词、隐藏薪资排在最后、canSeeDescription 不外泄。
+验收：
+- 合成 1 万条职位（faker，只写测试库），常见查询的 p95 写进 docs/CAPACITY.md，目标值在 DECISIONS 里记一行。
+- 现有 job-search 的单测和集成测试全部通过。
+- 查询带 LIMIT：有测试断言单次取出的行数不超过上限。
+> 完成 2026-11-08：$queryRaw 加 `LIMIT ${candidateWindow}`（默认 500，读自 search.candidateWindow）；canSeeDescription=false 时 description/requirements 返回空串/null，不出现在 SQL 模板里；空查询 relevance 分支改用 Prisma 游标分页（取 limit+1 检测 hasMore），salary 分支取 candidateWindow 条后内存排序；基准测试（10k 合成职位）p95：空查询 11ms、关键词 40ms、关键词无匹配 37ms、salary 排序 18ms，全写入 docs/CAPACITY.md；pnpm lint + typecheck + test（72/72 通过，1 skipped bench）全部绿。
 
 ---
 
@@ -1211,6 +1241,7 @@
 > 修复 2026-11-05：(1) backup+migrate 改用 APP_TAG env-prefix，update_app_tag 推迟到迁移成功后，ERR trap 在 tag 写入后失败时恢复 .env；(2) 回滚目标改为「当前 sha 最近一次 deploy 之前的那条 deploy 记录」（awk 逐行跟踪 prev），避免 rollback-after-rollback 再次回到坏版本；(3) 迁移检查先 test -d 判断目录存在，移除 2>/dev/null 和 || true 让 docker run 失败可见，校验迁移名格式 ^[0-9]{14}_[a-z0-9_]+$；(4) DB URL 改走 --env-file 临时文件，不出现在命令行参数；(5) 部署和回滚均记录 digest 并支持 --expect-digest sha256:… 核对；RUNBOOK 部署/回滚两节同步更新；bash -n 语法通过，pnpm lint+typecheck+test 全绿。真机演练（部署 A、部署 B、回滚）仍需在 M7-H01 配置好的服务器上执行。
 > 修复 2026-11-05：(a) wallet 余额保持 0（credits.ts 未实现，M4-T06 未完成）；(b) session token 改用 crypto.randomBytes(32).toString('base64url')，不再可预测；(c) k6 setup() 在 accounts 为空时 fail()；(d) 人才库请求改为 redirects:0、只认 200 为成功；ESLint 豁免保留（seed-load.ts 仍访问 User.email PII）。
 > 修复 2026-11-05（二）：(1) set -Eeuo pipefail（加 -E），ERR trap 现可在 update_app_tag/dc up 函数内触发，注释说明原因；(2) actual_digest 用 ${var#*@} 剥离 registry/repo@ 前缀，存入 history 和比对的值均为裸 sha256:…，--expect-digest 和 rollback 自动核对均已可用；rollback 在有记录 digest 时改用 ${IMAGE_APP}@${digest} 拉取再 tag；(3) 迁移检查区分 docker run 退出码：exit 1 = 目录不存在（跳过），其他非零 = docker/exec 失败（die），防止 125/126/127 被误判为目录缺失而静默跳过审批；bash -n 通过，pnpm lint+typecheck+test 526 passed 全绿。真机走查（部署 A→B→回滚→回滚）仍需在 M7-H01 配置的服务器上执行。
+> 修复 2026-11-08（部署支持，总控授权）：findmyjob-deploy 加 FINDMYJOB_SKIP_PULL=1：不 pull，改成检查镜像在本机存在，缺了就报错退出（deploy 和 rollback 都支持），给「本机构建、docker load 到服务器」这条部署路线用；没有 RepoDigests 时 digest 一律记成 unknown；WORKDIR 可以用 FINDMYJOB_WORKDIR 覆盖（为了测试）。新增 deploy/server/findmyjob-deploy.test.sh（docker stub，9 条）；RUNBOOK「部署」补了没有 registry 时的步骤。失败输出见提交说明。
 
 #### [x] M7-T13 事故与 PDPA 泄露处置手册、每周例行检查
 依赖：M7-T06
@@ -1250,7 +1281,7 @@
 
 > 以下是 P1 任务，GATE-M7 之后按各自的时点做（`AUTO_BUILD_SKIP_P1=1` 时跳过）。
 
-#### [ ] M1-T07 架构测试：越权注册表全覆盖（P1，M7 之后）
+#### [x] M1-T07 架构测试：越权注册表全覆盖（P1，M7 之后）
 依赖：M1-T03
 做：新增 `tests/architecture/server-boundary.test.ts`：用 TS 编译器 API 扫描所有 `use server` 文件和 route.ts 的导出；`action()` 和 `route()` 的注册表与越权矩阵逐项对比。
 验收：故意加一个没有包装的 export，测试失败
@@ -1265,6 +1296,10 @@
 > - route() 会读掉 body，需要原始 body 的 handler（比如 webhook 验签）不能走 input 解析；JSON 格式错误时静默变成 `{}` 的问题已改为返回 400。
 > - 名额满时直接 POST 原始端点返回伪造的 200：已改为 hooks.before 统一返回 SIGNUP_CLOSED。GATE-M4 时再核对一遍。
 > - proxy 的 checkReconsent 仍是线 B（M7-T02）留下的桩函数，永远返回 null。现在 Better Auth 已接入，要真正调用 needsReconsent(userId)：已登录、条款版本过期的用户跳转到重新同意页。这是 PDPA 相关功能，GATE-M7 之前必须做完。
+
+> 完成 2026-11-07：新增 tests/architecture/server-boundary.test.ts（TS 编译器 API 扫描 use server 和 route.ts 导出）；修复 auth.ts logger PII 泄漏、session.create.after IP 获取、user.create.after 路径守卫与同意校验、maybeWarnCap 静默吞错；signup-cap.ts deleteMany 加 role: 'STUDENT'；env.ts APP_ENV 按 NODE_ENV 兜底；register.ts 移除多余 realUser 查库；proxy.ts checkReconsent 实现为调用内部 API；新增 src/app/api/internal/needs-reconsent/route.ts；auth.ts disabledPaths 补全 /email-otp/request-email-change 和 /email-otp/change-email；DECISIONS.md 更新两处不准确描述。失败输出见提交说明。自查：1.鉴权在服务端：符合，所有修改路由均用 route({ auth: 'user' })；2.输入走 zod：符合，route/action wrapper 已校验；3.越权有测试：符合，architecture test 覆盖注册表；4.加锁和并发：不适用，本任务无余额/状态流转写操作；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增/修改页面；7.完成说明逐条写出；8.未删除或放宽已有断言。
+> 修复 2026-11-07（合并前复查）：proxy.ts checkReconsent 改用固定 INTERNAL_BASE_URL（默认 127.0.0.1:3000）取代 request.nextUrl.origin，消除 Host 头注入可能把 session cookie 发送到攻击者控制的 host 的漏洞；env.ts 和 env.example 同步新增 INTERNAL_BASE_URL 可选字段；新增 tests/unit/proxy-reconsent.test.ts 3 条测试锁住行为。失败输出见提交说明。
+> 修复 2026-11-07（合并前全量 E2E）：(1) proxy.ts 增加 isPageNavigation 判断，Server Action (POST+Next-Action) 不做重新同意跳转；(2) auth.ts 修复 legalVersion 默认值与 needsReconsent 不一致（'1.0'→'2026-11-draft'）；(3) E2E fixture 写入当前版本同意记录（helpers/consent.ts, loginAs consent 选项, global-setup 清理+写入）；新增 reconsent.spec.ts。全量 E2E 104/104 通过。失败输出见提交说明。自查：1.鉴权在服务端：符合，proxy.ts 只改方法判断不改鉴权；2.输入走 zod：不适用，无新增输入；3.越权有测试：不适用；4.加锁和并发：不适用；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增页面；7-12.见提交说明。注：global-setup.ts 是 M4-T15 的文件，合并 M4 时可能有冲突。
 
 #### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02
@@ -1295,14 +1330,20 @@
 - HSTS_MAX_AGE 改为 31536000；确认所有子域都已经是 https 之后，再加 includeSubDomains。
 验收：强制模式下，375px 和 1280px 两种宽度走完「注册 → 上传」，控制台没有 CSP 报错；每次请求的 nonce 都不同
 
-#### [ ] M7-T16 CI 扩展扫描（P1，M7 之后）
+#### [x] M7-T16 CI 扩展扫描（P1，M7 之后）
 依赖：M7-T06
 做：
 - semgrep 用 registry 规则集做 PR 扫描，加 `--metrics=off` 和 `--error`。
 - pnpm-lock.yaml 有变化时跑 osv-scanner（`osv-scanner.toml`）。
 - 对 .github 跑 actionlint 和 zizmor。
 - 对镜像跑 Trivy（HIGH 和 CRITICAL，`--ignore-unfixed`，`.trivyignore`），对 Dockerfile 跑 hadolint；所有豁免都要写到期日，并记进 DECISIONS。
+- 另：2026-11-07 合并前复查遗留，随本任务一起做：
+  - `.github/workflows/ci.yml` 构建步骤里直接插值的 `${{ vars.NEXT_PUBLIC_SENTRY_DSN }}`，改成经 `env:` 传入，再在 run 里用 shell 变量引用；
+  - 删掉多余的 devDependency `@types/psl`（psl 自带类型，现在靠 tsconfig 的 paths 映射；这个包已经废弃），并在 DECISIONS 里补一句。
 验收：各 job 都通过，豁免文件里没有已过期的条目
+
+> 完成 2026-11-07：新增 scan-semgrep/scan-dependencies/scan-actions/scan-image 四个 CI job；创建 .trivyignore 和 osv-scanner.toml；修复 NEXT_PUBLIC_SENTRY_DSN 直接插值→env 传入；删除 @types/psl devDep（tsconfig paths 映射已足够）；失败输出见提交说明
+> 修复 2026-11-07（合并前复查）：semgrep `--config=auto` 与 `--metrics=off` 冲突改为明确 registry 规则集（p/typescript、p/react、p/nodejsscan、p/secrets、p/owasp-top-ten）；actionlint 改为 `rhysd/actionlint:1.7.4` Docker 镜像，去掉无哈希校验的 curl 下载；DECISIONS 追加决策说明。需要第一次 CI 运行来验证。
 
 #### [ ] M7-T17 质量包：a11y 全覆盖、锁版本 Lighthouse、SEO 元数据、Logo 缓存（P1，E2 之前）
 依赖：M7-T01
@@ -1313,12 +1354,14 @@
 - Logo 走 `/api/logos/[companyId]`，设 public 长缓存。
 验收：4 个公开页都达到阈值；sitemap 里没有 /s、/e、/admin
 
-#### [ ] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
+#### [x] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
 依赖：M7-T10
 做：新增 `load/k6/unlock.js`（10 个 VU 抢余额 3，以及 10 个 VU 解锁同一学生）、`upload.js`、`apply.js`；seed-load 扩到 5000 名学生、100 家企业、500 个职位。
 验收：跑完后用 SQL 核对：成功的解锁数等于 UNLOCK 账本条数，余额 ≥0
+> 完成 2026-11-07：load/k6/unlock.js（balance_race 10 VU 抢余额 3、idempotent_unlock 10 VU 解锁同一学生，含 SQL 核对查询注释）；load/k6/upload.js（20 VU，读 load/fixtures/minimal.pdf）；load/k6/apply.js（20 VU，读 jobs.local.json）；prisma/seed-load.ts 扩到 100 家企业、5000 名学生（批量并发 20）、500 个已发布职位，race 企业余额 reset 为 3、idempotent 企业 100；load/*.local.json 和 load/fixtures/ 加入 .gitignore；SQL 核对为在 staging 运行 k6 后的人工步骤（无法在 CI vitest 中自动化）；unlock/apply 端点为后续里程碑实现，当前脚本会收到 404，属预期。失败输出见提交说明。
+> 修复 2026-11-07（合并前复查）：load/k6/*.js 注释中的 `grafana/k6:latest` 改为固定版本 `grafana/k6:0.54.0`；prisma/seed-load.ts 会话有效期从 30 天缩短为 1 天（staging 负载测试会话无需长期存活）。需要第一次 CI 运行来验证。
 
-#### [ ] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
+#### [x] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
 依赖：M7-T04、M7-T06、M7-T11、M7-T12、M7-T14
 做：2026-11-05 lane B 合并前的安全审查和修复核对里，评为 Medium 或 Low、按主线收尾规则延后的项（见方案目录 .reports/2026-11-05-lane-b/security-review.md，DECISIONS「lane B 收尾遗留」）。逐条修掉，或者在 DECISIONS 记为已接受风险：
 - M4-T02 serializer：
@@ -1455,12 +1498,49 @@
   - isSafePath 新加的「解码后必须和原串一致」对原有的 /s/、/e/、/admin 规则也生效，带编码字符的旧跳转会退回默认页。这只会更严，要不要对查询串放宽待定。
   - ADMIN 规则是 `startsWith('/{locale}/admin')`，会放行 `/zh/administrator-x` 这类路径。这是原有规则；改成 `/{locale}/admin/` 或者完全等于 `/{locale}/admin`。
 - M7-T19 第 1 轮（上传）补修以后，复查仍不足的地方：checkInflateBomb 预扫描能被绕过（间接引用的 Filter、名字转义、超过 512 字节的填充、数据里嵌字面的 endstream、截断的流不计入额度、过滤器链、LZW、stream 后面没有换行）。由 fix-M7-T19-p1c 在 pdf-lib 的 `DecodeStream.ensureBuffer` 上统一限额。**上线前必须处理。**
+- A-22 临时缓解（监督会话 2026-11-07 安排，在 M3-T07 净化做好之前先做；M7-T19 第 5 轮处理，必须修掉）：
+  - 现状：运营在 `/admin/companies/[companyId]` 看认证材料时，拿到的是原件的 S3 预签名 URL。预签名只能带 Content-Disposition 和 Cache-Control，加不了 nosniff 和 CSP。
+  - 修法：改成一个只给 ADMIN 用的 Route Handler，由服务端流式转发，例如 `/api/admin/verification-docs/[verificationId]/[index]`。
+  - 验收（总控 2026-11-07 定的）：
+    - 鉴权：
+      - 用 `route({ auth: 'admin' })` 包装，等同于 requireAdmin()，service 层也要断言 ADMIN；
+      - `[verificationId]`（cuid）和 `[index]`（非负整数，小于 documentKeys 的长度）都用 zod 校验；
+      - verificationId 不存在、index 越界、文件不属于这条认证记录，一律返回 404。
+    - 审计：
+      - 每次查看都写一条 AuditLog，action 按 ARCHITECTURE §5.7 的点分命名，例如 `company.verification.doc_view`，对应总控说的 ADMIN_VIEW_VERIFICATION_DOC；同时补进 §5.7 的清单；
+      - targetType 写 Company，targetId 写 companyId；
+      - metadata 只放内部 ID（verificationId、index），不放文件名、key 和内容。
+    - 转发：
+      - 从对象存储流式转发，不要把整份文件读进内存；
+      - 按上传上限做大小检查（用 HeadObject 或者返回的 ContentLength），超限就不转发；
+      - 对象存储出错时返回 502，不透出底层的错误信息。
+    - 响应头，每一项都有测试锁住：
+      - `Content-Disposition: attachment`（文件名按 RFC 5987 编码）
+      - `X-Content-Type-Options: nosniff`
+      - `Content-Security-Policy: sandbox; default-src 'none'`
+      - `Cache-Control: private, no-store`
+      - `X-Robots-Tag: noindex`
+    - 页面和传给客户端组件的 props 里不再出现预签名 URL：页面里的链接改成指向这个路由，不再调用 getSignedDownloadUrl。用一条 E2E 或 serializer 测试断言页面 HTML 里没有 S3 签名参数（例如 `X-Amz-Signature`）。
+    - 测试：
+      - 非 ADMIN（学生、企业成员、未登录）被拒；
+      - 上面几种 404 各一条；
+      - 对象存储抛错时返回 502，响应体里没有底层错误信息；
+      - 有审计日志，并且 metadata 里没有文件名；
+      - 页面冒烟：ADMIN 打开 `/zh/admin/companies/<id>` 是健康的。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 > 进度 2026-11-07 第 1/7 轮（M2-T05 上传 + 第二轮遗留 idSchema）：修掉：pdf-lib 解压炸弹→worker_threads resourceLimits（tests/unit/pdf-check.test.ts，12 条）；加密检测绕过→hasRawEncryptionMarkers 原始字节扫描；0 页 PDF 被接受→checkPdf pageCount<1 拒收；PAYMENT_PROOF 允许 ADMIN→改为 OWNER（tests/unit/upload-authz.test.ts，7 条，含 authz-matrix 新行）；key 用 randomUUID+userId→改用 studentProfileId；非法 purpose/id 返回 404→改为 400；下载响应缺 X-Robots-Tag→已加；idSchema 从 upload-input.ts 导入（route.ts）；deploy/Caddyfile 新增 resp_headers>Location delete 防签名 URL 进日志（需真机验证，见 DECISIONS）。接受的风险：孤儿对象、请求体读进内存（均见 DECISIONS 第 1 轮条目）。转给别的任务：无。
 > 进度 2026-11-07 第 1/7 轮补修：（1）FlateDecode 炸弹真正修好：在 pdf.ts 加 checkInflateBomb()，用 zlib.inflateSync maxOutputLength 预扫描所有 FlateDecode 流，超过 getSetting('upload.pdfMaxInflatedBytes', 50MB) 就拒收；炸弹检查在 Worker 之前、加密检查之后执行；worker/resourceLimits 保留作第二道防线。测试文件 tests/unit/pdf-check.test.ts（17 条），含 checkPdf 炸弹拒收测试（10ms 内返回）和 checkInflateBomb 单元测试（包括单流超限、累计超限、非 FlateDecode 不受影响）；去掉了原先名不副实的 large-stream 用例。默认值 52428800（50 MB）记进 DECISIONS。（2）生产镜像里找不到 pdf-lib：在 pdf.ts 加 `import 'pdf-lib'` 静态导入，使 Next.js nft 跟踪 pnpm 符号链接并在 standalone 里建立正确的 symlink 结构（含 tslib 等传递依赖），pdf-lib 加入 serverExternalPackages；build 验证：`.next/standalone/node_modules/pdf-lib/cjs/` 存在（symlink 到 pnpm store），Worker 在 standalone 目录下 `require('pdf-lib')` 实际解析 1 页 PDF 返回 `{ok:true, pageCount:1}`。
 > 进度 2026-11-07 第 1/7 轮第二次补修：在 pdf-lib 的 `DecodeStream.prototype.ensureBuffer` 上统一限额，堵住以下 6 种绕过：（1）`/Filter 9 0 R` 间接引用→parse_failed（pdf-lib 在加载 XRef 流时无法解析间接 Filter，直接拒收）；（2）`/Fl#61teDecode` 十六进制名称转义→ensureBuffer 拦截（pdf-lib 解 hex 转义后建 FlateStream，分配超额抛出）；（3）dict >512 字节填充→ensureBuffer 拦截；（4）stored block 嵌 `endstream` 字节→indexOf 截断后预扫描通过，worker 解第二层时 ensureBuffer 拦截；（5）`[/FlateDecode /FlateDecode]` 双层→预扫描只解一层在限额内，worker 解两层后 ensureBuffer 拦截；（6）stream 后无换行→预扫描跳过，worker parse_failed。同时修复 checkInflateBomb 的 Z_SYNC_FLUSH 问题（截断流的部分输出也计入额度）。新增 `import 'pdf-lib/cjs/core/streams/DecodeStream'`（nft 追踪）。tests/unit/pdf-check.test.ts 共 26 条（新增 9 条：6 种绕过 + 3 种对照组）。build 实证：`SKIP_ENV_VALIDATION=1 pnpm build` 通过；`.next/standalone` 下 worker 加载 `pdf-lib/cjs/core/streams/DecodeStream`、解析 1 页 PDF 返回 `{"ok":true,"pageCount":1}`。
 > 进度 2026-11-07 第 1/7 轮第三次补修：抽出可复用的 `runCappedPdfWorker`（`src/server/lib/pdf-worker.ts`，签名：`runCappedPdfWorker<T>(script, input, params?, opts?) => CappedPdfResult<T>`）。worker 内顺序：先装 ensureBuffer 限额补丁，再 require pdf-lib，最后执行 script。checkPdf 改为调用 runCappedPdfWorker（CHECK_PDF_SCRIPT），行为和返回值不变。测试文件 `tests/unit/pdf-worker.test.ts`（7 条：正常解析 / 水印 save+reload / bomb 错误路由 / bomb XRef 拒收 / 超时 / 抛错 / params 透传）；pdf-check.test.ts 原有 26 条全部通过。build 实证：`SKIP_ENV_VALIDATION=1 pnpm build` 通过；`.next/standalone` 下 eval worker 加载 pdf-lib、解析 1 页 PDF 返回 `{"ok":true,"pageCount":1}`。ARCHITECTURE §5.5 新增「PDF 解析入口」规则。
 > 进度 2026-11-07 第 1/7 轮复查补修（2deecea，lane B 会话手工）：pdf-lib 解析器会捕获无效对象的错误继续解析，ObjStm 里抛出的限额错误到不了 script，合法 PDF 后追加的 ObjStm 炸弹会 load 成功、被 checkPdf 放行（内存已被限住，但文件会被存下）。worker 记录限额是否触发过，触发过一律回 too_large；新增用例「valid PDF + 追加 ObjStm 炸弹」（tests/unit/pdf-worker.test.ts），修之前失败、修之后 34/34 通过。另在 pdf-worker.ts 注释写明 script 只能是服务端静态常量，用户数据只走 params。
+> 进度 2026-11-07 第 4/7 轮（M3-T01/02/05/06 企业、认证、公开页、控制台）：修掉：（1）SSM 号未规范化 → trim().toUpperCase() 存库，新增归一化测试；（2）SSM 重复/已是成员错误码不对 → AppError with SSM_DUPLICATE / ALREADY_MEMBER（company-form.tsx 检查的正是这两个码）；（3）网站 URL 无协议校验 → zod schema 加 `/^https?:\/\//i`，新增测试；（4）旧 logo 删除顺序错误（先删后改 DB，失败则孤儿） → 先算 oldLogoKey，DB 更新后再删，失败时 logger.error；（5）getMyCompanyAction 未用且返回整行 → 删除；（6）公开页 logoKey 归属校验缺页面层测试 → company.test.ts 新增 isOwnLogoKey 页面层描述；（7）submitVerification 并发竞态 → atomic updateMany with notIn 检查，事务外 status 检查移除，新增并发测试；（8）documentKeys 可重复 → uniqueKeys 去重，新增测试；（9）公开页 /companies/[id] 无 id 格式校验 → zod cuid check → notFound()，E2E 新增 invalid-id-→-404；（10）/e/page.tsx 嵌套 `<main>` → 改 `<div>`；（11）authz-matrix hijack 测试（companyId 写进 input 被忽略）→ 新增测试。接受的风险 / 转移：行业/州标签未进 i18n → 接受；documentKeys S3 存在性校验 → 接受；generateMetadata 缺失 → 转 M7-T17；/e X-Robots-Tag → 转 M7-T05（见 DECISIONS 第 4/7 轮条目）。lint✓ typecheck✓ 目标测试文件全绿（全量因 Windows 资源耗尽偶发超时，属已知环境问题）。
+> 进度 2026-11-07 第 4j/7 轮：修掉：（1）REJECTED 职位重新提交绕过 TM-007 → updateJob 把 REJECTED 单独处理，一律进 PENDING_REVIEW，不看 autoPublishAfter（tests/integration/jobs.test.ts 新增「REJECTED job resubmit always → PENDING_REVIEW even when autoPublishAfter=0」）；（2）approvedJobCount 刷高绕审（Medium，security-guidance）→ updateJob 回到待审时保留原来的 publishedAt，不清空（tests/integration/jobs.test.ts 更新「publishedAt is preserved」断言；tests/integration/review-jobs.test.ts 新增「gaming prevention」和「two distinct jobs +2」用例）。接受的风险：「回到待审时 publishedAt 仍保留旧值」改记为有意选择（防刷计数），理由见 DECISIONS 第 4j 轮条目。转给别的任务：无。自查：（1）符合：仅修 service 层，companyId 来自 ctx；（2）符合：输入校验未变动；（3）不适用：无新敏感动作；（4）符合：REJECTED 分支无并发争用；（5）符合：所有新测试均已确认在修前失败；（6）不适用：未改页面路由。lint✓ typecheck✓ 63/63 targeted tests✓（全量因 Windows 资源耗尽超时，属已知环境问题）。
+> 进度 2026-11-07 第 3/7 轮（M6-T07 代管企业）：修掉：（1）导入脚本审计缺 targetId + 用最早管理员当 actor → 新增 `--actor-id`/`IMPORT_ACTOR_ID` 参数，审计写入 `targetId: c.id`（tests/unit/import-companies.test.ts）。（2）导入脚本未复用 createManagedCompany → 重构内部逻辑与服务层一致，提取 `validateCompanies`/`deduplicateRows` 可测试函数。（3）logAudit 在事务外执行 → 转 M3-T03。（4）P2002 → 500 + 无 SSM 号的重复行不去重 → 捕获 P2002，`deduplicateRows` 在导入前去重（unit test 覆盖）。（5）err.message 原样打印 → catch 块不再打印 err.message，只输出行号。（6）assertAdmin 只查 role 不查 status → 加 `user.status !== 'ACTIVE'` 检查（新增 suspended admin 用例）。（7）approvedJobCount 包含平台代发职位 → `postJobAsPlatform` 移除 increment，测试从断言=1 改为=0。（8）无 dry-run 测试 → 新建 `tests/unit/import-companies.test.ts`（12 条）。（9）并发移交用例是顺序执行 → 改为 Promise.all（concurrent dual-accept 用例）。（10）并发死锁 → `acceptManagedTransfer` 加 `lockXact(LOCK_NS.MANAGED_TRANSFER, companyId)`，advisory-locks.ts 新增 MANAGED_TRANSFER=1003。（11）email 失败吞掉无日志 → 加 `logger.error`；locale 写死 → 转 M5-T08。（12）代管企业的非 OWNER 邀请走普通加成员流程 → `acceptInvite` 加 `isManaged && role !== 'OWNER'` 检查，新增 authz-matrix 用例。（13）DOMAIN_MATCH 未用公共后缀判断 → 引入 psl@1.15.0，domainsMatch 改用 `psl.get()` 比较注册域名；新增 PSL 相关测试 2 条。（14）verificationRecord 写进审计 → 接受风险（无 UI 时无法提示，等代管企业运营页面）。（15）运营后台无代管企业页面 → 转总控另排任务。tests/unit/import-companies.test.ts 12 条 + tests/integration/managed-company.test.ts 34 条（+10 新增） + tests/integration/authz-matrix.test.ts 79 条（+1 新增）全部通过。（本轮跑满 60 分钟超时、没来得及提交；lane B 会话核对改动后提交：lint、typecheck 通过，vitest 1287/1287 通过。@types/psl 是已废弃的类型存根，多余；离线移除要联网取元数据，没做，记为 Low。）
+> 进度 2026-11-07 第 5/7 轮（M3-T03、M3-T04 审核和团队 + A-22 临时缓解）：修掉：（1）alert.ts `{code,...ctx}` → `{...ctx,code}`，ctx.code 不再覆盖告警码；（2）review-company.ts 并发竞态 → approveCompany/rejectCompany 改为事务内 updateMany({where:{status:'PENDING'}})，count===0 抛 ValidationError，移除事务前的 PENDING 检查和钱包检查；（3）credits.ts 新增 createWallet(tx)，review-company.ts 改为调用它，ESLint override 里删掉 review-company.ts；（4）approveCompanySchema/rejectCompanySchema 加 .trim()；（5）inviteMember 审计 metadata 删 email，只留 role；（6）removeMember 移除成员后 updateMany 过期其发出的所有有效邀请；（7）accept/page.tsx 登录跳转加 ?redirect=...，token 不再丢失；（8）team.test.ts 新增：tokenHash SHA-256 断言 + AuditLog/Notification 扫描；过期/已接受邀请分成两个独立测试；删除成员后其邀请被过期的测试；（9）authz-matrix.test.ts：跨企业 removeMember toThrow → toBeInstanceOf(NotFoundError)；新增跨企业 changeRole NotFoundError 测试；（10）ReviewForm.tsx → review-form.tsx，page.tsx 更新 import；（11）team-page-client.tsx window.confirm → shadcn Dialog，新增 cancelButton i18n key；（12）smoke-m3-console 新增 CTA/bannerAdminActionRequired 断言；（13）A-22：新建 /api/admin/verification-docs/[verificationId]/[index]/route.ts（route({auth:'admin'})，zod cuid/index校验，S3流式转发，5 条响应头，每次查看写审计，502 不透出底层错误）；admin/companies/[companyId]/page.tsx 改为代理路由链接，删 getSignedDownloadUrl；新建 tests/integration/verification-doc-route.test.ts（8 条：401/403/404/502/success/audit）；新建 tests/e2e/smoke-m3-admin-docs.spec.ts（1 条：链接指向代理路由，HTML 无 X-Amz-Signature）。接受的风险/转移：logAudit 在事务外→接受（全项目写法）；邀请 email → M5-T08；ADMIN 移除 ADMIN → A-9；team.maxInvitesPerDay 默认值 3 → 记进 DECISIONS。lint✓ typecheck✓。第 5 轮预算中断，wip 03cd60c，由续跑轮收尾：（a）verification-doc-route.test.ts mock 修 arrow→function，未登录期望改为 403，新增 ContentLength>10MB→502 测试（9/9通过）；（b）route.ts 加 ContentLength 大小检查；（c）ARCHITECTURE §5.7 补 company.verification.doc_view；vitest 9/9 targeted✓；18/18 E2E✓。
+> 进度 2026-11-07 第 2/7 轮（M5-T01 职位管理 + M5-T02 职位审核 + M5-T03 公开职位页）：修掉：deadline 按 KL 时区当天 23:59:59 存（toEndOfDayKL，tests/integration/jobs.test.ts deadline whitelist 用例）；DRAFT 显示关闭按钮→从 canClose 移除 DRAFT；测试证明未认证企业能存草稿（新增用例）；REJECTED 职位可重新提交→从 closed 检查里移除 REJECTED，resubmit 时清空 reviewNote（新增 REJECTED resubmit 用例）；salaryMin≤salaryMax 校验（jobFormSchema refine）；列表/详情把州代码换成本地化文字（my-states.ts + stateLabel）；回到待审时 publishedAt 清空（新增用例）；hasSensitiveChange 改为 satisfies Record<keyof …> 类型穷举；jobFormSchema updatedAt 可选 → 编辑路径单独用 jobEditSchema（必带 updatedAt）；authz-matrix 跨企业用例改为 rejects.toBeInstanceOf(NotFoundError)；stale updatedAt 用例补断言库中数据不变；待审列表类型列修复、日期加时区（'Asia/Kuala_Lumpur'）；whitespace reviewNote 被 trim().min(1) 拒绝；approvedJobCount 二次审核不重复加（publishedAt===null 判断）；approveJob 在事务内读 publishedAt 防竞态；approveJob 状态检查移到企业验证检查之前（确保非 PENDING_REVIEW 时优先报 ValidationError）；审核时检查企业验证状态和 isActive；ReviewJobForm.tsx 改名 review-job-form.tsx；审核详情页补 deadline 时区、acceptsStudentPass、sponsorsWorkPass 两个布尔字段；公开职位列表搜索加 escapeLike 防 ILIKE 通配符注入；viewCount 只在 isNewView=true 时 +1，ADMIN 不计数；ShareJobButton 加 copiedLabel 文字、clipboard 不可用/被拒时显示错误状态；isSafePath ADMIN 规则改为 startsWith('/{locale}/admin/') || === '/{locale}/admin'；my-states.ts 新文件（MY_STATES 常量 + stateLabel 函数）。转给别的任务：列表游标分页→M5-T09；驳回/通过邮件→M5-T08；审核页 Cache-Control→M7-T05；登录态响应 Cache-Control→M7-T05。接受的风险：表单无清空按钮、枚举分开维护、搜索无高亮、offset 分页、OG 图（均见 DECISIONS 第 2 轮条目）。138/138 通过。
+> 进度 2026-11-07 第 6/7 轮（M4-T02 serializer + M7-T02 同意 + M7-T04 Sentry + M7-T14 止血开关 + smoke.ts + validateTestDbUrl）：修掉：（1）M4-T02 拉丁姓名边界→改用 Unicode 感知 lookaround `(?<![a-zA-ZÀ-ʯ])…(?![a-zA-ZÀ-ʯ])`，覆盖含 é/ü/ñ 的姓名（José/García）；talent-card.test.ts 新增 3 组 12 条测试（José 边界、card-level major/school 遮蔽、edu.description 整份 JSON 断言）。（2）M7-T02 同意撤回在旧版本号下被忽略→needsReconsent 改为查最新一条再在 JS 层检查版本，不再按 version 过滤 DB 查询；legal-consent.test.ts 新增 3 条（不过滤 version 的查询断言 + 旧版本撤回 + 旧版本同意的再同意）；（3）M7-T04 logger.ts 加 `serializers:{err:serializeErr}`，只保留 name/code 和截短 stack frames（首行含 message 的行一并去掉）；managed-company.ts/worker.ts 改为只传 errName/code；redact paths 加 Nodemailer 的 envelope/rejected/accepted/response/message；新建 tests/unit/logger-scrub.test.ts（7 条）；M7-T04 Sentry onRequestError 改用 routePath；LIKELY_ID 增加 base64url 令牌模式；worker.ts 启动失败前调 Sentry.close(2000)；Dockerfile 加 NEXT_PUBLIC_SENTRY_DSN/APP_TAG/ENVIRONMENT build-arg；ci.yml 构建步骤加对应 --build-arg。（4）M7-T14 kills switch 核对：assertUploadsEnabled 在 /api/uploads/[purpose]/route.ts 已接入，assertTalentSearchEnabled 在 talent-search.ts 已接入；assertUnlockEnabled 待 M4-T07 实现时接入（见 DECISIONS 第 6 轮）。（5）smoke.ts 错误字符串改为「A server error occurred」（Next 16.4.5 实际显示）。（6）validateTestDbUrl 移除 0.0.0.0 本机判断（0.0.0.0 是绑所有接口，不是本机）。lint✓ typecheck✓ 84/84 targeted tests✓ 全量 test suite exit 0✓。
+> 完成 2026-11-07 第 7/7 轮（M7-T06 Caddy + M7-T11 部署 + M7-T12 备份恢复 + M7-T13 RUNBOOK）：（1）Caddy log filter 加 `request>headers>Referer delete`（Referer 属 PDPA 范围内浏览行为数据）；remote_ip 接受风险（安全运营数据，详见 DECISIONS 第 7/7 轮）。（2）findmyjob-deploy 回滚：非 40 位小写 hex 参数 die 并打印用法提示；全局 `_CLEANUP_FILES` + EXIT trap 确保临时 env 文件在任何退出路径（含信号）下均被删除；`check_pending_migrations` 把 URL 解析为 PG* vars 写入 chmod 600 临时文件，psql 通过 --env-file 读取，URL 不出现在 docker run 参数（防 `ps` 泄漏）。（3）restore-drill.sh：有 VERSION_ID 时用 `s3api get-object` 而非 `s3 cp --version-id`；引入 RESTORE_COMPLETE 标志，`--keep` 只在所有检查通过后才保留库，演练失败时仍强制删库；counts.json 检查把 `continue` 改为 `failures.append(...)`，缺表返回 exit 1；步骤 2/3/4-7 全部改用 PG* vars，URL 不出现在 psql 参数；步骤 9 注释改用 `read -rs DATABASE_URL && export DATABASE_URL` 模式，URL 不在 argv。（4）docker-compose.prod.yml restore 服务注释补 `-f` 和 `$DC` 模式。（5）RUNBOOK：「在离线机器上执行」→「在管理机或其他有网络访问权限的机器上执行」；步骤 3 注释更新 `--keep` 行为说明（RESTORE_COMPLETE 语义）；真实恢复步骤 4 补 AWS_* export + `aws s3 ls` 备份列表命令；AuditLog SQL 模板加 `AND "targetType" = 'StudentProfile'` 过滤；场景 1「companyId」→「actorId」。restore-drill.test.sh 新增 --keep+failure-drops-DB（15 条全绿）+ counts.json-missing-table（15/15 通过）。bash -n 通过 deploy/server/findmyjob-deploy、scripts/db/restore-drill.sh、scripts/db/restore-drill.test.sh。
+> 补修 2026-11-07（合并前复查）：（1）industry LIKE 转义：job-search.ts 非空查询路径 line 393 `industry + '.%'` → `escapeIlike(industry) + '.%'`；空查询路径 `startsWith: industry + '.'`（Prisma 不转义 LIKE 通配符）→ 改为 `$queryRaw` 先取匹配公司 ID 再 `id.in`；新增集成测试 `tests/integration/job-search.test.ts`：「`a_b` 筛选不命中 `axb.y`（underscore 当字面）」和「`%` 筛选不命中 `finance.bank`（percent 当字面）」（失败输出见提交说明）。（2）代理路由流式大小上限：route.ts 在 `Readable.toWeb` 之后接 `TransformStream` 计数器，超过 `VERIFICATION_MAX_BYTES` 时调 `controller.error()`，注释写明头已发出时不能回 502；已有的 ContentLength 检查保留；新增集成测试「无 ContentLength 超大对象被截断」（失败输出见提交说明）。unit test `tests/unit/job-search.test.ts` 中描述旧 ORM 结构的测试更新为新的 id.in 结构。lint✓ typecheck✓ 1386/1386 unit+integration✓ smoke E2E 8/8✓。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
 

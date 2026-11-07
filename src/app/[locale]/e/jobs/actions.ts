@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { action } from '@/server/action'
 import {
   jobFormSchema,
+  jobEditSchema,
   createJob,
   updateJob,
   copyJob,
@@ -22,7 +23,7 @@ export const createJobAction = action(
   },
 )
 
-const updateJobInput = jobFormSchema.extend({ jobId: z.string().cuid() })
+const updateJobInput = jobEditSchema.and(z.object({ jobId: z.string().cuid() }))
 
 export const updateJobAction = action(
   {

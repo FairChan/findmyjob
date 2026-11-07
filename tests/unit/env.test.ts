@@ -58,3 +58,34 @@ describe('HEALTHCHECKS_* env vars — empty-string coercion', () => {
     expect(result.data?.HEALTHCHECKS_EXAMPLE).toBeUndefined()
   })
 })
+
+describe('APP_ENV NODE_ENV fallback (M1-T07)', () => {
+  const BASE_NO_APP_ENV = (() => {
+    const { APP_ENV: _removed, ...rest } = BASE as typeof BASE & { APP_ENV?: string }
+    return rest
+  })()
+
+  it('defaults to production when NODE_ENV=production', () => {
+    vi.stubEnv('NODE_ENV', 'production')
+    const result = _envSchema.safeParse({ ...BASE_NO_APP_ENV, APP_URL: 'https://example.com', BETTER_AUTH_SECRET: 'a'.repeat(32), TURNSTILE_SECRET_KEY: 'prod-key' })
+    expect(result.success).toBe(true)
+    expect(result.data?.APP_ENV).toBe('production')
+    vi.unstubAllEnvs()
+  })
+
+  it('defaults to ci when NODE_ENV=test', () => {
+    vi.stubEnv('NODE_ENV', 'test')
+    const result = _envSchema.safeParse({ ...BASE_NO_APP_ENV })
+    expect(result.success).toBe(true)
+    expect(result.data?.APP_ENV).toBe('ci')
+    vi.unstubAllEnvs()
+  })
+
+  it('defaults to development when NODE_ENV is absent', () => {
+    vi.stubEnv('NODE_ENV', '')
+    const result = _envSchema.safeParse({ ...BASE_NO_APP_ENV })
+    expect(result.success).toBe(true)
+    expect(result.data?.APP_ENV).toBe('development')
+    vi.unstubAllEnvs()
+  })
+})

@@ -6,6 +6,7 @@
  * a *_test database on localhost (same rules as tests/setup/db.ts).
  */
 import { createE2eDb } from './helpers/db'
+import { writeCurrentVersionConsent } from './helpers/consent'
 import { writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { randomBytes, scrypt } from 'node:crypto'
@@ -69,6 +70,9 @@ export default async function globalSetup() {
   const m4t12StudentHashedPw = await hashPassword(m4t12StudentPassword)
 
   try {
+    // 不按邮箱删用户和企业：CreditLedger 对钱包是 Restrict，findmyjob_app 不能删账本行，一旦有账本行第二次运行就会抛错（M4-T16 第 6 条）。
+    // 线 B 当初加删除清理是误诊：真正原因是 vitest 在后台跑的同时启动了 E2E，TRUNCATE 清掉了刚建的行。下面全部用幂等写法。
+
     // ---- Helper: create or update employer user + company + member ----
     async function ensureEmployer(
       email: string,
@@ -151,9 +155,11 @@ export default async function globalSetup() {
 
     // ---- Create/update verified employer ----
     const verifiedEmp = await ensureEmployer(VERIFIED_EMAIL, true, verifiedHashedPw)
+    await writeCurrentVersionConsent(verifiedEmp.userId)
 
     // ---- Create/update unverified employer ----
     const unverifiedEmp = await ensureEmployer(UNVERIFIED_EMAIL, false, unverifiedHashedPw)
+    await writeCurrentVersionConsent(unverifiedEmp.userId)
 
     // ---- Create/update student ----
     let studentUser = await prisma.user.findUnique({ where: { email: STUDENT_EMAIL } })
@@ -168,6 +174,8 @@ export default async function globalSetup() {
         },
       })
     }
+
+    await writeCurrentVersionConsent(studentUser.id)
 
     const school = await prisma.school.findFirst({ where: { active: true } })
 
@@ -272,6 +280,8 @@ export default async function globalSetup() {
         },
       })
     }
+
+    await writeCurrentVersionConsent(unlockedStudentUser.id)
 
     let unlockedProfile = await prisma.studentProfile.findUnique({ where: { userId: unlockedStudentUser.id } })
     if (!unlockedProfile) {
@@ -421,6 +431,8 @@ export default async function globalSetup() {
         data: { password: m4t12StudentHashedPw },
       })
     }
+
+    await writeCurrentVersionConsent(m4t12StudentUser.id)
 
     let m4t12Profile = await prisma.studentProfile.findUnique({ where: { userId: m4t12StudentUser.id } })
     if (!m4t12Profile) {

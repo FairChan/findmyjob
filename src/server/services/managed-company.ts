@@ -1,8 +1,10 @@
 import 'server-only'
 import { randomBytes, createHash, timingSafeEqual } from 'crypto'
+import * as psl from 'psl'
 import { z } from 'zod'
 import { db } from '../db'
 import { logAudit } from './audit'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createCompanySchema } from './company'
 import { jobFormSchema } from './jobs'
@@ -25,15 +27,20 @@ function domainsMatch(websiteUrl: string, emailAddress: string): boolean {
     const websiteHostname = new URL(websiteUrl).hostname.toLowerCase()
     const emailDomain = emailAddress.split('@')[1]?.toLowerCase()
     if (!emailDomain) return false
-    return websiteHostname === emailDomain || websiteHostname.endsWith('.' + emailDomain)
+    // Use PSL to get the registerable domain (eTLD+1) on both sides.
+    // psl.get('co.uk') returns null, so public suffixes can't pass domain match.
+    const websiteRegistered = psl.get(websiteHostname)
+    const emailRegistered = psl.get(emailDomain)
+    if (!websiteRegistered || !emailRegistered) return false
+    return websiteRegistered === emailRegistered
   } catch {
     return false
   }
 }
 
 async function assertAdmin(userId: string): Promise<void> {
-  const user = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
-  if (!user || user.role !== 'ADMIN') throw new ForbiddenError()
+  const user = await db.user.findUnique({ where: { id: userId }, select: { role: true, status: true } })
+  if (!user || user.role !== 'ADMIN' || user.status !== 'ACTIVE') throw new ForbiddenError()
 }
 
 function tokenHash(token: string): string {
@@ -109,7 +116,7 @@ export async function postJobAsPlatform(
   const { submit: _submit, deadline, ...fields } = input
 
   const job = await db.$transaction(async tx => {
-    const j = await tx.job.create({
+    return tx.job.create({
       data: {
         ...fields,
         companyId,
@@ -119,11 +126,6 @@ export async function postJobAsPlatform(
         deadline: deadline ? new Date(deadline) : null,
       },
     })
-    await tx.company.update({
-      where: { id: companyId },
-      data: { approvedJobCount: { increment: 1 } },
-    })
-    return j
   })
 
   await logAudit({
@@ -243,6 +245,9 @@ export async function acceptManagedTransfer(ctx: UserCtx, token: string): Promis
   if (anyMembership) throw new ValidationError('Already a member of a company')
 
   await db.$transaction(async tx => {
+    // Serialise concurrent transfers for the same company to prevent deadlock.
+    await lockXact(tx, LOCK_NS.MANAGED_TRANSFER, invite.companyId)
+
     await tx.companyInvite.update({
       where: { tokenHash: hash },
       data: { acceptedAt: new Date() },

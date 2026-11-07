@@ -701,6 +701,7 @@
     "removeButton": "移除",
     "changeRoleButton": "更改角色",
     "confirmRemove": "确定要移除该成员吗？",
+    "cancelButton": "取消",
     "errorForbidden": "权限不足，无法执行此操作",
     "errorLimitReached": "已达上限（成员数量或每日邀请次数）",
     "errorAlreadyMember": "该用户已是本企业成员",
@@ -833,7 +834,11 @@
     "statusPending": "待审核",
     "descriptionLabel": "职位描述",
     "requirementsLabel": "任职要求",
-    "benefitsLabel": "薪资福利"
+    "benefitsLabel": "薪资福利",
+    "acceptsStudentPassLabel": "接受学生准证",
+    "sponsorsWorkPassLabel": "提供工作准证担保",
+    "yes": "是",
+    "no": "否"
   },
   "publicJobs": {
     "title": "职位列表",
@@ -846,6 +851,7 @@
     "lockedDesc": "邀请同学注册 FindMYJob 即可解锁更多职位详情",
     "inviteButton": "邀请同学解锁",
     "shareJobLabel": "复制分享链接",
+    "shareJobCopied": "已复制",
     "type": {
       "INTERNSHIP": "实习",
       "FULL_TIME": "全职",
@@ -855,6 +861,7 @@
       "ONSITE": "到岗办公",
       "HYBRID": "混合办公",
       "REMOTE": "远程"
-    }
+    },
+    "loadMore": "加载更多"
   }
 }
