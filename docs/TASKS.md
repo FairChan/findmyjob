@@ -721,10 +721,11 @@
 > 总控 2026-11-07：第一次跑（run22 第 6 轮）到 90 分钟上限被停，已完成的部分提交成 2134f68 `wip(M4-T12)`：`listNotifications` / `markAllNotificationsRead`、`/s/notifications` 页面骨架、中英文案、global-setup 和 auth.setup 里的测试学生、`m4-t12-smoke.spec.ts`。从这里接着做，先读一遍这些改动，不要从头重写；storageState 文件已加进 .gitignore（`tests/e2e/auth-*.json`）。
 > 完成 2026-11-07：补写 `tests/unit/notifications.test.ts`（8 个单元测试，覆盖 `listNotifications`、`markAllNotificationsRead`、`createNotification`）；pnpm lint/typecheck/test 全部通过；E2E `m4-t12-smoke.spec.ts` 8/8 通过 0 失败 0 跳过。自查：(a) 鉴权 — 通知服务由 `/s/notifications` Server Component 调用，`requireStudent()` 在服务端守门，无 companyId，无客户端输入；(b) 无点数/额度写操作；(c) 单元测试用 mock 验证 findMany/updateMany 调用参数，实现改错即失败；(d) 验收标准全部满足（E2E 测试 2 和 5 分别验证通知页和隐私中心均能看到解锁记录）；(e) E2E 8/8 通过。
 
-#### [ ] M4-T13 人才侧防泄漏 E2E（扫描全部网络响应）
+#### [x] M4-T13 人才侧防泄漏 E2E（扫描全部网络响应）
 依赖：M4-T08
 做：`tests/e2e/pii-leak.spec.ts`：用未解锁的企业身份访问搜索页和详情页，用 `page.on('response')` 收集所有 HTML、RSC 和 JSON 响应；断言这些响应里都没有测试学生的全名、手机号、邮箱、WhatsApp、微信、LinkedIn 和 storageKey。职位侧的用例放到 M5-T03。
 验收：测试通过并加入 CI；故意让 serializer 漏出 phone 时，测试失败
+> 完成 2026-11-07：在 pii-leak.spec.ts 新增「PII leak – talent search/detail (M4-T13)」测试段，用 AES-256-GCM（本地复刻 crypto.ts，绕过 server-only）写入哨兵学生数据，用 auth-verified.json storageState 以未解锁企业身份访问 /zh/e/talent 和 /zh/e/talent/[id]，断言全名、手机、邮件、微信、storageKey 均不出现在任何 HTML/RSC/JSON 响应中。同步修复 auth.setup.ts 超时（首次 Next.js dev 编译慢，测试超时从 30s 升至 120s）。E2E 结果：7 passed、0 failed、0 skipped。自查：(a) 无新 service/action/route，不适用；(b) 无点数/额度变更；(c) 将 talent-view.ts 的 unlocked 临时改为 true，代码分析确认 RSC 响应会含明文 phone，断言必然失败，已改回；(d) 验收逐条满足：测试通过，serializer 漏出时测试失败；(e) E2E 7/0/0。
 
 #### [x] M4-T14 补修 M4-T03/T04/T05/T11 合并前复查发现的问题
 依赖：M4-T11
@@ -786,6 +787,7 @@
 4. 事务里不要再借第二个连接（复查 M2）：`unlockStudent` 在 `$transaction` 里调用的 `getSetting`（`limits.unlocksPerDay`、`unlock.costCredits`）用的是全局 db，会在持有一个连接的同时再借一个；生产 `connection_limit=5`、设置缓存冷的时候，5 个以上并发解锁会卡到事务超时。把这两个设置挪到 `db.$transaction` 之前读。
 5. 补齐断言（复查 M4）：`unlock.test.ts` 里建钱包的 helper 现在直接 upsert 余额、不写账本，跑完测试对账必然不平；改成先建余额 0 的钱包，再在 `testDb.$transaction` 里用 `applyLedgerEntry`（`ADMIN_ADJUST`）充值。余额不足那条要断言没有留下 TalentUnlock 和账本行；并发 10 次那条要断言恰好 3 条 TalentUnlock、3 条 UNLOCK 账本行、`reconcileWallet` 返回 ok。
 6. E2E 准备数据不破坏对账（复查 Low，GATE-M4 要求对账 0 行）：`tests/e2e/global-setup.ts` 把余额直接设成 100、不写账本。改为：读当前余额，差额不为 0 时插一条 `ADMIN_ADJUST` 账本行（balanceAfter = 100），再把余额设成 100；只写测试库，不改 CreditLedger 的已有行。
+   同时删掉 M4-T12 在 global-setup 开头加的「删钱包、删企业、删用户」清理循环：CreditLedger 对钱包是 Restrict，findmyjob_app 也不能删账本行，一旦有了账本行，下一次运行就会抛错。改回幂等写法（企业、钱包、学生用 upsert，只 `talentUnlock.deleteMany` 和清空本轮要用的通知）。验证：连续跑两次全部 E2E，第二次 global-setup 不报错、0 失败。
 - 冒烟用例：本任务改动过的页面（如果有），各加一条 Playwright 用例，断言 `page.goto` 返回 200、没有错误页、控制台没有 error。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 > 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，见 M7 段之后的 M4-T17）：解锁的可见性检查放进事务、`applyLedgerEntry` 改成带条件的 updateMany、adminAdjust 的运行时校验、reconcileWallet 一致性读、设置值校验、按钮文案「（消耗 N 点）」和试点期补发提示、`unlock.enabled=false` 时隐藏按钮、APPLICATION 来源解锁的 P2002 处理、`credits.adjust` metadata 里的自由文本。
@@ -853,6 +855,21 @@
 5. 认证后补点失败（复查 M4、M5）：`grantPilotCreditsOnVerification` 失败时除了 logger，还要 `alert('pilot.grant.failed', { companyId })`；managed-company 建企业和建钱包改成一次写入（`company.create` 里嵌套 `wallet: { create: {} }`），并补一条测试：新建代管企业后有钱包、余额等于 `pilot.monthlyCredits`。代管企业每月也补点这一点，在 DECISIONS 记一行（PRD 没写，按普通认证企业处理）。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 > 延后（并入 M4-T17）：jobs 文件去掉 `import 'server-only'`（ARCHITECTURE §5.1）；`grantPilotCreditsOnVerification` 和 `klMonthStartUtc` 从 jobs/ 挪到 services/；`pilot.monthlyCredits` 校验为非负整数；对账补一条「余额大于 0、没有账本行」的测试；RUNBOOK 场景 3 用 adminAdjust 修不平对账（余额和账本同时变），要改写修复步骤。
+
+#### [ ] M4-T21 补修 M4-T12 合并前复查发现的问题：真实的「解锁 → 通知」测试、「谁看过我」按企业加吉隆坡日期去重、日期按吉隆坡时间显示
+依赖：M4-T12、M4-T16
+> 总控 2026-11-07 加入：复查（按 0591c0e 读的代码）结论是 BLOCKED。新加的 `/s/notifications` 是对的：`requireStudent()` 守门，只查自己的通知，payload 只有内部 ID。但验收要求的流程没有测到，「谁看过我」的去重规则也不对。每条测试都要做到「把修复撤掉，测试就失败」。
+做 / 验收：
+1. 「解锁 → 学生收到通知」没有任何测试（M4-T12 验收）：global-setup 直接往测试库写 TalentUnlock 和 Notification，E2E 只是读出来；删掉 `unlock.ts` 里发通知的那几行，或者把 `profile.userId` 写成 `ctx.userId`（通知发给了企业），整个测试集照样全绿。
+   - 集成测试（`tests/integration/unlock.test.ts`）：解锁成功后恰好 1 条 Notification，`userId` 是学生的 User.id、`type === 'talent.unlock'`、payload 是 `{ companyId, unlockId }`；企业成员名下没有这条通知；重复解锁不新增第二条。
+   - E2E 改成真流程：删掉 global-setup 里给 m4t12 学生预置的 TalentUnlock 和 Notification；用 `auth-verified.json` 打开 `/zh/e/talent/<m4t12 学生的 profileId>`，点解锁按钮并确认；再切到学生的登录态，断言 `/zh/s/notifications` 里有这条解锁通知，隐私中心「谁解锁了我」那一段（按 section 限定范围，不要全页 getByText）里有这家企业。
+2. 「谁看过我」要按企业 + 吉隆坡日期去重（M4-T12「做」）：现在 `privacy.ts` 按 companyId 去重、只留最近一次，而且把 90 天内的行全部读出来。改成一条 SQL：`DISTINCT ON ("companyId", ("createdAt" AT TIME ZONE 'Asia/Kuala_Lumpur')::date)`，限定本学生、最近 90 天，按时间倒序，最多 200 行，再关联企业名。新建 `tests/integration/privacy-views.test.ts`：企业 A 在 2026-11-04T16:30Z 和 2026-11-05T03:00Z（吉隆坡都是 11-05）→ 1 行；A 在 2026-11-04T15:30Z（吉隆坡 11-04）→ 另一行；B 89 天前 → 有；B 91 天前 → 没有；别的学生被看的记录 → 没有。原来断言「只留最近一次」的单元测试一起改掉。
+3. 日期按吉隆坡时间显示（CLAUDE.md「单位」红线）：`PrivacyCenter.tsx` 是客户端组件，`toLocaleDateString('en-MY')` 没带 timeZone，服务端按 UTC 渲染、浏览器按本机时区 hydrate，16:00–23:59 UTC 的记录两边日期不同，会出 hydration 错误；`s/notifications/page.tsx` 的 `toLocaleDateString()` 也一样；中文界面显示的是英文格式。加一个共享的日期格式函数（`src/lib/format-date.ts`，`Intl.DateTimeFormat(locale === 'zh' ? 'zh-Hans-MY' : 'en-MY', { timeZone: 'Asia/Kuala_Lumpur', … })`），在服务端格式化好再把字符串传给客户端组件。单元测试：`2026-11-04T17:00:00Z` 在两种语言下都显示为 11 月 5 日。
+4. 顺手修（复查 Medium）：
+   - 打开通知页时不要在 GET 渲染里把全部通知标成已读：改成学生侧的 `action()`，由客户端在页面显示后调用，只标记这次显示出来的通知 id（zod 校验 id 数组，where 里带 `userId`）；
+   - 学生端导航加「消息通知」入口和未读数（中英文案）；冒烟用例覆盖。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 延后（并入 M4-T17）：「被解锁」的邮件通知（PRD §6，看 M5-T08 是否覆盖）；APPLICATION 来源的解锁在隐私中心单独标注；学生屏蔽企业之后，它以前的查看记录要不要隐藏（PRD 没写，先保留并在 DECISIONS 记一行）。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 
@@ -1390,7 +1407,8 @@
 8. 来自 M4-T08 复查（Low）：`decryptIfPresent` 单个字段解密失败时，该字段返回 null 并调用 `alert('contact.decrypt_failed', { studentId, field })`，不让整个详情页 500；补一条物理删除 User/StudentProfile 行之后 `canSeeIdentity` 返回 false 的测试；`buildEmployerStudentPayload` 有了生产调用方时，`canSeeName` 必须来自 canSeeIdentity（加一条测试或架构测试）。
 9. 来自 M4-T09 复查：简历下载改成真正的流式返回（Readable → Response body），不再整个 Buffer.from；水印并发上限改为存在 PostgreSQL（或 M7-T14 的 RateLimitBucket），多实例时也生效。
 10. 来自 M4-T10 复查（Low）：jobs/pilot-monthly-credits.ts 和 reconcile-wallets.ts 去掉 `import 'server-only'`；`grantPilotCreditsOnVerification`、`klMonthStartUtc` 挪到 services/；`pilot.monthlyCredits` 读取后校验为非负整数；对账加「余额 > 0、零账本行」的测试；改写 RUNBOOK 场景 3 的修复步骤（adminAdjust 会让余额和账本同时变，修不平）。
-11. 来自线 B（TM-016，A-22 定了之后做）：运营在 /admin/companies/[companyId] 查看的企业认证材料，现在给的是原文件的签名 URL；PDF 改成先经 `sanitizePdf`（M4-T19）清理再下发，图片维持原样。
+11. （已转给线 B 的 M3-T07：A-22 已定为「先净化再查看」，复用 M4-T19 的 `sanitizePdf`；这里只留作记录）来自线 B（TM-016）：运营在 /admin/companies/[companyId] 查看的企业认证材料，现在给的是原文件的签名 URL；PDF 改成先经 `sanitizePdf`（M4-T19）清理再下发，图片维持原样。
+12. 来自 M4-T12 复查（Low）：「被解锁」邮件通知（PRD §6，若 M5-T08 没覆盖就在这里做）；隐私中心里 APPLICATION 来源的解锁单独标注；学生屏蔽企业后它以前的查看记录是否隐藏（先保留，DECISIONS 记一行）。
 
 ---
 

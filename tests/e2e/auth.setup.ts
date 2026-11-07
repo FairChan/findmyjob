@@ -13,6 +13,9 @@ import { test as setup, expect } from '@playwright/test'
 import { stubTurnstile } from './helpers/turnstile'
 import type { E2EFixtures } from './global-setup'
 
+// Initial Next.js dev-mode compilation can exceed the default 30 s timeout.
+setup.setTimeout(120_000)
+
 function loadFixtures(): E2EFixtures {
   const path = resolve(process.cwd(), 'tests/e2e/fixtures.json')
   return JSON.parse(readFileSync(path, 'utf-8')) as E2EFixtures
@@ -30,7 +33,7 @@ setup('authenticate as verified employer', async ({ page }) => {
   await page.fill('input[type="password"]', fixtures.verifiedEmployer.password)
   await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 15000 })
   await page.click('button[type="submit"]')
-  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 30000 })
+  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 90000 })
   // Verify we're authenticated
   await expect(page).not.toHaveURL(/\/login/)
   await page.context().storageState({ path: VERIFIED_STATE_PATH })
@@ -44,7 +47,7 @@ setup('authenticate as unverified employer', async ({ page }) => {
   await page.fill('input[type="password"]', fixtures.unverifiedEmployer.password)
   await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 15000 })
   await page.click('button[type="submit"]')
-  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 30000 })
+  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 90000 })
   await expect(page).not.toHaveURL(/\/login/)
   await page.context().storageState({ path: UNVERIFIED_STATE_PATH })
 })
@@ -57,7 +60,7 @@ setup('authenticate as m4t12 student', async ({ page }) => {
   await page.fill('input[type="password"]', fixtures.m4t12Student.password)
   await page.waitForSelector('button[type="submit"]:not([disabled])', { timeout: 15000 })
   await page.click('button[type="submit"]')
-  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 30000 })
+  await page.waitForURL((url) => !url.pathname.endsWith('/login'), { timeout: 90000 })
   await expect(page).not.toHaveURL(/\/login/)
   await page.context().storageState({ path: M4T12_STUDENT_STATE_PATH })
 })

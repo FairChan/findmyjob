@@ -2,11 +2,64 @@
  * PII leak tests: verifies that sensitive student data never appears in unauthenticated or
  * unauthorized responses, and that locked job details do not expose description/requirements/
  * benefits/salary even for quota-exhausted students.
+ *
+ * M4-T13: talent-side PII leak – employer without unlock must not see fullName / contact /
+ * storageKey in any HTML, RSC, or JSON response from /e/talent and /e/talent/[id].
  */
 import { test, expect, type Page } from '@playwright/test'
+import { createCipheriv, randomBytes } from 'node:crypto'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { faker } from '@faker-js/faker'
 import { e2eDb } from './helpers/db'
 import { loginAs } from './helpers/session'
+
+// Verified employer storageState (written by auth.setup.ts, depends on global-setup fixtures)
+const VERIFIED_STATE = resolve(process.cwd(), 'tests/e2e/auth-verified.json')
+
+/**
+ * Loads PII_KEYS and PII_ACTIVE_KEY_ID from process.env (CI / shell) or from the
+ * local .env file (developer convenience).  Throws if neither source has the keys.
+ */
+function loadPiiKeys(): { piiKeys: string; activeKeyId: string } {
+  if (process.env.PII_KEYS) {
+    return { piiKeys: process.env.PII_KEYS, activeKeyId: process.env.PII_ACTIVE_KEY_ID ?? 'v1' }
+  }
+  try {
+    const env = readFileSync(resolve(process.cwd(), '.env'), 'utf-8')
+    let piiKeys = ''
+    let activeKeyId = 'v1'
+    for (const line of env.split('\n')) {
+      const eq = line.indexOf('=')
+      if (eq <= 0 || line.trimStart().startsWith('#')) continue
+      const k = line.slice(0, eq).trim()
+      let v = line.slice(eq + 1).trim()
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1)
+      if (k === 'PII_KEYS') piiKeys = v
+      if (k === 'PII_ACTIVE_KEY_ID') activeKeyId = v
+    }
+    if (!piiKeys) throw new Error('PII_KEYS not found in .env')
+    return { piiKeys, activeKeyId }
+  } catch (e) {
+    throw new Error(`PII_KEYS unavailable: ${(e as Error).message}`)
+  }
+}
+
+/**
+ * Replicates the AES-256-GCM encryption from src/server/lib/crypto.ts (without
+ * the server-only restriction) so test setup can write encrypted contact rows.
+ */
+function encryptLocal(plaintext: string, aad: string, piiKeys: string, keyId: string): string {
+  const keyPart = piiKeys.split(',').find((p) => p.startsWith(`${keyId}:`))
+  if (!keyPart) throw new Error(`PII key not found: ${keyId}`)
+  const key = Buffer.from(keyPart.slice(keyId.length + 1), 'base64')
+  const iv = randomBytes(12)
+  const cipher = createCipheriv('aes-256-gcm', key, iv)
+  cipher.setAAD(Buffer.from(aad, 'utf8'))
+  const ct = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()])
+  const tag = cipher.getAuthTag()
+  return `enc:${keyId}:${Buffer.concat([iv, ct, tag]).toString('base64')}`
+}
 
 const SENTINEL = {
   name: '哨兵测试同学甲',
@@ -197,4 +250,138 @@ test.describe('PII leak – locked job detail (quota exhausted student)', () => 
     await e2eDb.companyMember.deleteMany({ where: { companyId: fakeCompany.id } })
     await e2eDb.company.deleteMany({ where: { id: fakeCompany.id } })
   })
+})
+
+// ─── M4-T13: talent-side PII leak ────────────────────────────────────────────
+//
+// A verified employer who has NOT unlocked the pii-sentinel student must not see
+// any plaintext PII in HTML, RSC, or JSON responses from the talent pool pages.
+//
+// Verification that "故意让 serializer 漏出 phone 时，测试失败":
+//   If talent-view.ts is changed so that `unlocked` is always true (simulating a
+//   bug), getContactForCompany decrypts SENTINEL.phone and the response includes
+//   the plaintext "+60 12-000 0420".  Both tests below would then fail on the
+//   `not.toContain(SENTINEL.phone)` assertion.
+
+test.describe('PII leak – talent search/detail (M4-T13, unlocked=false employer)', () => {
+  let piiStudentId: string
+  let piiStudentUserId: string
+
+  // Unique sentinel values used only in this test block so other tests cannot
+  // inadvertently satisfy/corrupt the assertions.
+  const WECHAT_SENTINEL = 'pii-m4t13-wechat-sentinel'
+  const STORAGE_KEY_SENTINEL = 'resumes/pii-m4t13-sentinel/cv.pdf'
+  const LINKEDIN_SENTINEL = 'https://www.linkedin.com/in/pii-m4t13-sentinel'
+
+  test.beforeAll(async () => {
+    const { piiKeys, activeKeyId } = loadPiiKeys()
+
+    const studentUser = await e2eDb.user.create({
+      data: {
+        name: SENTINEL.name,
+        email: `pii-talent-${Date.now()}@example.test`,
+        emailVerified: true,
+        role: 'STUDENT',
+        status: 'ACTIVE',
+      },
+    })
+    piiStudentUserId = studentUser.id
+
+    const school = await e2eDb.school.findFirst({ where: { active: true } })
+    const profile = await e2eDb.studentProfile.create({
+      data: {
+        userId: studentUser.id,
+        fullName: SENTINEL.name,
+        visibility: 'PUBLIC',
+        completeness: 80,
+        schoolId: school?.id ?? null,
+        schoolVerifiedAt: new Date(),
+        skills: ['Python', 'React'],
+        intents: ['INTERNSHIP'],
+        lastActiveAt: new Date(),
+      },
+    })
+    piiStudentId = profile.id
+
+    // Encrypt sentinel contact values exactly as contact-access.ts does in
+    // production (same AAD scheme: "StudentContact.<field>:<studentId>").
+    const aad = (field: string) => `StudentContact.${field}:${piiStudentId}`
+    await e2eDb.studentContact.create({
+      data: {
+        studentId: piiStudentId,
+        phone: encryptLocal(SENTINEL.phone, aad('phone'), piiKeys, activeKeyId),
+        email: encryptLocal(SENTINEL.email, aad('email'), piiKeys, activeKeyId),
+        whatsapp: encryptLocal(SENTINEL.phone, aad('whatsapp'), piiKeys, activeKeyId),
+        wechat: encryptLocal(WECHAT_SENTINEL, aad('wechat'), piiKeys, activeKeyId),
+        linkedinUrl: encryptLocal(LINKEDIN_SENTINEL, aad('linkedinUrl'), piiKeys, activeKeyId),
+      },
+    })
+
+    await e2eDb.resumeFile.create({
+      data: {
+        studentId: piiStudentId,
+        storageKey: STORAGE_KEY_SENTINEL,
+        fileName: 'cv.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        isPrimary: true,
+      },
+    })
+  })
+
+  test.afterAll(async () => {
+    if (piiStudentId) {
+      await e2eDb.studentContact.deleteMany({ where: { studentId: piiStudentId } })
+      await e2eDb.resumeFile.deleteMany({ where: { studentId: piiStudentId } })
+      await e2eDb.studentProfile.deleteMany({ where: { id: piiStudentId } })
+    }
+    if (piiStudentUserId) {
+      await e2eDb.user.deleteMany({ where: { id: piiStudentUserId } })
+    }
+  })
+
+  test(
+    'talent search page: verified employer (no unlock) sees no PII in any response',
+    async ({ browser }) => {
+      const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+      const page = await ctx.newPage()
+      try {
+        const bodies = await collectPageText(page, '/zh/e/talent')
+        const all = bodies.join('\n')
+
+        // Full name must be masked (toMaskName → '哨同学'), never appear verbatim
+        expect(all).not.toContain(SENTINEL.name)
+        // Decrypted contact values must not appear
+        expect(all).not.toContain(SENTINEL.phone)
+        expect(all).not.toContain(SENTINEL.email)
+        expect(all).not.toContain(WECHAT_SENTINEL)
+        // 'pii-m4t13' is a unique prefix shared by storageKey and linkedin sentinel
+        expect(all).not.toContain('pii-m4t13')
+      } finally {
+        await ctx.close()
+      }
+    },
+  )
+
+  test(
+    'talent detail page: verified employer (no unlock) sees no PII in any response',
+    async ({ browser }) => {
+      const ctx = await browser.newContext({ storageState: VERIFIED_STATE })
+      const page = await ctx.newPage()
+      try {
+        // piiStudentId is set in beforeAll; test runs after beforeAll completes
+        const bodies = await collectPageText(page, `/zh/e/talent/${piiStudentId}`)
+        const all = bodies.join('\n')
+
+        expect(all).not.toContain(SENTINEL.name)
+        expect(all).not.toContain(SENTINEL.phone)
+        expect(all).not.toContain(SENTINEL.email)
+        expect(all).not.toContain(WECHAT_SENTINEL)
+        expect(all).not.toContain('pii-m4t13')
+        expect(all).not.toContain(STORAGE_KEY_SENTINEL)
+      } finally {
+        await ctx.close()
+      }
+    },
+  )
 })
