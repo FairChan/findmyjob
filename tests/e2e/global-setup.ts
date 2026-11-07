@@ -9,6 +9,7 @@ import { createE2eDb } from './helpers/db'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { randomBytes, scrypt } from 'node:crypto'
+import { LedgerReason } from '@prisma/client'
 
 // Bootstrap env vars from .env if the shell didn't export them (local dev convenience).
 // Only parse if TEST_DATABASE_URL is not already set — in CI it comes from the environment.
@@ -73,27 +74,6 @@ export default async function globalSetup() {
   const m4t12StudentHashedPw = await hashPassword(m4t12StudentPassword)
 
   try {
-    // ---- Cleanup stale E2E data to ensure a consistent starting state ----
-    // Finds companies owned by the E2E employer emails and deletes them (the
-    // app user has CASCADE-DELETE on related tables like CompanyMember).
-    // CreditWallet, TalentUnlock, etc. have Restrict delete so we delete those first.
-    const employerEmails = [VERIFIED_EMAIL, UNVERIFIED_EMAIL]
-    for (const email of employerEmails) {
-      const existing = await prisma.user.findUnique({ where: { email } })
-      if (existing) {
-        const members = await prisma.companyMember.findMany({ where: { userId: existing.id } })
-        for (const m of members) {
-          // Delete order matters for Restrict FK: CreditWallet, TalentUnlock, then Company
-          await prisma.creditWallet.deleteMany({ where: { companyId: m.companyId } })
-          await prisma.talentUnlock.deleteMany({ where: { companyId: m.companyId } })
-          await prisma.talentFolder.deleteMany({ where: { companyId: m.companyId } })
-          await prisma.company.deleteMany({ where: { id: m.companyId } })
-        }
-        // Delete the user (cascade: Account, CompanyMember, Notification, etc.)
-        await prisma.user.delete({ where: { id: existing.id } })
-      }
-    }
-
     // ---- Helper: create or update employer user + company + member ----
     async function ensureEmployer(
       email: string,
@@ -233,11 +213,34 @@ export default async function globalSetup() {
     }
 
     // ---- Ensure CreditWallet for verified employer (M4-T07: unlock) ----
-    await prisma.creditWallet.upsert({
+    // Use proper ledger entries to maintain reconciliation (balance = sum of all deltas)
+    const TARGET_BALANCE = 100
+    let wallet = await prisma.creditWallet.findUnique({
       where: { companyId: verifiedEmp.companyId },
-      create: { companyId: verifiedEmp.companyId, balance: 100 },
-      update: { balance: 100 },
+      select: { id: true, balance: true },
     })
+    if (!wallet) {
+      const created = await prisma.creditWallet.create({
+        data: { companyId: verifiedEmp.companyId, balance: 0 },
+        select: { id: true, balance: true },
+      })
+      wallet = created
+    }
+    if (wallet.balance !== TARGET_BALANCE) {
+      const delta = TARGET_BALANCE - wallet.balance
+      await prisma.creditLedger.create({
+        data: {
+          walletId: wallet.id,
+          delta,
+          balanceAfter: TARGET_BALANCE,
+          reason: LedgerReason.ADMIN_ADJUST,
+        },
+      })
+      await prisma.creditWallet.update({
+        where: { id: wallet.id },
+        data: { balance: TARGET_BALANCE },
+      })
+    }
     // Clear any TalentUnlock records so the unlock button is always visible each run
     await prisma.talentUnlock.deleteMany({ where: { companyId: verifiedEmp.companyId } })
 

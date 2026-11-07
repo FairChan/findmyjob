@@ -3,6 +3,7 @@ import { LedgerReason, UnlockSource } from '@prisma/client'
 import { db } from '../db'
 import { NotFoundError, RateLimitedError } from '../errors'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { logger } from '../lib/logger'
 import { logAudit } from './audit'
 import { applyLedgerEntry } from './credits'
 import { isStudentVisibleToCompany } from './talent-visibility'
@@ -30,6 +31,10 @@ export async function unlockStudent(
   const visible = await isStudentVisibleToCompany(studentId, ctx.companyId)
   if (!visible) throw new NotFoundError('Student profile not found or not visible')
 
+  // Read settings before the transaction to avoid borrowing a second connection while holding one
+  const dailyLimit = await getSetting<number>('limits.unlocksPerDay', 50)
+  const cost = await getSetting<number>('unlock.costCredits', 1)
+
   type TxResult =
     | { kind: 'alreadyUnlocked'; unlockId: string }
     | { kind: 'limitHit' }
@@ -47,7 +52,6 @@ export async function unlockStudent(
       return { kind: 'alreadyUnlocked', unlockId: existing.id }
     }
 
-    const dailyLimit = await getSetting<number>('limits.unlocksPerDay', 50)
     const startOfToday = todayUTCStart()
     const todayCount = await tx.talentUnlock.count({
       where: { unlockedById: ctx.userId, createdAt: { gte: startOfToday } },
@@ -55,8 +59,6 @@ export async function unlockStudent(
     if (todayCount >= dailyLimit) {
       return { kind: 'limitHit' }
     }
-
-    const cost = await getSetting<number>('unlock.costCredits', 1)
 
     const unlock = await tx.talentUnlock.create({
       data: {
@@ -77,10 +79,20 @@ export async function unlockStudent(
       actorId: ctx.userId,
     })
 
+    // Audit inside the transaction so a write failure rolls back the entire unlock
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'talent.unlock',
+      targetType: 'TalentUnlock',
+      targetId: unlock.id,
+      metadata: { companyId: ctx.companyId, studentId },
+    }, tx)
+
     return { kind: 'unlocked', unlockId: unlock.id }
   })
 
   if (txResult.kind === 'limitHit') {
+    // talent.limit.hit is intentionally outside the transaction
     await logAudit({
       actorId: ctx.userId,
       action: 'talent.limit.hit',
@@ -91,24 +103,20 @@ export async function unlockStudent(
   }
 
   if (txResult.kind === 'unlocked') {
-    await logAudit({
-      actorId: ctx.userId,
-      action: 'talent.unlock',
-      targetType: 'TalentUnlock',
-      targetId: txResult.unlockId,
-      metadata: { companyId: ctx.companyId, studentId },
-    })
-
-    // Notify student post-commit (outside transaction)
+    // Notify student post-commit; failure must not roll back the already-committed unlock
     const profile = await db.studentProfile.findUnique({
       where: { id: studentId },
       select: { userId: true },
     })
     if (profile) {
-      await createNotification(db, profile.userId, 'talent.unlock', {
-        companyId: ctx.companyId,
-        unlockId: txResult.unlockId,
-      })
+      try {
+        await createNotification(db, profile.userId, 'talent.unlock', {
+          companyId: ctx.companyId,
+          unlockId: txResult.unlockId,
+        })
+      } catch {
+        logger.error({ unlockId: txResult.unlockId }, 'Failed to send unlock notification')
+      }
     }
   }
 

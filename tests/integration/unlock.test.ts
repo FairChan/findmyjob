@@ -8,7 +8,7 @@
  * - hidden student → NotFoundError
  * - feature disabled → FeatureDisabledError
  */
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
 
 vi.mock('@/server/auth', () => ({
   getSession: vi.fn(),
@@ -20,10 +20,17 @@ vi.mock('@/server/db', async () => {
   return { db: testDb }
 })
 
+vi.mock('@/server/services/notifications', () => ({
+  createNotification: vi.fn(),
+}))
+
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer } from '../factories'
 import { unlockStudent } from '@/server/services/unlock'
 import { clearSettingsCache } from '@/server/services/settings'
+import { applyLedgerEntry, reconcileWallet } from '@/server/services/credits'
+import { LedgerReason } from '@prisma/client'
+import { createNotification } from '@/server/services/notifications'
 import {
   NotFoundError,
   RateLimitedError,
@@ -63,11 +70,20 @@ async function createVerifiedEmployer() {
 }
 
 async function createWallet(companyId: string, balance: number) {
-  return testDb.creditWallet.upsert({
+  await testDb.creditWallet.upsert({
     where: { companyId },
-    create: { companyId, balance },
-    update: { balance },
+    create: { companyId, balance: 0 },
+    update: {},
   })
+  if (balance > 0) {
+    await testDb.$transaction(async (tx) => {
+      await applyLedgerEntry(tx, {
+        companyId,
+        delta: balance,
+        reason: LedgerReason.ADMIN_ADJUST,
+      })
+    })
+  }
 }
 
 async function createVisibleStudent(overrides?: { completeness?: number }) {
@@ -101,7 +117,9 @@ describe('unlockStudent: basic', () => {
     const wallet = await testDb.creditWallet.findUnique({ where: { companyId: emp.companyId } })
     expect(wallet?.balance).toBe(4)
 
-    const ledger = await testDb.creditLedger.findMany({ where: { wallet: { companyId: emp.companyId } } })
+    const ledger = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: emp.companyId }, reason: LedgerReason.UNLOCK },
+    })
     expect(ledger).toHaveLength(1)
     expect(ledger[0].delta).toBe(-1)
     expect(ledger[0].refType).toBe('TalentUnlock')
@@ -145,7 +163,7 @@ describe('unlockStudent: basic', () => {
     ).rejects.toBeInstanceOf(NotFoundError)
   })
 
-  it('insufficient credits → InsufficientCreditsError', async () => {
+  it('insufficient credits → InsufficientCreditsError, no TalentUnlock, no ledger entry', async () => {
     const emp = await createVerifiedEmployer()
     await createWallet(emp.companyId, 0)
     const student = await createVisibleStudent()
@@ -153,6 +171,13 @@ describe('unlockStudent: basic', () => {
     await expect(
       unlockStudent({ userId: emp.userId, companyId: emp.companyId }, student.profileId),
     ).rejects.toBeInstanceOf(InsufficientCreditsError)
+
+    const unlocks = await testDb.talentUnlock.findMany({ where: { companyId: emp.companyId } })
+    expect(unlocks).toHaveLength(0)
+    const ledger = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: emp.companyId }, reason: LedgerReason.UNLOCK },
+    })
+    expect(ledger).toHaveLength(0)
   })
 
   it('feature disabled → FeatureDisabledError', async () => {
@@ -180,8 +205,57 @@ describe('unlockStudent: basic', () => {
   })
 })
 
+describe('unlockStudent: audit and notification', () => {
+  it('successful unlock writes exactly 1 talent.unlock audit with correct targetId and no contact info', async () => {
+    const emp = await createVerifiedEmployer()
+    await createWallet(emp.companyId, 5)
+    const student = await createVisibleStudent()
+
+    const result = await unlockStudent(
+      { userId: emp.userId, companyId: emp.companyId },
+      student.profileId,
+    )
+
+    const audit = await testDb.auditLog.findFirst({
+      where: { action: 'talent.unlock', actorId: emp.userId },
+    })
+    expect(audit).not.toBeNull()
+    expect(audit?.targetId).toBe(result.unlockId)
+    const metaStr = JSON.stringify(audit?.metadata)
+    expect(metaStr).not.toContain('phone')
+    expect(metaStr).not.toContain('email')
+    expect(metaStr).not.toContain('wechat')
+  })
+
+  it('createNotification throws → unlock still succeeds, audit and ledger are present', async () => {
+    vi.mocked(createNotification).mockRejectedValueOnce(new Error('notification failed'))
+
+    const emp = await createVerifiedEmployer()
+    await createWallet(emp.companyId, 5)
+    const student = await createVisibleStudent()
+
+    const result = await unlockStudent(
+      { userId: emp.userId, companyId: emp.companyId },
+      student.profileId,
+    )
+    expect(result.alreadyUnlocked).toBe(false)
+
+    // Audit is still written (inside the transaction, committed before notification failed)
+    const audit = await testDb.auditLog.findFirst({
+      where: { action: 'talent.unlock', actorId: emp.userId },
+    })
+    expect(audit).not.toBeNull()
+
+    // Ledger entry is still present
+    const ledger = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: emp.companyId }, reason: LedgerReason.UNLOCK },
+    })
+    expect(ledger).toHaveLength(1)
+  })
+})
+
 describe('unlockStudent: concurrency', () => {
-  it('balance 3, 10 concurrent different-student unlocks → exactly 3 succeed', async () => {
+  it('balance 3, 10 concurrent different-student unlocks → exactly 3 succeed, reconcileWallet ok', async () => {
     const emp = await createVerifiedEmployer()
     await createWallet(emp.companyId, 3)
     const students = await Promise.all(
@@ -206,9 +280,20 @@ describe('unlockStudent: concurrency', () => {
 
     const wallet = await testDb.creditWallet.findUnique({ where: { companyId: emp.companyId } })
     expect(wallet?.balance).toBe(0)
+
+    // Exactly 3 TalentUnlock rows and 3 UNLOCK ledger entries
+    const unlocks = await testDb.talentUnlock.findMany({ where: { companyId: emp.companyId } })
+    expect(unlocks).toHaveLength(3)
+    const unlockLedger = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: emp.companyId }, reason: LedgerReason.UNLOCK },
+    })
+    expect(unlockLedger).toHaveLength(3)
+
+    const reconcile = await reconcileWallet({ companyId: emp.companyId })
+    expect(reconcile.ok).toBe(true)
   })
 
-  it('concurrent duplicate unlocks for same student → only 1 charge', async () => {
+  it('concurrent duplicate unlocks for same student → only 1 charge, reconcileWallet ok', async () => {
     const emp = await createVerifiedEmployer()
     await createWallet(emp.companyId, 10)
     const student = await createVisibleStudent()
@@ -230,5 +315,13 @@ describe('unlockStudent: concurrency', () => {
       where: { companyId: emp.companyId, studentId: student.profileId },
     })
     expect(unlocks).toHaveLength(1)
+
+    const unlockLedger = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: emp.companyId }, reason: LedgerReason.UNLOCK },
+    })
+    expect(unlockLedger).toHaveLength(1)
+
+    const reconcile = await reconcileWallet({ companyId: emp.companyId })
+    expect(reconcile.ok).toBe(true)
   })
 })

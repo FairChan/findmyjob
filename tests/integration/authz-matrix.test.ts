@@ -1178,6 +1178,128 @@ describe('jobs authz (M5-T01)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// talent.unlock action authz (M4-T16): action-level guard tests
+// ---------------------------------------------------------------------------
+
+describe('talent.unlock: unlockStudentAction action-level authz', () => {
+  async function setupActionUnlockSettings() {
+    for (const [k, v] of [
+      ['unlock.enabled', true],
+      ['unlock.costCredits', 1],
+      ['limits.unlocksPerDay', 50],
+      ['talentPool.minCompleteness', 60],
+    ] as const) {
+      await testDb.systemSetting.upsert({
+        where: { key: k },
+        create: { key: k, value: v as Parameters<typeof testDb.systemSetting.create>[0]['data']['value'] },
+        update: { value: v as Parameters<typeof testDb.systemSetting.create>[0]['data']['value'] },
+      })
+    }
+    clearSettingsCache()
+  }
+
+  async function makeVerifiedEmpWithWallet(balance = 5) {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    await testDb.creditWallet.create({ data: { companyId: emp.companyId, balance } })
+    return emp
+  }
+
+  async function makeVisibleStudent() {
+    const { profileId } = await createStudent(testDb, { completeness: 80 })
+    await testDb.studentProfile.update({
+      where: { id: profileId },
+      data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() },
+    })
+    return profileId
+  }
+
+  it('unverified company → FORBIDDEN, no TalentUnlock, balance unchanged', async () => {
+    await setupActionUnlockSettings()
+    const emp = await createEmployer(testDb) // UNSUBMITTED
+    await testDb.creditWallet.create({ data: { companyId: emp.companyId, balance: 5 } })
+    const profileId = await makeVisibleStudent()
+
+    mockSession(emp.userId)
+    const { unlockStudentAction } = await import('@/server/actions/unlock')
+    const result = await unlockStudentAction({ studentId: profileId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+
+    const unlocks = await testDb.talentUnlock.findMany({ where: { companyId: emp.companyId } })
+    expect(unlocks).toHaveLength(0)
+    const wallet = await testDb.creditWallet.findUnique({ where: { companyId: emp.companyId } })
+    expect(wallet?.balance).toBe(5)
+  })
+
+  it('student session → FORBIDDEN', async () => {
+    await setupActionUnlockSettings()
+    const { userId } = await createStudent(testDb)
+    const profileId = await makeVisibleStudent()
+
+    mockSession(userId)
+    const { unlockStudentAction } = await import('@/server/actions/unlock')
+    const result = await unlockStudentAction({ studentId: profileId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('unauthenticated (no session) → rejected (ok false)', async () => {
+    await setupActionUnlockSettings()
+    const profileId = await makeVisibleStudent()
+
+    mockSession(null)
+    const { unlockStudentAction } = await import('@/server/actions/unlock')
+    const result = await unlockStudentAction({ studentId: profileId })
+    expect(result.ok).toBe(false)
+  })
+
+  it('company A session with extra companyId B in input → unlock belongs to A, B unaffected', async () => {
+    await setupActionUnlockSettings()
+    const empA = await makeVerifiedEmpWithWallet(5)
+    const empB = await makeVerifiedEmpWithWallet(5)
+    const profileId = await makeVisibleStudent()
+
+    mockSession(empA.userId)
+    const { unlockStudentAction } = await import('@/server/actions/unlock')
+    // Pass extra companyId — Zod strips unknown keys; action must use session companyId
+    const result = await unlockStudentAction({ studentId: profileId, companyId: empB.companyId } as never)
+    expect(result.ok).toBe(true)
+
+    const unlock = await testDb.talentUnlock.findFirst({ where: { studentId: profileId } })
+    expect(unlock?.companyId).toBe(empA.companyId)
+
+    // B's balance and ledger are untouched
+    const walletB = await testDb.creditWallet.findUnique({ where: { companyId: empB.companyId } })
+    expect(walletB?.balance).toBe(5)
+    const ledgerB = await testDb.creditLedger.findMany({
+      where: { wallet: { companyId: empB.companyId }, reason: 'UNLOCK' },
+    })
+    expect(ledgerB).toHaveLength(0)
+  })
+
+  it('SUSPENDED company member → FORBIDDEN, no charge', async () => {
+    await setupActionUnlockSettings()
+    const emp = await makeVerifiedEmpWithWallet(5)
+    const profileId = await makeVisibleStudent()
+
+    // Suspend the user
+    await testDb.user.update({ where: { id: emp.userId }, data: { status: 'SUSPENDED' } })
+
+    mockSession(emp.userId)
+    const { unlockStudentAction } = await import('@/server/actions/unlock')
+    const result = await unlockStudentAction({ studentId: profileId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+
+    const unlocks = await testDb.talentUnlock.findMany({ where: { companyId: emp.companyId } })
+    expect(unlocks).toHaveLength(0)
+    const wallet = await testDb.creditWallet.findUnique({ where: { companyId: emp.companyId } })
+    expect(wallet?.balance).toBe(5)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // talent.unlock (M4-T07): unlock service authz
 // ---------------------------------------------------------------------------
 

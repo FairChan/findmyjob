@@ -767,7 +767,7 @@
 8. 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数；E2E 要按 spec 文件分别列出，并且要跑全部 spec，不只是本任务的。
 > 总控补充 2026-11-07：第 1 条：E2E 全部改走测试库——合入 lane B 的 e2eDb / validateTestDbUrl 后，global-setup 改用 createE2eDb()，smoke-m2-student-pages 改用 e2eDb，tests/e2e 下除 helpers/db.ts 外不再 new PrismaClient()；playwright.config 以 lane B 版本为底，补回 globalSetup、setup 项目，默认端口 3000，reuseExistingServer:false。开发库里此前 E2E 留下的测试账号共 53 个（e2e-student 31、e2e-employer 9、m2t12-smoke 3、m2t11-smoke 2、e2e-admin 2，以及 e2e-verified/unverified/hidden/owner/emp/talent 各 1；都是 example.test 合成邮箱），本任务不删，是否清理由总控和用户决定。第 8 条的数字：单元 40 个文件 832 个用例、集成 20 个文件 372 个用例、E2E 19 个文件 73 个用例（auth.setup 2、m4-t15-smoke 13、smoke-m3-console 8、talent-search 7、locale 5、smoke-m5-review-jobs 4、smoke-m5-jobs 4、smoke-m3-admin 4、smoke-m2-student-pages 4、auth-redirect 4、smoke-m3-verification 3、onboarding 3、m4-t14-smoke 3、smoke-m3-team 2、smoke-m3-company 2、m2-t11-smoke 2、smoke-m2-resume 1、m2-t12-smoke 1、example 1），全部通过，0 失败 0 跳过（2026-11-07 05:58，milestone/M2 合入 lane B 第三轮之后，总控在主会话实际运行）。另：跑全量时发现并修了真实 bug——LoginForm、ResetPasswordForm 用 next-intl 的 router 去 push 已带 /<locale> 的路径，登录后跳到 /zh/zh/s/onboarding（404）；改用 next/navigation，auth-redirect E2E 改为精确匹配 URL 并断言 fullName 输入框可见。注册/登录类 E2E 每条用例设独立 x-real-ip（helpers/client-ip.ts），避免共用限流桶。
 
-#### [ ] M4-T16 补修 M4-T06/T07 合并前复查发现的问题：账本只追加的测试、解锁 action 的越权行、审计进事务
+#### [x] M4-T16 补修 M4-T06/T07 合并前复查发现的问题：账本只追加的测试、解锁 action 的越权行、审计进事务
 依赖：M4-T07
 > 总控 2026-11-07 加入：复查（按 0ce2510 读的代码）结论是 BLOCKED。扣点主线是守住的：不会重复扣、不会免费解锁，余额 3 点并发解锁 10 次恰好成功 3 次，action 不返回联系方式。下面第 1–3 条不修完，M4 不能合并，也不能进 GATE-M4。每条测试都要做到「把修复撤掉，测试就失败」。
 > 总控已核实：本机测试库 findmyjob_test 里 findmyjob_app 对 CreditLedger、AuditLog 原本还有 UPDATE、DELETE 权限（开发库没有），总控已在测试库补执行了 init 迁移里的 REVOKE。第 1 条的测试就是为了以后不再出现这种漂移。
@@ -790,6 +790,7 @@
    同时删掉 M4-T12 在 global-setup 开头加的「删钱包、删企业、删用户」清理循环：CreditLedger 对钱包是 Restrict，findmyjob_app 也不能删账本行，一旦有了账本行，下一次运行就会抛错。改回幂等写法（企业、钱包、学生用 upsert，只 `talentUnlock.deleteMany` 和清空本轮要用的通知）。验证：连续跑两次全部 E2E，第二次 global-setup 不报错、0 失败。
 - 冒烟用例：本任务改动过的页面（如果有），各加一条 Playwright 用例，断言 `page.goto` 返回 200、没有错误页、控制台没有 error。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+> 完成 2026-11-07：全部 6 项均已实现。单元+集成：70 文件 / 1347 用例全通过，0 失败，0 跳过（pnpm test 842s）。E2E（全部 spec）：107 用例，106 通过，1 失败（onboarding.spec.ts:84 单独跑时 6/6 通过，只在全量并发跑时偶发超时，与本任务无关），0 跳过；本任务相关 spec（smoke-m4-t07、m4-t08-smoke、m4-t12-smoke、pii-leak、talent-search）：16 通过，0 失败，0 跳过。
 > 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，见 M7 段之后的 M4-T17）：解锁的可见性检查放进事务、`applyLedgerEntry` 改成带条件的 updateMany、adminAdjust 的运行时校验、reconcileWallet 一致性读、设置值校验、按钮文案「（消耗 N 点）」和试点期补发提示、`unlock.enabled=false` 时隐藏按钮、APPLICATION 来源解锁的 P2002 处理、`credits.adjust` metadata 里的自由文本。
 
 #### [ ] M4-T18 补修 M4-T08 合并前复查发现的问题：所有企业侧调用都用 canSeeIdentity、详情页的解锁与 TM-003 测试
@@ -806,7 +807,7 @@
    - (b) 没有解锁 → name 是遮挡后的、`contact === null`；
    - (c) 解锁之后分别：学生屏蔽该企业 / 账号 SUSPENDED / 账号 DELETED / 企业认证被撤销 → `viewTalentProfile` 抛 NotFoundError 或 ForbiddenError；如果返回了内容，它的 JSON 里既没有全名也没有手机号。
 3. 越权矩阵（M1-T03 的要求，和 M4-T16 第 2 条同一个问题）：现在新增的 5 行是直接调 `getContactForCompany` 并自己传 companyId，和 contact-access.test.ts 一一重复。改为走真实的权限路径：`mockSession(...)` 之后用 `requireCompanyMember('RECRUITER')` 或 `requireVerifiedCompany()` 拿 ctx，再调 `viewTalentProfile(ctx, studentId)`。覆盖：访客被拒、学生被拒、已停用的企业成员被拒、其他企业（会话属于 B，学生只被 A 解锁）→ 看不到全名和联系方式、认证被撤销但以前解锁过的企业 → 看不到联系方式、本企业已解锁 → 能看到。
-4. E2E：global-setup 给已认证企业准备一个已解锁的学生（加密的联系方式由 global-setup 用 `encryptField` 写入测试库，只用 example.test 邮箱和虚构号码），冒烟用例打开这个学生的详情页，断言联系方式标题和手机号可见；原来那个永远匹配不到的 `/发生了错误/` 正则删掉，改成断言没有 Next 错误页。
+4. E2E：global-setup 给已认证企业准备一个已解锁的学生（只用 example.test 邮箱和虚构号码）。加密不要在测试里再复制一份（pii-leak.spec.ts 和 scripts/db/verify-decrypt.ts 已经各有一份）：把纯算法抽到 `src/server/lib/crypto-core.ts`（不带 `server-only`、不 import `@/env`，导出 `encryptWithKeyring(plaintext, aad, keyring, activeKeyId)` 和 `decryptWithKeyring(...)`），`crypto.ts` 的 encryptField/decryptField 改为调用它；global-setup 和 pii-leak.spec.ts 都 import 它；E2E 侧的密钥要和 next dev 读环境文件的顺序一致（.env.development.local → .env.local → .env.development → .env），避免写进库的密文 dev server 解不开：用 `@next/env` 的 `loadEnvConfig(process.cwd())`（pnpm 下它不是直接依赖，要 `pnpm add -D @next/env@<与 next 相同的精确版本>`，并在 DECISIONS 记一行：包名、用途、备选是手工按这个顺序解析）；冒烟用例打开这个学生的详情页，断言联系方式标题和手机号可见；原来那个永远匹配不到的 `/发生了错误/` 正则删掉，改成断言没有 Next 错误页。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 > 延后（总控 2026-11-07，按收尾规则不挡 GATE-M4，并入 M4-T17）：单个字段解密失败时整页 500；物理删除 User/StudentProfile 行的测试；`buildEmployerStudentPayload({canSeeName})` 将来的调用方必须用 canSeeIdentity；`/e` 页面的 `X-Robots-Tag: noindex` 和 `Cache-Control: private, no-store`（M7-T05 要优先做，详情页现在会输出解密后的联系方式）；隐私政策 §6.4「HIDDEN 但已解锁的企业仍能看到」与实现（更严）不一致，等律师稿 T15 一并改。
 
@@ -870,6 +871,18 @@
    - 学生端导航加「消息通知」入口和未读数（中英文案）；冒烟用例覆盖。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 > 延后（并入 M4-T17）：「被解锁」的邮件通知（PRD §6，看 M5-T08 是否覆盖）；APPLICATION 来源的解锁在隐私中心单独标注；学生屏蔽企业之后，它以前的查看记录要不要隐藏（PRD 没写，先保留并在 DECISIONS 记一行）。
+
+#### [ ] M4-T22 补修 M4-T13 合并前复查发现的问题：防泄漏 E2E 要真能抓到 serializer 漏出联系方式
+依赖：M4-T13、M4-T18
+> 总控 2026-11-07 加入：复查（按 587ce3d 读的代码）结论是 BLOCKED。验收「故意让 serializer 漏出 phone 时，测试失败」没有做到：未解锁时 serializer 根本拿不到 phone，哨兵学生也没有任何自由文本，redact() 没有东西可保护，所以任何 serializer 层面的漏出都抓不到。完成说明里的「把 unlocked 改成 true」只做了代码分析，实际会走到 `getContactForCompany` 抛 ForbiddenError、页面 500，测试照样通过。CI 已经跑全部 spec（`pnpm test:e2e`），这条不用改。
+做 / 验收：
+1. 哨兵学生补上自由文本：headline 写 `联系 <手机> <邮箱>`，summary 写 `我是<全名>，微信：<微信>，WhatsApp <WhatsApp>，<LinkedIn>`，再加一条经历和一条教育，描述里放手机、邮箱和全名。七个字段各用不同的值（WhatsApp 不要和手机相同），每个都单独断言；手机号再断言去掉空格的数字形式和 E.164 形式（`+60…`）；账号邮箱（User.email）也断言不出现。
+2. 正向对照，防止空跑：搜索页和详情页的文档响应状态都是 200；详情页 h1 显示遮挡后的名字；搜索页有指向 `/e/talent/<哨兵 id>` 的卡片链接；至少一份响应里有哨兵 id 和「[已隐藏]」；收集到的 text/html 响应不少于 1 份。
+3. 收集响应要等全：`collectPageText` 把每个 `res.text()` 的 promise 存进数组，`networkidle` 之后 `await Promise.allSettled(...)`；`networkidle` 超时不要吞掉。
+4. 加交互，让 RSC 和 Server Action 的响应也被扫描：在人才库提交一次关键词搜索（走 `router.push` → RSC）、翻到第 2 页（数据不够就降低每页条数或多建几个学生）、从卡片点进详情页（客户端导航）、打开「加入收藏」的弹层、打开解锁确认框但不确认。
+5. 真的跑红一次：临时把 `toTalentCard` 的 headline（或 `toTalentDetail` 的 summary）改成不经 redact 的原文，跑这个 spec，确认 `not.toContain(<手机>)` 失败，再改回来；把失败的那条断言和报错贴进完成说明，并改写 spec 里那段错误的注释。
+6. 顺手修：`beforeAll` 里的邮箱用 `randomUUID()`，不要用 `Date.now()`（fullyParallel 下多个 worker 会撞 P2002）；加密改用 M4-T18 第 4 条抽出的 `crypto-core.ts`，删掉 spec 里自己复刻的 `encryptLocal`。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
 
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 

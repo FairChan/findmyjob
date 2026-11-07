@@ -79,25 +79,26 @@ export async function adminAdjust(
   ctx: { actorId: string },
   params: { companyId: string; delta: number; note: string }
 ): Promise<{ balanceAfter: number }> {
-  const result = await db.$transaction(async (tx) => {
-    return applyLedgerEntry(tx, {
+  return db.$transaction(async (tx) => {
+    const result = await applyLedgerEntry(tx, {
       companyId: params.companyId,
       delta: params.delta,
       reason: LedgerReason.ADMIN_ADJUST,
       actorId: ctx.actorId,
       note: params.note,
     })
-  })
 
-  await logAudit({
-    actorId: ctx.actorId,
-    action: 'credits.adjust',
-    targetType: 'CreditWallet',
-    targetId: params.companyId,
-    metadata: { delta: params.delta, note: params.note, balanceAfter: result.balanceAfter },
-  })
+    // Audit inside the transaction so a write failure rolls back the ledger entry
+    await logAudit({
+      actorId: ctx.actorId,
+      action: 'credits.adjust',
+      targetType: 'CreditWallet',
+      targetId: params.companyId,
+      metadata: { delta: params.delta, note: params.note, balanceAfter: result.balanceAfter },
+    }, tx)
 
-  return result
+    return result
+  })
 }
 
 /** Creates a fresh wallet with zero balance for a newly verified company. */

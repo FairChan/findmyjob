@@ -209,6 +209,56 @@ describe('adminAdjust', () => {
   })
 })
 
+describe('CreditLedger and AuditLog append-only permissions', () => {
+  function isPermissionDenied(err: unknown): boolean {
+    if (!(err instanceof Error)) return false
+    return err.message.includes('42501') || err.message.includes('permission denied for table')
+  }
+
+  it('UPDATE CreditLedger is denied (42501)', async () => {
+    const { companyId } = await createEmployer(testDb)
+    await createWallet(companyId, 0)
+    const wallet = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    // Insert a row first so the table is not empty
+    await testDb.creditLedger.create({
+      data: { walletId: wallet.id, delta: 1, balanceAfter: 1, reason: LedgerReason.PILOT_GRANT },
+    })
+
+    await expect(
+      testDb.$executeRaw`UPDATE "CreditLedger" SET "delta" = 0`
+    ).rejects.toSatisfy(isPermissionDenied)
+  })
+
+  it('DELETE CreditLedger is denied (42501)', async () => {
+    const { companyId } = await createEmployer(testDb)
+    await createWallet(companyId, 0)
+    const wallet = await testDb.creditWallet.findUniqueOrThrow({ where: { companyId } })
+    await testDb.creditLedger.create({
+      data: { walletId: wallet.id, delta: 1, balanceAfter: 1, reason: LedgerReason.PILOT_GRANT },
+    })
+
+    await expect(
+      testDb.$executeRaw`DELETE FROM "CreditLedger"`
+    ).rejects.toSatisfy(isPermissionDenied)
+  })
+
+  it('UPDATE AuditLog is denied (42501)', async () => {
+    await testDb.auditLog.create({ data: { action: 'test.perm', targetType: 'Test' } })
+
+    await expect(
+      testDb.$executeRaw`UPDATE "AuditLog" SET "action" = 'x'`
+    ).rejects.toSatisfy(isPermissionDenied)
+  })
+
+  it('DELETE AuditLog is denied (42501)', async () => {
+    await testDb.auditLog.create({ data: { action: 'test.perm2', targetType: 'Test' } })
+
+    await expect(
+      testDb.$executeRaw`DELETE FROM "AuditLog"`
+    ).rejects.toSatisfy(isPermissionDenied)
+  })
+})
+
 describe('reconcileWallet', () => {
   it('returns ok:true and 0/0 when wallet does not exist', async () => {
     const { companyId } = await createEmployer(testDb)
