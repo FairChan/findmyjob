@@ -23,7 +23,7 @@ async function notifyAdmins(code: string, ctx?: Record<string, unknown>): Promis
       select: { id: true },
     })
     await Promise.all(
-      admins.map(a => createNotification(db, a.id, 'system.alert', { code, ...ctx })),
+      admins.map(a => createNotification(db, a.id, 'system.alert', { ...ctx, code })),
     )
   } catch (err) {
     logger.error({ err, alertCode: code }, 'failed to notify admins of alert')

@@ -454,7 +454,22 @@ describe('team management authz (M3-T04)', () => {
     const { removeMember } = await import('@/server/services/team')
     await expect(
       removeMember({ userId: ownerA, companyId: companyA, role: 'OWNER' }, { memberId: memberB!.id }),
-    ).rejects.toThrow()
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('cross-company: cannot change role of member in a different company', async () => {
+    await seedTeamSettings()
+    const { userId: ownerA, companyId: companyA } = await createEmployer(testDb)
+    const { companyId: companyB } = await createEmployer(testDb)
+    // Add a RECRUITER to company B
+    const userB = await testDb.user.create({
+      data: { name: 'BRec', email: 'brec-xco@example.test', emailVerified: true, role: 'EMPLOYER', status: 'ACTIVE' },
+    })
+    const memberB = await testDb.companyMember.create({ data: { companyId: companyB, userId: userB.id, role: 'RECRUITER' } })
+    const { changeRole } = await import('@/server/services/team')
+    await expect(
+      changeRole({ userId: ownerA, companyId: companyA, role: 'OWNER' }, { memberId: memberB.id, role: 'ADMIN' }),
+    ).rejects.toBeInstanceOf(NotFoundError)
   })
 
   it('invite email mismatch → ForbiddenError on accept', async () => {

@@ -95,7 +95,7 @@ export async function inviteMember(
     action: 'company.invite.send',
     targetType: 'Company',
     targetId: companyId,
-    metadata: { email: input.email, role: input.role },
+    metadata: { role: input.role },
   })
 
   return { token }
@@ -199,6 +199,18 @@ export async function removeMember(ctx: CompanyCtx, input: RemoveMemberInput): P
   if (target.userId === userId) throw new ForbiddenError('Cannot remove yourself')
 
   await db.companyMember.delete({ where: { id: input.memberId } })
+
+  // Expire any pending invites created by the removed member so they cannot
+  // accept them and re-join after removal.
+  await db.companyInvite.updateMany({
+    where: {
+      companyId,
+      createdById: target.userId,
+      acceptedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    data: { expiresAt: new Date() },
+  })
 
   await logAudit({
     actorId: userId,

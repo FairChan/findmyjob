@@ -668,6 +668,7 @@
     "removeButton": "移除",
     "changeRoleButton": "更改角色",
     "confirmRemove": "确定要移除该成员吗？",
+    "cancelButton": "取消",
     "errorForbidden": "权限不足，无法执行此操作",
     "errorLimitReached": "已达上限（成员数量或每日邀请次数）",
     "errorAlreadyMember": "该用户已是本企业成员",

@@ -668,6 +668,7 @@
     "removeButton": "Remove",
     "changeRoleButton": "Change Role",
     "confirmRemove": "Are you sure you want to remove this member?",
+    "cancelButton": "Cancel",
     "errorForbidden": "You do not have permission to perform this action",
     "errorLimitReached": "Limit reached (member count or daily invite quota)",
     "errorAlreadyMember": "This user is already a member of the company",

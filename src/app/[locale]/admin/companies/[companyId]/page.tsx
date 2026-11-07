@@ -4,8 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { headers } from 'next/headers'
 import { requireAdmin } from '@/server/authz'
 import { getCompanyForReview } from '@/server/services/review-company'
-import { getSignedDownloadUrl } from '@/lib/storage'
-import { ReviewForm } from './ReviewForm'
+import { ReviewForm } from './review-form'
 
 export default async function AdminCompanyReviewPage({
   params,
@@ -22,18 +21,13 @@ export default async function AdminCompanyReviewPage({
   const cv = company.verifications[0] ?? null
   const owner = company.members[0] ?? null
 
-  // Generate signed URLs for each document (max 5, TTL 300s)
+  // Build links pointing to the ADMIN-only proxy route (A-22: no signed S3 URLs in page HTML)
   const docUrls: { url: string; name: string }[] = []
   if (cv) {
     for (let i = 0; i < cv.documentKeys.length; i++) {
       const key = cv.documentKeys[i]
       const name = key.split('/').pop() ?? `document-${i + 1}`
-      try {
-        const url = await getSignedDownloadUrl(key, name)
-        docUrls.push({ url, name })
-      } catch {
-        docUrls.push({ url: '#', name })
-      }
+      docUrls.push({ url: `/api/admin/verification-docs/${cv.id}/${i}`, name })
     }
   }
 
