@@ -1,0 +1,4 @@
+[IgnoredVulns]
+# Format: id = "GHSA-xxxx-xxxx-xxxx"; reason = "..."; ignoreUntil = "YYYY-MM-DD"
+# All exemptions MUST have an expiry date and be recorded in docs/DECISIONS.md.
+# No current exemptions.

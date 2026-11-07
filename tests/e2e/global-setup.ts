@@ -6,6 +6,7 @@
  * a *_test database on localhost (same rules as tests/setup/db.ts).
  */
 import { createE2eDb } from './helpers/db'
+import { writeCurrentVersionConsent } from './helpers/consent'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { randomBytes, scrypt } from 'node:crypto'
@@ -67,6 +68,21 @@ export default async function globalSetup() {
   const unverifiedHashedPw = await hashPassword(unverifiedPassword)
 
   try {
+    // ---- Cleanup: delete any stale fixture data from interrupted runs ----
+    // Orphaned records from a previous partial run cause FK constraint failures.
+    // Delete companies first (cascade: TalentFolder, TalentFolderItem, CompanyMember, …),
+    // then users (cascade: Account, StudentProfile, Consent, …).
+    const fixtureEmails = [VERIFIED_EMAIL, UNVERIFIED_EMAIL, STUDENT_EMAIL] as const
+    const staleUsers = await prisma.user.findMany({
+      where: { email: { in: [...fixtureEmails] } },
+      include: { memberships: { select: { companyId: true } } },
+    })
+    const staleCompanyIds = staleUsers.flatMap(u => u.memberships).map(m => m.companyId)
+    if (staleCompanyIds.length > 0) {
+      await prisma.company.deleteMany({ where: { id: { in: staleCompanyIds } } })
+    }
+    await prisma.user.deleteMany({ where: { email: { in: [...fixtureEmails] } } })
+
     // ---- Helper: create or update employer user + company + member ----
     async function ensureEmployer(
       email: string,
@@ -139,9 +155,11 @@ export default async function globalSetup() {
 
     // ---- Create/update verified employer ----
     const verifiedEmp = await ensureEmployer(VERIFIED_EMAIL, true, verifiedHashedPw)
+    await writeCurrentVersionConsent(verifiedEmp.userId)
 
     // ---- Create/update unverified employer ----
     const unverifiedEmp = await ensureEmployer(UNVERIFIED_EMAIL, false, unverifiedHashedPw)
+    await writeCurrentVersionConsent(unverifiedEmp.userId)
 
     // ---- Create/update student ----
     let studentUser = await prisma.user.findUnique({ where: { email: STUDENT_EMAIL } })
@@ -156,6 +174,8 @@ export default async function globalSetup() {
         },
       })
     }
+
+    await writeCurrentVersionConsent(studentUser.id)
 
     const school = await prisma.school.findFirst({ where: { active: true } })
 

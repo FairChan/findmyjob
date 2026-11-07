@@ -289,6 +289,9 @@ describe('disabledPaths return 404', () => {
     '/email-otp/reset-password',
     '/email-otp/check-verification-otp',
     '/email-otp/verify-email',
+    // changeEmail plugin paths: disabled since not wired in UI (M1-T07)
+    '/email-otp/request-email-change',
+    '/email-otp/change-email',
   ]
 
   for (const path of paths) {

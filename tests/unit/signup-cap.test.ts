@@ -174,7 +174,7 @@ describe('purgeUnverifiedAccounts', () => {
     expect(mockDeleteMany).toHaveBeenCalledTimes(2)
   })
 
-  it('deleteMany includes emailVerified and createdAt filters (race condition guard)', async () => {
+  it('deleteMany includes role, emailVerified, and createdAt filters (race condition guard)', async () => {
     vi.mocked(db.user.findMany).mockResolvedValueOnce([{ id: '1' }, { id: '2' }] as never)
     mockDeleteMany.mockResolvedValueOnce({ count: 2 })
     await purgeUnverifiedAccounts()
@@ -182,6 +182,7 @@ describe('purgeUnverifiedAccounts', () => {
       expect.objectContaining({
         where: expect.objectContaining({
           id: { in: ['1', '2'] },
+          role: 'STUDENT',
           emailVerified: false,
           createdAt: expect.objectContaining({ lt: expect.any(Date) }),
         }),

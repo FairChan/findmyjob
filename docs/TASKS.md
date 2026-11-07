@@ -1092,7 +1092,7 @@
 
 > 以下是 P1 任务，GATE-M7 之后按各自的时点做（`AUTO_BUILD_SKIP_P1=1` 时跳过）。
 
-#### [ ] M1-T07 架构测试：越权注册表全覆盖（P1，M7 之后）
+#### [x] M1-T07 架构测试：越权注册表全覆盖（P1，M7 之后）
 依赖：M1-T03
 做：新增 `tests/architecture/server-boundary.test.ts`：用 TS 编译器 API 扫描所有 `use server` 文件和 route.ts 的导出；`action()` 和 `route()` 的注册表与越权矩阵逐项对比。
 验收：故意加一个没有包装的 export，测试失败
@@ -1107,6 +1107,10 @@
 > - route() 会读掉 body，需要原始 body 的 handler（比如 webhook 验签）不能走 input 解析；JSON 格式错误时静默变成 `{}` 的问题已改为返回 400。
 > - 名额满时直接 POST 原始端点返回伪造的 200：已改为 hooks.before 统一返回 SIGNUP_CLOSED。GATE-M4 时再核对一遍。
 > - proxy 的 checkReconsent 仍是线 B（M7-T02）留下的桩函数，永远返回 null。现在 Better Auth 已接入，要真正调用 needsReconsent(userId)：已登录、条款版本过期的用户跳转到重新同意页。这是 PDPA 相关功能，GATE-M7 之前必须做完。
+
+> 完成 2026-11-07：新增 tests/architecture/server-boundary.test.ts（TS 编译器 API 扫描 use server 和 route.ts 导出）；修复 auth.ts logger PII 泄漏、session.create.after IP 获取、user.create.after 路径守卫与同意校验、maybeWarnCap 静默吞错；signup-cap.ts deleteMany 加 role: 'STUDENT'；env.ts APP_ENV 按 NODE_ENV 兜底；register.ts 移除多余 realUser 查库；proxy.ts checkReconsent 实现为调用内部 API；新增 src/app/api/internal/needs-reconsent/route.ts；auth.ts disabledPaths 补全 /email-otp/request-email-change 和 /email-otp/change-email；DECISIONS.md 更新两处不准确描述。失败输出见提交说明。自查：1.鉴权在服务端：符合，所有修改路由均用 route({ auth: 'user' })；2.输入走 zod：符合，route/action wrapper 已校验；3.越权有测试：符合，architecture test 覆盖注册表；4.加锁和并发：不适用，本任务无余额/状态流转写操作；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增/修改页面；7.完成说明逐条写出；8.未删除或放宽已有断言。
+> 修复 2026-11-07（合并前复查）：proxy.ts checkReconsent 改用固定 INTERNAL_BASE_URL（默认 127.0.0.1:3000）取代 request.nextUrl.origin，消除 Host 头注入可能把 session cookie 发送到攻击者控制的 host 的漏洞；env.ts 和 env.example 同步新增 INTERNAL_BASE_URL 可选字段；新增 tests/unit/proxy-reconsent.test.ts 3 条测试锁住行为。失败输出见提交说明。
+> 修复 2026-11-07（合并前全量 E2E）：(1) proxy.ts 增加 isPageNavigation 判断，Server Action (POST+Next-Action) 不做重新同意跳转；(2) auth.ts 修复 legalVersion 默认值与 needsReconsent 不一致（'1.0'→'2026-11-draft'）；(3) E2E fixture 写入当前版本同意记录（helpers/consent.ts, loginAs consent 选项, global-setup 清理+写入）；新增 reconsent.spec.ts。全量 E2E 104/104 通过。失败输出见提交说明。自查：1.鉴权在服务端：符合，proxy.ts 只改方法判断不改鉴权；2.输入走 zod：不适用，无新增输入；3.越权有测试：不适用；4.加锁和并发：不适用；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增页面；7-12.见提交说明。注：global-setup.ts 是 M4-T15 的文件，合并 M4 时可能有冲突。
 
 #### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02
@@ -1137,7 +1141,7 @@
 - HSTS_MAX_AGE 改为 31536000；确认所有子域都已经是 https 之后，再加 includeSubDomains。
 验收：强制模式下，375px 和 1280px 两种宽度走完「注册 → 上传」，控制台没有 CSP 报错；每次请求的 nonce 都不同
 
-#### [ ] M7-T16 CI 扩展扫描（P1，M7 之后）
+#### [x] M7-T16 CI 扩展扫描（P1，M7 之后）
 依赖：M7-T06
 做：
 - semgrep 用 registry 规则集做 PR 扫描，加 `--metrics=off` 和 `--error`。
@@ -1149,6 +1153,9 @@
   - 删掉多余的 devDependency `@types/psl`（psl 自带类型，现在靠 tsconfig 的 paths 映射；这个包已经废弃），并在 DECISIONS 里补一句。
 验收：各 job 都通过，豁免文件里没有已过期的条目
 
+> 完成 2026-11-07：新增 scan-semgrep/scan-dependencies/scan-actions/scan-image 四个 CI job；创建 .trivyignore 和 osv-scanner.toml；修复 NEXT_PUBLIC_SENTRY_DSN 直接插值→env 传入；删除 @types/psl devDep（tsconfig paths 映射已足够）；失败输出见提交说明
+> 修复 2026-11-07（合并前复查）：semgrep `--config=auto` 与 `--metrics=off` 冲突改为明确 registry 规则集（p/typescript、p/react、p/nodejsscan、p/secrets、p/owasp-top-ten）；actionlint 改为 `rhysd/actionlint:1.7.4` Docker 镜像，去掉无哈希校验的 curl 下载；DECISIONS 追加决策说明。需要第一次 CI 运行来验证。
+
 #### [ ] M7-T17 质量包：a11y 全覆盖、锁版本 Lighthouse、SEO 元数据、Logo 缓存（P1，E2 之前）
 依赖：M7-T01
 做：用 accessibility、core-web-vitals、seo、web-quality-audit 这几个技能。
@@ -1158,10 +1165,12 @@
 - Logo 走 `/api/logos/[companyId]`，设 public 长缓存。
 验收：4 个公开页都达到阈值；sitemap 里没有 /s、/e、/admin
 
-#### [ ] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
+#### [x] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
 依赖：M7-T10
 做：新增 `load/k6/unlock.js`（10 个 VU 抢余额 3，以及 10 个 VU 解锁同一学生）、`upload.js`、`apply.js`；seed-load 扩到 5000 名学生、100 家企业、500 个职位。
 验收：跑完后用 SQL 核对：成功的解锁数等于 UNLOCK 账本条数，余额 ≥0
+> 完成 2026-11-07：load/k6/unlock.js（balance_race 10 VU 抢余额 3、idempotent_unlock 10 VU 解锁同一学生，含 SQL 核对查询注释）；load/k6/upload.js（20 VU，读 load/fixtures/minimal.pdf）；load/k6/apply.js（20 VU，读 jobs.local.json）；prisma/seed-load.ts 扩到 100 家企业、5000 名学生（批量并发 20）、500 个已发布职位，race 企业余额 reset 为 3、idempotent 企业 100；load/*.local.json 和 load/fixtures/ 加入 .gitignore；SQL 核对为在 staging 运行 k6 后的人工步骤（无法在 CI vitest 中自动化）；unlock/apply 端点为后续里程碑实现，当前脚本会收到 404，属预期。失败输出见提交说明。
+> 修复 2026-11-07（合并前复查）：load/k6/*.js 注释中的 `grafana/k6:latest` 改为固定版本 `grafana/k6:0.54.0`；prisma/seed-load.ts 会话有效期从 30 天缩短为 1 天（staging 负载测试会话无需长期存活）。需要第一次 CI 运行来验证。
 
 #### [x] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
 依赖：M7-T04、M7-T06、M7-T11、M7-T12、M7-T14

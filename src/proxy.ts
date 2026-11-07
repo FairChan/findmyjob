@@ -4,6 +4,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSessionCookie } from 'better-auth/cookies'
 
+// Fixed loopback address for the internal reconsent check.
+// Never derive this from the incoming Host/X-Forwarded-Host headers — that would
+// allow an attacker to redirect the session cookie to an arbitrary host.
+// Defaults to this process's own PORT, so a dev server on :3001 never calls another one on :3000;
+// set INTERNAL_BASE_URL only when the app is reachable on a different loopback address.
+// The direct loopback connection bypasses Caddy's basic_auth (DECISIONS A22).
+const INTERNAL_BASE_URL =
+  process.env.INTERNAL_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}`
+
 const intlMiddleware = createMiddleware(routing)
 
 // 只做「有没有会话 cookie」的乐观判断，真正的会话校验在页面和 action 里。
@@ -51,12 +60,40 @@ function extractLocale(pathname: string): string {
   return routing.defaultLocale
 }
 
-// 线 B（M7-T02）留下的钩子：已登录用户需要重新同意新版条款时，在这里重定向。
-// 目前是桩函数，真正接入 needsReconsent(userId)（src/server/services/legal-consent.ts）记在 M1-T07 的遗留项里。
+// 已登录用户需要重新同意新版条款时，在这里重定向。
+// 通过内部 API 端点检查（Prisma 不能在 Edge/Middleware 里直接用），
+// 失败时 fail-open（不阻塞用户），以防止内部错误或服务暂时不可用。
 async function checkReconsent(
-  _request: NextRequest,
+  request: NextRequest,
 ): Promise<NextResponse | null> {
-  return null
+  if (!hasSessionCookie(request)) return null
+
+  const pathname = request.nextUrl.pathname
+  // Don't redirect away from the reconsent page itself
+  if (pathname.includes('/legal/reconsent')) return null
+
+  try {
+    const checkUrl = new URL('/api/internal/needs-reconsent', INTERNAL_BASE_URL)
+    const res = await fetch(checkUrl.toString(), {
+      headers: {
+        cookie: request.headers.get('cookie') ?? '',
+        'x-real-ip': request.headers.get('x-real-ip') ?? '',
+        'user-agent': request.headers.get('user-agent') ?? '',
+        origin: request.nextUrl.origin,
+      },
+      cache: 'no-store',
+    })
+    if (!res.ok) return null
+    const data = await res.json() as { needsReconsent?: boolean }
+    if (!data.needsReconsent) return null
+
+    const locale = extractLocale(pathname)
+    const reconsentUrl = new URL(`/${locale}/legal/reconsent`, request.url)
+    return NextResponse.redirect(reconsentUrl)
+  } catch {
+    // Fail open: a transient error must not lock users out
+    return null
+  }
 }
 
 export default async function middleware(request: NextRequest) {
@@ -100,12 +137,22 @@ export default async function middleware(request: NextRequest) {
     }
   }
 
-  // --- All other page routes: re-consent check, then intl middleware ---
+  // --- All other page routes: re-consent check (page navigations only), then intl middleware ---
   const req = new NextRequest(request, { headers: requestHeaders })
-  const reconsentRedirect = await checkReconsent(req)
-  if (reconsentRedirect) {
-    reconsentRedirect.headers.set('x-request-id', requestId)
-    return reconsentRedirect
+  // Server Actions arrive as POST + Next-Action header; they cannot handle a 3xx redirect —
+  // the browser surfaces "网络连接出错" instead of following it. Skip reconsent for those;
+  // the user will be redirected on their next full page navigation.
+  // RSC client navigations (GET + RSC:1) are real navigations — Next 16.4.5 follows the
+  // redirect and renders the destination, so we let them through the check.
+  const isPageNavigation =
+    (request.method === 'GET' || request.method === 'HEAD') &&
+    !request.headers.has('Next-Action')
+  if (isPageNavigation) {
+    const reconsentRedirect = await checkReconsent(req)
+    if (reconsentRedirect) {
+      reconsentRedirect.headers.set('x-request-id', requestId)
+      return reconsentRedirect
+    }
   }
   const response = intlMiddleware(req)
   response.headers.set('x-request-id', requestId)
