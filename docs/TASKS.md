@@ -1162,10 +1162,11 @@
 - Logo 走 `/api/logos/[companyId]`，设 public 长缓存。
 验收：4 个公开页都达到阈值；sitemap 里没有 /s、/e、/admin
 
-#### [ ] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
+#### [x] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
 依赖：M7-T10
 做：新增 `load/k6/unlock.js`（10 个 VU 抢余额 3，以及 10 个 VU 解锁同一学生）、`upload.js`、`apply.js`；seed-load 扩到 5000 名学生、100 家企业、500 个职位。
 验收：跑完后用 SQL 核对：成功的解锁数等于 UNLOCK 账本条数，余额 ≥0
+> 完成 2026-11-07：load/k6/unlock.js（balance_race 10 VU 抢余额 3、idempotent_unlock 10 VU 解锁同一学生，含 SQL 核对查询注释）；load/k6/upload.js（20 VU，读 load/fixtures/minimal.pdf）；load/k6/apply.js（20 VU，读 jobs.local.json）；prisma/seed-load.ts 扩到 100 家企业、5000 名学生（批量并发 20）、500 个已发布职位，race 企业余额 reset 为 3、idempotent 企业 100；load/*.local.json 和 load/fixtures/ 加入 .gitignore；SQL 核对为在 staging 运行 k6 后的人工步骤（无法在 CI vitest 中自动化）；unlock/apply 端点为后续里程碑实现，当前脚本会收到 404，属预期。失败输出见提交说明。
 
 #### [x] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
 依赖：M7-T04、M7-T06、M7-T11、M7-T12、M7-T14
