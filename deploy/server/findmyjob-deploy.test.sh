@@ -28,8 +28,11 @@ echo "$*" >> "$DOCKER_CALLS"
 case "$1" in
   pull) exit 0 ;;
   image)
-    # `docker image inspect <ref>`: fail only for the ref named in DOCKER_MISSING
-    if [[ -n "${DOCKER_MISSING:-}" && "$*" == *"$DOCKER_MISSING"* ]]; then exit 1; fi
+    # `docker image inspect <ref>` takes exactly one ref here. Extra arguments mean the caller is
+    # broken (e.g. a stray `n` from a mangled line continuation): fail like real docker would.
+    if [ "$#" -ne 3 ] || [ "$2" != "inspect" ]; then echo "stub: unexpected image args: $*" >&2; exit 2; fi
+    # fail only for the ref named in DOCKER_MISSING
+    if [[ -n "${DOCKER_MISSING:-}" && "$3" == *"$DOCKER_MISSING"* ]]; then exit 1; fi
     exit 0 ;;
   inspect)
     # `docker inspect --format '{{index .RepoDigests 0}}'`: a docker-load'ed image has no RepoDigests.

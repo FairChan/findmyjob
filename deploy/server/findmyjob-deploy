@@ -45,7 +45,7 @@ die() { err "$*"; exit 1; }
 fetch_image() {
   local ref="$1"
   if [ "${FINDMYJOB_SKIP_PULL:-0}" = "1" ]; then
-    docker image inspect "$ref" >/dev/null 2>&1 \n      || die "Image ${ref} not present locally (FINDMYJOB_SKIP_PULL=1): docker load it first."
+    docker image inspect "$ref" >/dev/null 2>&1 || die "Image ${ref} not present locally (FINDMYJOB_SKIP_PULL=1): docker load it first."
     log "Using local image ${ref} (FINDMYJOB_SKIP_PULL=1)"
   else
     docker pull "$ref"

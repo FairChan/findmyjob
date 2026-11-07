@@ -3,7 +3,9 @@ ARG NODE_IMAGE=node:24.4.0-bookworm-slim
 # ── base ──────────────────────────────────────────────────────────────────────
 FROM ${NODE_IMAGE} AS base
 WORKDIR /app
-RUN corepack enable pnpm
+# corepack bundled with node:24.4.0 is too old for pnpm 12 (it looks for bin/pnpm.cjs, which pnpm 12
+# no longer ships). Install the exact version pinned in package.json "packageManager" instead.
+RUN npm install -g pnpm@12.16.1
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
