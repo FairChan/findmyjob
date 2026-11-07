@@ -6,23 +6,6 @@
 import { readFileSync, existsSync } from 'fs'
 import { SERVER_LOG_PATH, PII_SENTINELS } from './helpers/server-log-path'
 
-// True when the CLI narrowed the run (spec paths, --grep, --last-failed, --only-changed). Such a
-// run may never hit a code path that logs, so the "≥1 pino line" guard is only meaningful for the
-// full suite (pnpm test:e2e / lane-verify). The sentinel check below runs either way.
-function isFilteredRun(argv: string[]): boolean {
-  const i = argv.indexOf('test')
-  if (i < 0) return false
-  const args = argv.slice(i + 1)
-  const valueFlags = new Set(['-c', '--config', '--project', '--reporter', '--workers', '-j', '--retries', '--timeout', '--output', '--max-failures', '--repeat-each', '--shard', '--trace'])
-  for (let k = 0; k < args.length; k++) {
-    const a = args[k]
-    if (['-g', '--grep', '--grep-invert', '--last-failed', '--only-changed'].some(f => a === f || a.startsWith(`${f}=`))) return true
-    if (valueFlags.has(a)) { k++; continue }
-    if (!a.startsWith('-')) return true
-  }
-  return false
-}
-
 export default async function globalTeardown(): Promise<void> {
   if (!existsSync(SERVER_LOG_PATH)) {
     throw new Error(
@@ -48,7 +31,8 @@ export default async function globalTeardown(): Promise<void> {
       return false
     }
   })
-  if (pinoLines.length === 0 && !isFilteredRun(process.argv)) {
+  // src/instrumentation.ts logs one `server started` line per boot, so this holds for any run.
+  if (pinoLines.length === 0) {
     throw new Error(
       `[global-teardown] Server log has no pino JSON lines — log collection may have failed. ` +
         `Log path: ${SERVER_LOG_PATH}. First 500 chars: ${log.slice(0, 500)}`,
