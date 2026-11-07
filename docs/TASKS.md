@@ -923,6 +923,22 @@
 10. 用 ESLint 拦住恒真断言（总控 2026-11-07，ROUND_NOTE 同步）：在 `eslint.config.mjs` 针对测试文件（`tests/**`、`**/*.test.ts(x)`、`**/*.spec.ts`）加 `no-restricted-syntax`，禁止 `expect(<字面量>)`（选择器 `CallExpression[callee.name='expect'][arguments.0.type='Literal']`）和 `expect(undefined)`（`[arguments.0.type='Identifier'][arguments.0.name='undefined']`）。注意 flat config 里同一条规则在后面的配置块会整体覆盖前面的：如果测试文件原本也继承了 `RAW_UNSAFE_SELECTORS`，要把两组选择器合并在一起，不能丢掉原来的。验证：临时写一个 `expect(true).toBe(true)`，`pnpm lint` 报错（把报错原文贴进提交说明），删掉后 `pnpm lint` 通过。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数。
 
+#### [ ] M4-T25 最后一轮收尾：防泄漏 E2E 的正向对照、sanitizePdf 的目标与字典校验、空过的守护测试、学校 OTP 并发测试不稳定
+依赖：M4-T22、M4-T23、M4-T24
+> 总控 2026-11-07 加入：对 M4-T22（c382356）和 M4-T23（fad994d）做了最终核对。没有可执行的活动内容残留（/A、/AA、/PA、/Next、catalog 动作都清掉了），但下面几处是任务要求的、没有做到或者测试空过。这是 M4 进 GATE 前的最后一个修复任务，只做下面列的，不扩大范围。每条都按 ROUND_NOTE 把「撤掉实现后的失败输出原文」（测试名加断言失败的两三行，不要概括）贴进提交说明。
+做 / 验收：
+1. 防泄漏 E2E 的正向对照（M4-T22 第 2 条）和被删掉的详情页直开扫描（属于削弱断言，要补回来）：
+   - `const r = await page.goto('/zh/e/talent'); expect(r?.status()).toBe(200)`；
+   - 交互做完之后，再 `page.goto('/zh/e/talent/<哨兵 id>')` 直接打开详情页，断言状态 200 并等 networkidle，这份文档响应也要进扫描（补回原来那条直开详情页的用例覆盖面，原来对 STORAGE_KEY 和微信哨兵的断言逐个补回）；
+   - 断言收集到的响应体里至少有一份同时含哨兵 id 和「[已隐藏]」；
+   - html 计数改在 `.then()` 里、按真正收集到的响应体计数；
+   - 关键词搜索和翻页之后分别 `waitForURL(/keyword=/)`、`waitForURL(/page=2/)` 再点卡片；打开「加入收藏」时 `waitForResponse` 等到带 `next-action` 头的响应。
+2. sanitizePdf 只接受目标是本文档页面的链接（M4-T23 第 1、2 条）：两种形式（`/Dest` 数组、`/A /S /GoTo /D` 数组）都要求 `arr.get(0)` 是 PDFRef 且在本文档页引用集合里，其余元素只能是 PDFName、PDFNumber 或 PDFNull，否则整条 Link 去掉；`/Rect` 必须恰好是 4 个 PDFNumber，否则去掉；重建时去掉「原样复制元素」的兜底分支。另外两处顺手修（复查 Medium）：页面白名单在 copyPages 之前对 srcDoc 的页面先执行一遍（否则被删的 /AA、/Thumb 等会作为孤立对象被深拷贝进输出）；`/Group` 只按 `/Type /Group`、`/S`、`/CS`、`/I`、`/K` 重建，不整段复制。
+3. sanitizePdf 的正向测试要真断言（M4-T23 第 4 条）：用 `decodePDFRawStream` 解码 Contents，断言里有原文字的十六进制和 `Tj`；断言 `Resources/Font` 里有 `/BaseFont /Helvetica`；断言 CropBox 的数值等于样本里设的值；断言重建后链接的 `Dest[0]` 等于输出文档里对应页的引用（样本里先多建几个无关对象，让新旧对象编号不同）。
+4. 空过的守护测试（M4-T23）：正向、/Next、/AA、/PA 的样本目标改成 `[doc.getPage(1).ref, 'XYZ', null, null, null]`；GoTo3D、Thread、GoToR、GoToE 的样本也带上 `D: [doc.getPage(0).ref, 'Fit']`，这样只有「动作必须是 GoTo」这一步能拒绝它们；新增「`/Dest [pageRef /Fit]` 保留」「`/D` 指向非页面对象 → 去掉」「`/D [9999 0 R /Fit]` → 去掉」「`/Rect` 只有 3 个数 → 去掉」四条。逐一撤掉「必须是 GoTo」「目标必须是本文档页」「编号重映射」三步，各自对应的测试要失败，失败原文贴进提交说明。
+5. 学校 OTP 并发测试在负载下不稳定（线 B 报告，`tests/integration/school-verification.test.ts`「20 parallel wrong guesses」）：失败原文 `AssertionError: expected 13 to be greater than or equal to 15`（`expect(rateLimitErrors).toBeGreaterThanOrEqual(15)`）。原因是 OTP 被锁定删除后，个别请求报 `otp_expired_or_not_found`，它们同样被拒、没有进入比对，但没被计入。改法：保留 `validationErrors <= 5`（最多 5 个进入比对，这是安全性质本身）和「20 个全部被拒」两条不动；把 `rateLimitErrors >= 15` 改为「rateLimit 加上 otp_expired_or_not_found 合计 ≥ 15」，并新增一条断言：除这三类以外没有别的拒绝原因。按 ROUND_NOTE f 项，在提交说明里写出原断言、新断言和理由。验证：这个文件连续跑 5 次全过。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，按文件列出，要求 0 失败、0 跳过）。
+
 #### [ ] 🚦 GATE-M4 · 人工审查隐私与扣点（见文末清单）
 
 ---
