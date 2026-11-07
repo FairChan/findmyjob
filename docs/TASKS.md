@@ -835,10 +835,11 @@
 做：通知铃铛 + 未读数 + 列表 + 全部已读；按收件人语言渲染中 / 英邮件模板；接入 PRD §6 的全部事件；`employer-daily-digest` 任务。
 验收：PRD §6 每一行都有对应测试或 E2E 覆盖
 
-#### [ ] M5-T09 职位搜索 service（精确 / 关联）
+#### [x] M5-T09 职位搜索 service（精确 / 关联）
 依赖：M5-T03
 做：`services/job-search.ts`：`searchJobs({ q, mode, filters, page })`，实现 ARCHITECTURE §5.4；ILIKE 输入先转义反斜杠、`%` 和 `_`；默认模式和回退阈值读 `search.*`。
 验收：与原型 C2 的测试用例一致（同一职位只出现一次、精确在前、不区分大小写、"Finance" 能搜到「财务」组）；pg_trgm 索引生效（EXPLAIN 里能看到 Bitmap Index Scan）；查看者打不开的职位，不能靠描述里的词被搜出来（对应原型测试 `locked jobs are not matched by their description`）；按薪资排序时隐藏薪资的职位排在最后
+> 完成 2026-11-07：实现 searchJobs（EXACT/RELATED 模式、pg_trgm ILIKE、同义词展开、canSeeDescription 安全参数、薪资排序、游标分页）；/jobs 页接入 service；unit 19/19、integration 10/10、E2E smoke 7/7 通过。偏差：$queryRaw 返回 skills/languages 为 null（空数组列）需加 `?? []` 防护；已修复。
 
 #### [ ] M5-T10 扩展筛选
 依赖：M5-T09
