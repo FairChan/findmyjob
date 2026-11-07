@@ -600,6 +600,19 @@
 > 完成 2026-11-07：getWalletBalance 服务（src/server/services/credits.ts，creditWallet 读取）；/e/page.tsx 重写（requireEmployer + getMyCompany，4 种认证状态横幅，点数余额仅 VERIFIED 显示，三个快捷入口）；zh/en i18n 新增 15 个 employerDashboard 键；4 个集成测试全部通过（776 tests）
 > 修复 2026-11-07：(1) /e 改用 requireCompanyMember('RECRUITER') 替代 requireEmployer+getMyCompany，停用企业成员立即被拒；无企业成员时跳转 onboarding；getWalletBalance 签名改为 ctx 对象，credits.test.ts 同步更新；(2) UNSUBMITTED/REJECTED 横幅 CTA 仅 OWNER/ADMIN 可见，RECRUITER 显示「请联系企业管理员」提示，zh/en i18n 新增 bannerAdminActionRequired / bannerRejectedReason；快捷链接 /e/company 和 /e/verification 对 RECRUITER 隐藏；(3) REJECTED 横幅对所有成员显示最近驳回原因（reviewNote），getVerificationInfo 复用；新增集成测试 employer-dashboard.test.ts（6 个用例）和 E2E 冒烟 smoke-m3-console.spec.ts（8 条全通过，storageState 复用 OWNER 会话规避速率限制）；816 tests 全绿
 
+#### [ ] M3-T07 运营查看认证材料前净化 PDF（P0，GATE-M7 之前）
+依赖：M3-T03、M4-T19
+做：
+- 运营在 `/admin/companies/[companyId]` 查看企业上传的 PDF 材料时，服务端先用 M4-T19 的 `sanitizePdf`（`src/server/lib/pdf-sanitize.ts`，内部走 `runCappedPdfWorker`）净化，再把净化后的副本给运营。
+- 原件不再直接给出签名 URL。图片原样返回，响应头照 M7-T19「A-22 临时缓解」那几个。
+- 来源：threat-model A-22、TM-016。这是监督会话 2026-11-07 定的默认，待用户确认；理由是运营账号被盗属于 TM-026 的 High，对运营投放恶意 PDF 正是通往它的路径。
+- M8 的付款回单照同样的方式处理。
+验收：
+- 净化后的副本里没有这些东西：/AA、/OpenAction、JavaScript、Launch 动作、URI 动作、EmbeddedFile、FileAttachment。认证材料不需要外链，所以 URI 也去掉；如果 sanitizePdf 默认保留 http(s) 链接，就加一个选项关掉。单元测试要把净化后的文件再 load 一次，断言这些键都不在。
+- 运营端拿不到原件的签名 URL（集成测试或 E2E 断言页面和响应里都没有）。
+- 净化失败或超出限额时不提供预览，只显示「文件无法安全预览」，并写审计日志：action 和 targetId 写清楚，不写文件内容。
+- 有 E2E 和单元测试，其中一条是「撤掉净化之后测试会失败」。
+
 ---
 
 ## M4 · 人才库与解锁（核心，约 3.4 天）
@@ -1268,6 +1281,35 @@
   - isSafePath 新加的「解码后必须和原串一致」对原有的 /s/、/e/、/admin 规则也生效，带编码字符的旧跳转会退回默认页。这只会更严，要不要对查询串放宽待定。
   - ADMIN 规则是 `startsWith('/{locale}/admin')`，会放行 `/zh/administrator-x` 这类路径。这是原有规则；改成 `/{locale}/admin/` 或者完全等于 `/{locale}/admin`。
 - M7-T19 第 1 轮（上传）补修以后，复查仍不足的地方：checkInflateBomb 预扫描能被绕过（间接引用的 Filter、名字转义、超过 512 字节的填充、数据里嵌字面的 endstream、截断的流不计入额度、过滤器链、LZW、stream 后面没有换行）。由 fix-M7-T19-p1c 在 pdf-lib 的 `DecodeStream.ensureBuffer` 上统一限额。**上线前必须处理。**
+- A-22 临时缓解（监督会话 2026-11-07 安排，在 M3-T07 净化做好之前先做；M7-T19 第 5 轮处理，必须修掉）：
+  - 现状：运营在 `/admin/companies/[companyId]` 看认证材料时，拿到的是原件的 S3 预签名 URL。预签名只能带 Content-Disposition 和 Cache-Control，加不了 nosniff 和 CSP。
+  - 修法：改成一个只给 ADMIN 用的 Route Handler，由服务端流式转发，例如 `/api/admin/verification-docs/[verificationId]/[index]`。
+  - 验收（总控 2026-11-07 定的）：
+    - 鉴权：
+      - 用 `route({ auth: 'admin' })` 包装，等同于 requireAdmin()，service 层也要断言 ADMIN；
+      - `[verificationId]`（cuid）和 `[index]`（非负整数，小于 documentKeys 的长度）都用 zod 校验；
+      - verificationId 不存在、index 越界、文件不属于这条认证记录，一律返回 404。
+    - 审计：
+      - 每次查看都写一条 AuditLog，action 按 ARCHITECTURE §5.7 的点分命名，例如 `company.verification.doc_view`，对应总控说的 ADMIN_VIEW_VERIFICATION_DOC；同时补进 §5.7 的清单；
+      - targetType 写 Company，targetId 写 companyId；
+      - metadata 只放内部 ID（verificationId、index），不放文件名、key 和内容。
+    - 转发：
+      - 从对象存储流式转发，不要把整份文件读进内存；
+      - 按上传上限做大小检查（用 HeadObject 或者返回的 ContentLength），超限就不转发；
+      - 对象存储出错时返回 502，不透出底层的错误信息。
+    - 响应头，每一项都有测试锁住：
+      - `Content-Disposition: attachment`（文件名按 RFC 5987 编码）
+      - `X-Content-Type-Options: nosniff`
+      - `Content-Security-Policy: sandbox; default-src 'none'`
+      - `Cache-Control: private, no-store`
+      - `X-Robots-Tag: noindex`
+    - 页面和传给客户端组件的 props 里不再出现预签名 URL：页面里的链接改成指向这个路由，不再调用 getSignedDownloadUrl。用一条 E2E 或 serializer 测试断言页面 HTML 里没有 S3 签名参数（例如 `X-Amz-Signature`）。
+    - 测试：
+      - 非 ADMIN（学生、企业成员、未登录）被拒；
+      - 上面几种 404 各一条；
+      - 对象存储抛错时返回 502，响应体里没有底层错误信息；
+      - 有审计日志，并且 metadata 里没有文件名；
+      - 页面冒烟：ADMIN 打开 `/zh/admin/companies/<id>` 是健康的。
 验收：上面每一项要么修掉并有测试（shell 脚本至少过 `bash -n`），要么在 DECISIONS 写明已接受的风险和理由。staging 的 basic_auth（A22）不在本任务里，留给 M7-H01 和 GATE-M7。
 > 进度 2026-11-07 第 1/7 轮（M2-T05 上传 + 第二轮遗留 idSchema）：修掉：pdf-lib 解压炸弹→worker_threads resourceLimits（tests/unit/pdf-check.test.ts，12 条）；加密检测绕过→hasRawEncryptionMarkers 原始字节扫描；0 页 PDF 被接受→checkPdf pageCount<1 拒收；PAYMENT_PROOF 允许 ADMIN→改为 OWNER（tests/unit/upload-authz.test.ts，7 条，含 authz-matrix 新行）；key 用 randomUUID+userId→改用 studentProfileId；非法 purpose/id 返回 404→改为 400；下载响应缺 X-Robots-Tag→已加；idSchema 从 upload-input.ts 导入（route.ts）；deploy/Caddyfile 新增 resp_headers>Location delete 防签名 URL 进日志（需真机验证，见 DECISIONS）。接受的风险：孤儿对象、请求体读进内存（均见 DECISIONS 第 1 轮条目）。转给别的任务：无。
 > 进度 2026-11-07 第 1/7 轮补修：（1）FlateDecode 炸弹真正修好：在 pdf.ts 加 checkInflateBomb()，用 zlib.inflateSync maxOutputLength 预扫描所有 FlateDecode 流，超过 getSetting('upload.pdfMaxInflatedBytes', 50MB) 就拒收；炸弹检查在 Worker 之前、加密检查之后执行；worker/resourceLimits 保留作第二道防线。测试文件 tests/unit/pdf-check.test.ts（17 条），含 checkPdf 炸弹拒收测试（10ms 内返回）和 checkInflateBomb 单元测试（包括单流超限、累计超限、非 FlateDecode 不受影响）；去掉了原先名不副实的 large-stream 用例。默认值 52428800（50 MB）记进 DECISIONS。（2）生产镜像里找不到 pdf-lib：在 pdf.ts 加 `import 'pdf-lib'` 静态导入，使 Next.js nft 跟踪 pnpm 符号链接并在 standalone 里建立正确的 symlink 结构（含 tslib 等传递依赖），pdf-lib 加入 serverExternalPackages；build 验证：`.next/standalone/node_modules/pdf-lib/cjs/` 存在（symlink 到 pnpm store），Worker 在 standalone 目录下 `require('pdf-lib')` 实际解析 1 页 PDF 返回 `{ok:true, pageCount:1}`。
