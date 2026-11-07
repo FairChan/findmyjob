@@ -159,7 +159,7 @@ export async function viewTalentProfile(
   let contact = null
   if (unlocked) {
     try {
-      contact = await getContactForCompany(ctx.companyId, studentId)
+      contact = await getContactForCompany(ctx.companyId, studentId, { userId: ctx.userId })
     } catch (err) {
       if (err instanceof ForbiddenError) {
         // Student may have blocked company between the two checks; show as locked
