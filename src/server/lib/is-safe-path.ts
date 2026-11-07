@@ -22,6 +22,6 @@ export function isSafePath(path: string, role: string, locale: string): boolean 
 
   if (role === 'STUDENT') return path.startsWith(`/${locale}/s/`)
   if (role === 'EMPLOYER') return path.startsWith(`/${locale}/e/`)
-  if (role === 'ADMIN') return path.startsWith(`/${locale}/admin`)
+  if (role === 'ADMIN') return path.startsWith(`/${locale}/admin/`) || path === `/${locale}/admin`
   return false
 }

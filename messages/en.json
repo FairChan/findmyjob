@@ -800,7 +800,11 @@
     "statusPending": "Pending",
     "descriptionLabel": "Job Description",
     "requirementsLabel": "Requirements",
-    "benefitsLabel": "Benefits"
+    "benefitsLabel": "Benefits",
+    "acceptsStudentPassLabel": "Accepts Student Pass",
+    "sponsorsWorkPassLabel": "Sponsors Work Pass",
+    "yes": "Yes",
+    "no": "No"
   },
   "publicJobs": {
     "title": "Job Listings",
@@ -813,6 +817,7 @@
     "lockedDesc": "Invite friends to sign up for FindMYJob to unlock more job details",
     "inviteButton": "Invite to Unlock",
     "shareJobLabel": "Copy Share Link",
+    "shareJobCopied": "Copied",
     "type": {
       "INTERNSHIP": "Internship",
       "FULL_TIME": "Full-time",

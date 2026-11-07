@@ -800,7 +800,11 @@
     "statusPending": "待审核",
     "descriptionLabel": "职位描述",
     "requirementsLabel": "任职要求",
-    "benefitsLabel": "薪资福利"
+    "benefitsLabel": "薪资福利",
+    "acceptsStudentPassLabel": "接受学生准证",
+    "sponsorsWorkPassLabel": "提供工作准证担保",
+    "yes": "是",
+    "no": "否"
   },
   "publicJobs": {
     "title": "职位列表",
@@ -813,6 +817,7 @@
     "lockedDesc": "邀请同学注册 FindMYJob 即可解锁更多职位详情",
     "inviteButton": "邀请同学解锁",
     "shareJobLabel": "复制分享链接",
+    "shareJobCopied": "已复制",
     "type": {
       "INTERNSHIP": "实习",
       "FULL_TIME": "全职",

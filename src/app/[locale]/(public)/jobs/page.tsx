@@ -4,6 +4,12 @@ import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { db } from '@/server/db'
 import { toJobListItem } from '@/server/serializers/job'
+import { stateLabel } from '@/lib/my-states'
+
+/** Escape Prisma contains input to prevent % and _ from acting as ILIKE wildcards. */
+function escapeLike(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
+}
 
 const listParamsSchema = z.object({
   q: z.string().trim().max(100).optional(),
@@ -45,8 +51,8 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
           ? [
               {
                 OR: [
-                  { title: { contains: q, mode: 'insensitive' as const } },
-                  { category: { contains: q, mode: 'insensitive' as const } },
+                  { title: { contains: escapeLike(q), mode: 'insensitive' as const } },
+                  { category: { contains: escapeLike(q), mode: 'insensitive' as const } },
                   { skills: { has: q } },
                 ],
               },
@@ -121,7 +127,7 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
                       </span>
                       {job.state && (
                         <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
-                          {job.state}
+                          {stateLabel(job.state, locale)}
                         </span>
                       )}
                     </div>

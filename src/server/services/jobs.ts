@@ -27,32 +27,59 @@ export const jobFormSchema = z.object({
   deadline: z.string().datetime().optional(),
   submit: z.boolean().default(false),
   updatedAt: z.string().datetime().optional(),
-})
+}).refine(
+  d => d.salaryMin === undefined || d.salaryMax === undefined || d.salaryMin <= d.salaryMax,
+  { message: 'salaryMin must be ≤ salaryMax', path: ['salaryMin'] },
+)
 
 export type JobFormInput = z.infer<typeof jobFormSchema>
 
-// Whitelist: headcount, deadline, acceptsStudentPass, sponsorsWorkPass never trigger re-review.
-// Everything else is sensitive and requires re-review when changed on a PUBLISHED job.
+/** editJobSchema requires updatedAt so the action always enforces version check. */
+export const jobEditSchema = jobFormSchema.and(z.object({ updatedAt: z.string().datetime() }))
+
+// Type-exhaustive sensitive-field map. Whitelist = 'skip' (never triggers re-review).
+// Everything not 'skip' is 'review' and must be compared. Adding a new field to JobFormInput
+// will cause a compile error here until it is explicitly categorised.
+const SENSITIVE_FIELD_MAP = {
+  title: 'review',
+  type: 'review',
+  category: 'review',
+  description: 'review',
+  requirements: 'review',
+  benefits: 'review',
+  workMode: 'review',
+  state: 'review',
+  city: 'review',
+  salaryMin: 'review',
+  salaryMax: 'review',
+  salaryVisible: 'review',
+  languages: 'review',
+  skills: 'review',
+  // Whitelist: changing these alone does NOT trigger re-review
+  acceptsStudentPass: 'skip',
+  sponsorsWorkPass: 'skip',
+  headcount: 'skip',
+} satisfies Record<keyof Omit<JobFormInput, 'submit' | 'deadline' | 'updatedAt'>, 'review' | 'skip'>
+
 function hasSensitiveChange(
   existing: Job,
   fields: Omit<JobFormInput, 'submit' | 'deadline' | 'updatedAt'>,
 ): boolean {
-  return (
-    fields.title !== existing.title ||
-    fields.description !== existing.description ||
-    (fields.requirements ?? null) !== existing.requirements ||
-    (fields.benefits ?? null) !== existing.benefits ||
-    (fields.salaryMin ?? null) !== existing.salaryMin ||
-    (fields.salaryMax ?? null) !== existing.salaryMax ||
-    fields.salaryVisible !== existing.salaryVisible ||
-    (fields.state ?? null) !== existing.state ||
-    (fields.city ?? null) !== existing.city ||
-    (fields.category ?? null) !== existing.category ||
-    fields.type !== existing.type ||
-    fields.workMode !== existing.workMode ||
-    JSON.stringify(fields.skills) !== JSON.stringify(existing.skills) ||
-    JSON.stringify(fields.languages) !== JSON.stringify(existing.languages)
-  )
+  if (SENSITIVE_FIELD_MAP.title === 'review' && fields.title !== existing.title) return true
+  if (SENSITIVE_FIELD_MAP.description === 'review' && fields.description !== existing.description) return true
+  if (SENSITIVE_FIELD_MAP.requirements === 'review' && (fields.requirements ?? null) !== existing.requirements) return true
+  if (SENSITIVE_FIELD_MAP.benefits === 'review' && (fields.benefits ?? null) !== existing.benefits) return true
+  if (SENSITIVE_FIELD_MAP.salaryMin === 'review' && (fields.salaryMin ?? null) !== existing.salaryMin) return true
+  if (SENSITIVE_FIELD_MAP.salaryMax === 'review' && (fields.salaryMax ?? null) !== existing.salaryMax) return true
+  if (SENSITIVE_FIELD_MAP.salaryVisible === 'review' && fields.salaryVisible !== existing.salaryVisible) return true
+  if (SENSITIVE_FIELD_MAP.state === 'review' && (fields.state ?? null) !== existing.state) return true
+  if (SENSITIVE_FIELD_MAP.city === 'review' && (fields.city ?? null) !== existing.city) return true
+  if (SENSITIVE_FIELD_MAP.category === 'review' && (fields.category ?? null) !== existing.category) return true
+  if (SENSITIVE_FIELD_MAP.type === 'review' && fields.type !== existing.type) return true
+  if (SENSITIVE_FIELD_MAP.workMode === 'review' && fields.workMode !== existing.workMode) return true
+  if (SENSITIVE_FIELD_MAP.skills === 'review' && JSON.stringify(fields.skills) !== JSON.stringify(existing.skills)) return true
+  if (SENSITIVE_FIELD_MAP.languages === 'review' && JSON.stringify(fields.languages) !== JSON.stringify(existing.languages)) return true
+  return false
 }
 
 async function resolveSubmitStatus(companyId: string): Promise<JobStatus> {
@@ -101,6 +128,13 @@ export async function getCompanyJob(ctx: CompanyCtx, jobId: string) {
   return job
 }
 
+/** Convert an ISO datetime string's date portion to end-of-day Asia/Kuala_Lumpur (UTC+8). */
+function toEndOfDayKL(isoDatetime: string): Date {
+  const dateStr = isoDatetime.slice(0, 10) // 'YYYY-MM-DD'
+  // 23:59:59.999 KL (UTC+8) = 15:59:59.999 UTC
+  return new Date(`${dateStr}T15:59:59.999Z`)
+}
+
 export async function createJob(ctx: CompanyCtx, input: JobFormInput) {
   const { submit, deadline, ...fields } = input
   const status: JobStatus = submit ? await resolveSubmitStatus(ctx.companyId) : 'DRAFT'
@@ -112,7 +146,7 @@ export async function createJob(ctx: CompanyCtx, input: JobFormInput) {
       createdById: ctx.userId,
       status,
       publishedAt: status === 'PUBLISHED' ? new Date() : null,
-      deadline: deadline ? new Date(deadline) : null,
+      deadline: deadline ? toEndOfDayKL(deadline) : null,
     },
   })
 }
@@ -124,8 +158,8 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
     })
     if (!existing) throw new NotFoundError()
 
-    if (existing.status === 'CLOSED' || existing.status === 'REJECTED') {
-      throw new ValidationError('Cannot edit a closed or rejected job')
+    if (existing.status === 'CLOSED') {
+      throw new ValidationError('Cannot edit a closed job')
     }
 
     const { submit, deadline, updatedAt: clientUpdatedAt, ...rawFields } = input
@@ -156,7 +190,7 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
           newStatus = 'PENDING_REVIEW'
         }
       }
-    } else if (existing.status === 'DRAFT' || existing.status === 'PENDING_REVIEW') {
+    } else if (existing.status === 'DRAFT' || existing.status === 'PENDING_REVIEW' || existing.status === 'REJECTED') {
       if (submit) {
         const company = await tx.company.findUnique({
           where: { id: ctx.companyId },
@@ -171,10 +205,15 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
       }
     }
 
-    const publishedAt =
-      newStatus === 'PUBLISHED' && existing.status !== 'PUBLISHED'
-        ? new Date()
-        : existing.publishedAt
+    let publishedAt: Date | null
+    if (newStatus === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
+      publishedAt = new Date()
+    } else if (newStatus === 'PENDING_REVIEW' && existing.status === 'PUBLISHED') {
+      // Going back to review: clear publishedAt so it reflects the eventual re-publish date
+      publishedAt = null
+    } else {
+      publishedAt = existing.publishedAt
+    }
 
     const updateResult = await tx.job.updateMany({
       where: {
@@ -186,7 +225,8 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
         ...fields,
         status: newStatus,
         publishedAt,
-        deadline: deadline ? new Date(deadline) : null,
+        deadline: deadline ? toEndOfDayKL(deadline) : null,
+        ...(existing.status === 'REJECTED' && newStatus !== 'REJECTED' ? { reviewNote: null } : {}),
       },
     })
 

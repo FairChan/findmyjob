@@ -20,6 +20,7 @@ import {
   listPendingJobs,
   approveJob,
   rejectJob,
+  rejectJobSchema,
 } from '@/server/services/review-jobs'
 import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
 import type { UserCtx } from '@/server/authz'
@@ -171,6 +172,39 @@ describe('approveJob', () => {
       },
     })
     await expect(approveJob(adminCtx, { jobId: job.id, updatedAt: job.updatedAt })).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it('re-approving after edit does NOT increment approvedJobCount again', async () => {
+    const adminCtx = await makeAdminCtx()
+    const { companyId, userId } = await createEmployer(testDb)
+    await testDb.company.update({
+      where: { id: companyId },
+      data: { verificationStatus: 'VERIFIED', approvedJobCount: 0 },
+    })
+    const job = await makePendingJob(companyId, userId)
+
+    // First approval: count → 1, job gets publishedAt set
+    await approveJob(adminCtx, { jobId: job.id, updatedAt: job.updatedAt })
+    const afterFirst = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(afterFirst?.approvedJobCount).toBe(1)
+
+    // Simulate job going back to PENDING_REVIEW (edit after publish)
+    const refreshed = await testDb.job.findUnique({ where: { id: job.id } })
+    await testDb.job.update({
+      where: { id: job.id },
+      data: { status: 'PENDING_REVIEW' },
+    })
+    const requeued = await testDb.job.findUnique({ where: { id: job.id } })
+
+    // Second approval: count must stay at 1 (publishedAt is NOT null)
+    await approveJob(adminCtx, { jobId: job.id, updatedAt: requeued!.updatedAt })
+    const afterSecond = await testDb.company.findUnique({ where: { id: companyId } })
+    expect(afterSecond?.approvedJobCount).toBe(1)
+  })
+
+  it('whitespace-only reviewNote is rejected', async () => {
+    const result = rejectJobSchema.safeParse({ jobId: 'abc', reviewNote: '   ', updatedAt: new Date() })
+    expect(result.success).toBe(false)
   })
 
   it('reaching autoPublishAfter threshold causes next job to auto-publish on submission', async () => {

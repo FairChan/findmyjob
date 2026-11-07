@@ -17,6 +17,7 @@ vi.mock('@/server/db', async () => {
 import { setupTestDb, testDb } from '../setup/db'
 import { createEmployer } from '../factories'
 import {
+  jobFormSchema,
   createJob,
   updateJob,
   copyJob,
@@ -63,6 +64,12 @@ const baseInput = {
 describe('createJob', () => {
   it('saves as DRAFT when submit=false regardless of verification', async () => {
     const ctx = await makeVerifiedCtx()
+    const job = await createJob(ctx, { ...baseInput, submit: false })
+    expect(job.status).toBe('DRAFT')
+  })
+
+  it('unverified company can save DRAFT (submit=false)', async () => {
+    const ctx = await makeUnverifiedCtx()
     const job = await createJob(ctx, { ...baseInput, submit: false })
     expect(job.status).toBe('DRAFT')
   })
@@ -145,6 +152,7 @@ async function makePublishedJob(ctx: { userId: string; companyId: string }) {
       companyId: ctx.companyId,
       createdById: ctx.userId,
       status: 'PUBLISHED',
+      publishedAt: new Date(),
       ...publishedFixtureData,
     },
   })
@@ -211,6 +219,19 @@ describe('updateJob — TM-007 sensitive field re-review', () => {
     expect(updated.status).toBe('PUBLISHED')
   })
 
+  it('publishedAt is cleared when PUBLISHED job reverts to PENDING_REVIEW', async () => {
+    const ctx = await makeVerifiedCtx()
+    const job = await makePublishedJob(ctx)
+    expect(job.publishedAt).not.toBeNull()
+
+    const updated = await updateJob(ctx, job.id, {
+      ...publishedFixtureInput,
+      title: 'Changed Title', // sensitive change → PENDING_REVIEW
+    })
+    expect(updated.status).toBe('PENDING_REVIEW')
+    expect(updated.publishedAt).toBeNull()
+  })
+
   it('clearing requirements on DRAFT sets it to null in DB', async () => {
     const ctx = await makeVerifiedCtx()
     const job = await testDb.job.create({
@@ -234,13 +255,13 @@ describe('updateJob — TM-007 sensitive field re-review', () => {
     expect(updated.requirements).toBeNull()
   })
 
-  it('stale updatedAt → ValidationError (concurrent save protection)', async () => {
+  it('stale updatedAt → ValidationError (concurrent save protection), DB record unchanged', async () => {
     const ctx = await makeVerifiedCtx()
     const job = await testDb.job.create({
       data: {
         companyId: ctx.companyId,
         createdById: ctx.userId,
-        title: 'Job',
+        title: 'Original Title',
         type: 'INTERNSHIP',
         description: 'Desc',
         status: 'DRAFT',
@@ -249,11 +270,52 @@ describe('updateJob — TM-007 sensitive field re-review', () => {
     })
     const staleUpdatedAt = job.updatedAt.toISOString()
     // First save succeeds and advances updatedAt.
-    await updateJob(ctx, job.id, { ...baseInput, title: 'Job', updatedAt: staleUpdatedAt })
-    // Second save with the original (now stale) updatedAt must fail.
+    await updateJob(ctx, job.id, { ...baseInput, title: 'First Save', updatedAt: staleUpdatedAt })
+    // Second save with the original (now stale) updatedAt must fail without changing the DB.
     await expect(
-      updateJob(ctx, job.id, { ...baseInput, title: 'Job', updatedAt: staleUpdatedAt }),
+      updateJob(ctx, job.id, { ...baseInput, title: 'Stale Save', updatedAt: staleUpdatedAt }),
     ).rejects.toBeInstanceOf(ValidationError)
+
+    const inDb = await testDb.job.findUnique({ where: { id: job.id } })
+    expect(inDb?.title).toBe('First Save')
+  })
+
+  it('deadline whitelist: changing deadline on PUBLISHED job keeps PUBLISHED', async () => {
+    const ctx = await makeVerifiedCtx()
+    const job = await makePublishedJob(ctx)
+    const updated = await updateJob(ctx, job.id, {
+      ...publishedFixtureInput,
+      deadline: new Date(Date.now() + 86400000 * 30).toISOString(),
+    })
+    expect(updated.status).toBe('PUBLISHED')
+  })
+
+  it('salaryMin > salaryMax → ValidationError from schema', async () => {
+    const result = jobFormSchema.safeParse({ ...baseInput, salaryMin: 5000, salaryMax: 1000 })
+    expect(result.success).toBe(false)
+  })
+
+  it('REJECTED job can be edited and resubmitted → PENDING_REVIEW', async () => {
+    const ctx = await makeVerifiedCtx()
+    const job = await testDb.job.create({
+      data: {
+        companyId: ctx.companyId,
+        createdById: ctx.userId,
+        title: 'Rejected Job',
+        type: 'INTERNSHIP',
+        description: 'Description',
+        status: 'REJECTED',
+        workMode: 'ONSITE',
+        reviewNote: 'Policy violation',
+      },
+    })
+    const updated = await updateJob(ctx, job.id, {
+      ...baseInput,
+      title: 'Rejected Job',
+      submit: true,
+    })
+    expect(updated.status).toBe('PENDING_REVIEW')
+    expect(updated.reviewNote).toBeNull()
   })
 
   it('cannot edit CLOSED job → ValidationError', async () => {

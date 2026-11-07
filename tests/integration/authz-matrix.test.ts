@@ -1020,6 +1020,7 @@ describe('jobs authz (M5-T01)', () => {
     const job = await makeJobForCompany(owner.companyId, owner.userId)
 
     const { updateJob: svcUpdateJob } = await import('@/server/services/jobs')
+    const { NotFoundError: NFE } = await import('@/server/errors')
     const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
     await expect(
       svcUpdateJob(attackerCtx, job.id, {
@@ -1027,7 +1028,7 @@ describe('jobs authz (M5-T01)', () => {
         workMode: 'ONSITE', submit: false, salaryVisible: true,
         acceptsStudentPass: false, sponsorsWorkPass: false, languages: [], skills: [],
       }),
-    ).rejects.toThrow()
+    ).rejects.toBeInstanceOf(NFE)
 
     const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
     expect(unchanged?.title).toBe('Authz Job')
@@ -1039,8 +1040,9 @@ describe('jobs authz (M5-T01)', () => {
     const job = await makeJobForCompany(owner.companyId, owner.userId)
 
     const { closeJob: svcCloseJob } = await import('@/server/services/jobs')
+    const { NotFoundError: NFE } = await import('@/server/errors')
     const attackerCtx = { userId: attacker.userId, companyId: attacker.companyId, role: 'OWNER' as const }
-    await expect(svcCloseJob(attackerCtx, job.id)).rejects.toThrow()
+    await expect(svcCloseJob(attackerCtx, job.id)).rejects.toBeInstanceOf(NFE)
 
     const unchanged = await testDb.job.findUnique({ where: { id: job.id } })
     expect(unchanged?.status).toBe('PUBLISHED')
