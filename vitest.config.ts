@@ -15,6 +15,8 @@ export default defineConfig({
     exclude: ['prototype/**', 'node_modules/**', '.next/**', 'tests/e2e/**'],
     // 全局要求每条测试至少一个断言（见文件内注释）
     setupFiles: ['tests/setup/assertions.ts'],
+    // 同一个测试库只允许一个 vitest run（第二个会在几秒内失败，不会互相 TRUNCATE）
+    globalSetup: ['tests/setup/global-test-db-lock.ts'],
     // Required for integration tests that share DB state; unit tests pay a small speed cost
     fileParallelism: false,
     // Integration tests hit a real DB and need longer than the 5000ms default
