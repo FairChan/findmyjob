@@ -7,9 +7,11 @@ import { getSessionCookie } from 'better-auth/cookies'
 // Fixed loopback address for the internal reconsent check.
 // Never derive this from the incoming Host/X-Forwarded-Host headers — that would
 // allow an attacker to redirect the session cookie to an arbitrary host.
-// staging/prod: set INTERNAL_BASE_URL=http://127.0.0.1:<PORT> in the app env.
+// Defaults to this process's own PORT, so a dev server on :3001 never calls another one on :3000;
+// set INTERNAL_BASE_URL only when the app is reachable on a different loopback address.
 // The direct loopback connection bypasses Caddy's basic_auth (DECISIONS A22).
-const INTERNAL_BASE_URL = process.env.INTERNAL_BASE_URL ?? 'http://127.0.0.1:3000'
+const INTERNAL_BASE_URL =
+  process.env.INTERNAL_BASE_URL ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}`
 
 const intlMiddleware = createMiddleware(routing)
 
