@@ -479,9 +479,12 @@ describe('company service authz (M3-T01)', () => {
     await expect(createCompany({ userId }, { legalName: 'No Co' })).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it('createCompany: employer already member → ValidationError', async () => {
+  it('createCompany: employer already member → AppError ALREADY_MEMBER', async () => {
     const { userId } = await createEmployer(testDb)
-    await expect(createCompany({ userId }, { legalName: 'Second Co' })).rejects.toBeInstanceOf(ValidationError)
+    const err = await createCompany({ userId }, { legalName: 'Second Co' }).catch(e => e)
+    const { AppError: AE } = await import('@/server/errors')
+    expect(err).toBeInstanceOf(AE)
+    expect((err as InstanceType<typeof AE>).code).toBe('ALREADY_MEMBER')
   })
 
   it('createCompany: employer without company → creates company', async () => {
@@ -508,6 +511,27 @@ describe('company service authz (M3-T01)', () => {
     // cid2 was not touched
     const co2 = await testDb.company.findUnique({ where: { id: cid2 } })
     expect(co2?.legalName).not.toBe('NewNameFromAction')
+  })
+
+  it('updateCompanyAction Hijack: passing another company\'s companyId in raw input is ignored — cid2 unchanged', async () => {
+    // Verifies that even if a future schema change adds companyId to the input,
+    // the action always uses ctx.companyId from requireCompanyMember, not client-supplied companyId.
+    const { userId: uid1, companyId: cid1 } = await createEmployer(testDb)
+    const { companyId: cid2 } = await createEmployer(testDb)
+    const co2Before = await testDb.company.findUnique({ where: { id: cid2 }, select: { legalName: true } })
+    mockSession(uid1)
+    const { updateCompanyAction } = await import('@/server/actions/company')
+    // Pass cid2 explicitly in the raw input object — it must be ignored
+    const result = await updateCompanyAction({ legalName: 'HijackAttempt', companyId: cid2 } as never)
+    expect(result.ok).toBe(true)
+
+    // cid2 must be unchanged (the write went to cid1)
+    const co2After = await testDb.company.findUnique({ where: { id: cid2 }, select: { legalName: true } })
+    expect(co2After?.legalName).toBe(co2Before?.legalName)
+
+    // cid1 got the update
+    const co1 = await testDb.company.findUnique({ where: { id: cid1 }, select: { legalName: true } })
+    expect(co1?.legalName).toBe('HijackAttempt')
   })
 
   it('updateCompanyAction: RECRUITER → FORBIDDEN', async () => {

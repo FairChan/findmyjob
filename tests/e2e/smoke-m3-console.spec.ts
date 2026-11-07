@@ -161,4 +161,9 @@ test.describe('M3-T05 company public page smoke', () => {
     const res = await page.goto(`/zh/companies/${company.id}`)
     expect(res?.status()).toBe(404)
   })
+
+  test('invalid (non-cuid) company id returns 404', async ({ page }) => {
+    const res = await page.goto('/zh/companies/not-a-valid-cuid-!!!!')
+    expect(res?.status()).toBe(404)
+  })
 })

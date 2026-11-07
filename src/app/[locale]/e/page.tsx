@@ -120,7 +120,7 @@ export default async function EmployerDashboardPage({
     (company.verificationStatus === 'UNSUBMITTED' || company.verificationStatus === 'REJECTED')
 
   return (
-    <main className="container mx-auto max-w-4xl px-4 py-12">
+    <div className="container mx-auto max-w-4xl px-4 py-12">
       <h1 className="mb-8 text-2xl font-bold">{t('title')}</h1>
 
       {/* Verification status banner */}
@@ -174,6 +174,6 @@ export default async function EmployerDashboardPage({
           ))}
         </div>
       </div>
-    </main>
+    </div>
   )
 }
