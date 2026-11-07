@@ -605,7 +605,7 @@
 做：
 - 运营在 `/admin/companies/[companyId]` 查看企业上传的 PDF 材料时，服务端先用 M4-T19 的 `sanitizePdf`（`src/server/lib/pdf-sanitize.ts`，内部走 `runCappedPdfWorker`）净化，再把净化后的副本给运营。
 - 原件不再直接给出签名 URL。图片原样返回，响应头照 M7-T19「A-22 临时缓解」那几个。
-- 来源：threat-model A-22、TM-016。这是监督会话 2026-11-07 定的默认，待用户确认；理由是运营账号被盗属于 TM-026 的 High，对运营投放恶意 PDF 正是通往它的路径。
+- 来源：threat-model A-22、TM-016。监督会话 2026-11-07 提出，用户 2026-11-07 确认；理由是运营账号被盗属于 TM-026 的 High，对运营投放恶意 PDF 正是通往它的路径。
 - M8 的付款回单照同样的方式处理。
 验收：
 - 净化后的副本里没有这些东西：/AA、/OpenAction、JavaScript、Launch 动作、URI 动作、EmbeddedFile、FileAttachment。认证材料不需要外链，所以 URI 也去掉；如果 sanitizePdf 默认保留 http(s) 链接，就加一个选项关掉。单元测试要把净化后的文件再 load 一次，断言这些键都不在。
