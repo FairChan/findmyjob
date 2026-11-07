@@ -121,6 +121,41 @@ describe('runCappedPdfWorker', () => {
     expect(isEmptyDoc || isBombRejected).toBe(true)
   }, 15_000)
 
+  // pdf-lib's parser catches errors from invalid objects and keeps going (prints "Trying to parse
+  // invalid object"), so a budget error thrown inside an ObjStm decode never reaches the script.
+  // A valid PDF carrying such a bomb must still be reported as too_large, not accepted.
+  it('reports too_large for a valid PDF with an appended ObjStm bomb even though pdf-lib swallows the error', async () => {
+    const base = Buffer.from(await (await (async () => {
+      const d = await PDFDocument.create()
+      d.addPage([612, 792])
+      return d
+    })()).save({ useObjectStreams: false }))
+    const eof = base.lastIndexOf(Buffer.from('%%EOF'))
+    const bomb = zlib.deflateSync(Buffer.alloc(LIMIT * 4, 0x20))
+    const obj = Buffer.concat([
+      Buffer.from(`\n99 0 obj\n<< /Type /ObjStm /N 1 /First 4 /Filter /FlateDecode /Length ${bomb.length} >>\nstream\n`),
+      bomb,
+      Buffer.from('\nendstream\nendobj\n'),
+    ])
+    const pdf = Buffer.concat([base.subarray(0, eof), obj, base.subarray(eof)])
+
+    const result = await runCappedPdfWorker<{ pageCount: number }>(
+      `
+        const { PDFDocument } = pdfLib;
+        const doc = await PDFDocument.load(input, { ignoreEncryption: true, updateMetadata: false });
+        return { pageCount: doc.getPageCount() };
+      `,
+      pdf,
+      undefined,
+      { maxInflatedBytes: LIMIT },
+    )
+    expect(result).toEqual({ ok: false, reason: 'too_large' })
+
+    const { checkPdf } = await import('@/server/lib/pdf')
+    const checked = await checkPdf(pdf, 20)
+    expect(checked.ok).toBe(false)
+  }, 15_000)
+
   it('returns timeout when script contains an infinite loop', async () => {
     const buf = await makeValidPdf(1)
     const result = await runCappedPdfWorker<never>(

@@ -26,6 +26,11 @@ import 'pdf-lib/cjs/core/streams/DecodeStream'
  *
  * IMPORTANT: on too_large the caller MUST NOT fall back to returning the
  * original file — the document may contain a bomb that never got inflated.
+ *
+ * SECURITY: `script` is compiled with new Function inside the worker. It must be a
+ * static string constant written in server code (like CHECK_PDF_SCRIPT). Never build
+ * it from request data, file contents, DB values or anything a user controls;
+ * pass such values through `params` instead.
  */
 
 const DEFAULT_TIMEOUT_MS = 10_000
@@ -42,10 +47,15 @@ const DecodeStream = require('pdf-lib/cjs/core/streams/DecodeStream').default;
 
 let inflatedTotal = 0;
 let inflatedBudget = 50 * 1024 * 1024; // overwritten per message
+// pdf-lib's parser catches errors from invalid objects and keeps parsing, so the throw below can be
+// swallowed (an ObjStm bomb appended to a valid PDF still loads). This flag records that the budget
+// tripped at all; the harness then reports too_large no matter what the script returned.
+let budgetExceeded = false;
 
 const _origEnsureBuffer = DecodeStream.prototype.ensureBuffer;
 DecodeStream.prototype.ensureBuffer = function ensureBufferWithBudget(requested) {
   if (requested > inflatedBudget) {
+    budgetExceeded = true;
     throw new Error('[pdf-inflate-bomb] single request exceeds budget');
   }
   const before = this.buffer.byteLength;
@@ -53,6 +63,7 @@ DecodeStream.prototype.ensureBuffer = function ensureBufferWithBudget(requested)
   if (this.buffer.byteLength > before) {
     inflatedTotal += (this.buffer.byteLength - before);
     if (inflatedTotal > inflatedBudget) {
+      budgetExceeded = true;
       throw new Error('[pdf-inflate-bomb] cumulative budget exceeded');
     }
   }
@@ -64,12 +75,17 @@ const pdfLib = require('pdf-lib');
 parentPort.once('message', async ({ input, params, maxInflatedBytes, script }) => {
   inflatedBudget = maxInflatedBytes;
   inflatedTotal = 0;
+  budgetExceeded = false;
   try {
     const fn = new Function('pdfLib', 'input', 'params', '"use strict"; return (async () => { ' + script + ' })()');
     const result = await fn(pdfLib, Buffer.from(input), params);
+    if (budgetExceeded) {
+      parentPort.postMessage({ ok: false, reason: 'too_large' });
+      return;
+    }
     parentPort.postMessage({ ok: true, result }, result instanceof Uint8Array ? [result.buffer] : []);
   } catch (e) {
-    if (e instanceof Error && e.message.startsWith('[pdf-inflate-bomb]')) {
+    if (budgetExceeded || (e instanceof Error && e.message.startsWith('[pdf-inflate-bomb]'))) {
       parentPort.postMessage({ ok: false, reason: 'too_large' });
     } else {
       parentPort.postMessage({ ok: false, reason: 'failed' });
