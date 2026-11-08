@@ -53,14 +53,22 @@ mkdir -p "$RUN_DIR" || { echo "停止：无法创建 $RUN_DIR"; exit 1; }
 
 log() { echo "$*" | tee -a "$RUN_DIR/summary.txt"; }
 stop() { log "停止：$2"; exit "$1"; }
-# 轮次结束时清理本轮自己留下的进程（用户 2026-11-08 批准）：只动 round-reaper 记下的进程树，PID 和 CreationDate 都对得上才结束
-REAP_TREE=""
+# 轮次结束时清理本轮自己留下的进程（用户 2026-11-08 批准；同日按安全复查加固）：
+# 跑的是 auto-build 启动时复制到仓库外临时目录、并记下 sha256 的那份脚本；进程树只在 watcher 内存里，
+# 收到停止信号后由 watcher 自己清理（只清 PID 和 CreationDate 都对得上的，不碰自身祖先进程）。
+REAPER_DIR="$(mktemp -d)"
+REAPER_PS1="$REAPER_DIR/round-reaper.ps1"
+REAPER_SHA=""
+if [[ -f scripts/round-reaper.ps1 ]]; then
+  cp scripts/round-reaper.ps1 "$REAPER_PS1" && REAPER_SHA="$(sha256sum "$REAPER_PS1" | cut -d' ' -f1)"
+fi
+REAP_STOP="" REAP_OUT="" watcher=""
 reap_round() {
-  [[ -n "$REAP_TREE" && -f "$REAP_TREE" && ! -f "$REAP_TREE.done" ]] || return 0
-  : >"$REAP_TREE.stop"
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/round-reaper.ps1 -Mode reap -Out "$(cygpath -w "$REAP_TREE")" \
-    2>&1 | tee -a "$RUN_DIR/summary.txt"
-  : >"$REAP_TREE.done"
+  [[ -n "$watcher" ]] || return 0
+  : >"$REAP_STOP"
+  wait "$watcher" 2>/dev/null
+  [[ -f "$REAP_OUT" ]] && tee -a "$RUN_DIR/summary.txt" <"$REAP_OUT"
+  watcher=""
 }
 trap reap_round EXIT
 py() { "$PY" -X utf8 "${HELPER[@]}" "$@"; }
@@ -150,18 +158,17 @@ docs/TASKS.md 就是已批准的设计，不走 brainstorming。
     --disallowedTools "${DENY[@]}" \
     >"$out.json" 2>"$out.stderr" &
   round_pid=$!
-  REAP_TREE="$RUN_DIR/r${i}-${id}.tree.tsv"
-  watcher=""
+  REAP_STOP="$REAPER_DIR/r${i}.stop" REAP_OUT="$REAPER_DIR/r${i}.out"
   round_win="$(cat "/proc/$round_pid/winpid" 2>/dev/null || true)"
-  if [[ -n "$round_win" && -f scripts/round-reaper.ps1 ]]; then
-    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/round-reaper.ps1 -Mode watch -RootPid "$round_win" \
-      -Out "$(cygpath -w "$REAP_TREE")" -StopFile "$(cygpath -w "$REAP_TREE.stop")" >/dev/null 2>&1 &
+  if [[ -n "$round_win" && -n "$REAPER_SHA" && "$(sha256sum "$REAPER_PS1" | cut -d' ' -f1)" == "$REAPER_SHA" ]]; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$REAPER_PS1")" -RootPid "$round_win" \
+      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" >"$REAP_OUT" 2>&1 &
     watcher=$!
+  elif [[ -n "$REAPER_SHA" ]]; then
+    log "警告：round-reaper 副本的 sha256 变了或拿不到轮次 PID，本轮不做进程清理"
   fi
   wait "$round_pid"
   rc=$?
-  : >"$REAP_TREE.stop"
-  [[ -n "$watcher" ]] && wait "$watcher" 2>/dev/null
   reap_round
 
   read -r status sid cost turns subtype < <(py parse "$out.json")
