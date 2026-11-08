@@ -180,6 +180,7 @@
     "navCompanies": "企业认证",
     "navJobs": "职位审核",
     "navNotifications": "消息通知",
+    "navDataRequests": "数据请求",
     "bellLabel": "消息通知",
     "bellLabelWithCount": "消息通知（{count} 条未读）"
   },
@@ -394,7 +395,25 @@
     "unlocksTitle": "谁解锁了我",
     "unlocksDesc": "解锁了你联系方式的企业列表。",
     "unlocksEmpty": "暂无企业解锁记录。",
-    "errorGeneric": "操作失败，请稍后再试。"
+    "errorGeneric": "操作失败，请稍后再试。",
+    "dataRightsTitle": "数据权利",
+    "dataRightsDesc": "根据《个人数据保护法（PDPA）》，你有权导出或删除你的个人数据。",
+    "exportTitle": "导出我的数据",
+    "exportDesc": "将你的个人信息、档案、投递记录和简历文件打包下载。生成后 24 小时内有效。",
+    "exportButton": "申请导出",
+    "exportPending": "申请中…",
+    "exportRequested": "导出请求已提交，完成后我们会发邮件通知你。",
+    "exportViewLink": "查看下载页面",
+    "deleteTitle": "申请删除账号",
+    "deleteDesc": "账号将立即停用并从人才库移除，30 天后个人信息将被永久删除。此操作不可撤销。",
+    "deleteButton": "申请删除账号",
+    "deleteConfirmTitle": "确认删除账号",
+    "deleteConfirmDesc": "账号删除后不可恢复，所有数据将在 30 天内被永久删除。",
+    "deleteConfirmType": "请在下方输入「确认删除」以继续：",
+    "deleteConfirmPlaceholder": "确认删除",
+    "deleteCancel": "取消",
+    "deleteConfirmButton": "确认删除账号",
+    "deletePending": "处理中…"
   },
   "schoolVerify": {
     "title": "学校邮箱认证",
@@ -887,6 +906,29 @@
     "sponsorsWorkPassLabel": "提供工作准证担保",
     "yes": "是",
     "no": "否"
+  },
+  "adminDataRequests": {
+    "title": "数据请求",
+    "statusAll": "全部",
+    "status_OPEN": "待处理",
+    "status_DONE": "已完成",
+    "status_REJECTED": "已驳回",
+    "type_EXPORT": "导出",
+    "type_DELETE": "删除",
+    "type_CORRECT": "更正",
+    "colType": "类型",
+    "colUser": "用户 ID",
+    "colStatus": "状态",
+    "colCreatedAt": "提交时间",
+    "empty": "暂无数据请求",
+    "loadMore": "加载更多"
+  },
+  "exportDownload": {
+    "title": "下载我的数据",
+    "pending": "数据包正在生成中，完成后我们会发邮件通知你。",
+    "description": "点击下方按钮下载你的个人数据包（ZIP 格式）。链接在生成后 5 分钟内有效。",
+    "downloadButton": "下载数据包",
+    "urlExpiry": "链接有效期 5 分钟，超时请刷新页面重新生成。"
   },
   "publicCompanies": {
     "title": "合作企业",

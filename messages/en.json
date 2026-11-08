@@ -180,6 +180,7 @@
     "navCompanies": "Company Review",
     "navJobs": "Job Review",
     "navNotifications": "Notifications",
+    "navDataRequests": "Data Requests",
     "bellLabel": "Notifications",
     "bellLabelWithCount": "Notifications ({count} unread)"
   },
@@ -394,7 +395,25 @@
     "unlocksTitle": "Who Unlocked Me",
     "unlocksDesc": "Companies that have unlocked your contact details.",
     "unlocksEmpty": "No unlocks yet.",
-    "errorGeneric": "Something went wrong. Please try again."
+    "errorGeneric": "Something went wrong. Please try again.",
+    "dataRightsTitle": "Data Rights",
+    "dataRightsDesc": "Under the Personal Data Protection Act (PDPA), you have the right to export or delete your personal data.",
+    "exportTitle": "Export My Data",
+    "exportDesc": "Download a copy of your personal information, profile, applications, and resume files. Valid for 24 hours after generation.",
+    "exportButton": "Request Export",
+    "exportPending": "Requesting…",
+    "exportRequested": "Export request submitted. We'll email you when it's ready.",
+    "exportViewLink": "View download page",
+    "deleteTitle": "Request Account Deletion",
+    "deleteDesc": "Your account will be deactivated immediately and removed from the talent pool. Personal data is permanently deleted after 30 days. This cannot be undone.",
+    "deleteButton": "Request Account Deletion",
+    "deleteConfirmTitle": "Confirm Account Deletion",
+    "deleteConfirmDesc": "This action cannot be reversed. All your data will be permanently deleted within 30 days.",
+    "deleteConfirmType": "Type the word below to confirm:",
+    "deleteConfirmPlaceholder": "DELETE",
+    "deleteCancel": "Cancel",
+    "deleteConfirmButton": "Permanently Delete Account",
+    "deletePending": "Processing…"
   },
   "schoolVerify": {
     "title": "School Email Verification",
@@ -887,6 +906,29 @@
     "sponsorsWorkPassLabel": "Sponsors Work Pass",
     "yes": "Yes",
     "no": "No"
+  },
+  "adminDataRequests": {
+    "title": "Data Requests",
+    "statusAll": "All",
+    "status_OPEN": "Open",
+    "status_DONE": "Done",
+    "status_REJECTED": "Rejected",
+    "type_EXPORT": "Export",
+    "type_DELETE": "Deletion",
+    "type_CORRECT": "Correction",
+    "colType": "Type",
+    "colUser": "User ID",
+    "colStatus": "Status",
+    "colCreatedAt": "Submitted",
+    "empty": "No data requests found.",
+    "loadMore": "Load more"
+  },
+  "exportDownload": {
+    "title": "Download My Data",
+    "pending": "Your data package is being prepared. We'll email you when it's ready.",
+    "description": "Click the button below to download your personal data package (ZIP file). The link is valid for 5 minutes.",
+    "downloadButton": "Download Data Package",
+    "urlExpiry": "Link valid for 5 minutes. Reload this page to generate a new link."
   },
   "publicCompanies": {
     "title": "Partner Companies",

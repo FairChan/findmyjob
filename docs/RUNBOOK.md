@@ -182,13 +182,24 @@ pg_dump -Fc --exclude-schema=pgboss <DB> | age -r <公钥> → /backup-tmp/<时�
 | 桶 | 用途 | 区域 | 版本控制 | 生命周期 |
 |---|---|---|---|---|
 | `findmyjob-backups` | 加密数据库备份 | ap-southeast-5（马来西亚） | 开启 + **S3 Object Lock（Governance，30 天保留期）** | 当前版本 Expiration 30 天；NoncurrentVersionExpiration 1 天；清理过期的删除标记（实际保留约 31 天，见下方说明） |
-| `findmyjob-files`（应用桶） | 用户上传文件 | ap-southeast-5 | 开启 | 非当前版本 30 天后过期 |
+| `findmyjob-files`（应用桶） | 用户上传文件、导出压缩包 | ap-southeast-5 | 开启 | 非当前版本 30 天后过期 |
 
 **备份桶生命周期说明**：每个 dump 的 key 唯一（如 `2026-11-05T19-15-00Z.dump.age`），始终是当前版本，NoncurrentVersionExpiration 对其不生效；必须同时配置当前版本 **Expiration 30 天**才能触发自动删除，否则 dump 永不过期，与隐私政策的「保存 30 天」矛盾。Object Lock（Governance，30 天保留期）防止写入凭据（`backup-writer`）删除或覆盖已上传对象（满足 ARCHITECTURE A20「写入凭据删不了历史」）。Expiration 在第 30 天加上删除标记，Object Lock 保留期同日到期，实际清理在第 31 天左右完成，**实际保留约 31 天**。隐私政策写的是「30 天」（用户视角的上限），实际不超过 31 天，不修改法律文本。NoncurrentVersionExpiration 1 天清理因意外重名上传产生的旧版本；清理过期删除标记防止存储费用积累。
 
 IAM 权限见 M7-H01 配置表：
 - `backup-writer`：对 `db/*` 仅 PutObject（Object Lock 下无法删除）
 - `restore-reader`：只读；平时**离线保存**，演练时临时注入
+
+**应用桶（`findmyjob-files`）PDPA purge 策略**：purge 任务（`purge-deleted-accounts` cron，每日 03:30 KL）需要对 `exports/<userId>/` 和 `resumes/<storageKey>` 执行 `DeleteObjectVersions`；应用程序凭据 `findmyjob_app_s3` 须获得该桶的 `s3:DeleteObjectVersion` 权限，且权限只限于该桶、不授予备份桶。桶策略示例：
+
+```json
+{
+  "Effect": "Allow",
+  "Principal": { "AWS": "arn:aws:iam::<account>:user/findmyjob_app_s3" },
+  "Action": ["s3:DeleteObjectVersion", "s3:ListBucketVersions"],
+  "Resource": ["arn:aws:s3:::findmyjob-files", "arn:aws:s3:::findmyjob-files/*"]
+}
+```
 
 ### age 密钥管理
 

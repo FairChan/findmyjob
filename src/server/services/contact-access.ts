@@ -272,3 +272,11 @@ export async function updateOwnContact(ctx: UserCtx, input: UpdateContactInput):
     update: data,
   })
 }
+
+/** PDPA purge: hard-delete the contact record for a deleted student. Must run inside a transaction. */
+export async function purgeContactForStudent(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  studentId: string,
+): Promise<void> {
+  await tx.studentContact.delete({ where: { studentId } })
+}
