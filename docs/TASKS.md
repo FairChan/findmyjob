@@ -1190,7 +1190,7 @@
 - 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
 > 完成 2026-11-08：(1) searchCompanies 加 verificationStatus 过滤，PENDING 时按 createdAt asc 排序；看板链接改 ?status=PENDING；(2) job-search.ts 和 jobs/[id]/page.tsx 过滤 company.isActive=false；applyToJob 加 !company.isActive 检查；(3) deactivateCompany 事务内写 auth.session.revoke 审计（metadata.userIds）；(4) adjustCompanyCreditsSchema delta.refine(≠0)、note.trim().min(1)；没有钱包时抛 NotFoundError；(5) admin/companies/[companyId]/page.tsx catch NotFoundError → notFound()；(6) smoke-m6-t03 改轮询 isActive；smoke-m6-t12 新增 4 条 E2E（verificationStatus 过滤/404/看板链接/停用后 /zh/e 被拒）。vitest：admin-companies.test.ts 44 通过 0 失败 0 跳过；applications.test.ts 20 通过 0 失败 0 跳过；job-search.test.ts 16 通过 0 失败 0 跳过；合计 80/80 通过。E2E：smoke-m6-t03.spec.ts 8/8 通过，smoke-m6-t12.spec.ts 4/4 通过，合计 12/12 通过。
 
-#### [ ] M6-T13 补修 M6-T05 复查：清空数字字段不再存成 0、高影响开关加确认、设置审计记新旧值
+#### [x] M6-T13 补修 M6-T05 复查：清空数字字段不再存成 0、高影响开关加确认、设置审计记新旧值
 依赖：M6-T05
 > 总控 2026-11-08 加入：复查（按 97e6bff 读的代码，只看 High）结论是 OK，没有 High。权限三层都在，每个键都有带上下限的 zod 校验，未知键被拒，60 秒内生效。下面是会直接影响使用的 Medium，一起改。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
 做 / 验收：
@@ -1199,6 +1199,7 @@
 3. 设置审计记新旧值：`setSetting` 里先读旧行，upsert 和 `logAudit(…, tx)` 放进同一个 `$transaction`，metadata 写 `{ key, from, to }`（这些设置值里没有秘密）。测试：改 `unlock.costCredits` 后审计行的 from 和 to 正确；写完立刻 `getSetting` 读到新值（保住删缓存那一行）。
 4. 把 `tests/unit/admin-settings.test.ts` 里 `expect(audit).toBeDefined()` 改成 `not.toBeNull()`（findFirst 查不到返回 null，原断言恒为真）。
 - 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
+> 完成 2026-11-08：(1) parseSettingValue 提取到 parse-value.ts，空字符串返回空串而非 0，8 条 parseValue 单元测试全绿；(2) setSetting 改为 $transaction（upsert+logAudit 原子性），metadata 记 from/to，新增 audit 和 getSetting 测试；(3) toBeDefined() → not.toBeNull()；(4) 高影响开关加 shadcn Dialog 确认（5 个 key，zh/en 文案各 9 条新增），取消不提交；(5) E2E smoke-m6-t13 3 条全绿，smoke-m6-t05 10 条无回归。vitest 33/33，E2E 13/13，0 失败，0 跳过。失败输出见提交说明。
 
 #### [ ] M6-T06 审计日志
 依赖：M6-T01
