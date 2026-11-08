@@ -208,17 +208,18 @@ export async function approveSchoolVerificationManually(
   })
   if (!profile) throw new NotFoundError('Student not found')
 
-  await db.studentProfile.update({
-    where: { id: profile.id },
-    data: { schoolVerifiedAt: new Date() },
-  })
-
-  await logAudit({
-    actorId: ctx.userId,
-    action: 'student.school_verify',
-    targetType: 'StudentProfile',
-    targetId: profile.id,
-    metadata: { method: 'admin_manual' },
+  await db.$transaction(async (tx) => {
+    await tx.studentProfile.update({
+      where: { id: profile.id },
+      data: { schoolVerifiedAt: new Date() },
+    })
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'student.school_verify',
+      targetType: 'StudentProfile',
+      targetId: profile.id,
+      metadata: { method: 'admin_manual' },
+    }, tx)
   })
 }
 
@@ -245,22 +246,23 @@ export async function grantJobViewQuota(
   })
   if (!profile) throw new NotFoundError('Student not found')
 
-  await db.jobViewGrant.create({
-    data: {
-      studentId: profile.id,
-      source: 'ADMIN_GRANT',
-      amount,
-      note,
-      createdById: ctx.userId,
-    },
-  })
-
-  await logAudit({
-    actorId: ctx.userId,
-    action: 'student.view_grant',
-    targetType: 'StudentProfile',
-    targetId: profile.id,
-    metadata: { amount, note },
+  await db.$transaction(async (tx) => {
+    await tx.jobViewGrant.create({
+      data: {
+        studentId: profile.id,
+        source: 'ADMIN_GRANT',
+        amount,
+        note,
+        createdById: ctx.userId,
+      },
+    })
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'student.view_grant',
+      targetType: 'StudentProfile',
+      targetId: profile.id,
+      metadata: { amount, note },
+    }, tx)
   })
 }
 
@@ -282,7 +284,7 @@ export async function suspendUser(ctx: UserCtx, input: SuspendUserInput): Promis
     select: { id: true, role: true, status: true },
   })
   if (!user || user.role !== 'STUDENT') throw new NotFoundError('Student not found')
-  if (user.status === 'SUSPENDED') return
+  if (user.status !== 'ACTIVE') return
 
   await db.$transaction(async (tx) => {
     await tx.user.update({
@@ -318,15 +320,16 @@ export async function restoreUser(ctx: UserCtx, input: RestoreUserInput): Promis
   if (!user || user.role !== 'STUDENT') throw new NotFoundError('Student not found')
   if (user.status !== 'SUSPENDED') return
 
-  await db.user.update({
-    where: { id: targetUserId },
-    data: { status: 'ACTIVE' },
-  })
-
-  await logAudit({
-    actorId: ctx.userId,
-    action: 'user.restore',
-    targetType: 'User',
-    targetId: targetUserId,
+  await db.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: targetUserId },
+      data: { status: 'ACTIVE' },
+    })
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'user.restore',
+      targetType: 'User',
+      targetId: targetUserId,
+    }, tx)
   })
 }

@@ -1124,7 +1124,7 @@
 - E2E 用两个浏览器上下文：运营停用学生后，这名学生的下一次请求就被重定向到登录页
 > 完成 2026-11-08：实现 searchStudents / getStudentAdminDetail / approveSchoolVerificationManually / grantJobViewQuota / suspendUser / restoreUser；suspendUser 在单个 $transaction 内完成 status 更新 + session 清除 + 双审计；联系方式读取经 getContactForAdmin（遵循 ESLint 仅限 contact-access.ts 的约束）；20 条单元测试 + 6 条 authz-matrix 测试 + 8 条 E2E 冒烟全部通过。
 
-#### [ ] M6-T10 补修 M6-T02 合并前复查：停用后「下一次请求被拒」的 E2E 要真登录、运营查看联系方式接上界面、写操作与审计同事务
+#### [x] M6-T10 补修 M6-T02 合并前复查：停用后「下一次请求被拒」的 E2E 要真登录、运营查看联系方式接上界面、写操作与审计同事务
 依赖：M6-T02
 > 总控 2026-11-08 加入：复查（按 a0d7e82 读的代码，提速模式只看 High）结论是 BLOCKED。服务层是对的：停用、删会话、双审计在同一个事务里，每次请求都重新查状态，`getContactForAdmin` 在事务里先写 `contact.read` 再解密、失败就整体失败。只做下面列的。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
 做 / 验收：
@@ -1137,6 +1137,7 @@
 3. 写操作和审计放进同一个事务（复查 Medium）：发放额度、人工学校认证、恢复账号，这三处现在写和审计是分开的，审计失败会留下没审计的操作。每处都改成一个 `$transaction`，`logAudit` 传 tx；各补一条断言审计行（`student.view_grant`、`student.school_verify`、`user.restore`）的测试。
 4. 顺手修：只有 `status === 'ACTIVE'` 才能停用（现在 DELETED 也能被停用，恢复后会把已删除的账号变回 ACTIVE）；`/admin/students` 的 `?page=abc`、非法 `?status=`、超长 q 不能 500，改用 safeParse，非法时回到默认值并提示。
 - 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
+> 完成 2026-11-08：(1) E2E 修复：学生 context 先真登录、确认 /zh/s 可访问后再停用，断言 URL=/zh/login 无 redirect= 参数；(2) readStudentContactAdminAction 新增 action + 界面按钮 + getContactForAdmin 内部 ADMIN 检查；(3) approveSchoolVerificationManually / grantJobViewQuota / restoreUser 均改为单 $transaction（写操作+审计原子性）；(4) suspendUser 改 `!== 'ACTIVE'` 防停用 DELETED；admin/students 页 query params 改 safeParse。失败输出见提交说明。unit 26/26（+9），authz-matrix 140/140（+2），E2E smoke 8/8，全部通过，0 失败，0 跳过。
 
 #### [ ] M6-T03 企业管理
 依赖：M6-T01

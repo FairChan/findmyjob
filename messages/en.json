@@ -891,7 +891,16 @@
     "errorReasonRequired": "Please enter a reason",
     "errorAmountRequired": "Please enter a valid amount",
     "errorNoteRequired": "Please enter a reason for the grant",
-    "errorFailed": "Action failed. Please try again."
+    "errorFailed": "Action failed. Please try again.",
+    "sectionContact": "Contact Information",
+    "viewContactBtn": "View Contact Info",
+    "contactPhone": "Phone",
+    "contactEmail": "Email",
+    "contactWhatsapp": "WhatsApp",
+    "contactWechat": "WeChat",
+    "contactLinkedin": "LinkedIn",
+    "contactEmpty": "No contact information available",
+    "contactErrorFailed": "Failed to load contact info. Please try again."
   },
   "adminJobs": {
     "title": "Job Review",

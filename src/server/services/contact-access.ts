@@ -266,6 +266,9 @@ export async function getContactForAdmin(
   ip?: string,
 ): Promise<ContactData> {
   return db.$transaction(async (tx) => {
+    const actor = await tx.user.findUnique({ where: { id: ctx.userId }, select: { role: true, status: true } })
+    if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') throw new ForbiddenError()
+
     const row = await tx.studentContact.findUnique({ where: { studentId: studentProfileId } })
 
     await logAudit({

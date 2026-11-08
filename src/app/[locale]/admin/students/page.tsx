@@ -1,8 +1,15 @@
 import Link from 'next/link'
 import { headers } from 'next/headers'
 import { getTranslations } from 'next-intl/server'
+import { z } from 'zod'
 import { requireAdmin } from '@/server/authz'
-import { searchStudents } from '@/server/services/admin-users'
+import { searchStudents, searchStudentsSchema } from '@/server/services/admin-users'
+
+const listParamsSchema = z.object({
+  q: z.string().max(200).optional(),
+  status: z.enum(['ACTIVE', 'SUSPENDED', 'DELETED']).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+})
 
 export default async function AdminStudentsPage({
   params,
@@ -16,12 +23,9 @@ export default async function AdminStudentsPage({
   const ctx = await requireAdmin(await headers())
   const t = await getTranslations('adminStudents')
 
-  const page = Math.max(1, parseInt(sp.page ?? '1', 10))
-  const { items, total } = await searchStudents(ctx, {
-    q: sp.q,
-    status: sp.status as 'ACTIVE' | 'SUSPENDED' | 'DELETED' | undefined,
-    page,
-  })
+  const parsed = listParamsSchema.safeParse({ q: sp.q?.slice(0, 200), status: sp.status, page: sp.page })
+  const { q, status, page } = parsed.success ? parsed.data : searchStudentsSchema.parse({})
+  const { items, total } = await searchStudents(ctx, { q, status, page })
   const pageSize = 20
   const totalPages = Math.ceil(total / pageSize)
 
@@ -34,13 +38,13 @@ export default async function AdminStudentsPage({
         <input
           type="text"
           name="q"
-          defaultValue={sp.q}
+          defaultValue={q}
           placeholder={t('searchPlaceholder')}
           className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <select
           name="status"
-          defaultValue={sp.status ?? ''}
+          defaultValue={status ?? ''}
           className="rounded-md border border-input bg-background px-3 py-2 text-sm"
         >
           <option value="">{t('statusAll')}</option>
@@ -120,8 +124,8 @@ export default async function AdminStudentsPage({
             <Link
               key={p}
               href={`/${locale}/admin/students?${new URLSearchParams({
-                ...(sp.q ? { q: sp.q } : {}),
-                ...(sp.status ? { status: sp.status } : {}),
+                ...(q ? { q } : {}),
+                ...(status ? { status } : {}),
                 page: String(p),
               })}`}
               className={`rounded px-3 py-1 text-sm ${

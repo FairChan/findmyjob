@@ -9,6 +9,7 @@ import {
   restoreUserAction,
   grantJobViewQuotaAction,
   approveSchoolVerificationAction,
+  readStudentContactAdminAction,
 } from '@/server/actions/admin-users'
 
 interface Props {
@@ -37,6 +38,11 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [verifyError, setVerifyError] = useState('')
   const [verifySuccess, setVerifySuccess] = useState(false)
+
+  type ContactData = { phone: string | null; email: string | null; whatsapp: string | null; wechat: string | null; linkedinUrl: string | null }
+  const [contact, setContact] = useState<ContactData | null>(null)
+  const [contactLoading, setContactLoading] = useState(false)
+  const [contactError, setContactError] = useState('')
 
   async function handleSuspend(e: React.FormEvent) {
     e.preventDefault()
@@ -106,6 +112,21 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
     }
   }
 
+  async function handleViewContact() {
+    setContactError('')
+    setContactLoading(true)
+    try {
+      const res = await readStudentContactAdminAction({ studentUserId })
+      if (res.ok) {
+        setContact(res.data)
+      } else {
+        setContactError(t('contactErrorFailed'))
+      }
+    } finally {
+      setContactLoading(false)
+    }
+  }
+
   async function handleVerify() {
     setVerifyError('')
     setVerifySuccess(false)
@@ -172,6 +193,55 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
           </Button>
         </div>
       )}
+
+      {/* Contact information */}
+      <div className="rounded-lg border p-5 space-y-3">
+        <h3 className="font-semibold">{t('sectionContact')}</h3>
+        {contact ? (
+          <dl className="space-y-2 text-sm">
+            {contact.phone && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">{t('contactPhone')}</dt>
+                <dd className="font-mono text-xs">{contact.phone}</dd>
+              </div>
+            )}
+            {contact.email && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">{t('contactEmail')}</dt>
+                <dd className="font-mono text-xs">{contact.email}</dd>
+              </div>
+            )}
+            {contact.whatsapp && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">{t('contactWhatsapp')}</dt>
+                <dd className="font-mono text-xs">{contact.whatsapp}</dd>
+              </div>
+            )}
+            {contact.wechat && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">{t('contactWechat')}</dt>
+                <dd className="font-mono text-xs">{contact.wechat}</dd>
+              </div>
+            )}
+            {contact.linkedinUrl && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">{t('contactLinkedin')}</dt>
+                <dd className="font-mono text-xs break-all">{contact.linkedinUrl}</dd>
+              </div>
+            )}
+            {!contact.phone && !contact.email && !contact.whatsapp && !contact.wechat && !contact.linkedinUrl && (
+              <p className="text-muted-foreground text-sm">{t('contactEmpty')}</p>
+            )}
+          </dl>
+        ) : (
+          <div className="space-y-2">
+            {contactError && <p className="text-sm text-destructive">{contactError}</p>}
+            <Button onClick={handleViewContact} disabled={contactLoading} variant="outline">
+              {contactLoading ? '…' : t('viewContactBtn')}
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Grant job view quota */}
       <div className="rounded-lg border p-5 space-y-4">

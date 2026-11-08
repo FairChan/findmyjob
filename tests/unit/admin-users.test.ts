@@ -19,6 +19,7 @@ import {
   approveSchoolVerificationManually,
   suspendUser,
   restoreUser,
+  readStudentContactAdmin,
 } from '@/server/services/admin-users'
 import { ForbiddenError, NotFoundError } from '@/server/errors'
 
@@ -311,5 +312,87 @@ describe('restoreUser', () => {
     await expect(
       restoreUser({ userId: admin.id }, { targetUserId: employer.id }),
     ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('restoreUser writes user.restore audit log in the same transaction', async () => {
+    const admin = await createAdmin()
+    const { userId } = await createStudentUser()
+    await testDb.user.update({ where: { id: userId }, data: { status: 'SUSPENDED' } })
+
+    await restoreUser({ userId: admin.id }, { targetUserId: userId })
+
+    const audits = await testDb.auditLog.findMany({
+      where: { targetId: userId, actorId: admin.id, action: 'user.restore' },
+    })
+    expect(audits).toHaveLength(1)
+  })
+})
+
+describe('suspendUser — DELETED user is not suspended', () => {
+  it('DELETED student stays DELETED after suspendUser call', async () => {
+    const admin = await createAdmin()
+    const { userId } = await createStudentUser()
+    await testDb.user.update({ where: { id: userId }, data: { status: 'DELETED' } })
+
+    await suspendUser({ userId: admin.id }, { targetUserId: userId, reason: 'should not apply' })
+
+    const user = await testDb.user.findUnique({ where: { id: userId }, select: { status: true } })
+    expect(user?.status).toBe('DELETED')
+  })
+})
+
+describe('approveSchoolVerificationManually — audit in transaction', () => {
+  it('writes student.school_verify audit log in the same transaction', async () => {
+    const admin = await createAdmin()
+    const { userId, profileId } = await createStudentUser()
+
+    await approveSchoolVerificationManually({ userId: admin.id }, userId)
+
+    const audits = await testDb.auditLog.findMany({
+      where: { targetId: profileId, actorId: admin.id, action: 'student.school_verify' },
+    })
+    expect(audits).toHaveLength(1)
+  })
+})
+
+describe('grantJobViewQuota — audit in transaction', () => {
+  it('writes student.view_grant audit log in the same transaction', async () => {
+    const admin = await createAdmin()
+    const { userId, profileId } = await createStudentUser()
+
+    await grantJobViewQuota({ userId: admin.id }, { studentUserId: userId, amount: 5, note: 'audit-tx-test' })
+
+    const audits = await testDb.auditLog.findMany({
+      where: { targetId: profileId, actorId: admin.id, action: 'student.view_grant' },
+    })
+    expect(audits).toHaveLength(1)
+    expect((audits[0].metadata as Record<string, unknown>).amount).toBe(5)
+  })
+})
+
+describe('readStudentContactAdmin', () => {
+  it('writes exactly one contact.read audit log, actor is admin userId', async () => {
+    const admin = await createAdmin()
+    const { userId, profileId } = await createStudentUser()
+
+    await readStudentContactAdmin({ userId: admin.id }, userId)
+
+    const audits = await testDb.auditLog.findMany({
+      where: { actorId: admin.id, action: 'contact.read', targetId: profileId },
+    })
+    expect(audits).toHaveLength(1)
+    const meta = audits[0].metadata as Record<string, unknown>
+    expect(Object.keys(meta)).not.toContain('phone')
+    expect(Object.keys(meta)).not.toContain('email')
+    expect(Object.keys(meta)).not.toContain('wechat')
+    expect(meta.source).toBe('admin')
+  })
+
+  it('non-admin is rejected with ForbiddenError', async () => {
+    const { userId: studentId } = await createStudentUser()
+    const { userId: targetId } = await createStudentUser()
+    await expect(
+      readStudentContactAdmin({ userId: studentId }, targetId),
+    ).rejects.toBeInstanceOf(ForbiddenError)
   })
 })

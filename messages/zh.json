@@ -891,7 +891,16 @@
     "errorReasonRequired": "请填写停用原因",
     "errorAmountRequired": "请输入有效的数量",
     "errorNoteRequired": "请填写发放原因",
-    "errorFailed": "操作失败，请稍后重试"
+    "errorFailed": "操作失败，请稍后重试",
+    "sectionContact": "联系方式",
+    "viewContactBtn": "查看联系方式",
+    "contactPhone": "电话",
+    "contactEmail": "邮箱",
+    "contactWhatsapp": "WhatsApp",
+    "contactWechat": "微信",
+    "contactLinkedin": "LinkedIn",
+    "contactEmpty": "暂无联系方式",
+    "contactErrorFailed": "查询失败，请稍后重试"
   },
   "adminJobs": {
     "title": "职位审核",

@@ -15,6 +15,7 @@ import { faker } from '@faker-js/faker'
 import { hashPassword } from 'better-auth/crypto'
 import { randomBytes } from 'crypto'
 import { writeCurrentVersionConsent } from './helpers/consent'
+import { stubTurnstile } from './helpers/turnstile'
 
 test.describe('M6-T02 admin student management smoke', () => {
   test('ADMIN: /zh/admin/students is healthy and shows heading', async ({ page }) => {
@@ -92,15 +93,34 @@ test.describe('M6-T02 admin student management smoke', () => {
     })
     await writeCurrentVersionConsent(student.id)
 
-    // Browser context A: admin logs in and suspends the student
+    // Browser context A: admin logs in (will suspend later)
     const adminCtx = await browser.newContext()
     const adminPage = await adminCtx.newPage()
     await loginAs(adminPage, { role: 'ADMIN' })
 
-    // Navigate to student detail and submit suspend form
+    // Browser context B: student logs in with their real credentials
+    const studentCtx = await browser.newContext()
+    const studentPage = await studentCtx.newPage()
+    await studentPage.setExtraHTTPHeaders({ 'x-real-ip': '198.18.100.2' })
+    await stubTurnstile(studentPage)
+    await studentPage.goto('/zh/login')
+    await studentPage.fill('[name="email"]', email)
+    await studentPage.fill('[name="password"]', password)
+    await studentPage.waitForFunction(
+      () => { const btn = document.querySelector<HTMLButtonElement>('button[type="submit"]'); return btn !== null && !btn.disabled },
+      { timeout: 10_000 },
+    )
+    await studentPage.click('button[type="submit"]')
+    await studentPage.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15_000 })
+
+    // Assert the student can access /zh/s before suspension
+    await studentPage.goto('/zh/s')
+    await studentPage.waitForLoadState('networkidle').catch(() => {})
+    expect(studentPage.url()).not.toMatch(/\/login/)
+
+    // Admin navigates to student detail and suspends them
     await adminPage.goto(`/zh/admin/students/${student.id}`)
     await adminPage.waitForSelector('[id="suspend-reason"]')
-    // Fill in the suspend reason input
     await adminPage.fill('[id="suspend-reason"]', 'E2E suspend test')
     const responsePromise = adminPage.waitForResponse(
       (r) => r.url().includes('/zh/admin/students/') && r.status() === 200,
@@ -108,16 +128,14 @@ test.describe('M6-T02 admin student management smoke', () => {
     await adminPage.click('button[type="submit"]:has-text("停用账号"), button[type="submit"]:has-text("Suspend Account")')
     await responsePromise
 
-    // Browser context B: the student tries to access a protected page
-    const studentCtx = await browser.newContext()
-    const studentPage = await studentCtx.newPage()
-
-    // Add a fake x-real-ip so the rate limiter treats this as a distinct client
-    await studentPage.setExtraHTTPHeaders({ 'x-real-ip': '198.18.100.1' })
-
-    // The student's existing session is gone; navigating to /zh/s should redirect to login
+    // Student navigates to /zh/s — session is deleted by suspension, requireStudent throws
+    // ForbiddenError, layout redirects to /zh/login with NO redirect= param
+    // (proves the server-side requireStudent path, not the "no session" proxy path)
     await studentPage.goto('/zh/s')
-    await studentPage.waitForURL(/\/login/, { timeout: 30_000 })
+    await studentPage.waitForURL(/\/zh\/login/, { timeout: 30_000 })
+    const finalUrl = new URL(studentPage.url())
+    expect(finalUrl.pathname).toBe('/zh/login')
+    expect(finalUrl.searchParams.has('redirect')).toBe(false)
 
     await adminCtx.close()
     await studentCtx.close()

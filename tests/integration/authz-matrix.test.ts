@@ -2111,6 +2111,31 @@ describe('admin-users authz (M6-T02)', () => {
     expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
   })
 
+  it('readStudentContactAdminAction: student → FORBIDDEN', async () => {
+    const { userId: actorId } = await createStudent(testDb)
+    const { userId: targetId } = await createStudent(testDb)
+    mockSession(actorId)
+    const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
+    const result = await readStudentContactAdminAction({ studentUserId: targetId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('readStudentContactAdminAction: admin → ok, writes contact.read audit', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin Contact', email: `admin-contact-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { userId: targetId, profileId } = await createStudent(testDb)
+    mockSession(admin.id)
+    const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
+    const result = await readStudentContactAdminAction({ studentUserId: targetId })
+    expect(result.ok).toBe(true)
+    const audits = await testDb.auditLog.findMany({
+      where: { actorId: admin.id, action: 'contact.read', targetId: profileId },
+    })
+    expect(audits.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('createSchoolAction: student → FORBIDDEN', async () => {
     const { userId } = await createStudent(testDb)
     mockSession(userId)
