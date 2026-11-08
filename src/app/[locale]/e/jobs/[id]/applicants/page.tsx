@@ -6,7 +6,7 @@ import { requireVerifiedCompany } from '@/server/authz'
 import { listJobApplicants } from '@/server/services/applicants'
 import { NotFoundError } from '@/server/errors'
 import ApplicantsBoard from '@/components/applicants/applicants-board'
-import { changeStatusAction, updateNoteAction } from './actions'
+import { changeStatusAction, updateNoteAction, markViewedAction } from './actions'
 
 export default async function ApplicantsPage({
   params,
@@ -71,9 +71,23 @@ export default async function ApplicantsPage({
           coverNoteLabel: t('coverNoteLabel'),
           identityLocked: t('identityLocked'),
           viewProfile: t('viewProfile'),
+          colName: t('colName'),
+          colSchool: t('colSchool'),
+          colMajor: t('colMajor'),
+          colDegree: t('colDegree'),
+          colGradYearMonth: t('colGradYearMonth'),
+          colCGPA: t('colCGPA'),
+          colWorkAuth: t('colWorkAuth'),
+          colLanguages: t('colLanguages'),
+          colInternships: t('colInternships'),
+          colCampus: t('colCampus'),
+          colCompleteness: t('colCompleteness'),
+          colActions: t('colActions'),
+          statusChangeError: t('statusChangeError'),
         }}
         changeStatusAction={changeStatusAction}
         updateNoteAction={updateNoteAction}
+        markViewedAction={markViewedAction}
       />
     </div>
   )

@@ -960,6 +960,19 @@
     "errorForbidden": "权限不足",
     "coverNoteLabel": "求职附言",
     "identityLocked": "未解锁",
-    "viewProfile": "查看完整档案"
+    "viewProfile": "查看完整档案",
+    "colName": "姓名",
+    "colSchool": "学校",
+    "colMajor": "专业",
+    "colDegree": "学历",
+    "colGradYearMonth": "毕业年月",
+    "colCGPA": "CGPA",
+    "colWorkAuth": "工作许可",
+    "colLanguages": "语言",
+    "colInternships": "实习",
+    "colCampus": "校园活动",
+    "colCompleteness": "完成度",
+    "colActions": "操作",
+    "statusChangeError": "状态更新失败，请重试"
   }
 }

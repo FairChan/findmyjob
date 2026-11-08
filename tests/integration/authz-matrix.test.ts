@@ -1868,6 +1868,68 @@ describe('applicants authz (M5-T05): changeStatusAction / updateNoteAction', () 
 })
 
 // ---------------------------------------------------------------------------
+// markViewedAction authz (M5-T14)
+// ---------------------------------------------------------------------------
+
+describe('markViewedAction authz (M5-T14)', () => {
+  async function setupMarkViewedFixture() {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const student = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: student.profileId, status: 'APPLIED' },
+    })
+    return { emp, student, job, app }
+  }
+
+  it('guest → markViewedAction returns FORBIDDEN', async () => {
+    const { app } = await setupMarkViewedFixture()
+    mockSession(null)
+    const { markViewedAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await markViewedAction({ applicationId: app.id })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const unchanged = await testDb.application.findUnique({ where: { id: app.id } })
+    expect(unchanged?.status).toBe('APPLIED')
+  })
+
+  it('student → markViewedAction returns FORBIDDEN', async () => {
+    const { app } = await setupMarkViewedFixture()
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { markViewedAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await markViewedAction({ applicationId: app.id })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const unchanged = await testDb.application.findUnique({ where: { id: app.id } })
+    expect(unchanged?.status).toBe('APPLIED')
+  })
+
+  it('owner (verified) can markViewed on own application', async () => {
+    const { emp, app } = await setupMarkViewedFixture()
+    mockSession(emp.userId)
+    const { markViewedAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await markViewedAction({ applicationId: app.id })
+    expect(result.ok).toBe(true)
+    const updated = await testDb.application.findUnique({ where: { id: app.id } })
+    expect(updated?.status).toBe('VIEWED')
+  })
+
+  it('cross-company: empA cannot markViewed on empB application (graceful no-op)', async () => {
+    const { app: appB } = await setupMarkViewedFixture()
+    const empA = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: empA.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    mockSession(empA.userId)
+    const { markViewedAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await markViewedAction({ applicationId: appB.id })
+    expect(result.ok).toBe(true)
+    const unchanged = await testDb.application.findUnique({ where: { id: appB.id } })
+    expect(unchanged?.status).toBe('APPLIED')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // admin-dashboard authz (M6-T01)
 // ---------------------------------------------------------------------------
 

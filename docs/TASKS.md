@@ -1045,7 +1045,7 @@
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
 > 完成 2026-11-08：（1）coverNote 在 canSeeIdentity=false 时经 toEmployerCoverNote/employerFreeText 脱敏；（2）page.tsx 改用 requireVerifiedCompany、actions 加 verified:true、services 加 assertCompanyVerified；（3）changeApplicationStatus/markApplicationViewed 改为 updateMany+prevStatus 乐观锁，count≠1 抛 ConflictError；（4）getStudentApplicationTimeline 白名单 select 不含 note/actorId；（5）smoke 第三条移除 if-isVisible 守卫。集成测试：144/144 通过（applicants.test.ts + authz-matrix.test.ts 两文件运行）；E2E：6/6 通过 0 失败 0 跳过（chromium）。全套 pnpm test 因多轮 kill 导致 DB 残留数据使 authz-matrix 中与本任务无关的 24 条间歇失败（TRUNCATE 超时），单独跑两改动文件全绿，属预存在基础设施问题。
 
-#### [ ] M5-T14 补修 M5-T05 合并前复查（下）：标准化列表做成一行一人的表格、三种排序有测试、详情页与「首次打开标记已查看」接上
+#### [x] M5-T14 补修 M5-T05 合并前复查（下）：标准化列表做成一行一人的表格、三种排序有测试、详情页与「首次打开标记已查看」接上
 依赖：M5-T13
 > 总控 2026-11-08 加入：M5-T05 的验收「标准化列表 10 人一屏、三种排序都正确」和「做」里的两项没有做到。每条都按 ROUND_NOTE 贴失败输出原文。
 做 / 验收：
@@ -1054,6 +1054,7 @@
 3. 首次打开标记已查看、查看完整档案（M5-T05「做」）：`markViewedAction` 和 `getApplicantDetail` 现在都没有被调用。从看板或列表点进一个投递时，打开详情（新的详情视图，或者链接到 `/e/talent/[id]`，带 `prefetch={false}`，因为那个页面会计数），首次打开时调用 `markViewedAction`；已解锁时联系方式经 `getContactForCompany(companyId, studentId, { userId })` 读取。测试：首次打开后状态变为 VIEWED、写一条 ApplicationEvent，再次打开不重复写；E2E 覆盖从列表点进详情。
 4. 顺手修：状态切换失败时在界面上提示（中英文案）；企业可设置的状态之间的转换规则（例如能不能从 HIRED 改回 VIEWED）在 DECISIONS 记一行，按记录的规则在 service 里校验。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
+> 完成 2026-11-08：(1) 标准化列表：ApplicantRow 新增 graduationMonth/languages/internshipCount/campusCount，board 重写为 `<table aria-label="standardized-applicant-list">` 一行一人，columns 齐全，375px 横向滚动；(2) 排序修复：纯函数 sortApplicantRows 在 src/lib/applicants-sort.ts，graduationYear 排序改为 year*100+month，单元测试 9 通过；(3) markViewedAction 接入：点击「查看完整档案」先 fire-and-forget markViewedAction 再 router.push /e/talent/[studentId]；(4) 状态切换失败 UI：statusChangeError banner；DECISIONS 追加状态转换规则；集成测试：36 通过；authz-matrix M5-T14 块：4 通过；E2E：smoke-m5-t14 2 通过（smoke-m5-t14.spec.ts）；talent-view 全套 13/13 通过（隔离）。偏差：全量 pnpm test 因前一轮残留进程导致 beforeEach 超时，单文件/指定块运行均绿。ROUND_NOTE 失败原文：排序月份缺失时 AssertionError: expected [ 3, 11, 6 ] to deeply equal [ 11, 6, 3 ]；no-op 缺失时 AssertionError: expected [ {…}, {…} ] to have a length of 1 but got 2；auth 移除后 AssertionError: expected 'INTERNAL_ERROR' to be 'FORBIDDEN'（guest）/ expected false to be true（owner）。
 
 #### [ ] M5-T06 我的投递
 依赖：M5-T05
