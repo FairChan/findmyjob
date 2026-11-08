@@ -163,7 +163,8 @@ docs/TASKS.md 就是已批准的设计，不走 brainstorming。
   round_win="$(cat "/proc/$round_pid/winpid" 2>/dev/null || true)"
   if [[ -n "$round_win" && -n "$REAPER_SHA" && "$(sha256sum "$REAPER_PS1" | cut -d' ' -f1)" == "$REAPER_SHA" ]]; then
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$REAPER_PS1")" -RootPid "$round_win" \
-      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" \n      $([[ "${AUTO_BUILD_REAP:-dry}" == kill ]] || echo -DryRun) >"$REAP_OUT" 2>&1 &
+      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" \
+      $([[ "${AUTO_BUILD_REAP:-dry}" == kill ]] || echo -DryRun) >"$REAP_OUT" 2>&1 &
     watcher=$!
   elif [[ -n "$REAPER_SHA" ]]; then
     log "警告：round-reaper 副本的 sha256 变了或拿不到轮次 PID，本轮不做进程清理"
