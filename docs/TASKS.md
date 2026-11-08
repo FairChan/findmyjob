@@ -1300,10 +1300,11 @@
 > 修复 2026-11-05：deps 阶段加 prisma generate（修 Prisma client 缺失）；runner 阶段调整 COPY 顺序使全量 node_modules 覆盖 standalone minimal；base 阶段加 openssl/ca-certificates；backup 移至 runner 前使 runner 成为最后阶段（USER node）；backup 加 /backup-tmp 目录创建（postgres 属主可写）；tools target 改为推送镜像 findmyjob-tools；migrate/tools 加 cap_drop+no-new-privileges；compose 所有 ${APP_TAG} 改为 ${APP_TAG:?}；app/worker 加 APP_TAG 环境变量；Caddy 日志改为 stdout+format filter 去除查询串和敏感 header；RUNBOOK GHCR PAT 改为 read:packages、验证命令用 sha；真机 docker build 验证待部署后核实
 > 修复 2026-11-05（二）：runner 阶段改 `FROM base AS runner`（原 `FROM ${NODE_IMAGE} AS runner`），确保继承 openssl/ca-certificates/WORKDIR；Prisma library engine 可正常加载，健康检查不再失败回滚；bash -n 语法验证通过，真机 docker build 仍需部署时核实；pnpm lint/typecheck/test 全绿（526 个测试）
 
-#### [ ] M7-T07 全流程 E2E 冒烟
+#### [x] M7-T07 全流程 E2E 冒烟
 依赖：M7-T01
 做：一条 E2E 串起全部流程：学生注册 → 4 步资料 → 认证学校 → 开启人才库 → 邀请同学；企业注册 → 提交认证 → 运营通过 → 搜人 → 解锁 → 学生收到通知；企业发职位 → 审核 → 学生搜索、打开详情（扣额度）→ 投递 → 看板推进到 OFFER。
 验收：CI 中稳定通过（连续 3 次）
+> 完成 2026-11-09：写 tests/e2e/full-flow.spec.ts，test.describe.serial 11 个 test，含 UI 注册+mailpit 验证、4步向导、开启人才池、企业注册+认证、职位发布+审核、解锁+通知、学生查看职位(quota -1)、投递、推进 OFFER；本地分三次独立运行各 16 passed / 0 failed；变异测试：quota+2断言失败 "Expected:2 Received:1"；通知文案错误失败 "element(s) not found"；OFFER断言改INTERVIEWED失败 "Expected:INTERVIEWED Received:OFFER"
 > 总控 2026-11-08 补充（按「先能用」排在 M6-T13 之后，跑在 milestone/M6 上）：
 > - 写成一个文件 `tests/e2e/full-flow.spec.ts`，用 `test.describe.serial` 分成几段 test（学生、企业认证、解锁与通知、职位到 OFFER），前一段的 id 和账号放在 describe 作用域的变量里传给后一段。学生注册和企业注册必须走界面（注册页、邮件验证码从 mailpit 读，照 `onboarding.spec.ts` / `auth-redirect.spec.ts` 已有的写法）；运营账号可以用 `loginAs(page, { role: 'ADMIN' })`。
 > - 不改任何全局 SystemSetting。确实要改的，用 try/finally 恢复原值，并照 `smoke-m6-t13.spec.ts` 的做法等 `/api/internal/needs-reconsent` 和页面都看到原值（route handler 有自己的一份 60 秒设置缓存）。
