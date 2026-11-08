@@ -25,6 +25,12 @@ export default async function Navbar({ locale }: { locale: Locale }) {
           <Link href="/companies" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             {t('companies')}
           </Link>
+          <Link href="/for-employers" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            {t('forEmployers')}
+          </Link>
+          <Link href="/partners" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            {t('partners')}
+          </Link>
         </nav>
 
         <div className="hidden md:flex items-center gap-4">
