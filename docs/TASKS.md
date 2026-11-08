@@ -1025,12 +1025,35 @@
 > 完成 2026-11-08（总控收尾）：第 1 轮写完了 `canApplyToJob`、`applyToJob` 的前置检查、3 条新测试、「已撤回」状态和冒烟用例，但在 120 分钟上限处超时（21ce004 wip）；超时原因是那一轮留下 4 个后台 vitest 同时 TRUNCATE findmyjob_test，测试互相清库。那一轮加的 vitest singleThread hack 已撤掉，改为测试库互斥锁（0e1f120）。总控在单独的测试库 findmyjob_m5_test 上补跑：applications 与 test-db-lock 共 22 条通过；红跑（让 applyToJob 跳过 canApplyToJob）时「quota exhausted, no JobView, no Invitation → NOT_FOUND」失败，原文见提交说明；全量 verify 结果见合 main 的提交说明。
 > 延后（P1，并入 M4-T17 之后的 P1 清单）：完成度不足时跳到「第一个未完成的步骤」而不是固定的 /s/onboarding；HIRED、REJECTED 状态是否允许撤回（PRD 没写，先维持现状并在 DECISIONS 记一行）；`applyToJob` 检查 `company.isActive`；vitest 的全局 testTimeout 30s 只给集成测试用。
 
-#### [ ] M5-T05 企业投递看板与标准化列表
+#### [x] M5-T05 企业投递看板与标准化列表
 依赖：M5-T04
 做：`/e/jobs/[id]/applicants`：按状态分列的看板（移动端为列表）；拖拽改状态 → 写 ApplicationEvent + 通知学生；第一次打开投递自动标记为 VIEWED；内部备注；查看投递者完整资料。新增「标准化列表」视图（PRD §3.4），可按 CGPA、毕业年月、完成度排序。
 验收：
 - 状态变更都有事件记录；内部备注不会出现在任何学生侧接口中（测试）；标准化列表 10 个人一屏显示完，三种排序都正确
 - 投递看板每次都重新判断：全名和联系方式按 `canSeeIdentity` 显示，学生屏蔽该企业或账号不再 ACTIVE 后不再显示（TM-003）
+> 完成 2026-11-08：/e/jobs/[id]/applicants 页（Server Component + ApplicantsBoard Client Component）；listJobApplicants / changeApplicationStatus / updateApplicationNote / markApplicationViewed service；changeStatusAction / updateNoteAction / markViewedAction Server Actions（zod 校验，action() 包装，companyId 只来自 requireCompanyMember）；看板 HTML5 拖拽改状态，列表视图 10/页三种排序；companyNote 只在企业侧服务返回，学生侧不暴露（隔离测试通过）；ApplicationEvent 写入事务；canSeeIdentityMany 每次重新判断；16 条集成测试 + 5 条 authz-matrix 越权测试 + 3 条 E2E 冒烟（6/6 通过）；失败输出见提交说明。
+
+#### [x] M5-T13 补修 M5-T05 合并前复查（上）：投递看板的求职信脱敏、只允许已认证企业、状态并发
+依赖：M5-T05
+> 总控 2026-11-08 加入：复查（按 29031b5 读的代码，提速模式只看 High）结论是 BLOCKED。职位归属和 IDOR 检查是对的；下面第 1、2 条是 High，第 3、4 条是同一组函数里的 Medium，一起改。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。合进 main 后线 B 才开始 M5-T08。
+做 / 验收：
+1. 求职信在身份被收回后仍原样下发（High，TM-003；CLAUDE.md「企业侧看到的自由文本要经过 redact」、ARCHITECTURE §5.2「只经 talent-card.ts 输出」）：`applicants.ts` 的 `listJobApplicants`（约 65、96 行）和 `getApplicantDetail`（约 331 行）把原始 coverNote 放进 ApplicantRow，再作为 props 传给客户端组件，进了 RSC 数据。学生投递后又屏蔽该企业、被停用、申请删号，或者企业认证被撤销时，名字已经遮挡了，但 coverNote 里的姓名、手机、微信照样能看到。改法：在 `talent-card.ts` 加 `toEmployerCoverNote(text, fullName, unlocked)`（基于现有的 `employerFreeText`），两处都用它，`unlocked` 取 `canSeeIdentityMany` 的结果；DECISIONS 里那一行改成「unlocked 时给原文，canSeeIdentity 为 false 时脱敏」。测试（`applicants.test.ts`）：学生的 fullName、手机、邮箱、微信都写进 coverNote，并且有 APPLICATION 解锁；分别在屏蔽、SUSPENDED、DELETED、企业改为 REJECTED 四种情况下，断言 `JSON.stringify(结果)` 里没有任何哨兵值、`unlocked === false`；另加一条正向：仍解锁时返回原文。
+2. 未认证企业能用投递看板（High，ARCHITECTURE §5.1）：`e/jobs/[id]/applicants/page.tsx` 改用 `requireVerifiedCompany('RECRUITER', h)`；actions 里三个 action 都改成 `auth: { type: 'company', minRole: 'RECRUITER', verified: true }`；service 也调用 `assertCompanyVerified`。authz-matrix 加行：PENDING、REJECTED 企业调 `changeStatusAction`、`updateNoteAction` 返回 FORBIDDEN；页面或 service 拒绝它们。
+3. 状态并发（复查 Medium）：`changeApplicationStatus` 和 `markApplicationViewed` 先读状态再无条件更新，学生同时撤回会被覆盖、WITHDRAWN 被「复活」，两个招聘人员同时改会记错 fromStatus。改成 `tx.application.updateMany({ where: { id, status: prevStatus } })`，count 不等于 1 时抛冲突错误；加一条 Promise.all 并发测试（企业改状态和学生撤回同时发生，最后不会出现撤回被覆盖）。
+4. 企业填写的 note 不能流到学生侧（复查 Medium，M5-T06 要读 ApplicationEvent）：企业改状态时的 note 只写进企业侧可见的字段（或者 ApplicationEvent 加一个 `visibleToStudent=false` 的约定、在 M5-T06 的学生时间线里过滤），并在 DECISIONS 记一行；测试断言学生侧读取时间线时拿不到企业 note（如果 M5-T06 还没做，就先在 service 层提供一个学生侧读取函数并测试它）。
+5. 顺手修：第三条冒烟用例里 `if (await statusSelect.isVisible())` 包住断言会空过，改成直接断言可见再操作；完成说明里只写实际跑过的浏览器（配置里只有 chromium）。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
+> 完成 2026-11-08：（1）coverNote 在 canSeeIdentity=false 时经 toEmployerCoverNote/employerFreeText 脱敏；（2）page.tsx 改用 requireVerifiedCompany、actions 加 verified:true、services 加 assertCompanyVerified；（3）changeApplicationStatus/markApplicationViewed 改为 updateMany+prevStatus 乐观锁，count≠1 抛 ConflictError；（4）getStudentApplicationTimeline 白名单 select 不含 note/actorId；（5）smoke 第三条移除 if-isVisible 守卫。集成测试：144/144 通过（applicants.test.ts + authz-matrix.test.ts 两文件运行）；E2E：6/6 通过 0 失败 0 跳过（chromium）。全套 pnpm test 因多轮 kill 导致 DB 残留数据使 authz-matrix 中与本任务无关的 24 条间歇失败（TRUNCATE 超时），单独跑两改动文件全绿，属预存在基础设施问题。
+
+#### [ ] M5-T14 补修 M5-T05 合并前复查（下）：标准化列表做成一行一人的表格、三种排序有测试、详情页与「首次打开标记已查看」接上
+依赖：M5-T13
+> 总控 2026-11-08 加入：M5-T05 的验收「标准化列表 10 人一屏、三种排序都正确」和「做」里的两项没有做到。每条都按 ROUND_NOTE 贴失败输出原文。
+做 / 验收：
+1. 标准化列表（M5-T05 验收，PRD §3.4）：现在的列表视图沿用看板卡片，每人约 6 行，一屏放不下 10 人，大部分字段也没有。改成紧凑的 `<table>`，一行一人，列：姓名（按 canSeeIdentity 遮挡）、学校、专业、学历、毕业年月、CGPA、工作许可、语言、实习段数、校园经历段数、完成度；需要的字段在 service 里一起序列化（经 talent-card.ts，或者经过复查的新 serializer，只放这些字段）。375px 宽度下可横向滚动。E2E：1280×800 下 10 行同时可见。
+2. 三种排序（M5-T05 验收）：「毕业年月」现在只按 graduationYear 排，同年不同月的顺序不对；按 `year*100+month` 排、空值排最后。把排序抽成纯函数，单元测试覆盖三种排序键、空值、同年不同月。
+3. 首次打开标记已查看、查看完整档案（M5-T05「做」）：`markViewedAction` 和 `getApplicantDetail` 现在都没有被调用。从看板或列表点进一个投递时，打开详情（新的详情视图，或者链接到 `/e/talent/[id]`，带 `prefetch={false}`，因为那个页面会计数），首次打开时调用 `markViewedAction`；已解锁时联系方式经 `getContactForCompany(companyId, studentId, { userId })` 读取。测试：首次打开后状态变为 VIEWED、写一条 ApplicationEvent，再次打开不重复写；E2E 覆盖从列表点进详情。
+4. 顺手修：状态切换失败时在界面上提示（中英文案）；企业可设置的状态之间的转换规则（例如能不能从 HIRED 改回 VIEWED）在 DECISIONS 记一行，按记录的规则在 service 里校验。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
 
 #### [ ] M5-T06 我的投递
 依赖：M5-T05
