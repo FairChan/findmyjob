@@ -43,6 +43,7 @@ import {
   NotFoundError,
   ForbiddenError,
   InvitationQuotaError,
+  CompletenessLowError,
 } from '@/server/errors'
 
 setupTestDb()
@@ -290,6 +291,45 @@ describe('acceptInvitation', () => {
     await expect(
       acceptInvitation({ userId: student.userId }, { invitationId }),
     ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+  // Accepting goes through applyToJob, so it must apply the same guards as the job page.
+  it('accept is rejected when the job was closed after the invitation was sent', async () => {
+    await seedSettings()
+    const { userId: empUserId, companyId, jobId } = await createVerifiedEmployerWithJob()
+    const student = await createStudent(testDb)
+    await makeStudentVisible(student.profileId)
+    const { invitationId } = await sendInvitation(
+      { userId: empUserId, companyId },
+      { studentId: student.profileId, jobId },
+    )
+    await testDb.job.update({ where: { id: jobId }, data: { status: 'CLOSED' } })
+
+    await expect(
+      acceptInvitation({ userId: student.userId }, { invitationId }),
+    ).rejects.toBeInstanceOf(NotFoundError)
+    const inv = await testDb.invitation.findUnique({ where: { id: invitationId } })
+    expect(inv?.status).toBe('SENT')
+    expect(inv?.applicationId).toBeNull()
+    expect(await testDb.application.count({ where: { jobId, studentId: student.profileId } })).toBe(0)
+  })
+
+  it('accept is rejected when profile completeness is below apply.minCompleteness', async () => {
+    await seedSettings({ 'apply.minCompleteness': 60 })
+    const { userId: empUserId, companyId, jobId } = await createVerifiedEmployerWithJob()
+    const student = await createStudent(testDb)
+    await makeStudentVisible(student.profileId)
+    const { invitationId } = await sendInvitation(
+      { userId: empUserId, companyId },
+      { studentId: student.profileId, jobId },
+    )
+    await testDb.studentProfile.update({ where: { id: student.profileId }, data: { completeness: 30 } })
+
+    await expect(
+      acceptInvitation({ userId: student.userId }, { invitationId }),
+    ).rejects.toBeInstanceOf(CompletenessLowError)
+    const inv = await testDb.invitation.findUnique({ where: { id: invitationId } })
+    expect(inv?.status).toBe('SENT')
+    expect(await testDb.application.count({ where: { jobId, studentId: student.profileId } })).toBe(0)
   })
 })
 

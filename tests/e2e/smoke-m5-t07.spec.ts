@@ -18,14 +18,9 @@ test.describe('M5-T07 invitations smoke', () => {
   })
 
   test('employer /e/invitations page is healthy', async ({ page }) => {
-    const emp = await loginAs(page, { role: 'EMPLOYER' })
-    const member = await e2eDb.companyMember.findFirst({ where: { userId: emp.userId } })
-    if (member) {
-      await e2eDb.company.update({
-        where: { id: member.companyId },
-        data: { verificationStatus: 'VERIFIED' },
-      })
-    }
+    // loginAs only creates a company (and membership) when `company` is passed; without it the
+    // employer has no company and /e/invitations redirects to onboarding.
+    await loginAs(page, { role: 'EMPLOYER', company: { verificationStatus: 'VERIFIED' } })
     await expectPageHealthy(page, '/zh/e/invitations')
   })
 

@@ -1,7 +1,8 @@
 import 'server-only'
 import { InvitationStatus, Prisma } from '@prisma/client'
 import { db } from '../db'
-import { NotFoundError, ForbiddenError, InvitationQuotaError } from '../errors'
+import { NotFoundError, ForbiddenError, InvitationQuotaError, DuplicateApplicationError } from '../errors'
+import { applyToJob } from './applications'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { getSetting } from './settings'
 import { isStudentVisibleToCompany } from './talent-visibility'
@@ -112,11 +113,13 @@ export interface AcceptInvitationResult {
 }
 
 /**
- * Student accepts an invitation: creates an Application (or re-links an existing one) in the
- * same transaction that marks the invitation ACCEPTED.
+ * Student accepts an invitation. The application itself goes through applyToJob, so accepting
+ * applies exactly the same guards as applying from the job page (profile completeness, job still
+ * published and before its deadline, canApplyToJob, notifying the employer); an invitation only
+ * waives the job-view quota, which canApplyToJob already handles.
  *
  * Decision (D-INV-01): if the student already applied to this job, the existing application is
- * re-linked to the invitation rather than rejecting the accept.
+ * linked to the invitation rather than rejecting the accept.
  */
 export async function acceptInvitation(
   ctx: { userId: string },
@@ -129,93 +132,45 @@ export async function acceptInvitation(
   if (!profile) throw new ForbiddenError('Student profile not found')
   const studentId = profile.id
 
-  const result = await db.$transaction(async (tx) => {
-    // Re-fetch invitation with a lock to prevent concurrent accepts
-    await lockXact(tx, LOCK_NS.INVITATION, input.invitationId)
+  const inv = await db.invitation.findUnique({
+    where: { id: input.invitationId },
+    select: { id: true, studentId: true, jobId: true, status: true, expiresAt: true },
+  })
+  if (!inv || inv.studentId !== studentId) {
+    throw new NotFoundError('Invitation not found')
+  }
+  if (inv.status !== InvitationStatus.SENT) {
+    throw new ForbiddenError('Invitation is not in SENT status')
+  }
+  if (inv.expiresAt <= new Date()) {
+    throw new ForbiddenError('Invitation has expired')
+  }
+  const jobId = inv.jobId
+  if (!jobId) throw new NotFoundError('Invitation job no longer exists')
 
-    const inv = await tx.invitation.findUnique({
-      where: { id: input.invitationId },
-      select: {
-        id: true,
-        studentId: true,
-        jobId: true,
-        companyId: true,
-        status: true,
-        expiresAt: true,
-        applicationId: true,
-      },
-    })
-
-    if (!inv || inv.studentId !== studentId) {
-      throw new NotFoundError('Invitation not found')
-    }
-    if (inv.status !== InvitationStatus.SENT) {
-      throw new ForbiddenError('Invitation is not in SENT status')
-    }
-    const checkNow = new Date()
-    if (inv.expiresAt <= checkNow) {
-      throw new ForbiddenError('Invitation has expired')
-    }
-
-    // Find or create application; re-link if already applied (D-INV-01)
-    const jobId = inv.jobId
-    if (!jobId) throw new NotFoundError('Invitation job no longer exists')
-
-    let applicationId: string
-
-    const existingApp = await tx.application.findUnique({
+  let applicationId: string
+  try {
+    applicationId = (await applyToJob(ctx, { jobId })).applicationId
+  } catch (err) {
+    if (!(err instanceof DuplicateApplicationError)) throw err
+    const existing = await db.application.findUnique({
       where: { jobId_studentId: { jobId, studentId } },
       select: { id: true },
     })
+    if (!existing) throw err
+    applicationId = existing.id
+  }
 
-    if (existingApp) {
-      applicationId = existingApp.id
-    } else {
-      // Create TalentUnlock (APPLICATION) if not present
-      await tx.talentUnlock.createMany({
-        data: [
-          {
-            companyId: inv.companyId,
-            studentId,
-            unlockedById: ctx.userId,
-            source: 'APPLICATION',
-            creditsSpent: 0,
-          },
-        ],
-        skipDuplicates: true,
-      })
-
-      const app = await tx.application.create({
-        data: {
-          jobId,
-          studentId,
-          status: 'APPLIED',
-        },
-        select: { id: true },
-      })
-      await tx.applicationEvent.create({
-        data: { applicationId: app.id, toStatus: 'APPLIED', actorId: ctx.userId },
-      })
-      applicationId = app.id
-    }
-
-    // Mark invitation accepted — conditional update prevents double-accept races
-    const updated = await tx.invitation.updateMany({
-      where: { id: inv.id, status: InvitationStatus.SENT },
-      data: {
-        status: InvitationStatus.ACCEPTED,
-        applicationId,
-        respondedAt: new Date(),
-      },
-    })
-    if (updated.count === 0) {
-      throw new ForbiddenError('Invitation already responded to')
-    }
-
-    return { applicationId }
+  // Conditional update: a concurrent accept/decline or the expiry job may have got there first.
+  const updated = await db.invitation.updateMany({
+    where: { id: inv.id, status: InvitationStatus.SENT, expiresAt: { gt: new Date() } },
+    data: { status: InvitationStatus.ACCEPTED, applicationId, respondedAt: new Date() },
   })
+  if (updated.count === 0) {
+    throw new ForbiddenError('Invitation already responded to')
+  }
 
-  return result
+  return { applicationId }
 }
 
 export interface DeclineInvitationInput {
