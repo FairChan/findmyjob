@@ -34,16 +34,24 @@ export async function setSetting(
   actorId?: string,
 ): Promise<void> {
   const jsonValue = value as Prisma.InputJsonValue
-  await db.systemSetting.upsert({
-    where: { key },
-    create: { key, value: jsonValue, updatedById: actorId },
-    update: { value: jsonValue, updatedById: actorId },
+  const existing = await db.systemSetting.findUnique({ where: { key }, select: { value: true } })
+  const from = existing?.value ?? null
+  await db.$transaction(async (tx) => {
+    await tx.systemSetting.upsert({
+      where: { key },
+      create: { key, value: jsonValue, updatedById: actorId },
+      update: { value: jsonValue, updatedById: actorId },
+    })
+    await logAudit(
+      {
+        actorId,
+        action: 'setting.update',
+        targetType: 'SystemSetting',
+        targetId: key,
+        metadata: { key, from, to: value },
+      },
+      tx,
+    )
   })
   cache.delete(key)
-  await logAudit({
-    actorId,
-    action: 'setting.update',
-    targetType: 'SystemSetting',
-    targetId: key,
-  })
 }
