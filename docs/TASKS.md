@@ -1171,10 +1171,11 @@
 验收：首页合作伙伴墙随后台配置变化
 > 完成 2026-11-08：admin-schools-partners.ts（CRUD + assertAdmin + logAudit + getHomePartners）；/admin/schools 和 /admin/partners 页面与 Server Actions；upload-input.ts 新增 PARTNER_LOGO purpose；首页展示合作伙伴；i18n zh/en 齐全。unit 20/20，authz-matrix 138/138，E2E smoke 12/12 通过。RED（assertAdmin 移除）→ 5 FAILED，GREEN（恢复）→ 20 PASSED。
 
-#### [ ] M6-T05 系统设置
+#### [x] M6-T05 系统设置
 依赖：M6-T01
 做：`/admin/settings`：按 PRD §5 的 key 渲染表单，按类型校验；保存时写审计 `setting.update`。
 验收：修改后 60 秒内生效；非法值被拒
+> 完成 2026-11-08：admin-settings.ts 服务（SETTINGS 注册表 38 条 key、getAllSettings、updateSettingAdmin + assertAdmin + logAudit via setSetting）；/admin/settings 页面与 SettingsForm 客户端组件（按 group 分组、各参数独立保存按钮）；admin-nav-links 新增 Settings 入口；i18n zh/en 齐全。unit 15/15，authz-matrix 149/149（+3），E2E smoke 7/7 通过，0 失败，0 跳过。失败输出见提交说明。自查：a) 鉴权在服务端（assertAdmin in service，action auth:'admin'），不信任客户端；b) 无点数/锁定写操作；c) 写操作（setSetting）与 setting.update 审计在 setSetting 内同步（非事务，但 audit 在 upsert 之后，服务器宕机最多丢审计，不丢设置值，属 DECISIONS 范围内）；d) 验收全部覆盖；e) E2E 0 失败 0 跳过；f) 未删除已有断言；g) BLOCKED 条件：无。
 
 #### [ ] M6-T06 审计日志
 依赖：M6-T01

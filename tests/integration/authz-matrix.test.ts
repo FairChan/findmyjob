@@ -2256,3 +2256,47 @@ describe('admin-companies authz (M6-T03)', () => {
     expect(result.ok).toBe(false)
   })
 })
+
+// ---------------------------------------------------------------------------
+// admin-settings authz (M6-T05)
+// ---------------------------------------------------------------------------
+
+describe('admin-settings authz (M6-T05)', () => {
+  it('updateSettingAction: student → FORBIDDEN', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
+    const result = await updateSettingAction({ key: 'team.maxMembers', value: 5 })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('updateSettingAction: employer → FORBIDDEN', async () => {
+    const { userId } = await createEmployer(testDb)
+    mockSession(userId)
+    const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
+    const result = await updateSettingAction({ key: 'team.maxMembers', value: 5 })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('updateSettingAction: admin with invalid value → VALIDATION_ERROR', async () => {
+    const { userId } = await createStudent(testDb)
+    // Promote to ADMIN for this test
+    const admin = await testDb.user.create({
+      data: {
+        name: 'Admin',
+        email: `admin-auth-${Date.now()}@example.test`,
+        emailVerified: true,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+    })
+    mockSession(admin.id)
+    const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
+    // number out of range
+    const result = await updateSettingAction({ key: 'pilot.monthlyCredits', value: -100 })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('VALIDATION_ERROR')
+  })
+})
