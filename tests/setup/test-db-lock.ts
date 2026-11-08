@@ -64,7 +64,8 @@ export async function acquireTestDbLock(rawUrl: string | undefined): Promise<Tes
       clearInterval(heartbeat)
       try {
         // Each heartbeat re-acquire stacks one more hold on the same session; drop them all.
-        await client.$queryRaw`SELECT pg_advisory_unlock_all()`
+        // pg_advisory_unlock_all() returns void, which $queryRaw cannot deserialize.
+        await client.$executeRaw`SELECT pg_advisory_unlock_all()`
       } finally {
         await client.$disconnect()
       }
