@@ -1060,12 +1060,13 @@
 做：`/s/applications`：列表 + 状态时间线；撤回按钮。
 验收：时间线与 ApplicationEvent 一致
 
-#### [ ] M5-T07 邀请投递
+#### [x] M5-T07 邀请投递
 依赖：M5-T04
 做：`services/invitations.ts`：按自然月计算配额（`invitations.freeMonthlyQuota`，M8 起改由套餐决定）；发送（先调 `isStudentVisibleToCompany`）；学生接受（生成投递）/ 婉拒；`expire-invitations` 任务；`/s/invitations`、`/e/invitations`。
 验收：
 - 超配额被拒；接受后生成投递并关联邀请；过期任务正确执行
 - 邀请列表每次都重新判断：按 `isStudentVisibleToCompany` 过滤，全名和联系方式按 `canSeeIdentity` 显示（TM-003）
+> 完成 2026-11-08：实现 sendInvitation/acceptInvitation/declineInvitation/listStudentInvitations/listCompanyInvitations/getMonthlyInvitationUsage；expire-invitations 后台任务（*/15 * * * *）；/s/invitations、/e/invitations 页面；InviteButton+InviteDialog 嵌入人才详情页；StudentNav 增加「收到的邀请」入口。集成测试 16/16 通过（含配额、并发、过期、可见性、身份遮蔽）；unit advisory-locks 3/3 通过；authz-matrix 新增 3 条。决策：D-INV-01（重关联已有投递）、D-INV-02（幂等返回已存在邀请）均记入 DECISIONS.md。
 
 #### [ ] M5-T08 通知中心与邮件
 依赖：M5-T07

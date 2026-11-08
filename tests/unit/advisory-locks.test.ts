@@ -12,7 +12,7 @@ describe('LOCK_NS', () => {
 
   it('has at least the namespaces in use', () => {
     expect(entries.map(([k]) => k)).toEqual(
-      expect.arrayContaining(['JOB_VIEW_QUOTA', 'PROFILE_VIEW', 'CREDIT', 'MANAGED_TRANSFER', 'APPLICATION']),
+      expect.arrayContaining(['JOB_VIEW_QUOTA', 'PROFILE_VIEW', 'CREDIT', 'MANAGED_TRANSFER', 'APPLICATION', 'INVITATION']),
     )
   })
 

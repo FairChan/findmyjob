@@ -8,6 +8,7 @@ import { runPurgeUnverified } from './purge-unverified'
 import { runRequalifyReferrals } from './requalify-referrals'
 import { runPilotMonthlyCredits } from './pilot-monthly-credits'
 import { runReconcileWallets } from './reconcile-wallets'
+import { runExpireInvitations } from './expire-invitations'
 import { pingHealthcheck } from '../lib/healthchecks'
 
 export async function registerJobs(boss: PgBoss): Promise<void> {
@@ -87,6 +88,21 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
     try {
       await runReconcileWallets()
       pingHealthcheck('reconcile-wallets')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
+  })
+
+  // ── expire-invitations ────────────────────────────────────────────────────
+  // Marks SENT invitations past their expiresAt as EXPIRED.
+  // Runs every 15 minutes to stay reasonably up-to-date.
+  await boss.createQueue('expire-invitations')
+  await boss.schedule('expire-invitations', '*/15 * * * *', {})
+  await boss.work('expire-invitations', async () => {
+    try {
+      await runExpireInvitations()
+      pingHealthcheck('expire-invitations')
     } catch (err) {
       Sentry.captureException(err)
       throw err

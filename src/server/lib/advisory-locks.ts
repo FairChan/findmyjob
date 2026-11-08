@@ -10,6 +10,8 @@ export const LOCK_NS = {
   // 线 B 原来用的是 1003，和 M4 的 CREDIT 撞号；M4 合并时改成 1004
   MANAGED_TRANSFER: 1004,
   APPLICATION: 1005,
+  // lane B 号段 1050–1099
+  INVITATION: 1050,
 } as const
 
 /**
