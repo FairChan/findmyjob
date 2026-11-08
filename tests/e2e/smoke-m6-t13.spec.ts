@@ -10,6 +10,9 @@ import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
 import { e2eDb as db } from './helpers/db'
 
+const LEGAL_KEY = 'legal.currentVersion'
+const LEGAL_DEFAULT = '2026-11-draft'
+
 test.describe('M6-T13 settings confirmation dialog smoke', () => {
   test('ADMIN: /zh/admin/settings is healthy', async ({ page }) => {
     await loginAs(page, { role: 'ADMIN' })
@@ -56,29 +59,66 @@ test.describe('M6-T13 settings confirmation dialog smoke', () => {
   test('ADMIN: confirmation dialog confirm persists legal.currentVersion to DB', async ({
     page,
   }) => {
+    test.setTimeout(120_000)
     await loginAs(page, { role: 'ADMIN' })
     await expectPageHealthy(page, '/zh/admin/settings')
 
+    const original = await db.systemSetting.findUnique({ where: { key: LEGAL_KEY } })
+    const originalValue = original ? String(original.value) : LEGAL_DEFAULT
     const newValue = `v-t13-confirm-${Date.now()}`
+    const row = page.locator('tr', { has: page.getByText(LEGAL_KEY) })
 
-    const row = page.locator('tr', { has: page.getByText('legal.currentVersion') })
-    const input = row.locator('input[type="text"]')
-    await input.fill(newValue)
+    try {
+      const input = row.locator('input[type="text"]')
+      await input.fill(newValue)
 
-    const saveBtn = row.getByRole('button', { name: /保存|Save/ })
-    await saveBtn.click()
+      const saveBtn = row.getByRole('button', { name: /保存|Save/ })
+      await saveBtn.click()
 
-    // Dialog must be visible
-    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
+      // Dialog must be visible
+      await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 })
 
-    // Click Confirm inside the dialog
-    await page.getByRole('dialog').getByRole('button', { name: /确认|Confirm/ }).click()
+      // Click Confirm inside the dialog
+      await page.getByRole('dialog').getByRole('button', { name: /确认|Confirm/ }).click()
 
-    // Success feedback must appear
-    await expect(row.getByText(/已保存|Saved/)).toBeVisible({ timeout: 10000 })
+      // Success feedback must appear
+      await expect(row.getByText(/已保存|Saved/)).toBeVisible({ timeout: 10000 })
 
-    // DB value must now equal newValue
-    const afterConfirm = await db.systemSetting.findUnique({ where: { key: 'legal.currentVersion' } })
-    expect(String(afterConfirm?.value)).toBe(newValue)
+      // DB value must now equal newValue
+      const afterConfirm = await db.systemSetting.findUnique({ where: { key: LEGAL_KEY } })
+      expect(String(afterConfirm?.value)).toBe(newValue)
+    } finally {
+      // Every later spec's users consented to the original version, so a leftover new
+      // version sends them all to /legal/reconsent. Restore through the UI on this page
+      // (no navigation: this admin's consent is for the original version) so the server
+      // clears its settings cache, then wait until the reconsent check (a route handler
+      // with its own 60 s cache copy) agrees, so later specs never see the new version.
+      try {
+        await row.locator('input[type="text"]').fill(originalValue)
+        await row.getByRole('button', { name: /保存|Save/ }).click()
+        await page.getByRole('dialog').getByRole('button', { name: /确认|Confirm/ }).click()
+        await expect
+          .poll(async () => {
+            const r = await db.systemSetting.findUnique({ where: { key: LEGAL_KEY } })
+            return r ? String(r.value) : LEGAL_DEFAULT
+          })
+          .toBe(originalValue)
+      } finally {
+        if (original) {
+          await db.systemSetting.update({ where: { key: LEGAL_KEY }, data: { value: original.value as string } })
+        } else {
+          await db.systemSetting.deleteMany({ where: { key: LEGAL_KEY } })
+        }
+        await expect
+          .poll(
+            async () => {
+              const res = await page.request.get('/api/internal/needs-reconsent')
+              return res.ok() ? ((await res.json()) as { needsReconsent?: boolean }).needsReconsent : 'error'
+            },
+            { timeout: 70_000, intervals: [1_000, 5_000] },
+          )
+          .toBe(false)
+      }
+    }
   })
 })
