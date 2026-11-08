@@ -210,14 +210,17 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
           data: { message: null },
         })
 
-        // Sanitize employer-side notifications that reference this student
-        // Notifications payload is JSON; delete any notification whose payload references this studentId
+        // Notifications that carry this student's data: their own inbox, employer-side rows that
+        // reference the student by top-level studentId (e.g. job.application.new), and rows that
+        // embed a talent card under `student` (invitation.accepted / declined, which may hold the
+        // full name once the student applied).
         await tx.notification.deleteMany({
           where: {
-            payload: {
-              path: ['studentId'],
-              equals: profileId,
-            },
+            OR: [
+              { userId: user.id },
+              { payload: { path: ['studentId'], equals: profileId } },
+              { payload: { path: ['student', 'id'], equals: profileId } },
+            ],
           },
         })
       }

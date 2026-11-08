@@ -66,7 +66,7 @@ vi.mock('@aws-sdk/client-s3', () => ({
 import { unzipSync } from 'fflate'
 import { ApplicationStatus, JobStatus, JobType, WorkMode } from '@prisma/client'
 import { setupTestDb, testDb } from '../setup/db'
-import { createStudent, SENTINEL } from '../factories'
+import { createJob, createEmployer, createStudent, SENTINEL } from '../factories'
 import { runExportUserData } from '@/server/jobs/export-user-data'
 import { runPurgeDeletedAccounts } from '@/server/jobs/purge-deleted-accounts'
 import { requestExport, requestDeletion, getExportDownloadRequest } from '@/server/services/data-rights'
@@ -323,6 +323,36 @@ describe('purge: PII cleared for deleted accounts', () => {
       data: { studentId: profileId, storageKey: `resumes/${userId}/cv.pdf`, fileName: 'cv.pdf', mimeType: 'application/pdf', sizeBytes: 100, isPrimary: true },
     })
 
+    // Employer-side records that carry the student's data (acceptance: TM-029)
+    const emp = await createEmployer(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: profileId, coverNote: `cover ${SENTINEL.phone}`, companyNote: `note ${SENTINEL.name}` },
+    })
+    await testDb.applicationEvent.create({
+      data: { applicationId: app.id, toStatus: 'SHORTLISTED', actorId: emp.userId, note: `event ${SENTINEL.name}` },
+    })
+    const folder = await testDb.talentFolder.create({
+      data: { companyId: emp.companyId, name: 'f', createdById: emp.userId },
+    })
+    await testDb.talentFolderItem.create({
+      data: { folderId: folder.id, studentId: profileId, note: `folder ${SENTINEL.email}`, addedById: emp.userId },
+    })
+    await testDb.invitation.create({
+      data: {
+        companyId: emp.companyId, jobId: job.id, studentId: profileId, sentById: emp.userId,
+        message: `hi ${SENTINEL.name}`, expiresAt: new Date(Date.now() + 86_400_000),
+      },
+    })
+    // Three notification shapes: top-level studentId, an embedded talent card, the student's own inbox
+    await testDb.notification.createMany({
+      data: [
+        { userId: emp.userId, type: 'job.application.new', payload: { studentId: profileId, applicationId: app.id } },
+        { userId: emp.userId, type: 'invitation.accepted', payload: { student: { id: profileId, name: SENTINEL.name } } },
+        { userId, type: 'talent.unlock', payload: { note: SENTINEL.email } },
+      ],
+    })
+
     // Soft-delete and backdate deletedAt to 31 days ago
     const thirtyOneDaysAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000)
     await testDb.user.update({
@@ -367,6 +397,21 @@ describe('purge: PII cleared for deleted accounts', () => {
 
     // S3 delete was attempted for exports prefix
     expect(mockS3Send).toHaveBeenCalled()
+
+    // Every field the acceptance lists: no sentinel value survives anywhere
+    for (const s of [SENTINEL.name, SENTINEL.phone, SENTINEL.email]) {
+      expect(await testDb.application.count({ where: { OR: [{ coverNote: { contains: s } }, { companyNote: { contains: s } }] } })).toBe(0)
+      expect(await testDb.applicationEvent.count({ where: { note: { contains: s } } })).toBe(0)
+      expect(await testDb.talentFolderItem.count({ where: { note: { contains: s } } })).toBe(0)
+      expect(await testDb.invitation.count({ where: { message: { contains: s } } })).toBe(0)
+      expect(await testDb.user.count({ where: { OR: [{ name: { contains: s } }, { email: { contains: s } }] } })).toBe(0)
+      expect(await testDb.studentProfile.count({ where: { fullName: { contains: s } } })).toBe(0)
+      const [{ n }] = await testDb.$queryRaw<Array<{ n: number }>>`
+        SELECT count(*)::int AS n FROM "Notification" WHERE "payload"::text LIKE ${'%' + s + '%'}`
+      expect(n).toBe(0)
+    }
+    // The application row itself stays (the employer's pipeline history), only its free text is gone
+    expect(await testDb.application.count({ where: { id: app.id } })).toBe(1)
 
     // CreditLedger and AuditLog only have internal IDs — not PII
     // Verify the SENTINEL values are not in AuditLog (which should only have targetIds / internal refs)
