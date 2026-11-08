@@ -22,6 +22,7 @@ const PURPOSE_CONFIGS: Record<UploadPurpose, PurposeConfig> = {
   VERIFICATION: { types: ['pdf', 'png', 'jpeg'], maxBytes: 10 * 1024 * 1024 },
   PAYMENT_PROOF: { types: ['pdf', 'png', 'jpeg'], maxBytes: 10 * 1024 * 1024 },
   LOGO: { types: ['png', 'jpeg'], maxBytes: 2 * 1024 * 1024 },
+  PARTNER_LOGO: { types: ['png', 'jpeg'], maxBytes: 2 * 1024 * 1024 },
 }
 
 const EXT: Record<AllowedMimeKey, string> = { pdf: 'pdf', png: 'png', jpeg: 'jpg' }
@@ -66,6 +67,13 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
     try {
       const companyCtx = await requireCompanyMember(minRole, req.headers as unknown as Headers)
       companyId = companyCtx.companyId
+    } catch {
+      return rejectJson('FORBIDDEN', 403)
+    }
+  } else if (purpose === 'PARTNER_LOGO') {
+    const { requireAdmin } = await import('@/server/authz')
+    try {
+      await requireAdmin(req.headers as unknown as Headers)
     } catch {
       return rejectJson('FORBIDDEN', 403)
     }
@@ -173,6 +181,8 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
   if ((purpose === 'LOGO' || purpose === 'VERIFICATION' || purpose === 'PAYMENT_PROOF') && companyId) {
     const folder = purpose === 'LOGO' ? 'logos' : purpose === 'VERIFICATION' ? 'verifications' : 'payment_proofs'
     key = `${folder}/${companyId}/${randomUUID()}.${EXT[detectedType]}`
+  } else if (purpose === 'PARTNER_LOGO') {
+    key = `partner-logos/${userId}/${randomUUID()}.${EXT[detectedType]}`
   } else if (purpose === 'RESUME' && studentProfileId) {
     key = `resumes/${studentProfileId}/${randomUUID()}.${EXT[detectedType]}`
   } else {

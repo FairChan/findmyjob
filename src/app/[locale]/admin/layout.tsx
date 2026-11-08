@@ -45,6 +45,8 @@ export default async function AdminLayout({
           studentsLabel={t('navStudents')}
           companiesLabel={t('navCompanies')}
           jobsLabel={t('navJobs')}
+          schoolsLabel={t('navSchools')}
+          partnersLabel={t('navPartners')}
           pendingCount={pendingCount}
         />
       </aside>

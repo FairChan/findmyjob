@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, BadgeCheck, Briefcase, Users } from 'lucide-react'
+import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake } from 'lucide-react'
 
 interface AdminNavLinksProps {
   locale: string
@@ -10,6 +10,8 @@ interface AdminNavLinksProps {
   companiesLabel: string
   jobsLabel: string
   studentsLabel: string
+  schoolsLabel: string
+  partnersLabel: string
   pendingCount: number
 }
 
@@ -18,6 +20,8 @@ const NAV_ITEMS = [
   { key: 'students', href: (locale: string) => `/${locale}/admin/students`, icon: Users, end: false },
   { key: 'companies', href: (locale: string) => `/${locale}/admin/companies`, icon: BadgeCheck, end: false },
   { key: 'jobs', href: (locale: string) => `/${locale}/admin/jobs`, icon: Briefcase, end: false },
+  { key: 'schools', href: (locale: string) => `/${locale}/admin/schools`, icon: School, end: false },
+  { key: 'partners', href: (locale: string) => `/${locale}/admin/partners`, icon: Handshake, end: false },
 ] as const
 
 export function AdminNavLinks({
@@ -26,6 +30,8 @@ export function AdminNavLinks({
   companiesLabel,
   jobsLabel,
   studentsLabel,
+  schoolsLabel,
+  partnersLabel,
   pendingCount,
 }: AdminNavLinksProps) {
   const pathname = usePathname()
@@ -35,6 +41,8 @@ export function AdminNavLinks({
     students: studentsLabel,
     companies: companiesLabel,
     jobs: jobsLabel,
+    schools: schoolsLabel,
+    partners: partnersLabel,
   }
 
   return (

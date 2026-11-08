@@ -1129,10 +1129,11 @@
 做：列表、详情、停用、标记创始合作伙伴、设置公司定位标签、调整点数（调用 `credits.adminAdjust`）。`requireCompanyMember` 每次请求都检查 Company.isActive。
 验收：停用企业的成员下一次请求就无法访问企业端
 
-#### [ ] M6-T04 学校与合作伙伴
+#### [x] M6-T04 学校与合作伙伴
 依赖：M6-T01
 做：学校增删改（邮箱后缀管理）；合作伙伴增删改（Logo 上传、排序、首页显示开关）。
 验收：首页合作伙伴墙随后台配置变化
+> 完成 2026-11-08：admin-schools-partners.ts（CRUD + assertAdmin + logAudit + getHomePartners）；/admin/schools 和 /admin/partners 页面与 Server Actions；upload-input.ts 新增 PARTNER_LOGO purpose；首页展示合作伙伴；i18n zh/en 齐全。unit 20/20，authz-matrix 138/138，E2E smoke 12/12 通过。RED（assertAdmin 移除）→ 5 FAILED，GREEN（恢复）→ 20 PASSED。
 
 #### [ ] M6-T05 系统设置
 依赖：M6-T01

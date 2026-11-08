@@ -2110,4 +2110,42 @@ describe('admin-users authz (M6-T02)', () => {
     expect(result.ok).toBe(false)
     expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
   })
+
+  it('createSchoolAction: student → FORBIDDEN', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { createSchoolAction } = await import('@/app/[locale]/admin/schools/actions')
+    const result = await createSchoolAction({
+      nameZh: '测试',
+      nameEn: 'Test',
+      emailDomains: ['test.edu.my'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('createPartnerAction: employer → FORBIDDEN', async () => {
+    const { userId } = await createEmployer(testDb)
+    mockSession(userId)
+    const { createPartnerAction } = await import('@/app/[locale]/admin/partners/actions')
+    const result = await createPartnerAction({
+      name: 'Test Partner',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('deletePartnerAction: student → FORBIDDEN', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { deletePartnerAction } = await import('@/app/[locale]/admin/partners/actions')
+    const result = await deletePartnerAction({ id: 'clzzzzzzzzzzzzzzzzzzzzzzz' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
 })
