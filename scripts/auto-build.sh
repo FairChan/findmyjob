@@ -53,6 +53,16 @@ mkdir -p "$RUN_DIR" || { echo "停止：无法创建 $RUN_DIR"; exit 1; }
 
 log() { echo "$*" | tee -a "$RUN_DIR/summary.txt"; }
 stop() { log "停止：$2"; exit "$1"; }
+# 轮次结束时清理本轮自己留下的进程（用户 2026-11-08 批准）：只动 round-reaper 记下的进程树，PID 和 CreationDate 都对得上才结束
+REAP_TREE=""
+reap_round() {
+  [[ -n "$REAP_TREE" && -f "$REAP_TREE" && ! -f "$REAP_TREE.done" ]] || return 0
+  : >"$REAP_TREE.stop"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/round-reaper.ps1 -Mode reap -Out "$(cygpath -w "$REAP_TREE")" \
+    2>&1 | tee -a "$RUN_DIR/summary.txt"
+  : >"$REAP_TREE.done"
+}
+trap reap_round EXIT
 py() { "$PY" -X utf8 "${HELPER[@]}" "$@"; }
 
 [[ "$MILESTONE" =~ ^M[0-9]+$ ]] || stop 1 "里程碑必须写成 M<数字>，例如 M2"
@@ -92,7 +102,7 @@ case "$SETTINGS" in scripts/headless-settings.json | .auto-build/headless-run.js
 settings_sum="$(sha256sum "$SETTINGS" | cut -d' ' -f1)"
 
 GUARD=('*CLAUDE.md' .claude .githooks scripts/auto-build.sh scripts/unattended.md scripts/auto_build_status.py
-  scripts/headless-settings.json)
+  scripts/headless-settings.json scripts/round-reaper.ps1)
 
 total=0
 for ((i = 1; i <= MAX_ROUNDS; i++)); do
@@ -138,8 +148,21 @@ docs/TASKS.md 就是已批准的设计，不走 brainstorming。
     --strict-mcp-config --mcp-config scripts/mcp-none.json \
     ${AUTO_BUILD_MODEL:+--model "$AUTO_BUILD_MODEL"} \
     --disallowedTools "${DENY[@]}" \
-    >"$out.json" 2>"$out.stderr"
+    >"$out.json" 2>"$out.stderr" &
+  round_pid=$!
+  REAP_TREE="$RUN_DIR/r${i}-${id}.tree.tsv"
+  watcher=""
+  round_win="$(cat "/proc/$round_pid/winpid" 2>/dev/null || true)"
+  if [[ -n "$round_win" && -f scripts/round-reaper.ps1 ]]; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/round-reaper.ps1 -Mode watch -RootPid "$round_win" \
+      -Out "$(cygpath -w "$REAP_TREE")" -StopFile "$(cygpath -w "$REAP_TREE.stop")" >/dev/null 2>&1 &
+    watcher=$!
+  fi
+  wait "$round_pid"
   rc=$?
+  : >"$REAP_TREE.stop"
+  [[ -n "$watcher" ]] && wait "$watcher" 2>/dev/null
+  reap_round
 
   read -r status sid cost turns subtype < <(py parse "$out.json")
   after="$(git rev-parse HEAD)"
