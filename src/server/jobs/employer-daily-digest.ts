@@ -1,6 +1,7 @@
 import 'server-only'
 import { db } from '../db'
 import { sendDailyDigestEmail } from '../services/notify'
+import { createNotification } from '../services/notifications'
 import { logger } from '../lib/logger'
 import type { DigestJobRow } from '../email/templates'
 
@@ -54,6 +55,21 @@ export async function runEmployerDailyDigest(): Promise<{ sent: number; skipped:
         continue
       }
 
+      // Idempotency: skip if digest was already sent for this window
+      const digestDate = start.toISOString().slice(0, 10)
+      const alreadySent = await db.notification.findFirst({
+        where: {
+          userId: owner.userId,
+          type: 'job.digest.sent',
+          payload: { path: ['digestDate'], equals: digestDate },
+        },
+        select: { id: true },
+      })
+      if (alreadySent) {
+        skipped++
+        continue
+      }
+
       const jobIds = rows.map((r) => r.jobId)
       const jobs = await db.job.findMany({
         where: { id: { in: jobIds } },
@@ -73,6 +89,8 @@ export async function runEmployerDailyDigest(): Promise<{ sent: number; skipped:
         locale: owner.user.locale ?? 'zh',
         rows: digestRows,
       })
+      // Record that digest was sent for this window to prevent re-sending
+      await createNotification(db, owner.userId, 'job.digest.sent', { digestDate }).catch(() => {})
       sent++
     } catch (err) {
       logger.error({ err, userId: owner.userId, companyId: owner.companyId }, 'employer-daily-digest: owner failed')

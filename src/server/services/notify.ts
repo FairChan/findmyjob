@@ -4,6 +4,7 @@ import { createEmailProvider } from '@/lib/email'
 import { checkEmailCap, type EmailTemplate } from '../lib/email-cap'
 import { logger } from '../lib/logger'
 import { renderEmailTemplate } from '../email/templates'
+import { createNotification } from './notifications'
 import type { TemplateVars } from '../email/templates'
 
 export type { TemplateVars }
@@ -79,17 +80,57 @@ export async function sendDailyDigestEmail(opts: {
   }
 }
 
-/** Stub entry for M8-T02 order confirmed notification. */
-export async function notifyOrderConfirmed(
-  _companyId: string,
-  _payload: { orderId: string; amount: number },
-): Promise<void> {
-  // M8-T02: wire up credits.order.confirmed notification here
-  logger.info({ _companyId }, 'notifyOrderConfirmed: not yet implemented (M8-T02)')
+/**
+ * Send the "someone tried to register with your email" reminder.
+ * Looks up locale from DB; falls back to 'zh'. Never throws.
+ */
+export async function sendExistingUserReminder(email: string): Promise<void> {
+  try {
+    const user = await db.user.findUnique({
+      where: { email },
+      select: { locale: true },
+    })
+    const locale = user?.locale ?? 'zh'
+    const content = renderEmailTemplate({ template: 'signup-attempt', locale })
+    await createEmailProvider().sendEmail({
+      to: email,
+      subject: content.subject,
+      html: content.html,
+      text: content.text,
+    })
+  } catch (err) {
+    logger.error({ err, template: 'signup-attempt' }, 'sendExistingUserReminder failed')
+  }
 }
 
-/** Stub entry for M7-T09 new report notification. */
-export async function notifyNewReport(_reportId: string): Promise<void> {
-  // M7-T09: wire up report.new notification here
-  logger.info({ _reportId }, 'notifyNewReport: not yet implemented (M7-T09)')
+/**
+ * PRD §6「订单确认到账」→ 企业 OWNER：站内 + 邮件。
+ * M8-T02 在确认到账的事务提交之后调用；金额用整数「分」(sen)。
+ */
+export async function notifyOrderConfirmed(
+  companyId: string,
+  payload: { orderId: string; amountSen: number },
+): Promise<void> {
+  const owners = await db.companyMember.findMany({
+    where: { companyId, role: 'OWNER' },
+    select: { userId: true },
+  })
+  for (const o of owners) {
+    await createNotification(db, o.userId, 'order.confirmed', {
+      orderId: payload.orderId,
+      amountSen: payload.amountSen,
+    })
+    await sendNotificationEmail(o.userId, { template: 'order-confirmed', amountSen: payload.amountSen })
+  }
+}
+
+/** PRD §6「收到新举报」→ 运营（所有 ACTIVE 的 ADMIN）：只发站内。M7-T09 建好举报之后调用。 */
+export async function notifyNewReport(reportId: string): Promise<void> {
+  const admins = await db.user.findMany({
+    where: { role: 'ADMIN', status: 'ACTIVE' },
+    select: { id: true },
+  })
+  for (const a of admins) {
+    await createNotification(db, a.id, 'report.new', { reportId })
+  }
 }

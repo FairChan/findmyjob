@@ -168,6 +168,10 @@
     "bannerAdminActionRequired": "Please ask your company admin to handle verification.",
     "bannerRejectedReason": "Rejection Reason"
   },
+  "employerLayout": {
+    "bellLabel": "Notifications",
+    "bellLabelWithCount": "Notifications ({count} unread)"
+  },
   "adminLayout": {
     "title": "FindMYJob · Admin",
     "adminLabel": "Admin",
@@ -175,7 +179,9 @@
     "navDashboard": "Dashboard",
     "navCompanies": "Company Review",
     "navJobs": "Job Review",
-    "navNotifications": "Notifications"
+    "navNotifications": "Notifications",
+    "bellLabel": "Notifications",
+    "bellLabelWithCount": "Notifications ({count} unread)"
   },
   "adminDashboard": {
     "title": "Dashboard",
@@ -360,6 +366,9 @@
     "creditsLow": "Your credit balance is running low",
     "quotaExhausted": "Your job view quota has been used up",
     "referralQualified": "A friend you invited has qualified",
+    "orderConfirmed": "Your payment has been confirmed",
+    "applicationNew": "You received a new application",
+    "reportNew": "A new report was submitted",
     "systemAlert": "System notification",
     "unknownType": "Notification",
     "privacyLink": "View Privacy Centre for details",

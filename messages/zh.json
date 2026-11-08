@@ -168,6 +168,10 @@
     "bannerAdminActionRequired": "请联系企业管理员处理认证事宜。",
     "bannerRejectedReason": "驳回原因"
   },
+  "employerLayout": {
+    "bellLabel": "消息通知",
+    "bellLabelWithCount": "消息通知（{count} 条未读）"
+  },
   "adminLayout": {
     "title": "FindMYJob · 运营后台",
     "adminLabel": "运营管理员",
@@ -175,7 +179,9 @@
     "navDashboard": "数据看板",
     "navCompanies": "企业认证",
     "navJobs": "职位审核",
-    "navNotifications": "消息通知"
+    "navNotifications": "消息通知",
+    "bellLabel": "消息通知",
+    "bellLabelWithCount": "消息通知（{count} 条未读）"
   },
   "adminDashboard": {
     "title": "数据看板",
@@ -360,6 +366,9 @@
     "creditsLow": "点数余额不足",
     "quotaExhausted": "职位查看额度已用完",
     "referralQualified": "好友邀请已生效",
+    "orderConfirmed": "订单已确认到账",
+    "applicationNew": "收到新的投递",
+    "reportNew": "收到新的举报",
     "systemAlert": "系统通知",
     "unknownType": "通知",
     "privacyLink": "前往隐私中心查看详情",

@@ -17,6 +17,18 @@ export default async function EmployerNotificationsPage() {
 
   function notificationLabel(type: string): string {
     switch (type) {
+      case 'company.verified':
+        return t('companyVerified')
+      case 'company.rejected':
+        return t('companyRejected')
+      case 'job.approved':
+        return t('jobApproved')
+      case 'job.rejected':
+        return t('jobRejected')
+      case 'job.application.new':
+        return t('applicationNew')
+      case 'order.confirmed':
+        return t('orderConfirmed')
       case 'invitation.accepted':
         return t('invitationAccepted')
       case 'invitation.declined':

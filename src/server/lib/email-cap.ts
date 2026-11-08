@@ -22,6 +22,7 @@ export const EMAIL_TEMPLATES = {
   'invitation-received': 'invitation received',
   'credits-granted': 'credits granted',
   'credits-low': 'low credits warning',
+  'order-confirmed': 'order payment confirmed',
   'daily-digest': 'daily new applications digest',
   'signup-cap-warn': 'signup cap warning',
 } as const

@@ -16,6 +16,7 @@ export type EmailTemplateName =
   | 'credits-low'
   | 'daily-digest'
   | 'signup-cap-warn'
+  | 'signup-attempt'
 
 function esc(s: string): string {
   return String(s)
@@ -182,6 +183,30 @@ function creditsGrantedEn(vars: { amount: number; balance: number }): EmailConte
   }
 }
 
+// ---- order-confirmed -----------------------------------------------------
+
+function ringgit(sen: number): string {
+  return (sen / 100).toFixed(2)
+}
+
+function orderConfirmedZh(vars: { amountSen: number }): EmailContent {
+  const body = `<p>您好，</p><p>FindMYJob 已确认收到您的银行转账：<strong>RM ${esc(ringgit(vars.amountSen))}</strong>，对应的点数或套餐已经开通。</p><p><a href="${esc(appUrl())}/zh/e">前往企业端</a></p>`
+  return {
+    subject: 'FindMYJob 订单已确认到账',
+    html: wrap(body),
+    text: `FindMYJob 已确认收到您的转账 RM ${ringgit(vars.amountSen)}，对应的点数或套餐已经开通。`,
+  }
+}
+
+function orderConfirmedEn(vars: { amountSen: number }): EmailContent {
+  const body = `<p>Hello,</p><p>FindMYJob has confirmed your bank transfer of <strong>RM ${esc(ringgit(vars.amountSen))}</strong>. Your credits or plan are now active.</p><p><a href="${esc(appUrl())}/en/e">Go to dashboard</a></p>`
+  return {
+    subject: 'FindMYJob — Payment confirmed',
+    html: wrap(body),
+    text: `FindMYJob confirmed your bank transfer of RM ${ringgit(vars.amountSen)}. Your credits or plan are now active.`,
+  }
+}
+
 // ---- credits-low ---------------------------------------------------------
 
 function creditsLowZh(vars: { balance: number; threshold: number }): EmailContent {
@@ -251,6 +276,26 @@ function signupCapWarnEn(vars: { count: number; cap: number; threshold: number }
   }
 }
 
+// ---- signup-attempt ------------------------------------------------------
+
+function signupAttemptZh(): EmailContent {
+  const body = `<p>您好，</p><p>有人尝试使用您的邮箱注册 FindMYJob 账号。如果是您本人操作，请直接<a href="${esc(appUrl())}/zh/login">登录</a>即可。如果不是您本人，请忽略此邮件。</p>`
+  return {
+    subject: '有人尝试用您的 FindMYJob 账号注册',
+    html: wrap(body),
+    text: '有人尝试使用您的邮箱注册 FindMYJob 账号。如果是您本人操作，请直接登录即可。如果不是您本人，请忽略此邮件。',
+  }
+}
+
+function signupAttemptEn(): EmailContent {
+  const body = `<p>Hello,</p><p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${esc(appUrl())}/en/login">log in</a> instead. If it was not you, please ignore this email.</p>`
+  return {
+    subject: 'Someone tried to register with your FindMYJob account',
+    html: wrap(body),
+    text: 'Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead. If it was not you, please ignore this email.',
+  }
+}
+
 // ---- Public render function ----------------------------------------------
 
 export type TemplateVars =
@@ -261,8 +306,10 @@ export type TemplateVars =
   | { template: 'invitation-received'; locale: string; jobTitle: string; companyName: string }
   | { template: 'credits-granted'; locale: string; amount: number; balance: number }
   | { template: 'credits-low'; locale: string; balance: number; threshold: number }
+  | { template: 'order-confirmed'; locale: string; amountSen: number }
   | { template: 'daily-digest'; locale: string; rows: DigestJobRow[] }
   | { template: 'signup-cap-warn'; locale: string; count: number; cap: number; threshold: number }
+  | { template: 'signup-attempt'; locale: string }
 
 export function renderEmailTemplate(vars: TemplateVars): EmailContent {
   const zh = vars.locale === 'zh'
@@ -281,9 +328,13 @@ export function renderEmailTemplate(vars: TemplateVars): EmailContent {
       return zh ? creditsGrantedZh(vars) : creditsGrantedEn(vars)
     case 'credits-low':
       return zh ? creditsLowZh(vars) : creditsLowEn(vars)
+    case 'order-confirmed':
+      return zh ? orderConfirmedZh(vars) : orderConfirmedEn(vars)
     case 'daily-digest':
       return zh ? dailyDigestZh(vars) : dailyDigestEn(vars)
     case 'signup-cap-warn':
       return zh ? signupCapWarnZh(vars) : signupCapWarnEn(vars)
+    case 'signup-attempt':
+      return zh ? signupAttemptZh() : signupAttemptEn()
   }
 }

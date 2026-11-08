@@ -19,6 +19,8 @@ export default async function AdminNotificationsPage() {
     switch (type) {
       case 'system.alert':
         return t('systemAlert')
+      case 'report.new':
+        return t('reportNew')
       default:
         return t('unknownType')
     }

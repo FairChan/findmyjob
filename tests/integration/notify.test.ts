@@ -133,12 +133,17 @@ describe('sendNotificationEmail', () => {
     // Update user locale to 'zh' to trigger a known template
     await testDb.user.update({ where: { id: userId }, data: { locale: 'zh' } })
 
+    // Look up the actual DB email to compare strictly (factory uses example.test OR example.com)
+    const userInDb = await testDb.user.findUnique({ where: { id: userId }, select: { email: true } })
+    expect(userInDb).not.toBeNull()
+    const dbEmail = userInDb!.email
+
     await sendNotificationEmail(userId, { template: 'talent-unlocked' })
 
     expect(_mockSendEmail).toHaveBeenCalledOnce()
     const call = _mockSendEmail.mock.calls[0]?.[0] as { to?: string } | undefined
-    // Email must go to the DB email, not any payload field
-    expect(call?.to).toMatch(/@example\.test$/)
+    // Email must go to the EXACT DB email, not any other address
+    expect(call?.to).toBe(dbEmail)
   })
 
   it('is a no-op for unknown userId', async () => {

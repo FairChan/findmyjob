@@ -1070,11 +1070,30 @@
 - 邀请列表每次都重新判断：按 `isStudentVisibleToCompany` 过滤，全名和联系方式按 `canSeeIdentity` 显示（TM-003）
 > 完成 2026-11-08：实现 sendInvitation/acceptInvitation/declineInvitation/listStudentInvitations/listCompanyInvitations/getMonthlyInvitationUsage；expire-invitations 后台任务（*/15 * * * *）；/s/invitations、/e/invitations 页面；InviteButton+InviteDialog 嵌入人才详情页；StudentNav 增加「收到的邀请」入口。集成测试 16/16 通过（含配额、并发、过期、可见性、身份遮蔽）；unit advisory-locks 3/3 通过；authz-matrix 新增 3 条。决策：D-INV-01（重关联已有投递）、D-INV-02（幂等返回已存在邀请）均记入 DECISIONS.md。
 
-#### [ ] M5-T08 通知中心与邮件
+#### [x] M5-T08 通知中心与邮件
 依赖：M5-T07
 做：通知铃铛 + 未读数 + 列表 + 全部已读；按收件人语言渲染中 / 英邮件模板；接入 PRD §6 的全部事件；`employer-daily-digest` 任务。
 验收：PRD §6 每一行都有对应测试或 E2E 覆盖
-> 进度 2026-11-08 第 1 轮：notify.ts（sendNotificationEmail + sendDailyDigestEmail）；email/templates/index.ts（PRD §6 全部事件模板，zh/en）；email-cap.ts 新增 9 种模板；review-company/review-jobs/applicants/unlock/invitations 接入真实邮件；quota.exhausted + referral.qualified + signup-cap-warn 通知；employer-daily-digest 任务（KL 08:00 cron）；/s/notifications 增强 + /e/notifications 新建 + /admin/notifications 新建；markAllNotificationsReadAction（auth:'user'）；MarkAllReadButton 客户端组件；admin nav 加 Bell 通知入口；i18n zh+en 同步更新；notify.test.ts 8 个用例；authz-matrix +3 行；E2E smoke-m5-t08 4 个用例；lint✓ typecheck✓；剩余：pnpm test + E2E 因测试库锁未能确认绿。
+> 完成 2026-11-08：PRD §6 全部 15 行事件均有对应测试；notify-prd6.test.ts 34 个用例、alert-notify.test.ts 1 个、notify.test.ts 10 个，全部通过。
+> 测试覆盖（逐行对应 PRD §6）：
+> - Row 1 company.verified: approveCompany creates company.verified + sends zh/en email（2 个用例）
+> - Row 2 company.rejected: rejectCompany creates company.rejected + sends email（2 个用例）
+> - Row 3 job.approved: approveJob sends en email（1）；Row 4 job.rejected: payload 不含内部原因（1）
+> - Row 5 job.application.new: applyToJob → employer in-app，无直接邮件（2）
+> - Row 6 application.status.changed: 状态变更通知学生 + 邮件，payload/邮件不含公司备注（4）
+> - Row 7 talent.unlock: unlockStudent → 学生 in-app + email，payload 不含联系方式（2）
+> - Row 8 invitation.received: sendInvitation → 学生 in-app + email（1）
+> - Row 9/10 invitation.accepted/declined: acceptInvitation/declineInvitation → 企业 in-app，无邮件；接受后的 payload 不含联系方式，婉拒后的 payload 不含全名（4）
+> - Row 11 credits.granted: grantPilotCreditsOnVerification → in-app + email（1）
+> - Row 12 credits.low: unlockStudent → credits.low in-app + email；rate-limit 拦截时不发（2）
+> - Row 13 signup.cap.warn: maybeWarnCap → admin 邮件 + alert()（2）
+> - Row 14 referral.qualified: qualifyReferral → in-app，无邮件（1）
+> - Row 15 quota.exhausted: openJob → in-app，无邮件（1）
+> - Row 16 system.alert: 真实 alert() 给每个 ACTIVE 运营写 system.alert（alert-notify.test.ts，1）；Row 17 order.confirmed: notifyOrderConfirmed → OWNER 站内 + 按 locale 的邮件，金额按 sen 显示 RM（1）；Row 18 report.new: notifyNewReport → 只发给 ACTIVE 运营，无邮件（1）；Row 19 existing-user reminder zh/en/default（3）
+> - 事务回滚：无通知、无邮件（1）；daily-digest：2 条投递发 1 封邮件，重跑同窗口不重发（2）
+> 修复：approveCompany 同时发 credits.granted 邮件→改为按 subject 查找；invitation.accepted payload 对 2 字名不掩码→改断言为联系方式（邮件/电话）不出现；systemSetting 值用 JSON.stringify() 存成 JSON 字符串→改为直接传数值；RateLimitResult 无 limit 字段→改用 remaining/resetAt；CompanyCtx 缺 role 字段→补 role:'OWNER'。
+> 测试文件：notify-prd6.test.ts（34 passed 0 failed 0 skipped），alert-notify.test.ts（1/0/0），notify.test.ts（10/0/0）；把 createNotification 和 sendNotificationEmail 都换成空操作后，notify-prd6 有 24 条失败。
+> 全量 vitest 和 E2E 由轮后的 lane-verify 跑。
 
 #### [x] M5-T09 职位搜索 service（精确 / 关联）
 依赖：M5-T03
@@ -1249,6 +1268,7 @@
 依赖：M7-T01
 做：`/safety` 反诈专区页（内容来自 Article）；职位详情页「举报」按钮，按用户限流每天 `limits.jobReportsPerDay` 次；`services/reports.ts`、`services/articles.ts`。
 验收：举报出现在运营队列里；处理时写审计 `job.report.resolve`；第 11 次举报被拒
+> M5-T08 已备好：举报建好之后，调用 `src/server/services/notify.ts` 的 `notifyNewReport(reportId)`（给运营发站内 report.new）。
 
 #### [x] M7-T10 k6 压测脚本（browse+search 和 smoke）
 依赖：M7-T06
@@ -1633,6 +1653,7 @@
 依赖：M8-T01
 做：`services/billing.ts`：创建订单（orderNo 格式 `FMJ-YYYYMMDD-XXXX`）→ 显示收款信息 → 企业上传回单（经 `/api/uploads/PAYMENT_PROOF`，AWAITING_CONFIRMATION）→ 运营确认 → 同一事务内：订单 PAID + 发点（PURCHASE / PLAN_GRANT）+ 开通或续期订阅；审计 `order.confirm`。
 验收：重复确认不会重复发点；只有 OWNER 能下单
+> M5-T08 已备好：确认到账、事务提交之后，调用 `src/server/services/notify.ts` 的 `notifyOrderConfirmed(companyId, { orderId, amountSen })`（站内 order.confirmed + 邮件）。
 
 #### [ ] M8-T03 在线支付
 依赖：M8-T02
