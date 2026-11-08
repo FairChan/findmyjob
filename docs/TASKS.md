@@ -1025,12 +1025,13 @@
 > 完成 2026-11-08（总控收尾）：第 1 轮写完了 `canApplyToJob`、`applyToJob` 的前置检查、3 条新测试、「已撤回」状态和冒烟用例，但在 120 分钟上限处超时（21ce004 wip）；超时原因是那一轮留下 4 个后台 vitest 同时 TRUNCATE findmyjob_test，测试互相清库。那一轮加的 vitest singleThread hack 已撤掉，改为测试库互斥锁（0e1f120）。总控在单独的测试库 findmyjob_m5_test 上补跑：applications 与 test-db-lock 共 22 条通过；红跑（让 applyToJob 跳过 canApplyToJob）时「quota exhausted, no JobView, no Invitation → NOT_FOUND」失败，原文见提交说明；全量 verify 结果见合 main 的提交说明。
 > 延后（P1，并入 M4-T17 之后的 P1 清单）：完成度不足时跳到「第一个未完成的步骤」而不是固定的 /s/onboarding；HIRED、REJECTED 状态是否允许撤回（PRD 没写，先维持现状并在 DECISIONS 记一行）；`applyToJob` 检查 `company.isActive`；vitest 的全局 testTimeout 30s 只给集成测试用。
 
-#### [ ] M5-T05 企业投递看板与标准化列表
+#### [x] M5-T05 企业投递看板与标准化列表
 依赖：M5-T04
 做：`/e/jobs/[id]/applicants`：按状态分列的看板（移动端为列表）；拖拽改状态 → 写 ApplicationEvent + 通知学生；第一次打开投递自动标记为 VIEWED；内部备注；查看投递者完整资料。新增「标准化列表」视图（PRD §3.4），可按 CGPA、毕业年月、完成度排序。
 验收：
 - 状态变更都有事件记录；内部备注不会出现在任何学生侧接口中（测试）；标准化列表 10 个人一屏显示完，三种排序都正确
 - 投递看板每次都重新判断：全名和联系方式按 `canSeeIdentity` 显示，学生屏蔽该企业或账号不再 ACTIVE 后不再显示（TM-003）
+> 完成 2026-11-08：/e/jobs/[id]/applicants 页（Server Component + ApplicantsBoard Client Component）；listJobApplicants / changeApplicationStatus / updateApplicationNote / markApplicationViewed service；changeStatusAction / updateNoteAction / markViewedAction Server Actions（zod 校验，action() 包装，companyId 只来自 requireCompanyMember）；看板 HTML5 拖拽改状态，列表视图 10/页三种排序；companyNote 只在企业侧服务返回，学生侧不暴露（隔离测试通过）；ApplicationEvent 写入事务；canSeeIdentityMany 每次重新判断；16 条集成测试 + 5 条 authz-matrix 越权测试 + 3 条 E2E 冒烟（6/6 通过）；失败输出见提交说明。
 
 #### [ ] M5-T06 我的投递
 依赖：M5-T05

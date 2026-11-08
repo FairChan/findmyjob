@@ -1751,3 +1751,73 @@ describe('application authz (M5-T04): applyToJobAction / withdrawApplicationActi
     expect((withdrawResult as { ok: false; code: string }).code).toBe('NOT_FOUND')
   })
 })
+
+// ---------------------------------------------------------------------------
+// applicants authz (M5-T05): changeStatusAction / updateNoteAction
+// companyId always comes from requireCompanyMember, never from client input.
+// ---------------------------------------------------------------------------
+
+describe('applicants authz (M5-T05): changeStatusAction / updateNoteAction', () => {
+  async function setupApplicantFixture() {
+    const emp = await createEmployer(testDb)
+    const student = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: student.profileId, status: 'APPLIED' },
+    })
+    return { emp, student, job, app }
+  }
+
+  it('guest → changeStatusAction returns FORBIDDEN', async () => {
+    const { app } = await setupApplicantFixture()
+    mockSession(null)
+    const { changeStatusAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await changeStatusAction({ applicationId: app.id, toStatus: 'VIEWED' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('student → changeStatusAction returns FORBIDDEN', async () => {
+    const { app } = await setupApplicantFixture()
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { changeStatusAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await changeStatusAction({ applicationId: app.id, toStatus: 'VIEWED' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('cross-company: empA cannot changeStatus on empB application → NOT_FOUND', async () => {
+    const { app: appB } = await setupApplicantFixture()
+    const empA = await createEmployer(testDb)
+    mockSession(empA.userId)
+    const { changeStatusAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await changeStatusAction({ applicationId: appB.id, toStatus: 'SHORTLISTED' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('NOT_FOUND')
+    const unchanged = await testDb.application.findUnique({ where: { id: appB.id } })
+    expect(unchanged?.status).toBe('APPLIED')
+  })
+
+  it('cross-company: empA cannot updateNote on empB application → NOT_FOUND', async () => {
+    const { app: appB } = await setupApplicantFixture()
+    const empA = await createEmployer(testDb)
+    mockSession(empA.userId)
+    const { updateNoteAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await updateNoteAction({ applicationId: appB.id, note: 'HIJACK_NOTE' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('NOT_FOUND')
+    const unchanged = await testDb.application.findUnique({ where: { id: appB.id } })
+    expect(unchanged?.companyNote).not.toBe('HIJACK_NOTE')
+  })
+
+  it('owner can changeStatus on own application', async () => {
+    const { emp, app } = await setupApplicantFixture()
+    mockSession(emp.userId)
+    const { changeStatusAction } = await import('@/app/[locale]/e/jobs/[id]/applicants/actions')
+    const result = await changeStatusAction({ applicationId: app.id, toStatus: 'SHORTLISTED' })
+    expect(result.ok).toBe(true)
+    const updated = await testDb.application.findUnique({ where: { id: app.id } })
+    expect(updated?.status).toBe('SHORTLISTED')
+  })
+})

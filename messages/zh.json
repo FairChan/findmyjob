@@ -903,5 +903,37 @@
     "withdrawSuccess": "已撤回投递",
     "withdrawErrorGeneral": "撤回失败，请稍后重试",
     "withdrawnBadge": "已撤回"
+  },
+  "applicants": {
+    "title": "投递看板 · {jobTitle}",
+    "backToJobs": "返回职位列表",
+    "kanbanView": "看板视图",
+    "listView": "标准化列表",
+    "noApplicants": "暂无投递",
+    "status": {
+      "APPLIED": "待处理",
+      "VIEWED": "已查看",
+      "SHORTLISTED": "已入围",
+      "INTERVIEW": "面试中",
+      "OFFER": "已发 Offer",
+      "HIRED": "已录用",
+      "REJECTED": "已拒绝",
+      "WITHDRAWN": "已撤回"
+    },
+    "noteLabel": "内部备注",
+    "notePlaceholder": "此备注仅对本企业成员可见，学生不可见……",
+    "noteSave": "保存",
+    "noteSaving": "保存中…",
+    "noteCancel": "取消",
+    "noteSuccess": "备注已保存",
+    "sortByCgpa": "按 CGPA 排序",
+    "sortByGradYear": "按毕业年月排序",
+    "sortByCompleteness": "按完成度排序",
+    "changeStatusLabel": "修改状态",
+    "errorUnknown": "操作失败，请稍后重试",
+    "errorForbidden": "权限不足",
+    "coverNoteLabel": "求职附言",
+    "identityLocked": "未解锁",
+    "viewProfile": "查看完整档案"
   }
 }
