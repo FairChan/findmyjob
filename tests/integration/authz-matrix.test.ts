@@ -2302,6 +2302,44 @@ describe('admin-settings authz (M6-T05)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// applicants service cross-company authz (M7-T05)
+// Every employer-side service that takes companyId must reject another company's data.
+// ---------------------------------------------------------------------------
+
+describe('applicants service cross-company authz (M7-T05)', () => {
+  async function makeVerifiedEmpAndApp() {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const student = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: student.profileId, status: 'APPLIED' },
+    })
+    return { emp, student, job, app }
+  }
+
+  it('listJobApplicants: company A ctx cannot list company B job applicants → NotFoundError', async () => {
+    const { emp: empB, job: jobB } = await makeVerifiedEmpAndApp()
+    const empA = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: empA.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const { listJobApplicants } = await import('@/server/services/applicants')
+    await expect(
+      listJobApplicants({ userId: empA.userId, companyId: empA.companyId, role: 'OWNER' }, jobB.id),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('getApplicantDetail: company A ctx cannot view company B application → NotFoundError', async () => {
+    const { emp: empB, app: appB } = await makeVerifiedEmpAndApp()
+    const empA = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: empA.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const { getApplicantDetail } = await import('@/server/services/applicants')
+    await expect(
+      getApplicantDetail({ userId: empA.userId, companyId: empA.companyId, role: 'OWNER' }, appB.id),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // M7-T03 data-rights authz rows
 // ---------------------------------------------------------------------------
 

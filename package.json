@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:prod": "pnpm build && pnpm exec playwright test -c playwright.prod.config.ts --workers=1",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:check": "bash scripts/db/check.sh",
