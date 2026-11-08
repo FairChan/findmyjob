@@ -197,15 +197,25 @@ export async function getCompanyForReview(ctx: UserCtx, companyId: string) {
   })
 }
 
-// M5-T08: replace stub with actual email delivery via sendBoss
 async function enqueueVerificationEmail(
   companyId: string,
   ownerId: string,
   status: 'VERIFIED' | 'REJECTED',
 ): Promise<void> {
-  const { logger } = await import('../lib/logger')
-  logger.info(
-    { companyId, ownerId, status },
-    'send-email enqueued (stub — M5-T08 will implement delivery)',
-  )
+  const { sendNotificationEmail } = await import('./notify')
+  // Fetch review note for rejections
+  let reviewNote: string | undefined
+  if (status === 'REJECTED') {
+    const cv = await db.companyVerification.findFirst({
+      where: { companyId, status: 'REJECTED' },
+      orderBy: { reviewedAt: 'desc' },
+      select: { reviewNote: true },
+    })
+    reviewNote = cv?.reviewNote ?? undefined
+  }
+  await sendNotificationEmail(ownerId, {
+    template: 'company-verification',
+    approved: status === 'VERIFIED',
+    reviewNote,
+  })
 }

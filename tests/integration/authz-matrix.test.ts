@@ -2027,3 +2027,50 @@ describe('invitations: authorization', () => {
     expect(Array.isArray(result)).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// notifications authz (M5-T08)
+// markAllNotificationsReadAction: each user can only mark their own as read
+// ---------------------------------------------------------------------------
+
+describe('notifications authz (M5-T08)', () => {
+  it('student A cannot mark student B notifications as read (markNotificationsReadAction, wrong ids)', async () => {
+    const a = await createStudent(testDb)
+    const b = await createStudent(testDb)
+
+    // Create a notification for B
+    const notif = await testDb.notification.create({
+      data: { userId: b.userId, type: 'test.event', payload: {} },
+    })
+
+    // A tries to mark B's notification as read
+    mockSession(a.userId)
+    const { markNotificationsReadAction } = await import('@/server/actions/notifications')
+    await markNotificationsReadAction({ ids: [notif.id] })
+
+    // Notification must remain unread (the action filters by userId from session)
+    const still = await testDb.notification.findUnique({ where: { id: notif.id } })
+    expect(still?.readAt).toBeNull()
+  })
+
+  it('markAllNotificationsReadAction: guest → FORBIDDEN', async () => {
+    mockSession(null)
+    const { markAllNotificationsReadAction } = await import('@/server/actions/notifications')
+    const result = await markAllNotificationsReadAction({})
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('markAllNotificationsReadAction: authenticated user can mark their own as read', async () => {
+    const { userId } = await createStudent(testDb)
+    await testDb.notification.create({ data: { userId, type: 'test.read', payload: {} } })
+
+    mockSession(userId)
+    const { markAllNotificationsReadAction } = await import('@/server/actions/notifications')
+    const result = await markAllNotificationsReadAction({})
+    expect(result.ok).toBe(true)
+
+    const rows = await testDb.notification.findMany({ where: { userId } })
+    expect(rows.every((r) => r.readAt !== null)).toBe(true)
+  })
+})

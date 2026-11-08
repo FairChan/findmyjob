@@ -10,6 +10,8 @@ import { isStudentVisibleToCompany } from './talent-visibility'
 import { assertUnlockEnabled } from './feature-flags'
 import { getSetting } from './settings'
 import { createNotification } from './notifications'
+import { sendNotificationEmail } from './notify'
+import { hitBucket } from '../lib/db-rate-limit'
 
 export interface UnlockResult {
   unlockId: string
@@ -38,7 +40,7 @@ export async function unlockStudent(
   type TxResult =
     | { kind: 'alreadyUnlocked'; unlockId: string }
     | { kind: 'limitHit' }
-    | { kind: 'unlocked'; unlockId: string }
+    | { kind: 'unlocked'; unlockId: string; balanceAfter: number }
 
   const txResult: TxResult = await db.$transaction(async (tx) => {
     // Serialise all unlocks for this company via advisory lock (same lock used by applyLedgerEntry).
@@ -70,7 +72,7 @@ export async function unlockStudent(
       },
     })
 
-    await applyLedgerEntry(tx, {
+    const { balanceAfter } = await applyLedgerEntry(tx, {
       companyId: ctx.companyId,
       delta: -cost,
       reason: LedgerReason.UNLOCK,
@@ -88,7 +90,7 @@ export async function unlockStudent(
       metadata: { companyId: ctx.companyId, studentId },
     }, tx)
 
-    return { kind: 'unlocked', unlockId: unlock.id }
+    return { kind: 'unlocked', unlockId: unlock.id, balanceAfter }
   })
 
   if (txResult.kind === 'limitHit') {
@@ -116,6 +118,38 @@ export async function unlockStudent(
         })
       } catch {
         logger.error({ unlockId: txResult.unlockId }, 'Failed to send unlock notification')
+      }
+      // Post-commit email (best-effort)
+      await sendNotificationEmail(profile.userId, { template: 'talent-unlocked' }).catch(() => {})
+    }
+
+    // Credits-low warning: notify OWNER if balance drops to or below threshold
+    const balanceAfter = txResult.balanceAfter
+    if (balanceAfter !== undefined) {
+      const threshold = await getSetting<number>('credits.lowThreshold', 5)
+      if (balanceAfter <= threshold) {
+        const ONE_DAY_MS = 24 * 60 * 60 * 1000
+        const capResult = await hitBucket(`credits.low:${ctx.companyId}`, { windowMs: ONE_DAY_MS, limit: 1 })
+        if (capResult.allowed) {
+          const owner = await db.companyMember.findFirst({
+            where: { companyId: ctx.companyId, role: 'OWNER' },
+            select: { userId: true },
+          })
+          if (owner) {
+            try {
+              await createNotification(db, owner.userId, 'credits.low', {
+                companyId: ctx.companyId,
+                balance: balanceAfter,
+                threshold,
+              })
+            } catch {}
+            await sendNotificationEmail(owner.userId, {
+              template: 'credits-low',
+              balance: balanceAfter,
+              threshold,
+            }).catch(() => {})
+          }
+        }
       }
     }
   }

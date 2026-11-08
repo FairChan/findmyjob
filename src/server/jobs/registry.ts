@@ -9,6 +9,7 @@ import { runRequalifyReferrals } from './requalify-referrals'
 import { runPilotMonthlyCredits } from './pilot-monthly-credits'
 import { runReconcileWallets } from './reconcile-wallets'
 import { runExpireInvitations } from './expire-invitations'
+import { runEmployerDailyDigest } from './employer-daily-digest'
 import { pingHealthcheck } from '../lib/healthchecks'
 
 export async function registerJobs(boss: PgBoss): Promise<void> {
@@ -103,6 +104,21 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
     try {
       await runExpireInvitations()
       pingHealthcheck('expire-invitations')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
+  })
+
+  // ── employer-daily-digest ─────────────────────────────────────────────────
+  // Send a digest of yesterday's applications to company owners at 08:00 KL time.
+  // missed:'once' catches up after downtime.
+  await boss.createQueue('employer-daily-digest')
+  await boss.schedule('employer-daily-digest', '0 8 * * *', {}, { tz: 'Asia/Kuala_Lumpur', missed: 'once' })
+  await boss.work('employer-daily-digest', async () => {
+    try {
+      await runEmployerDailyDigest()
+      pingHealthcheck('employer-daily-digest')
     } catch (err) {
       Sentry.captureException(err)
       throw err

@@ -8,6 +8,9 @@ import { getSetting } from './settings'
 import { isStudentVisibleToCompany } from './talent-visibility'
 import { canSeeIdentity, canSeeIdentityMany } from './contact-access'
 import { toTalentCard } from '../serializers/talent-card'
+import { createNotification, buildEmployerStudentPayload } from './notifications'
+import { sendNotificationEmail } from './notify'
+import { logger } from '../lib/logger'
 import type { TalentCard } from '../serializers/talent-card'
 
 /** Returns start of current month in Asia/Kuala_Lumpur (UTC+8) expressed as UTC. */
@@ -101,6 +104,32 @@ export async function sendInvitation(
     return { invitationId: inv.id, alreadyExists: false }
   })
 
+  // Post-commit: notify student about new invitation (skip if idempotent return)
+  if (!result.alreadyExists) {
+    const studentUser = await db.studentProfile.findUnique({
+      where: { id: input.studentId },
+      select: { userId: true },
+    })
+    const job = await db.job.findUnique({
+      where: { id: input.jobId },
+      select: { title: true, company: { select: { legalName: true, displayNameZh: true, displayNameEn: true } } },
+    })
+    if (studentUser && job) {
+      const companyName = job.company.displayNameZh ?? job.company.legalName
+      await createNotification(db, studentUser.userId, 'invitation.received', {
+        invitationId: result.invitationId,
+        jobId: input.jobId,
+        jobTitle: job.title,
+        companyName,
+      }).catch((err) => { logger.error({ err }, 'Failed to send invitation.received notification') })
+      await sendNotificationEmail(studentUser.userId, {
+        template: 'invitation-received',
+        jobTitle: job.title,
+        companyName,
+      }).catch(() => {})
+    }
+  }
+
   return result
 }
 
@@ -170,6 +199,37 @@ export async function acceptInvitation(
     throw new ForbiddenError('Invitation already responded to')
   }
 
+  // Post-commit: notify invitation sender (employer) of acceptance
+  const sentInv = await db.invitation.findUnique({
+    where: { id: inv.id },
+    select: {
+      sentById: true,
+      student: {
+        select: {
+          id: true, fullName: true, headline: true, skills: true, major: true,
+          degreeLevel: true, graduationYear: true, cgpa: true, workAuth: true,
+          completeness: true, visibility: true, lastActiveAt: true,
+          school: { select: { id: true, nameZh: true, nameEn: true } },
+        },
+      },
+    },
+  })
+  if (sentInv?.sentById) {
+    const companyMember = await db.companyMember.findFirst({
+      where: { userId: sentInv.sentById },
+      select: { companyId: true },
+    })
+    const canSeeName = companyMember
+      ? await canSeeIdentity(companyMember.companyId, profile.id)
+      : false
+    const payload = buildEmployerStudentPayload(sentInv.student as never, { canSeeName })
+    await createNotification(db, sentInv.sentById, 'invitation.accepted', {
+      invitationId: inv.id,
+      applicationId,
+      student: payload,
+    }).catch((err) => { logger.error({ err }, 'Failed to send invitation.accepted notification') })
+  }
+
   return { applicationId }
 }
 
@@ -216,6 +276,29 @@ export async function declineInvitation(
       throw new ForbiddenError('Invitation already responded to')
     }
   })
+
+  // Post-commit: notify invitation sender (employer) of decline
+  const declinedInv = await db.invitation.findUnique({
+    where: { id: input.invitationId },
+    select: {
+      sentById: true,
+      student: {
+        select: {
+          id: true, fullName: true, headline: true, skills: true, major: true,
+          degreeLevel: true, graduationYear: true, cgpa: true, workAuth: true,
+          completeness: true, visibility: true, lastActiveAt: true,
+          school: { select: { id: true, nameZh: true, nameEn: true } },
+        },
+      },
+    },
+  })
+  if (declinedInv?.sentById) {
+    const payload = buildEmployerStudentPayload(declinedInv.student as never, { canSeeName: false })
+    await createNotification(db, declinedInv.sentById, 'invitation.declined', {
+      invitationId: input.invitationId,
+      student: payload,
+    }).catch((err) => { logger.error({ err }, 'Failed to send invitation.declined notification') })
+  }
 }
 
 // ---- Student list ----
