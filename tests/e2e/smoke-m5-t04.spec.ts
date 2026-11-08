@@ -104,12 +104,7 @@ test.describe('M5-T04 application smoke', () => {
         update: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
       })
 
-      // Clear job view quota settings to allow viewing
-      await e2eDb.systemSetting.upsert({
-        where: { key: 'studentQuota.enabled' },
-        create: { key: 'studentQuota.enabled', value: false },
-        update: { value: false },
-      })
+      // 不改全局的 studentQuota.enabled：loginAs 新建的学生额度是满的；改成 false 不恢复会污染后面所有依赖额度的用例
 
       await expectPageHealthy(page, `/zh/jobs/${job.id}`)
 
@@ -161,11 +156,7 @@ test.describe('M5-T04 application smoke', () => {
         create: { key: 'apply.minCompleteness', value: 60 },
         update: { value: 60 },
       })
-      await e2eDb.systemSetting.upsert({
-        where: { key: 'studentQuota.enabled' },
-        create: { key: 'studentQuota.enabled', value: false },
-        update: { value: false },
-      })
+      // 不改全局的 studentQuota.enabled：loginAs 新建的学生额度是满的；改成 false 不恢复会污染后面所有依赖额度的用例
 
       const { userId } = await loginAs(page, { role: 'STUDENT' })
       // loginAs 绕过了 Better Auth 的注册钩子，不会建 StudentProfile；这里用 upsert 保证档案存在
@@ -218,11 +209,7 @@ test.describe('M5-T04 application smoke', () => {
         create: { key: 'apply.minCompleteness', value: 60 },
         update: { value: 60 },
       })
-      await e2eDb.systemSetting.upsert({
-        where: { key: 'studentQuota.enabled' },
-        create: { key: 'studentQuota.enabled', value: false },
-        update: { value: false },
-      })
+      // 不改全局的 studentQuota.enabled：loginAs 新建的学生额度是满的；改成 false 不恢复会污染后面所有依赖额度的用例
 
       const { userId } = await loginAs(page, { role: 'STUDENT' })
       // loginAs bypasses Better Auth signup hooks, so StudentProfile may not exist yet.
@@ -271,11 +258,7 @@ test.describe('M5-T04 application smoke', () => {
         create: { key: 'apply.minCompleteness', value: 60 },
         update: { value: 60 },
       })
-      await e2eDb.systemSetting.upsert({
-        where: { key: 'studentQuota.enabled' },
-        create: { key: 'studentQuota.enabled', value: false },
-        update: { value: false },
-      })
+      // 不改全局的 studentQuota.enabled：loginAs 新建的学生额度是满的；改成 false 不恢复会污染后面所有依赖额度的用例
 
       const { userId } = await loginAs(page, { role: 'STUDENT' })
       // loginAs 绕过了 Better Auth 的注册钩子，不会建 StudentProfile；这里用 upsert 保证档案存在
