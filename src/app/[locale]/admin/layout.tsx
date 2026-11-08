@@ -16,8 +16,10 @@ export default async function AdminLayout({
   params: Promise<{ locale: string }>
 }) {
   const { locale } = await params
+  let userId: string
   try {
-    await requireAdmin(await headers())
+    const ctx = await requireAdmin(await headers())
+    userId = ctx.userId
   } catch (err) {
     if (err instanceof ForbiddenError) {
       redirect(`/${locale}/login`)
@@ -27,11 +29,15 @@ export default async function AdminLayout({
 
   const t = await getTranslations('adminLayout')
 
-  const [pendingCompanies, pendingJobs] = await Promise.all([
+  const [pendingCompanies, pendingJobs, unreadCount] = await Promise.all([
     db.company.count({ where: { verificationStatus: 'PENDING' } }),
     db.job.count({ where: { status: 'PENDING_REVIEW' } }),
+    db.notification.count({ where: { userId, readAt: null } }),
   ])
   const pendingCount = pendingCompanies + pendingJobs
+  const bellLabel = unreadCount > 0
+    ? t('bellLabelWithCount', { count: unreadCount > 99 ? '99+' : unreadCount })
+    : t('bellLabel')
 
   return (
     <div className="min-h-screen bg-[#f5f6fa] lg:flex">
@@ -47,15 +53,33 @@ export default async function AdminLayout({
           jobsLabel={t('navJobs')}
           schoolsLabel={t('navSchools')}
           partnersLabel={t('navPartners')}
+          notificationsLabel={t('navNotifications')}
           pendingCount={pendingCount}
         />
       </aside>
       <div className="min-w-0 flex-1">
         <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 md:px-6">
           <span className="text-sm text-gray-500">{t('adminLabel')}</span>
-          <Link href={`/${locale}`} className="text-sm text-gray-500 hover:text-[var(--color-brand-500,#3b82f6)]">
-            {t('returnToFront')}
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href={`/${locale}/admin/notifications`}
+              aria-label={bellLabel}
+              className="relative flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+            >
+              <span aria-hidden="true">🔔</span>
+              {unreadCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground"
+                >
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </span>
+              )}
+            </Link>
+            <Link href={`/${locale}`} className="text-sm text-gray-500 hover:text-[var(--color-brand-500,#3b82f6)]">
+              {t('returnToFront')}
+            </Link>
+          </div>
         </header>
         {children}
       </div>

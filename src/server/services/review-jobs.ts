@@ -4,6 +4,7 @@ import { db } from '../db'
 import { logAudit } from './audit'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createNotification } from './notifications'
+import { sendNotificationEmail } from './notify'
 import type { UserCtx } from '../authz'
 
 export const approveJobSchema = z.object({
@@ -119,6 +120,14 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
     targetId: jobBase.id,
     metadata: { decision: 'approved' },
   })
+
+  // Post-commit email to job creator (best-effort)
+  const job = await db.job.findUnique({ where: { id: jobBase.id }, select: { title: true } })
+  await sendNotificationEmail(createdById, {
+    template: 'job-review',
+    approved: true,
+    jobTitle: job?.title ?? '',
+  }).catch(() => {})
 }
 
 export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<void> {
@@ -157,4 +166,13 @@ export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<vo
     targetId: jobBase.id,
     metadata: { decision: 'rejected', reviewNote: input.reviewNote },
   })
+
+  // Post-commit email to job creator (best-effort)
+  const jobForEmail = await db.job.findUnique({ where: { id: jobBase.id }, select: { title: true } })
+  await sendNotificationEmail(jobBase.createdById, {
+    template: 'job-review',
+    approved: false,
+    jobTitle: jobForEmail?.title ?? '',
+    reviewNote: input.reviewNote,
+  }).catch(() => {})
 }

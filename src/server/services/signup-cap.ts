@@ -4,6 +4,7 @@ import { db } from '../db'
 import { getSetting, setSetting } from './settings'
 import { SignupClosedError } from '../errors'
 import { alert } from '../lib/alert'
+import { sendNotificationEmail } from './notify'
 
 async function countVerifiedStudents(): Promise<number> {
   return db.user.count({
@@ -41,6 +42,17 @@ export async function maybeWarnCap(): Promise<void> {
 
   alert('signup.cap.warn', { count, cap, threshold })
   await setSetting('signup.capWarnSent', true)
+
+  // Send email to all active admins (best-effort, post-commit)
+  const admins = await db.user.findMany({
+    where: { role: 'ADMIN', status: 'ACTIVE' },
+    select: { id: true },
+  })
+  await Promise.allSettled(
+    (admins ?? []).map((a) =>
+      sendNotificationEmail(a.id, { template: 'signup-cap-warn', count, cap, threshold }),
+    ),
+  )
 }
 
 export async function purgeUnverifiedAccounts(): Promise<number> {

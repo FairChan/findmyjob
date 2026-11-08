@@ -6,6 +6,7 @@ import { assertCompanyVerified } from '../authz'
 import type { CompanyCtx } from '../authz'
 import { logger } from '../lib/logger'
 import { createNotification } from './notifications'
+import { sendNotificationEmail } from './notify'
 import { canSeeIdentityMany, canSeeIdentity } from './contact-access'
 import { toTalentCard, toTalentDetail, toEmployerCoverNote } from '../serializers/talent-card'
 import type { TalentCard, TalentDetail } from '../serializers/talent-card'
@@ -184,10 +185,21 @@ export async function changeApplicationStatus(
         jobId: app.jobId,
         fromStatus: prevStatus,
         toStatus: input.toStatus,
+        // Note: company note intentionally excluded from payload
       })
     } catch (err) {
       logger.error({ applicationId: app.id, err }, 'Failed to send status-change notification')
     }
+
+    // Post-commit email (best-effort); no company note in email
+    const jobInfo = await db.job.findUnique({ where: { id: app.jobId }, select: { title: true } })
+    await sendNotificationEmail(studentUser.userId, {
+      template: 'application-status',
+      jobTitle: jobInfo?.title ?? '',
+      toStatus: input.toStatus,
+    }).catch((err) => {
+      logger.error({ applicationId: app.id, err }, 'Failed to send status-change email')
+    })
   }
 }
 

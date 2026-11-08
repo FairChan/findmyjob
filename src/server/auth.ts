@@ -203,20 +203,11 @@ export const auth = betterAuth({
       })
     },
     // Sends a reminder when someone tries to sign up with an already-registered email.
+    // Uses renderEmailTemplate with the user's locale (zh/en).
     onExistingUserSignUp: async ({ user }: { user: { email: string } }) => {
       sendEmailAfterResponse(async () => {
-        await emailProvider
-          .sendEmail({
-            to: user.email,
-            subject: 'Someone tried to register with your FindMYJob account',
-            html: `<p>Someone attempted to create a FindMYJob account using your email address. If this was you, please <a href="${env.APP_URL}/login">log in</a> instead.</p>`,
-            text: `Someone attempted to create a FindMYJob account using your email address. If this was you, please log in instead.`,
-          })
-          .catch((err: unknown) => {
-            const code = (err as NodeJS.ErrnoException)?.code ?? 'EMAIL_SEND_FAILED'
-            logger.warn({ code }, 'Failed to send existing-user reminder email')
-            alert('email.send.failed', { code })
-          })
+        const { sendExistingUserReminder } = await import('./services/notify')
+        await sendExistingUserReminder(user.email)
       })
     },
   },

@@ -24,6 +24,11 @@ vi.mock('@/server/db', async () => {
 
 vi.mock('@/server/services/notifications', () => ({
   createNotification: vi.fn().mockResolvedValue(undefined),
+  buildEmployerStudentPayload: vi.fn().mockReturnValue({}),
+}))
+
+vi.mock('@/server/services/notify', () => ({
+  sendNotificationEmail: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('@/server/lib/alert', () => ({ alert: vi.fn() }))

@@ -15,3 +15,16 @@ export const markNotificationsReadAction = action(
     })
   },
 )
+
+export const markAllNotificationsReadAction = action(
+  {
+    auth: 'user',
+    input: z.object({}),
+  },
+  async ({ userId }) => {
+    await db.notification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    })
+  },
+)

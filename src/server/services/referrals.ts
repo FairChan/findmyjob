@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { logAudit } from './audit'
+import { createNotification } from './notifications'
+import { logger } from '../lib/logger'
 
 /** Normalize email for self-referral detection: lowercase; for Gmail, remove dots and +tag from local part */
 export function normalizeEmail(email: string): string {
@@ -116,10 +118,25 @@ export async function qualifyReferral(inviteeStudentId: string): Promise<void> {
   if (qualifiedTodayCount >= maxQualifiedPerDay) return
 
   // Conditional update: only succeeds if still PENDING (idempotent under concurrent saves)
-  await db.referral.updateMany({
+  const updated = await db.referral.updateMany({
     where: { id: referral.id, status: 'PENDING' },
     data: { status: 'QUALIFIED', qualifiedAt: new Date() },
   })
+
+  if (updated.count > 0) {
+    const referrerProfile = await db.studentProfile.findUnique({
+      where: { id: referral.referrerId },
+      select: { userId: true },
+    })
+    if (referrerProfile) {
+      await createNotification(db, referrerProfile.userId, 'referral.qualified', {
+        referralId: referral.id,
+        inviteeId: inviteeStudentId,
+      }).catch((err) => {
+        logger.error({ err, referralId: referral.id }, 'Failed to send referral.qualified notification')
+      })
+    }
+  }
 }
 
 /** Void a referral (admin operation). Writes a referral.void audit entry. */
@@ -192,6 +209,19 @@ export async function requalifyReferrals(): Promise<{ qualified: number }> {
     if (result.count > 0) {
       qualifiedTodayByReferrer.set(ref.referrerId, todayCount + 1)
       qualified++
+
+      const referrerProfile = await db.studentProfile.findUnique({
+        where: { id: ref.referrerId },
+        select: { userId: true },
+      })
+      if (referrerProfile) {
+        await createNotification(db, referrerProfile.userId, 'referral.qualified', {
+          referralId: ref.id,
+          inviteeId: ref.inviteeId,
+        }).catch((err) => {
+          logger.error({ err, referralId: ref.id }, 'Failed to send referral.qualified notification in requalify')
+        })
+      }
     }
   }
 

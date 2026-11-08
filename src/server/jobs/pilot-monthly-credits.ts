@@ -1,7 +1,9 @@
 import 'server-only'
 import { db } from '../db'
 import { getSetting } from '../services/settings'
-import { grantPilotCredits } from '../services/credits'
+import { grantPilotCredits, getBalance } from '../services/credits'
+import { createNotification } from '../services/notifications'
+import { sendNotificationEmail } from '../services/notify'
 import { logger } from '../lib/logger'
 import { alert } from '../lib/alert'
 
@@ -29,6 +31,11 @@ export async function grantPilotCreditsOnVerification(companyId: string): Promis
 
     const result = await grantPilotCredits(companyId, monthlyCredits, monthStart)
     logger.info({ companyId, ...result }, 'pilot-credits: immediate grant on verification')
+
+    // Notify OWNER post-commit if credits were actually granted
+    if (result.granted > 0) {
+      await notifyCreditsGranted(companyId, result.granted).catch(() => {})
+    }
   } catch (err) {
     logger.error({ err, companyId }, 'pilot-credits: immediate grant failed')
     alert('pilot.grant.failed', { companyId })
@@ -59,8 +66,12 @@ export async function runPilotMonthlyCredits(): Promise<void> {
   for (const company of companies) {
     try {
       const result = await grantPilotCredits(company.id, monthlyCredits, monthStart)
-      if (result.granted > 0) totalGranted++
-      else totalSkipped++
+      if (result.granted > 0) {
+        totalGranted++
+        await notifyCreditsGranted(company.id, result.granted).catch(() => {})
+      } else {
+        totalSkipped++
+      }
     } catch (err) {
       logger.error({ err, companyId: company.id }, 'pilot-grant: company failed')
       alert('pilot.grant.failed', { companyId: company.id })
@@ -76,4 +87,27 @@ export async function runPilotMonthlyCredits(): Promise<void> {
   if (failed.length > 0) {
     throw new Error(`pilot-monthly-credits: ${failed.length} company(ies) failed`)
   }
+}
+
+/** Notify the OWNER of a company that credits were granted (best-effort, post-commit). */
+async function notifyCreditsGranted(companyId: string, amount: number): Promise<void> {
+  const owner = await db.companyMember.findFirst({
+    where: { companyId, role: 'OWNER' },
+    select: { userId: true },
+  })
+  if (!owner) return
+
+  const walletBalance = await getBalance({ userId: owner.userId, companyId })
+  const balance = walletBalance ?? amount
+
+  await createNotification(db, owner.userId, 'credits.granted', {
+    companyId,
+    amount,
+    balance,
+  })
+  await sendNotificationEmail(owner.userId, {
+    template: 'credits-granted',
+    amount,
+    balance,
+  })
 }
