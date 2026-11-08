@@ -911,6 +911,23 @@
       "HYBRID": "Hybrid",
       "REMOTE": "Remote"
     },
-    "loadMore": "Load more"
+    "loadMore": "Load more",
+    "applyButton": "Apply Now",
+    "appliedBadge": "Applied",
+    "withdrawButton": "Withdraw Application",
+    "completeProfileButton": "Complete Profile to Apply",
+    "applyDialogTitle": "Apply for Position",
+    "applyDialogResume": "Attach Resume (optional)",
+    "applyDialogNoResume": "No resume",
+    "applyDialogCoverNote": "Cover Note (optional, max 500 characters)",
+    "applyDialogCoverNotePlaceholder": "Introduce yourself or explain why you are applying…",
+    "applyDialogSubmit": "Submit Application",
+    "applyDialogCancel": "Cancel",
+    "applySuccess": "Application submitted!",
+    "applyErrorDuplicate": "You have already applied for this position",
+    "applyErrorGeneral": "Failed to submit application, please try again",
+    "withdrawSuccess": "Application withdrawn",
+    "withdrawErrorGeneral": "Failed to withdraw application, please try again",
+    "withdrawnBadge": "Withdrawn"
   }
 }

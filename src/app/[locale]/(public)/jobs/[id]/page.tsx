@@ -1,3 +1,4 @@
+import type React from 'react'
 import { z } from 'zod'
 import type { Metadata } from 'next'
 import { notFound, redirect } from 'next/navigation'
@@ -10,6 +11,8 @@ import { openJob } from '@/server/services/job-view-quota'
 import { toJobDetail } from '@/server/serializers/job'
 import { stateLabel } from '@/lib/my-states'
 import { ShareJobButton } from './ShareJobButton'
+import { ApplyModal, AppliedStatus, WithdrawnStatus } from '@/components/apply/ApplyModal'
+import { getSetting } from '@/server/services/settings'
 
 const jobIdSchema = z.string().cuid()
 
@@ -120,10 +123,19 @@ export default async function JobDetailPage({ params }: PageProps) {
   }
 
   // Student: use quota check
+  let applySection: React.ReactNode = null
   if (dbUser.role === 'STUDENT') {
     const studentProfile = await db.studentProfile.findUnique({
       where: { userId: dbUser.id },
-      select: { id: true },
+      select: {
+        id: true,
+        completeness: true,
+        onboardingStep: true,
+        resumes: {
+          select: { id: true, fileName: true, isPrimary: true },
+          orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
+        },
+      },
     })
     if (!studentProfile) {
       redirect(`/${locale}/s/onboarding`)
@@ -138,6 +150,35 @@ export default async function JobDetailPage({ params }: PageProps) {
     // Only increment viewCount on first open — not on repeat visits
     if (isNewView) {
       db.job.update({ where: { id }, data: { viewCount: { increment: 1 } } }).catch(() => {})
+    }
+
+    // Apply section: show apply modal, already-applied badge, or complete-profile prompt
+    const minCompleteness = await getSetting<number>('apply.minCompleteness', 60)
+    const incompleteStepPath =
+      studentProfile.completeness < minCompleteness
+        ? studentProfile.onboardingStep < 5
+          ? `/${locale}/s/onboarding`
+          : `/${locale}/s/resume`
+        : null
+
+    const existing = await db.application.findUnique({
+      where: { jobId_studentId: { jobId: id, studentId: studentProfile.id } },
+      select: { id: true, status: true },
+    })
+
+    if (existing && existing.status !== 'WITHDRAWN') {
+      applySection = <AppliedStatus applicationId={existing.id} />
+    } else if (existing?.status === 'WITHDRAWN') {
+      applySection = <WithdrawnStatus />
+    } else {
+      applySection = (
+        <ApplyModal
+          jobId={id}
+          resumes={studentProfile.resumes}
+          locale={locale}
+          incompleteStepPath={incompleteStepPath}
+        />
+      )
     }
   }
 
@@ -162,6 +203,12 @@ export default async function JobDetailPage({ params }: PageProps) {
           <span>· {t(`type.${detail.type}`)}</span>
           <span>· {t(`workMode.${detail.workMode}`)}</span>
         </div>
+
+        {applySection && (
+          <div className="mb-6">
+            {applySection}
+          </div>
+        )}
 
         {(detail.salaryMin != null || detail.salaryMax != null) && (
           <p className="font-medium text-brand mb-4">

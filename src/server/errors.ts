@@ -66,3 +66,15 @@ export class VersionMismatchError extends AppError {
     super(message, 'VERSION_MISMATCH', 409)
   }
 }
+
+export class DuplicateApplicationError extends AppError {
+  constructor(message = 'Already applied to this job') {
+    super(message, 'DUPLICATE_APPLICATION', 409)
+  }
+}
+
+export class CompletenessLowError extends AppError {
+  constructor(message = 'Profile completeness too low to apply') {
+    super(message, 'COMPLETENESS_LOW', 400)
+  }
+}

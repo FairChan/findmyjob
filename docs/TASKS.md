@@ -1006,10 +1006,24 @@
 > 完成 2026-11-07：serializers/job.ts（toJobListItem/toJobDetail 白名单）；/jobs 列表（PUBLISHED+未过期，salaryVisible=false 不输出薪资，带筛选参数设 noindex,follow）；/jobs/[id] 详情（访客重定向登录，学生走 openJob，额度耗尽/跨企业 employer 显示 LockedJobCard，viewCount +1）；robots noindex；E2E smoke-m5-t03 8/8 通过，pii-leak 4/4 通过；lint/typecheck/db:check 全部通过；单元 1223/1224 通过（1 条 pre-existing team.test.ts）。
 > 修复 2026-11-07：1) 带 q 时 deadline 过滤被 OR 展开覆盖→改为 AND[deadline, q]；2) searchParams/id 缺 zod 校验→用 listParamsSchema/jobIdSchema safeParse，非法值当无效处理不报 500；3) LockedJobCard 邀请按钮 href 双加 locale→改为 /s/invite 由 i18n Link 加前缀；4) isSafePath 不放行 /jobs/<cuid>→提取 is-safe-path.ts 并加 jobs path 允许规则（带编码/backslash 拒绝）；详情页和锁定卡片加复制分享链接按钮；E2E smoke-m5-t03 17/17 通过，pii-leak 4/4 通过，单元 1246/1246 通过。
 
-#### [ ] M5-T04 投递
+#### [x] M5-T04 投递
 依赖：M5-T03、M4-T07
 做：`services/applications.ts`：完成度 ≥ `apply.minCompleteness` 才能投递，不够时带到向导里第一个没填完的步骤；选择简历 + 附言（≤ 500 字）；唯一约束；同一事务中按需创建 `TalentUnlock(source=APPLICATION)`；通知职位创建者；学生可以撤回。
 验收：重复投递被拒；完成度不足被拒；投递后企业无需扣点即可看到联系方式（集成测试）
+> 完成 2026-11-08：services/applications.ts（applyToJob/withdrawApplication/getMyApplicationForJob）；server actions；ApplyModal + AppliedStatus 客户端组件；职位详情页集成申请区；i18n zh/en；LOCK_NS.APPLICATION=1005；DuplicateApplicationError/CompletenessLowError；vitest.config.ts 增 testTimeout:30_000；16 个集成测试 + authz-matrix 新增行；E2E smoke tests/e2e/smoke-m5-t04.spec.ts；守护测试已验：移除 P2002→DuplicateApplicationError 映射→"throws DuplicateApplicationError"与"concurrent duplicate"同时变红；移除完成度检查→"throws CompletenessLowError"变红；移除 TalentUnlock createMany→"creates TalentUnlock"/"contact after apply"/"concurrent dedup"同时变红；各项恢复后全绿。
+
+#### [x] M5-T12 补修 M5-T04 合并前复查：投递必须先能看到职位（防止绕过查看额度）、撤回后的状态显示
+依赖：M5-T04
+> 总控 2026-11-08 加入：复查（按 64e251d 读的代码，提速模式只看 High）结论是 BLOCKED，只有下面第 1 条 must-fix；解锁范围、事务、撤回防 IDOR、越权矩阵都是对的。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
+做 / 验收：
+1. 投递绕过职位查看额度（must-fix，ARCHITECTURE §5.9「学生的职位查看额度只能经 job-view-quota.ts 计算和扣减」）：`applyToJob` 只检查职位已发布、没过截止日，不检查学生能不能看到这个职位；而 `openJob` 对有 Application 的职位一律放行、不计数。额度用完的学生从公开列表拿到职位 id，直接调 `applyToJobAction`，就能免费打开详情页，再撤回，反复如此；每次还会多一条 TalentUnlock 和一条给企业的假投递通知。改法：
+   - 在 `job-view-quota.ts` 导出 `canApplyToJob(studentId, jobId): Promise<boolean>`：已有该职位的 JobView、或有针对该学生和职位的 Invitation、或额度不限时返回 true；
+   - `applyToJob` 在事务之前调用它，false 时抛 NotFoundError（和职位不存在同一个错误码，不泄露存在性）；
+   - 测试：额度用完、没有 JobView、也没有邀请 → `NOT_FOUND`，不新建 Application，也不新建 TalentUnlock；有 JobView → 成功；有邀请、没有 JobView → 成功。越权矩阵和 applications 测试里原来那些「直接投递成功」的用例，先补建 JobView 再投递（不是删掉或放宽，而是补上前置条件；按 ROUND_NOTE f 项在提交说明里写明）。
+2. 撤回后的状态（复查 Medium，用户试用时会直接看到）：撤回后详情页又显示投递按钮，再点会撞唯一约束，然后显示「已投递」。改成：状态为 WITHDRAWN 时显示「已撤回」，不再显示投递按钮（PRD 规定一个职位只能投一次）；中英文案同步；冒烟用例覆盖「投递 → 撤回 → 显示已撤回、没有投递按钮」。
+- 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
+> 完成 2026-11-08（总控收尾）：第 1 轮写完了 `canApplyToJob`、`applyToJob` 的前置检查、3 条新测试、「已撤回」状态和冒烟用例，但在 120 分钟上限处超时（21ce004 wip）；超时原因是那一轮留下 4 个后台 vitest 同时 TRUNCATE findmyjob_test，测试互相清库。那一轮加的 vitest singleThread hack 已撤掉，改为测试库互斥锁（0e1f120）。总控在单独的测试库 findmyjob_m5_test 上补跑：applications 与 test-db-lock 共 22 条通过；红跑（让 applyToJob 跳过 canApplyToJob）时「quota exhausted, no JobView, no Invitation → NOT_FOUND」失败，原文见提交说明；全量 verify 结果见合 main 的提交说明。
+> 延后（P1，并入 M4-T17 之后的 P1 清单）：完成度不足时跳到「第一个未完成的步骤」而不是固定的 /s/onboarding；HIRED、REJECTED 状态是否允许撤回（PRD 没写，先维持现状并在 DECISIONS 记一行）；`applyToJob` 检查 `company.isActive`；vitest 的全局 testTimeout 30s 只给集成测试用。
 
 #### [ ] M5-T05 企业投递看板与标准化列表
 依赖：M5-T04
