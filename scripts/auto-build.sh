@@ -53,6 +53,25 @@ mkdir -p "$RUN_DIR" || { echo "停止：无法创建 $RUN_DIR"; exit 1; }
 
 log() { echo "$*" | tee -a "$RUN_DIR/summary.txt"; }
 stop() { log "停止：$2"; exit "$1"; }
+# 轮次结束时清理本轮自己留下的进程（用户 2026-11-08 批准；同日按安全复查加固）：
+# 默认只记录、只打印「would end」（dry run）；确认无误后用 AUTO_BUILD_REAP=kill 才真的结束进程（2026-11-08：v1 疑似误杀线 B 的 verify）。
+# 跑的是 auto-build 启动时复制到仓库外临时目录、并记下 sha256 的那份脚本；进程树只在 watcher 内存里，
+# 收到停止信号后由 watcher 自己清理（只清 PID 和 CreationDate 都对得上的，不碰自身祖先进程）。
+REAPER_DIR="$(mktemp -d)"
+REAPER_PS1="$REAPER_DIR/round-reaper.ps1"
+REAPER_SHA=""
+if [[ -f scripts/round-reaper.ps1 ]]; then
+  cp scripts/round-reaper.ps1 "$REAPER_PS1" && REAPER_SHA="$(sha256sum "$REAPER_PS1" | cut -d' ' -f1)"
+fi
+REAP_STOP="" REAP_OUT="" watcher=""
+reap_round() {
+  [[ -n "$watcher" ]] || return 0
+  : >"$REAP_STOP"
+  wait "$watcher" 2>/dev/null
+  [[ -f "$REAP_OUT" ]] && tee -a "$RUN_DIR/summary.txt" <"$REAP_OUT"
+  watcher=""
+}
+trap reap_round EXIT
 py() { "$PY" -X utf8 "${HELPER[@]}" "$@"; }
 
 [[ "$MILESTONE" =~ ^M[0-9]+$ ]] || stop 1 "里程碑必须写成 M<数字>，例如 M2"
@@ -80,7 +99,7 @@ DENY=(AskUserQuestion
   "Bash(git push *)" "Bash(git checkout *)" "Bash(git switch *)" "Bash(git reset *)" "Bash(git clean *)"
   "Bash(git stash *)" "Bash(git rebase *)" "Bash(git commit --amend *)" "Bash(git worktree *)"
   "Bash(npx prisma migrate reset *)" "Bash(pnpm prisma migrate reset *)" "Bash(pnpm exec prisma migrate reset *)"
-  "Bash(npx prisma db push *)" "Bash(pnpm prisma db push *)" "Bash(docker compose down *)"
+  "Bash(npx prisma db push *)" "Bash(pnpm prisma db push *)" "Bash(docker compose down *)" "Agent" "Task"
   "Bash(kill *)" "Bash(taskkill *)" "Bash(tskill *)" "Bash(pkill *)" "Bash(killall *)" "Bash(wmic *)" "Bash(/usr/bin/kill *)" "Bash(command kill *)" "Bash(Stop-Process *)" "Bash(powershell* Stop-Process*)" "Bash(xargs kill*)" "PowerShell(Stop-Process *)" "PowerShell(taskkill *)"
   "Edit(**/CLAUDE.md)" "Write(**/CLAUDE.md)" "Edit(.claude/**)" "Write(.claude/**)"
   "Edit(.githooks/**)" "Write(.githooks/**)"
@@ -92,7 +111,7 @@ case "$SETTINGS" in scripts/headless-settings.json | .auto-build/headless-run.js
 settings_sum="$(sha256sum "$SETTINGS" | cut -d' ' -f1)"
 
 GUARD=('*CLAUDE.md' .claude .githooks scripts/auto-build.sh scripts/unattended.md scripts/auto_build_status.py
-  scripts/headless-settings.json)
+  scripts/headless-settings.json scripts/round-reaper.ps1)
 
 total=0
 for ((i = 1; i <= MAX_ROUNDS; i++)); do
@@ -138,8 +157,20 @@ docs/TASKS.md 就是已批准的设计，不走 brainstorming。
     --strict-mcp-config --mcp-config scripts/mcp-none.json \
     ${AUTO_BUILD_MODEL:+--model "$AUTO_BUILD_MODEL"} \
     --disallowedTools "${DENY[@]}" \
-    >"$out.json" 2>"$out.stderr"
+    >"$out.json" 2>"$out.stderr" &
+  round_pid=$!
+  REAP_STOP="$REAPER_DIR/r${i}.stop" REAP_OUT="$REAPER_DIR/r${i}.out"
+  round_win="$(cat "/proc/$round_pid/winpid" 2>/dev/null || true)"
+  if [[ -n "$round_win" && -n "$REAPER_SHA" && "$(sha256sum "$REAPER_PS1" | cut -d' ' -f1)" == "$REAPER_SHA" ]]; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$REAPER_PS1")" -RootPid "$round_win" \
+      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" \n      $([[ "${AUTO_BUILD_REAP:-dry}" == kill ]] || echo -DryRun) >"$REAP_OUT" 2>&1 &
+    watcher=$!
+  elif [[ -n "$REAPER_SHA" ]]; then
+    log "警告：round-reaper 副本的 sha256 变了或拿不到轮次 PID，本轮不做进程清理"
+  fi
+  wait "$round_pid"
   rc=$?
+  reap_round
 
   read -r status sid cost turns subtype < <(py parse "$out.json")
   after="$(git rev-parse HEAD)"

@@ -2029,6 +2029,154 @@ describe('invitations: authorization', () => {
 })
 
 // ---------------------------------------------------------------------------
+// admin-users authz (M6-T02)
+// ---------------------------------------------------------------------------
+
+describe('admin-users authz (M6-T02)', () => {
+  async function makeStudentWithSession() {
+    const { userId, profileId } = await createStudent(testDb)
+    await testDb.session.create({
+      data: { userId, token: `tok-${Date.now()}`, expiresAt: new Date(Date.now() + 86_400_000) },
+    })
+    return { userId, profileId }
+  }
+
+  it('suspendUserAction: student → FORBIDDEN, user status unchanged', async () => {
+    const { userId: actorId } = await createStudent(testDb)
+    const { userId: targetId } = await makeStudentWithSession()
+    mockSession(actorId)
+    const { suspendUserAction } = await import('@/server/actions/admin-users')
+    const result = await suspendUserAction({ targetUserId: targetId, reason: 'test' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const user = await testDb.user.findUnique({ where: { id: targetId }, select: { status: true } })
+    expect(user?.status).toBe('ACTIVE')
+  })
+
+  it('suspendUserAction: employer → FORBIDDEN, user status unchanged', async () => {
+    const { userId: actorId } = await createEmployer(testDb)
+    const { userId: targetId } = await makeStudentWithSession()
+    mockSession(actorId)
+    const { suspendUserAction } = await import('@/server/actions/admin-users')
+    const result = await suspendUserAction({ targetUserId: targetId, reason: 'test' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+    const user = await testDb.user.findUnique({ where: { id: targetId }, select: { status: true } })
+    expect(user?.status).toBe('ACTIVE')
+  })
+
+  it('suspendUserAction: admin → ok, user SUSPENDED, sessions deleted', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin M6', email: `admin-m6t02-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { userId: targetId } = await makeStudentWithSession()
+    mockSession(admin.id)
+    const { suspendUserAction } = await import('@/server/actions/admin-users')
+    const result = await suspendUserAction({ targetUserId: targetId, reason: 'authz test' })
+    expect(result.ok).toBe(true)
+    const user = await testDb.user.findUnique({ where: { id: targetId }, select: { status: true } })
+    expect(user?.status).toBe('SUSPENDED')
+    const sessions = await testDb.session.findMany({ where: { userId: targetId } })
+    expect(sessions).toHaveLength(0)
+  })
+
+  it('restoreUserAction: student → FORBIDDEN', async () => {
+    const { userId: actorId } = await createStudent(testDb)
+    const { userId: targetId } = await createStudent(testDb)
+    await testDb.user.update({ where: { id: targetId }, data: { status: 'SUSPENDED' } })
+    mockSession(actorId)
+    const { restoreUserAction } = await import('@/server/actions/admin-users')
+    const result = await restoreUserAction({ targetUserId: targetId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('grantJobViewQuotaAction: student → FORBIDDEN', async () => {
+    const { userId: actorId } = await createStudent(testDb)
+    const { userId: targetId } = await createStudent(testDb)
+    mockSession(actorId)
+    const { grantJobViewQuotaAction } = await import('@/server/actions/admin-users')
+    const result = await grantJobViewQuotaAction({ studentUserId: targetId, amount: 5, note: 'x' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('approveSchoolVerificationAction: employer → FORBIDDEN', async () => {
+    const { userId: actorId } = await createEmployer(testDb)
+    const { userId: targetId } = await createStudent(testDb)
+    mockSession(actorId)
+    const { approveSchoolVerificationAction } = await import('@/server/actions/admin-users')
+    const result = await approveSchoolVerificationAction({ studentUserId: targetId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('readStudentContactAdminAction: student → FORBIDDEN', async () => {
+    const { userId: actorId } = await createStudent(testDb)
+    const { userId: targetId } = await createStudent(testDb)
+    mockSession(actorId)
+    const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
+    const result = await readStudentContactAdminAction({ studentUserId: targetId })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('readStudentContactAdminAction: admin → ok, writes contact.read audit', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin Contact', email: `admin-contact-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { userId: targetId, profileId } = await createStudent(testDb)
+    mockSession(admin.id)
+    const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
+    const result = await readStudentContactAdminAction({ studentUserId: targetId })
+    expect(result.ok).toBe(true)
+    const audits = await testDb.auditLog.findMany({
+      where: { actorId: admin.id, action: 'contact.read', targetId: profileId },
+    })
+    expect(audits.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('createSchoolAction: student → FORBIDDEN', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { createSchoolAction } = await import('@/app/[locale]/admin/schools/actions')
+    const result = await createSchoolAction({
+      nameZh: '测试',
+      nameEn: 'Test',
+      emailDomains: ['test.edu.my'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('createPartnerAction: employer → FORBIDDEN', async () => {
+    const { userId } = await createEmployer(testDb)
+    mockSession(userId)
+    const { createPartnerAction } = await import('@/app/[locale]/admin/partners/actions')
+    const result = await createPartnerAction({
+      name: 'Test Partner',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('deletePartnerAction: student → FORBIDDEN', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { deletePartnerAction } = await import('@/app/[locale]/admin/partners/actions')
+    const result = await deletePartnerAction({ id: 'clzzzzzzzzzzzzzzzzzzzzzzz' })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+})
+
+
+// ---------------------------------------------------------------------------
 // notifications authz (M5-T08)
 // markAllNotificationsReadAction: each user can only mark their own as read
 // ---------------------------------------------------------------------------

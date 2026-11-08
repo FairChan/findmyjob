@@ -1134,7 +1134,7 @@
 > 完成 2026-11-08：admin-dashboard service（getDashboardStats 含 assertAdmin；周分桶 date_trunc Asia/KL；creditTotals 委托 credits.ts）；AdminLayout 仿原型侧边栏（AdminNavLinks client component，aria-current，移动端横排）；AdminDashboardPage（指标卡 10 项、WeeklyBars、注册进度条、学校分布、robots noindex、requireAdmin 在页面内独立校验）；Cache-Control: private, no-store + X-Robots-Tag 通过 proxy.ts 对全部 admin 路由统一加头；messages zh+en 新增 adminLayout 和扩充 adminDashboard；集成测试 7 个通过（含周边界测试）；authz-matrix +4 个用例；E2E 冒烟 8 个通过（全绿无跳过）；pnpm lint/typecheck/test/db:check 全部通过（1607 passed，4 skipped）；依赖 M5-T08 按排序约束处理（只读现有表，经总控批准）；未加新索引（admin 看板为低频只读操作，无需优化）；失败输出见提交说明。
 > 自查：1. 鉴权在服务端：符合（page.tsx 和 service 各自独立 requireAdmin/assertAdmin）；2. 输入走 zod：不适用（纯只读，无外部输入）；3. 越权有测试：符合（authz-matrix +4 行）；4. 加锁和并发：不适用（纯只读聚合，无写操作）；5. 测试失败证据：见提交说明；6. E2E 冒烟：符合（8 个通过）；7-12：均符合或不适用。
 
-#### [ ] M6-T02 学生管理
+#### [x] M6-T02 学生管理
 依赖：M6-T01
 做：
 - 搜索、详情（运营可见全部字段，查看联系方式要写审计）、人工学校认证（学生上传学生证 → 运营审核）、给学生加查看额度（ADMIN_GRANT，必须写原因）。
@@ -1142,16 +1142,33 @@
 验收：
 - 停用后学生立刻无法登录，并从人才库消失
 - E2E 用两个浏览器上下文：运营停用学生后，这名学生的下一次请求就被重定向到登录页
+> 完成 2026-11-08：实现 searchStudents / getStudentAdminDetail / approveSchoolVerificationManually / grantJobViewQuota / suspendUser / restoreUser；suspendUser 在单个 $transaction 内完成 status 更新 + session 清除 + 双审计；联系方式读取经 getContactForAdmin（遵循 ESLint 仅限 contact-access.ts 的约束）；20 条单元测试 + 6 条 authz-matrix 测试 + 8 条 E2E 冒烟全部通过。
+
+#### [x] M6-T10 补修 M6-T02 合并前复查：停用后「下一次请求被拒」的 E2E 要真登录、运营查看联系方式接上界面、写操作与审计同事务
+依赖：M6-T02
+> 总控 2026-11-08 加入：复查（按 a0d7e82 读的代码，提速模式只看 High）结论是 BLOCKED。服务层是对的：停用、删会话、双审计在同一个事务里，每次请求都重新查状态，`getContactForAdmin` 在事务里先写 `contact.read` 再解密、失败就整体失败。只做下面列的。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
+做 / 验收：
+1. 验收 E2E 是空过的（High）：`tests/e2e/smoke-m6-t02.spec.ts` 约 111–120 行，学生那个 context 从来没登录，`goto('/zh/s')` 是被 proxy 的「没有 cookie」分支重定向的（URL 带 `redirect=`），不管运营做没做停用都会过。改成：
+   - 学生 context 先用创建时的邮箱密码真正登录，断言 `/zh/s` 能打开、cookie 里有会话；
+   - 运营停用后，等 server action 的响应，或者轮询 `db.user.status === 'SUSPENDED'`，不要匹配任意一个 200；
+   - 学生 context 再 `goto('/zh/s')`，断言 URL 是 `/zh/login`、不带 `redirect=` 参数（证明走的是服务端 requireStudent 的路径）；
+   - 红跑：临时去掉 `admin-users.ts` 里的 `tx.user.update` 和 `tx.session.deleteMany`，这条 E2E 要失败，原文贴进提交说明。
+2. 运营查看联系方式（M6-T02「做」）：`readStudentContactAdmin` 现在没有任何 action、界面或测试。加一个 `auth: 'admin'` 的 action 和学生详情页上的「查看联系方式」按钮（点击后才读取、才写审计，不在页面加载时自动读）；`getContactForAdmin` 内部也检查调用者是 ADMIN。测试：查看一次恰好写 1 条 `contact.read`，actor 是运营的 userId，metadata 里没有任何明文；非运营调用被拒。
+3. 写操作和审计放进同一个事务（复查 Medium）：发放额度、人工学校认证、恢复账号，这三处现在写和审计是分开的，审计失败会留下没审计的操作。每处都改成一个 `$transaction`，`logAudit` 传 tx；各补一条断言审计行（`student.view_grant`、`student.school_verify`、`user.restore`）的测试。
+4. 顺手修：只有 `status === 'ACTIVE'` 才能停用（现在 DELETED 也能被停用，恢复后会把已删除的账号变回 ACTIVE）；`/admin/students` 的 `?page=abc`、非法 `?status=`、超长 q 不能 500，改用 safeParse，非法时回到默认值并提示。
+- 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
+> 完成 2026-11-08：(1) E2E 修复：学生 context 先真登录、确认 /zh/s 可访问后再停用，断言 URL=/zh/login 无 redirect= 参数；(2) readStudentContactAdminAction 新增 action + 界面按钮 + getContactForAdmin 内部 ADMIN 检查；(3) approveSchoolVerificationManually / grantJobViewQuota / restoreUser 均改为单 $transaction（写操作+审计原子性）；(4) suspendUser 改 `!== 'ACTIVE'` 防停用 DELETED；admin/students 页 query params 改 safeParse。失败输出见提交说明。unit 26/26（+9），authz-matrix 140/140（+2），E2E smoke 8/8，全部通过，0 失败，0 跳过。
 
 #### [ ] M6-T03 企业管理
 依赖：M6-T01
 做：列表、详情、停用、标记创始合作伙伴、设置公司定位标签、调整点数（调用 `credits.adminAdjust`）。`requireCompanyMember` 每次请求都检查 Company.isActive。
 验收：停用企业的成员下一次请求就无法访问企业端
 
-#### [ ] M6-T04 学校与合作伙伴
+#### [x] M6-T04 学校与合作伙伴
 依赖：M6-T01
 做：学校增删改（邮箱后缀管理）；合作伙伴增删改（Logo 上传、排序、首页显示开关）。
 验收：首页合作伙伴墙随后台配置变化
+> 完成 2026-11-08：admin-schools-partners.ts（CRUD + assertAdmin + logAudit + getHomePartners）；/admin/schools 和 /admin/partners 页面与 Server Actions；upload-input.ts 新增 PARTNER_LOGO purpose；首页展示合作伙伴；i18n zh/en 齐全。unit 20/20，authz-matrix 138/138，E2E smoke 12/12 通过。RED（assertAdmin 移除）→ 5 FAILED，GREEN（恢复）→ 20 PASSED。
 
 #### [ ] M6-T05 系统设置
 依赖：M6-T01
@@ -1641,6 +1658,16 @@
 12. 来自 M4-T12 复查（Low）：「被解锁」邮件通知（PRD §6，若 M5-T08 没覆盖就在这里做）；隐私中心里 APPLICATION 来源的解锁单独标注；学生屏蔽企业后它以前的查看记录是否隐藏（先保留，DECISIONS 记一行）。
 13. 来自 M4 修复任务的最终核对（Low）：`credits.adjust` 审计写入失败时整笔回滚的测试；解锁后查学生 userId 的那次 `studentProfile.findUnique` 也放进通知的 try/catch；global-setup 里补账本行和改余额放进同一个事务；水印考虑页面 /Rotate；format-date 的断言改成完整字符串比较，admin 页面的日期也走 format-date；mark-as-read action 加「传别人的通知 id 不生效」的测试；解锁通知 payload 断言完整形状；StudentNav 的 aria-label 改成导航用途的名字。
 14. 来自 GATE-M4 取证（2026-11-08）：「列表悬停 3 秒 ProfileView 不变」的 E2E 跑在 next dev 上（dev 不做 prefetch），也不数 ProfileView 行数，去掉 `prefetch={false}` 时没有测试会失败；改用 next start 跑这一条，或者加一条断言 Link 带 `prefetch={false}` 的组件测试。上传拒绝补路由级测试（断言 putObject 没被调用），`resumeFile.create` 失败时删掉已上传的对象；补「被移除的成员下一次请求被拒」的测试，以及只删掉 team.ts 里已用邀请检查时会失败的测试；补 `student.visibility.change` 审计的断言；pii-leak 断言响应里没有 `/api/resumes/`。另外，sanitizePdf 的 Dest/Rect 尾部元素现在只要求不是 PDFRef，按 M4-T25 原规格收紧为只能是 PDFName、PDFNumber、PDFNull（处理好 CJS 导出下的 instanceof）。
+
+#### [ ] M6-T11 运营后台加固（P1，首次使用之后）
+依赖：M6-T04、M6-T10
+> 总控 2026-11-08 加入：来自 M6-T02、M6-T04 复查的 Medium 和 Low，按「先能用」的规则放到首次使用之后再做。
+做 / 验收：
+1. 合作伙伴的 website 只允许 http/https（`z.url({ protocol: /^https?$/ })`），测试 `javascript:alert(1)` 被拒；编辑时清空字段（website、nameEn、description、notes、logo）要真的清成 null（现在 `x || undefined` 会被忽略），测试 `website: ''` 之后为 null。
+2. 新的上传用途 PARTNER_LOGO 要有路由级测试：学生、企业调用返回 403；超过 2MB、SVG 被拒；拒绝时不调用 putObject。
+3. 学校 `emailDomains` 在服务端 trim、转小写、校验格式；`logoKey` 只接受 `^partner-logos/[^/]+/[0-9a-f-]{36}\.(png|jpg)$`。
+4. `getHomePartners` 只 select 公开字段（名称、logo、类型、排序、website），不返回 notes、agreementKey（如果线 B 的 M7-T01 已经改了，这条勾掉）。
+5. 来自 M6-T02：sanitizePdf 不相关；`/admin/students` 的筛选参数非法时回到默认值（如果 M6-T10 已经做了，勾掉）。
 
 ---
 
