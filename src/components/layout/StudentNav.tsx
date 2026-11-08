@@ -46,6 +46,12 @@ export default async function StudentNav({ userId, locale }: Props) {
           )}
         </Link>
         <Link
+          href="/s/applications"
+          className="shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {t('myApplications')}
+        </Link>
+        <Link
           href="/s/privacy"
           className="shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
         >

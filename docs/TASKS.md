@@ -1056,10 +1056,11 @@
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
 > 完成 2026-11-08：(1) 标准化列表：ApplicantRow 新增 graduationMonth/languages/internshipCount/campusCount，board 重写为 `<table aria-label="standardized-applicant-list">` 一行一人，columns 齐全，375px 横向滚动；(2) 排序修复：纯函数 sortApplicantRows 在 src/lib/applicants-sort.ts，graduationYear 排序改为 year*100+month，单元测试 9 通过；(3) markViewedAction 接入：点击「查看完整档案」先 fire-and-forget markViewedAction 再 router.push /e/talent/[studentId]；(4) 状态切换失败 UI：statusChangeError banner；DECISIONS 追加状态转换规则；集成测试：36 通过；authz-matrix M5-T14 块：4 通过；E2E：smoke-m5-t14 2 通过（smoke-m5-t14.spec.ts）；talent-view 全套 13/13 通过（隔离）。偏差：全量 pnpm test 因前一轮残留进程导致 beforeEach 超时，单文件/指定块运行均绿。ROUND_NOTE 失败原文：排序月份缺失时 AssertionError: expected [ 3, 11, 6 ] to deeply equal [ 11, 6, 3 ]；no-op 缺失时 AssertionError: expected [ {…}, {…} ] to have a length of 1 but got 2；auth 移除后 AssertionError: expected 'INTERNAL_ERROR' to be 'FORBIDDEN'（guest）/ expected false to be true（owner）。
 
-#### [ ] M5-T06 我的投递
+#### [x] M5-T06 我的投递
 依赖：M5-T05
 做：`/s/applications`：列表 + 状态时间线；撤回按钮。
 验收：时间线与 ApplicationEvent 一致
+> 完成 2026-11-08：新增 `/s/applications` 页（Server Component）+ `WithdrawButton` 客户端岛屿；`listStudentApplications` 服务函数按学生 ID 过滤，ApplicationEvent 的 note 和 actorId 均不返回学生侧；集成测试 27/27，E2E smoke-m5-t06 7/7（4 条 M5-T06 + 3 条 auth setup，0 失败 0 跳过）。
 
 #### [ ] M5-T07 邀请投递
 依赖：M5-T04

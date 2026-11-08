@@ -10,7 +10,8 @@
     "closeMenu": "Close menu",
     "notifications": "Notifications",
     "privacy": "Privacy Centre",
-    "myProfile": "My Profile"
+    "myProfile": "My Profile",
+    "myApplications": "My Applications"
   },
   "localeSwitcher": {
     "label": "Switch language",
@@ -974,5 +975,27 @@
     "colCompleteness": "Completeness",
     "colActions": "Actions",
     "statusChangeError": "Status change failed, please try again"
+  },
+  "myApplications": {
+    "title": "My Applications",
+    "empty": "No applications yet",
+    "appliedAt": "Applied",
+    "coverNoteLabel": "Cover Note",
+    "timelineLabel": "Status Timeline",
+    "statusTransition": "{to}",
+    "withdrawButton": "Withdraw",
+    "withdrawing": "Withdrawing…",
+    "withdrawSuccess": "Withdrawn",
+    "withdrawError": "Failed to withdraw, please try again",
+    "status": {
+      "APPLIED": "Applied",
+      "VIEWED": "Viewed",
+      "SHORTLISTED": "Shortlisted",
+      "INTERVIEW": "Interview",
+      "OFFER": "Offer",
+      "HIRED": "Hired",
+      "REJECTED": "Rejected",
+      "WITHDRAWN": "Withdrawn"
+    }
   }
 }
