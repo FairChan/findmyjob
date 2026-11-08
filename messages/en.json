@@ -757,6 +757,7 @@
     "allCompaniesTab": "All Companies",
     "pendingTab": "Pending Review",
     "searchPlaceholder": "Search company name…",
+    "filterVerificationAll": "All Statuses",
     "filterActive": "Active",
     "filterInactive": "Inactive",
     "filterAll": "All",

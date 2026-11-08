@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { requireAdmin } from '@/server/authz'
 import { getCompanyForReview } from '@/server/services/review-company'
 import { getCompanyAdminDetail } from '@/server/services/admin-companies'
+import { NotFoundError } from '@/server/errors'
 import { ReviewForm } from './review-form'
 import { AdminCompanyActions } from './admin-company-actions'
 
@@ -18,10 +19,17 @@ export default async function AdminCompanyDetailPage({
   const tReview = await getTranslations('adminCompanies')
   const tManage = await getTranslations('adminCompanyManage')
 
-  const [reviewData, adminDetail] = await Promise.all([
-    getCompanyForReview(ctx, companyId),
-    getCompanyAdminDetail(ctx, companyId),
-  ])
+  let reviewData: Awaited<ReturnType<typeof getCompanyForReview>>
+  let adminDetail: Awaited<ReturnType<typeof getCompanyAdminDetail>>
+  try {
+    ;[reviewData, adminDetail] = await Promise.all([
+      getCompanyForReview(ctx, companyId),
+      getCompanyAdminDetail(ctx, companyId),
+    ])
+  } catch (err) {
+    if (err instanceof NotFoundError) return notFound()
+    throw err
+  }
   if (!reviewData) return notFound()
 
   const cv = reviewData.verifications[0] ?? null

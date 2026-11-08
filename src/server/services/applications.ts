@@ -50,9 +50,17 @@ export async function applyToJob(ctx: UserCtx, input: ApplyInput): Promise<Apply
   const now = new Date()
   const job = await db.job.findUnique({
     where: { id: input.jobId },
-    select: { id: true, status: true, deadline: true, companyId: true, createdById: true, title: true },
+    select: {
+      id: true, status: true, deadline: true, companyId: true, createdById: true, title: true,
+      company: { select: { isActive: true } },
+    },
   })
-  if (!job || job.status !== 'PUBLISHED' || (job.deadline !== null && job.deadline <= now)) {
+  if (
+    !job ||
+    job.status !== 'PUBLISHED' ||
+    (job.deadline !== null && job.deadline <= now) ||
+    !job.company.isActive
+  ) {
     throw new NotFoundError('Job not found or not accepting applications')
   }
 

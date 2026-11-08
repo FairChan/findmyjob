@@ -420,3 +420,43 @@ describe('searchJobs industry filter ILIKE escaping', () => {
     expect(ids).not.toContain(j.id)
   })
 })
+
+// ----- inactive company filter -----
+
+describe('searchJobs inactive company filter', () => {
+  it('jobs from deactivated company do not appear in search results', async () => {
+    const sentinel = `inactive_co_${Date.now()}`
+    const inactiveCo = await testDb.company.create({
+      data: { legalName: `InactiveCorp-${sentinel}`, verificationStatus: 'VERIFIED', isActive: false },
+    })
+    const activeCo = await testDb.company.create({
+      data: { legalName: `ActiveCorp-${sentinel}`, verificationStatus: 'VERIFIED', isActive: true },
+    })
+    const inactiveJob = await testDb.job.create({
+      data: {
+        companyId: inactiveCo.id, createdById,
+        title: `job-inactive-${sentinel}`, type: 'INTERNSHIP', workMode: 'ONSITE',
+        description: sentinel, status: 'PUBLISHED', publishedAt: new Date(),
+      },
+    })
+    const activeJob = await testDb.job.create({
+      data: {
+        companyId: activeCo.id, createdById,
+        title: `job-active-${sentinel}`, type: 'INTERNSHIP', workMode: 'ONSITE',
+        description: sentinel, status: 'PUBLISHED', publishedAt: new Date(),
+      },
+    })
+
+    // keyword search path
+    const kw = await searchJobs({ q: sentinel })
+    const kwIds = [...kw.exact, ...kw.related].map((h) => h.job.id)
+    expect(kwIds).not.toContain(inactiveJob.id)
+    expect(kwIds).toContain(activeJob.id)
+
+    // empty-query (browse all) path
+    const all = await searchJobs({ q: '' })
+    const allIds = [...all.exact, ...all.related].map((h) => h.job.id)
+    expect(allIds).not.toContain(inactiveJob.id)
+    expect(allIds).toContain(activeJob.id)
+  })
+})

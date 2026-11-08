@@ -105,6 +105,21 @@ describe('searchCompanies', () => {
     expect(result.items.every((c) => c.isActive === false)).toBe(true)
     expect(result.total).toBeGreaterThanOrEqual(1)
   })
+
+  it('filter by verificationStatus=PENDING returns only PENDING companies', async () => {
+    const admin = await mkAdmin()
+    const suffix = uid()
+    const pendingCo = await testDb.company.create({
+      data: { legalName: `Pending-${suffix}`, verificationStatus: 'PENDING', isActive: true },
+    })
+    const verifiedCo = await testDb.company.create({
+      data: { legalName: `Verified-${suffix}`, verificationStatus: 'VERIFIED', isActive: true },
+    })
+    const result = await searchCompanies({ userId: admin.id }, { verificationStatus: 'PENDING', page: 1 })
+    expect(result.items.every((c) => c.verificationStatus === 'PENDING')).toBe(true)
+    expect(result.items.some((c) => c.id === pendingCo.id)).toBe(true)
+    expect(result.items.some((c) => c.id === verifiedCo.id)).toBe(false)
+  })
 })
 
 // ---- getCompanyAdminDetail --------------------------------------------------
@@ -159,7 +174,7 @@ describe('deactivateCompany', () => {
     expect(audit?.actorId).toBe(admin.id)
   })
 
-  it('deactivating revokes member sessions', async () => {
+  it('deactivating revokes member sessions and writes auth.session.revoke audit', async () => {
     const admin = await mkAdmin()
     const company = await mkCompany()
     const employer = await mkEmployer(company.id)
@@ -178,12 +193,28 @@ describe('deactivateCompany', () => {
     await deactivateCompany({ userId: admin.id }, { companyId: company.id, reason: 'revoke-test' })
     const sessions = await testDb.session.findMany({ where: { userId: employer.id } })
     expect(sessions).toHaveLength(0)
+    const revokeAudit = await testDb.auditLog.findFirst({
+      where: { action: 'auth.session.revoke', targetId: company.id },
+      orderBy: { createdAt: 'desc' },
+    })
+    expect(revokeAudit).not.toBeNull()
+    expect(revokeAudit?.actorId).toBe(admin.id)
+    const meta = revokeAudit?.metadata as { userIds?: string[] }
+    expect(meta?.userIds).toContain(employer.id)
   })
 
   it('deactivating already-inactive company is idempotent', async () => {
     const admin = await mkAdmin()
     const company = await mkCompany({ isActive: false })
     await expect(deactivateCompany({ userId: admin.id }, { companyId: company.id, reason: 'idempotent' })).resolves.toBeUndefined()
+  })
+
+  it('reason of only whitespace fails schema validation', async () => {
+    const admin = await mkAdmin()
+    const company = await mkCompany()
+    await expect(
+      deactivateCompany({ userId: admin.id }, { companyId: company.id, reason: '   ' }),
+    ).rejects.toThrow()
   })
 })
 
@@ -298,6 +329,60 @@ describe('adjustCompanyCredits', () => {
     })
     expect(audit).not.toBeNull()
     expect(audit?.actorId).toBe(admin.id)
+  })
+
+  it('delta=0 fails schema validation', async () => {
+    const admin = await mkAdmin()
+    const company = await mkCompany()
+    await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    await expect(
+      adjustCompanyCredits({ userId: admin.id }, { companyId: company.id, delta: 0, note: 'zero' }),
+    ).rejects.toThrow()
+  })
+
+  it('note of only whitespace fails schema validation', async () => {
+    const admin = await mkAdmin()
+    const company = await mkCompany()
+    await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    await expect(
+      adjustCompanyCredits({ userId: admin.id }, { companyId: company.id, delta: 10, note: '   ' }),
+    ).rejects.toThrow()
+  })
+
+  it('negative delta exceeding balance → InsufficientCreditsError, balance unchanged', async () => {
+    const { InsufficientCreditsError } = await import('@/server/errors')
+    const admin = await mkAdmin()
+    const company = await mkCompany()
+    await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    await expect(
+      adjustCompanyCredits({ userId: admin.id }, { companyId: company.id, delta: -100, note: 'overdraft' }),
+    ).rejects.toBeInstanceOf(InsufficientCreditsError)
+    const wallet = await testDb.creditWallet.findUnique({ where: { companyId: company.id }, select: { balance: true } })
+    expect(wallet?.balance).toBe(50)
+  })
+
+  it('company without wallet → NotFoundError', async () => {
+    const admin = await mkAdmin()
+    const company = await mkCompany()
+    await expect(
+      adjustCompanyCredits({ userId: admin.id }, { companyId: company.id, delta: 10, note: 'no wallet' }),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('concurrent adjustments both succeed without corrupting balance', async () => {
+    const admin = await mkAdmin()
+    const company = await mkCompany()
+    await testDb.creditWallet.create({ data: { companyId: company.id, balance: 100 } })
+    const [r1, r2] = await Promise.all([
+      adjustCompanyCredits({ userId: admin.id }, { companyId: company.id, delta: 10, note: 'a' }),
+      adjustCompanyCredits({ userId: admin.id }, { companyId: company.id, delta: 20, note: 'b' }),
+    ])
+    const wallet = await testDb.creditWallet.findUnique({ where: { companyId: company.id }, select: { balance: true } })
+    expect(wallet?.balance).toBe(130)
+    // Serialized by lockXact: one sees 110 or 120 as intermediate, the other always sees 130
+    const balances = [r1.balanceAfter, r2.balanceAfter].sort((a, b) => a - b)
+    expect(balances[1]).toBe(130)
+    expect([110, 120]).toContain(balances[0])
   })
 })
 

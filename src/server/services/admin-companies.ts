@@ -1,6 +1,6 @@
 import 'server-only'
 import { z } from 'zod'
-import { CompanyTag } from '@prisma/client'
+import { CompanyTag, VerificationStatus } from '@prisma/client'
 import { db } from '../db'
 import { ForbiddenError, NotFoundError } from '../errors'
 import { logAudit } from './audit'
@@ -23,6 +23,7 @@ async function assertAdmin(userId: string): Promise<void> {
 export const searchCompaniesSchema = z.object({
   q: z.string().max(200).optional(),
   isActive: z.boolean().optional(),
+  verificationStatus: z.nativeEnum(VerificationStatus).optional(),
   page: z.number().int().min(1).default(1),
 })
 
@@ -45,7 +46,7 @@ export async function searchCompanies(
 ): Promise<{ items: CompanyListItem[]; total: number }> {
   await assertAdmin(ctx.userId)
 
-  const { q, isActive, page } = searchCompaniesSchema.parse(input)
+  const { q, isActive, verificationStatus, page } = searchCompaniesSchema.parse(input)
   const pageSize = 20
   const skip = (page - 1) * pageSize
 
@@ -55,6 +56,7 @@ export async function searchCompanies(
 
   const where = {
     ...(isActive !== undefined ? { isActive } : {}),
+    ...(verificationStatus !== undefined ? { verificationStatus } : {}),
     ...(escaped
       ? {
           OR: [
@@ -66,6 +68,12 @@ export async function searchCompanies(
       : {}),
   }
 
+  // PENDING queue: oldest submissions first so reviewers see the most waiting longest
+  const orderBy =
+    verificationStatus === 'PENDING'
+      ? { createdAt: 'asc' as const }
+      : { createdAt: 'desc' as const }
+
   const [companies, total] = await Promise.all([
     db.company.findMany({
       where,
@@ -73,7 +81,7 @@ export async function searchCompanies(
         _count: { select: { members: true } },
         wallet: { select: { balance: true } },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       skip,
       take: pageSize,
     }),
@@ -158,7 +166,7 @@ export async function getCompanyAdminDetail(
 
 export const deactivateCompanySchema = z.object({
   companyId: z.string().min(1),
-  reason: z.string().min(1).max(500),
+  reason: z.string().trim().min(1).max(500),
 })
 
 export type DeactivateCompanyInput = z.infer<typeof deactivateCompanySchema>
@@ -191,6 +199,16 @@ export async function deactivateCompany(
 
     if (memberIds.length > 0) {
       await tx.session.deleteMany({ where: { userId: { in: memberIds } } })
+      await logAudit(
+        {
+          actorId: ctx.userId,
+          action: 'auth.session.revoke',
+          targetType: 'Company',
+          targetId: companyId,
+          metadata: { userIds: memberIds },
+        },
+        tx,
+      )
     }
 
     await logAudit(
@@ -333,8 +351,13 @@ export async function setCompanyTags(
 
 export const adjustCompanyCreditsSchema = z.object({
   companyId: z.string().min(1),
-  delta: z.number().int().min(-100000).max(100000),
-  note: z.string().min(1).max(500),
+  delta: z
+    .number()
+    .int()
+    .min(-100000)
+    .max(100000)
+    .refine((d) => d !== 0, { message: 'Delta must not be zero' }),
+  note: z.string().trim().min(1).max(500),
 })
 
 export type AdjustCompanyCreditsInput = z.infer<typeof adjustCompanyCreditsSchema>
@@ -348,9 +371,10 @@ export async function adjustCompanyCredits(
 
   const company = await db.company.findUnique({
     where: { id: companyId },
-    select: { id: true },
+    include: { wallet: { select: { id: true } } },
   })
   if (!company) throw new NotFoundError('Company not found')
+  if (!company.wallet) throw new NotFoundError('Company has no wallet (created on verification)')
 
   return adminAdjust({ actorId: ctx.userId }, { companyId, delta, note })
 }

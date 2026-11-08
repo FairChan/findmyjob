@@ -2,12 +2,16 @@ import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { headers } from 'next/headers'
 import { z } from 'zod'
+import { VerificationStatus } from '@prisma/client'
 import { requireAdmin } from '@/server/authz'
-import { searchCompanies, searchCompaniesSchema } from '@/server/services/admin-companies'
+import { searchCompanies } from '@/server/services/admin-companies'
+
+const VALID_VERIFICATION_STATUSES = Object.values(VerificationStatus) as string[]
 
 const listParamsSchema = z.object({
   q: z.string().max(200).optional(),
   active: z.string().optional(),
+  status: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
 })
 
@@ -16,23 +20,36 @@ export default async function AdminCompaniesPage({
   searchParams,
 }: {
   params: Promise<{ locale: string }>
-  searchParams: Promise<{ q?: string; active?: string; page?: string }>
+  searchParams: Promise<{ q?: string; active?: string; status?: string; page?: string }>
 }) {
   const { locale } = await params
   const sp = await searchParams
   const ctx = await requireAdmin(await headers())
   const t = await getTranslations('adminCompanyManage')
 
-  const parsed = listParamsSchema.safeParse({ q: sp.q?.slice(0, 200), active: sp.active, page: sp.page })
-  const listParams = parsed.success ? parsed.data : { q: undefined, active: undefined, page: 1 }
-  const { q, active, page } = listParams
+  const parsed = listParamsSchema.safeParse({
+    q: sp.q?.slice(0, 200),
+    active: sp.active,
+    status: sp.status,
+    page: sp.page,
+  })
+  const listParams = parsed.success
+    ? parsed.data
+    : { q: undefined, active: undefined, status: undefined, page: 1 }
+  const { q, active, status, page } = listParams
 
   const isActiveFilter: boolean | undefined =
     active === 'true' ? true : active === 'false' ? false : undefined
 
+  const verificationStatusFilter =
+    status && VALID_VERIFICATION_STATUSES.includes(status)
+      ? (status as VerificationStatus)
+      : undefined
+
   const { items, total } = await searchCompanies(ctx, {
     q,
     isActive: isActiveFilter,
+    verificationStatus: verificationStatusFilter,
     page: typeof page === 'number' ? page : 1,
   })
   const pageSize = 20
@@ -52,6 +69,17 @@ export default async function AdminCompaniesPage({
           placeholder={t('searchPlaceholder')}
           className="flex-1 min-w-[200px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
+        <select
+          name="status"
+          defaultValue={status ?? ''}
+          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+        >
+          <option value="">{t('filterVerificationAll')}</option>
+          <option value="UNSUBMITTED">{t('verificationUnsubmitted')}</option>
+          <option value="PENDING">{t('verificationPending')}</option>
+          <option value="VERIFIED">{t('verificationVerified')}</option>
+          <option value="REJECTED">{t('verificationRejected')}</option>
+        </select>
         <select
           name="active"
           defaultValue={active ?? ''}
@@ -150,6 +178,7 @@ export default async function AdminCompaniesPage({
               key={p}
               href={`/${locale}/admin/companies?${new URLSearchParams({
                 ...(q ? { q } : {}),
+                ...(status ? { status } : {}),
                 ...(active ? { active } : {}),
                 page: String(p),
               })}`}

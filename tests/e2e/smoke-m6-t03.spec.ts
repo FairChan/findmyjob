@@ -130,17 +130,18 @@ test.describe('M6-T03 admin company management smoke', () => {
     await adminPage.goto(`/zh/admin/companies/${company.id}`)
     await adminPage.waitForSelector('[id="deactivate-reason"]')
     await adminPage.fill('[id="deactivate-reason"]', 'E2E deactivation test')
-    const responsePromise = adminPage.waitForResponse(
-      (r) => r.status() === 200,
-    )
     await adminPage.click('button:has-text("停用企业"), button:has-text("Deactivate Company")')
-    await responsePromise
 
-    // Poll DB until company.isActive becomes false (server action completed)
-    await employerPage.waitForFunction(async () => {
-      const res = await fetch('/api/health')
-      return res.ok
-    }, undefined, { timeout: 10_000 }).catch(() => {})
+    // Poll DB directly until company.isActive becomes false (server action committed)
+    await expect
+      .poll(
+        async () => {
+          const co = await db.company.findUnique({ where: { id: company.id }, select: { isActive: true } })
+          return co?.isActive
+        },
+        { timeout: 15_000, intervals: [500, 500, 500, 1000, 1000, 2000] },
+      )
+      .toBe(false)
 
     // Employer navigates to /zh/e — session was revoked, requireCompanyMember throws
     // ForbiddenError, layout redirects away from employer portal

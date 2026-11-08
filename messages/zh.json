@@ -757,6 +757,7 @@
     "allCompaniesTab": "全部企业",
     "pendingTab": "待审核",
     "searchPlaceholder": "搜索公司名称…",
+    "filterVerificationAll": "全部认证状态",
     "filterActive": "活跃",
     "filterInactive": "已停用",
     "filterAll": "全部",

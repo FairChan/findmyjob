@@ -75,16 +75,18 @@ export default async function JobDetailPage({ params }: PageProps) {
           displayNameZh: true,
           displayNameEn: true,
           legalName: true,
+          isActive: true,
         },
       },
     },
   })
 
-  // Only published and not past deadline
+  // Only published, not past deadline, and company must be active
   if (
     !job ||
     job.status !== 'PUBLISHED' ||
-    (job.deadline !== null && job.deadline <= now)
+    (job.deadline !== null && job.deadline <= now) ||
+    !job.company.isActive
   ) {
     return notFound()
   }

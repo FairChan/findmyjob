@@ -196,6 +196,20 @@ describe('applyToJob', () => {
     ).rejects.toBeInstanceOf(NotFoundError)
   })
 
+  it('throws NotFoundError when company is inactive (deactivated)', async () => {
+    await seedApplySettings()
+    const { userId, profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
+    // Deactivate the company after the student has viewed the job
+    await testDb.company.update({ where: { id: emp.companyId }, data: { isActive: false } })
+
+    await expect(
+      applyToJob({ userId }, { jobId: job.id }),
+    ).rejects.toBeInstanceOf(NotFoundError)
+  })
+
   it('throws NotFoundError for a DRAFT job', async () => {
     await seedApplySettings()
     const { userId } = await createStudentWithCompleteness(70)

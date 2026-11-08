@@ -1177,7 +1177,7 @@
 验收：修改后 60 秒内生效；非法值被拒
 > 完成 2026-11-08：admin-settings.ts 服务（SETTINGS 注册表 38 条 key、getAllSettings、updateSettingAdmin + assertAdmin + logAudit via setSetting）；/admin/settings 页面与 SettingsForm 客户端组件（按 group 分组、各参数独立保存按钮）；admin-nav-links 新增 Settings 入口；i18n zh/en 齐全。unit 15/15，authz-matrix 149/149（+3），E2E smoke 7/7 通过，0 失败，0 跳过。失败输出见提交说明。自查：a) 鉴权在服务端（assertAdmin in service，action auth:'admin'），不信任客户端；b) 无点数/锁定写操作；c) 写操作（setSetting）与 setting.update 审计在 setSetting 内同步（非事务，但 audit 在 upsert 之后，服务器宕机最多丢审计，不丢设置值，属 DECISIONS 范围内）；d) 验收全部覆盖；e) E2E 0 失败 0 跳过；f) 未删除已有断言；g) BLOCKED 条件：无。
 
-#### [ ] M6-T12 补修 M6-T03 合并前复查：恢复「待审核企业」列表、停用企业的职位下架、点数调整校验
+#### [x] M6-T12 补修 M6-T03 合并前复查：恢复「待审核企业」列表、停用企业的职位下架、点数调整校验
 依赖：M6-T03
 > 总控 2026-11-08 加入：复查（按 3aa737d 读的代码，只看 High）结论是 BLOCKED。安全和点数这部分是对的：requireCompanyMember 和 requireVerifiedCompany 每次请求都从数据库读 isActive，联系方式在企业停用时失败关闭，点数调整只经 adminAdjust → applyLedgerEntry，并在同一个事务里写 credits.adjust 审计。下面第 1 条是 High（功能回退），其余是会直接影响使用的 Medium，一起改。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
 做 / 验收：
@@ -1188,6 +1188,7 @@
 5. 详情页对不存在的 companyId 返回 404，而不是 500（`getCompanyAdminDetail` 抛的 NotFoundError 要接住并调用 `notFound()`）。
 6. E2E：停用后不要等「任意一个 200」，改成轮询 `db.company.isActive === false`；再加一段：停用后员工重新登录，访问 `/zh/e` 被拒（这是唯一真正走到 isActive 检查的 E2E 路径）。
 - 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
+> 完成 2026-11-08：(1) searchCompanies 加 verificationStatus 过滤，PENDING 时按 createdAt asc 排序；看板链接改 ?status=PENDING；(2) job-search.ts 和 jobs/[id]/page.tsx 过滤 company.isActive=false；applyToJob 加 !company.isActive 检查；(3) deactivateCompany 事务内写 auth.session.revoke 审计（metadata.userIds）；(4) adjustCompanyCreditsSchema delta.refine(≠0)、note.trim().min(1)；没有钱包时抛 NotFoundError；(5) admin/companies/[companyId]/page.tsx catch NotFoundError → notFound()；(6) smoke-m6-t03 改轮询 isActive；smoke-m6-t12 新增 4 条 E2E（verificationStatus 过滤/404/看板链接/停用后 /zh/e 被拒）。vitest：admin-companies.test.ts 44 通过 0 失败 0 跳过；applications.test.ts 20 通过 0 失败 0 跳过；job-search.test.ts 16 通过 0 失败 0 跳过；合计 80/80 通过。E2E：smoke-m6-t03.spec.ts 8/8 通过，smoke-m6-t12.spec.ts 4/4 通过，合计 12/12 通过。
 
 #### [ ] M6-T06 审计日志
 依赖：M6-T01
