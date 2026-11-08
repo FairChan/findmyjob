@@ -2,7 +2,7 @@ import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
-import { requireCompanyMember } from '@/server/authz'
+import { requireVerifiedCompany } from '@/server/authz'
 import { listJobApplicants } from '@/server/services/applicants'
 import { NotFoundError } from '@/server/errors'
 import ApplicantsBoard from '@/components/applicants/applicants-board'
@@ -17,7 +17,7 @@ export default async function ApplicantsPage({
   const h = await headers()
   const t = await getTranslations('applicants')
 
-  const ctx = await requireCompanyMember('RECRUITER', h)
+  const ctx = await requireVerifiedCompany('RECRUITER', h)
 
   let result: Awaited<ReturnType<typeof listJobApplicants>>
   try {

@@ -139,18 +139,17 @@ test.describe('M5-T05 applicants board smoke', () => {
       // Switch to list view to access the status dropdown
       await page.getByRole('button', { name: /标准化列表|Standardized List/i }).click()
 
-      // The status select should be present
+      // The status select should be present — assert visible before interacting
       const statusSelect = page.locator('select').first()
-      if (await statusSelect.isVisible()) {
-        // Select SHORTLISTED
-        await statusSelect.selectOption('SHORTLISTED')
-        // Wait briefly for the action to complete
-        await page.waitForTimeout(1500)
+      await expect(statusSelect).toBeVisible({ timeout: 5000 })
+      // Select SHORTLISTED
+      await statusSelect.selectOption('SHORTLISTED')
+      // Wait briefly for the action to complete
+      await page.waitForTimeout(1500)
 
-        // Verify in DB
-        const updated = await e2eDb.application.findUnique({ where: { id: application.id } })
-        expect(updated?.status).toBe('SHORTLISTED')
-      }
+      // Verify in DB
+      const updated = await e2eDb.application.findUnique({ where: { id: application.id } })
+      expect(updated?.status).toBe('SHORTLISTED')
     } finally {
       await e2eDb.applicationEvent.deleteMany({ where: { applicationId: application.id } })
       await e2eDb.application.delete({ where: { id: application.id } }).catch(() => {})

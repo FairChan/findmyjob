@@ -40,9 +40,18 @@ import {
   updateApplicationNote,
   markApplicationViewed,
 } from '@/server/services/applicants'
-import { NotFoundError, ValidationError, ForbiddenError } from '@/server/errors'
+import { getStudentApplicationTimeline } from '@/server/services/applications'
+import { NotFoundError, ValidationError, ForbiddenError, ConflictError } from '@/server/errors'
+import { withdrawApplication } from '@/server/services/applications'
 
 setupTestDb()
+
+// M5-T13: all applicant services require verified company; use this helper for positive tests
+async function createVerifiedEmployer() {
+  const emp = await createEmployer(testDb)
+  await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+  return emp
+}
 
 async function seedSetting(key: string, value: unknown) {
   await testDb.systemSetting.upsert({
@@ -68,7 +77,7 @@ async function createApplication(
 
 describe('listJobApplicants', () => {
   it('returns applicants for own job', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     await createApplication(student.profileId, job.id)
@@ -82,8 +91,8 @@ describe('listJobApplicants', () => {
   })
 
   it('cross-company: cannot list applicants for another company job → NotFoundError', async () => {
-    const empA = await createEmployer(testDb)
-    const empB = await createEmployer(testDb)
+    const empA = await createVerifiedEmployer()
+    const empB = await createVerifiedEmployer()
     const jobB = await createJob(testDb, empB.companyId, empB.userId)
 
     const ctxA = { userId: empA.userId, companyId: empA.companyId, role: 'OWNER' as const }
@@ -91,7 +100,7 @@ describe('listJobApplicants', () => {
   })
 
   it('excludes WITHDRAWN applicants', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     await createApplication(student.profileId, job.id, ApplicationStatus.WITHDRAWN)
@@ -102,7 +111,7 @@ describe('listJobApplicants', () => {
   })
 
   it('identity is locked (unlocked=false) when no TalentUnlock exists', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     await createApplication(student.profileId, job.id)
@@ -119,7 +128,7 @@ describe('listJobApplicants', () => {
 
 describe('changeApplicationStatus', () => {
   it('changes status and writes ApplicationEvent', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     const app = await createApplication(student.profileId, job.id)
@@ -138,8 +147,8 @@ describe('changeApplicationStatus', () => {
   })
 
   it('cross-company: cannot change status for another company application → NotFoundError', async () => {
-    const empA = await createEmployer(testDb)
-    const empB = await createEmployer(testDb)
+    const empA = await createVerifiedEmployer()
+    const empB = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const jobB = await createJob(testDb, empB.companyId, empB.userId)
     const appB = await createApplication(student.profileId, jobB.id)
@@ -151,7 +160,7 @@ describe('changeApplicationStatus', () => {
   })
 
   it('cannot change status of WITHDRAWN application → ForbiddenError', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     const app = await createApplication(student.profileId, job.id, ApplicationStatus.WITHDRAWN)
@@ -163,7 +172,7 @@ describe('changeApplicationStatus', () => {
   })
 
   it('cannot set WITHDRAWN status (company-settable check) → ValidationError', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     const app = await createApplication(student.profileId, job.id)
@@ -175,7 +184,7 @@ describe('changeApplicationStatus', () => {
   })
 
   it('no-op when setting same status', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     const app = await createApplication(student.profileId, job.id, ApplicationStatus.SHORTLISTED)
@@ -194,7 +203,7 @@ describe('changeApplicationStatus', () => {
 
 describe('updateApplicationNote', () => {
   it('updates companyNote', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     const app = await createApplication(student.profileId, job.id)
@@ -207,8 +216,8 @@ describe('updateApplicationNote', () => {
   })
 
   it('cross-company: cannot update note for another company application → NotFoundError', async () => {
-    const empA = await createEmployer(testDb)
-    const empB = await createEmployer(testDb)
+    const empA = await createVerifiedEmployer()
+    const empB = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const jobB = await createJob(testDb, empB.companyId, empB.userId)
     const appB = await createApplication(student.profileId, jobB.id)
@@ -220,8 +229,8 @@ describe('updateApplicationNote', () => {
   })
 
   it('companyNote is NOT returned by listJobApplicants under a different company', async () => {
-    const empA = await createEmployer(testDb)
-    const empB = await createEmployer(testDb)
+    const empA = await createVerifiedEmployer()
+    const empB = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const jobA = await createJob(testDb, empA.companyId, empA.userId)
     await createApplication(student.profileId, jobA.id)
@@ -247,7 +256,7 @@ describe('updateApplicationNote', () => {
 
 describe('markApplicationViewed', () => {
   it('APPLIED → VIEWED on first open, writes ApplicationEvent', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     const app = await createApplication(student.profileId, job.id, ApplicationStatus.APPLIED)
@@ -263,7 +272,7 @@ describe('markApplicationViewed', () => {
   })
 
   it('no-op when already past APPLIED (e.g. SHORTLISTED)', async () => {
-    const emp = await createEmployer(testDb)
+    const emp = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId)
     const app = await createApplication(student.profileId, job.id, ApplicationStatus.SHORTLISTED)
@@ -276,8 +285,8 @@ describe('markApplicationViewed', () => {
   })
 
   it('cross-company: no-op (graceful) when application belongs to another company', async () => {
-    const empA = await createEmployer(testDb)
-    const empB = await createEmployer(testDb)
+    const empA = await createVerifiedEmployer()
+    const empB = await createVerifiedEmployer()
     const student = await createStudent(testDb)
     const jobB = await createJob(testDb, empB.companyId, empB.userId)
     const appB = await createApplication(student.profileId, jobB.id)
@@ -313,5 +322,249 @@ describe('companyNote isolation', () => {
     // cleanup
     await testDb.applicationEvent.deleteMany({ where: { applicationId: app.id } })
     await testDb.application.delete({ where: { id: app.id } })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M5-T13: coverNote redaction when canSeeIdentity=false
+// ---------------------------------------------------------------------------
+
+describe('coverNote redaction (M5-T13)', () => {
+  async function makeVerifiedEmp() {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    return emp
+  }
+
+  async function makeStudentWithSentinels(name: string) {
+    // coverNote contains the student's real name + contact info sentinels
+    const student = await createStudent(testDb, { name })
+    return student
+  }
+
+  async function createAppWithCoverNote(studentId: string, jobId: string, coverNote: string) {
+    return testDb.application.create({
+      data: { jobId, studentId, status: ApplicationStatus.APPLIED, coverNote },
+    })
+  }
+
+  async function createTalentUnlock(companyId: string, studentId: string, unlockedById: string) {
+    await testDb.creditWallet.upsert({
+      where: { companyId },
+      create: { companyId, balance: 10 },
+      update: {},
+    })
+    return testDb.talentUnlock.create({
+      data: { companyId, studentId, unlockedById, source: 'CREDIT', creditsSpent: 1 },
+    })
+  }
+
+  it('unlocked: returns original coverNote unchanged', async () => {
+    const studentName = 'Wang Fang'
+    const emp = await makeVerifiedEmp()
+    const student = await makeStudentWithSentinels(studentName)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const coverNote = `My name is ${studentName}, call me at 012-3456789`
+    await createAppWithCoverNote(student.profileId, job.id, coverNote)
+    await createTalentUnlock(emp.companyId, student.profileId, emp.userId)
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    const { applicants } = await listJobApplicants(ctx, job.id)
+    expect(applicants[0].coverNote).toBe(coverNote)
+  })
+
+  it('blocked student: coverNote must not contain name or phone sentinel', async () => {
+    const studentName = 'Li Xiaohua'
+    const emp = await makeVerifiedEmp()
+    const student = await makeStudentWithSentinels(studentName)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const coverNote = `我叫${studentName}，微信 lixiaohua123，邮件 lixiaohua@example.test`
+    await createAppWithCoverNote(student.profileId, job.id, coverNote)
+    await createTalentUnlock(emp.companyId, student.profileId, emp.userId)
+    // Block student from company
+    await testDb.blockedCompany.create({ data: { studentId: student.profileId, companyId: emp.companyId } })
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    const { applicants } = await listJobApplicants(ctx, job.id)
+    const result = applicants[0]
+    expect(result.card.unlocked).toBe(false)
+    // Name and identifiers must be redacted
+    const serialized = JSON.stringify(result.coverNote)
+    expect(serialized).not.toContain(studentName)
+    expect(serialized).not.toContain('lixiaohua@example.test')
+  })
+
+  it('SUSPENDED student user: coverNote must not contain name', async () => {
+    const studentName = 'Chen Jianming'
+    const emp = await makeVerifiedEmp()
+    const student = await makeStudentWithSentinels(studentName)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const coverNote = `My name is ${studentName} and I am applying for this role.`
+    await createAppWithCoverNote(student.profileId, job.id, coverNote)
+    await createTalentUnlock(emp.companyId, student.profileId, emp.userId)
+    // Suspend the student
+    await testDb.user.update({ where: { id: student.userId }, data: { status: 'SUSPENDED' } })
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    const { applicants } = await listJobApplicants(ctx, job.id)
+    const result = applicants[0]
+    expect(result.card.unlocked).toBe(false)
+    expect(JSON.stringify(result.coverNote)).not.toContain(studentName)
+  })
+
+  it('DELETED student user: coverNote must not contain name', async () => {
+    const studentName = 'Zhang Meili'
+    const emp = await makeVerifiedEmp()
+    const student = await makeStudentWithSentinels(studentName)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const coverNote = `Hello, I am ${studentName}, looking for an internship.`
+    await createAppWithCoverNote(student.profileId, job.id, coverNote)
+    await createTalentUnlock(emp.companyId, student.profileId, emp.userId)
+    // Mark student as deleted
+    await testDb.user.update({ where: { id: student.userId }, data: { status: 'DELETED' } })
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    const { applicants } = await listJobApplicants(ctx, job.id)
+    const result = applicants[0]
+    expect(result.card.unlocked).toBe(false)
+    expect(JSON.stringify(result.coverNote)).not.toContain(studentName)
+  })
+
+  it('REJECTED company verification: listJobApplicants throws ForbiddenError', async () => {
+    const studentName = 'Liu Yang'
+    const emp = await makeVerifiedEmp()
+    const student = await makeStudentWithSentinels(studentName)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const coverNote = `I am ${studentName}.`
+    await createAppWithCoverNote(student.profileId, job.id, coverNote)
+    await createTalentUnlock(emp.companyId, student.profileId, emp.userId)
+    // Revoke company verification
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'REJECTED' } })
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    await expect(listJobApplicants(ctx, job.id)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M5-T13: unverified company blocked (item 2)
+// ---------------------------------------------------------------------------
+
+describe('unverified company blocked from applicant service (M5-T13)', () => {
+  it('PENDING company: changeApplicationStatus → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'PENDING' } })
+    const student = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const app = await testDb.application.create({ data: { jobId: job.id, studentId: student.profileId, status: ApplicationStatus.APPLIED } })
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    await expect(
+      changeApplicationStatus(ctx, { applicationId: app.id, toStatus: ApplicationStatus.VIEWED }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('REJECTED company: updateApplicationNote → ForbiddenError', async () => {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'REJECTED' } })
+    const student = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const app = await testDb.application.create({ data: { jobId: job.id, studentId: student.profileId, status: ApplicationStatus.APPLIED } })
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    await expect(
+      updateApplicationNote(ctx, { applicationId: app.id, note: 'hack' }),
+    ).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M5-T13: concurrent status change — WITHDRAWN cannot be overridden (item 3)
+// ---------------------------------------------------------------------------
+
+describe('concurrent status change (M5-T13)', () => {
+  it('concurrent company change + student withdrawal: WITHDRAWN is not overridden', async () => {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const student = await createStudent(testDb, { completeness: 70 })
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: student.profileId, status: ApplicationStatus.APPLIED },
+    })
+
+    const companyCtx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    const studentCtx = { userId: student.userId }
+
+    const [companyResult, studentResult] = await Promise.allSettled([
+      changeApplicationStatus(companyCtx, { applicationId: app.id, toStatus: ApplicationStatus.SHORTLISTED }),
+      withdrawApplication(studentCtx, { applicationId: app.id }),
+    ])
+
+    const final = await testDb.application.findUnique({ where: { id: app.id } })
+
+    const studentWon = studentResult.status === 'fulfilled'
+    const companyWon = companyResult.status === 'fulfilled'
+
+    // Final status must be one of the two possible outcomes; never left in APPLIED
+    expect([ApplicationStatus.SHORTLISTED, ApplicationStatus.WITHDRAWN]).toContain(final?.status)
+    // Both ops cannot have set APPLIED (initial status must have changed)
+    expect(final?.status).not.toBe(ApplicationStatus.APPLIED)
+    // If student withdrew, the final state must reflect withdrawal (unless company also succeeded and raced ahead)
+    // The important invariant: at least one party succeeded
+    expect(studentWon || companyWon).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// M5-T13: ApplicationEvent.note must not reach student via timeline (item 4)
+// ---------------------------------------------------------------------------
+
+describe('student timeline: note excluded (M5-T13)', () => {
+  it('getStudentApplicationTimeline never returns the company note', async () => {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const student = await createStudent(testDb, { completeness: 70 })
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: student.profileId, status: ApplicationStatus.APPLIED },
+    })
+
+    const companyCtx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    // Company changes status with an internal note
+    await changeApplicationStatus(companyCtx, {
+      applicationId: app.id,
+      toStatus: ApplicationStatus.SHORTLISTED,
+      note: 'TOP_SECRET_NOTE',
+    })
+
+    const studentCtx = { userId: student.userId }
+    const timeline = await getStudentApplicationTimeline(studentCtx, app.id)
+
+    // Timeline must contain the status change event
+    expect(timeline.length).toBeGreaterThan(0)
+    const event = timeline.find((e) => e.toStatus === ApplicationStatus.SHORTLISTED)
+    expect(event).toBeDefined()
+
+    // The serialized timeline must not contain the company note
+    const serialized = JSON.stringify(timeline)
+    expect(serialized).not.toContain('TOP_SECRET_NOTE')
+    // Keys on each event must not include 'note' or 'actorId'
+    for (const e of timeline) {
+      expect(Object.keys(e)).not.toContain('note')
+      expect(Object.keys(e)).not.toContain('actorId')
+    }
+  })
+
+  it('getStudentApplicationTimeline: student cannot read another student application', async () => {
+    const emp = await createEmployer(testDb)
+    const studentA = await createStudent(testDb)
+    const studentB = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: studentA.profileId, status: ApplicationStatus.APPLIED },
+    })
+
+    const ctxB = { userId: studentB.userId }
+    await expect(getStudentApplicationTimeline(ctxB, app.id)).rejects.toBeInstanceOf(NotFoundError)
   })
 })

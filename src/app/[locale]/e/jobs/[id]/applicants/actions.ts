@@ -12,7 +12,7 @@ const changeStatusInput = z.object({
 
 export const changeStatusAction = action(
   {
-    auth: { type: 'company', minRole: 'RECRUITER' },
+    auth: { type: 'company', minRole: 'RECRUITER', verified: true },
     input: changeStatusInput,
   },
   async ({ companyId, userId, companyRole, input }) => {
@@ -28,7 +28,7 @@ const updateNoteInput = z.object({
 
 export const updateNoteAction = action(
   {
-    auth: { type: 'company', minRole: 'RECRUITER' },
+    auth: { type: 'company', minRole: 'RECRUITER', verified: true },
     input: updateNoteInput,
   },
   async ({ companyId, userId, companyRole, input }) => {
@@ -43,7 +43,7 @@ const markViewedInput = z.object({
 
 export const markViewedAction = action(
   {
-    auth: { type: 'company', minRole: 'RECRUITER' },
+    auth: { type: 'company', minRole: 'RECRUITER', verified: true },
     input: markViewedInput,
   },
   async ({ companyId, userId, companyRole, input }) => {

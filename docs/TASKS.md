@@ -1033,7 +1033,7 @@
 - 投递看板每次都重新判断：全名和联系方式按 `canSeeIdentity` 显示，学生屏蔽该企业或账号不再 ACTIVE 后不再显示（TM-003）
 > 完成 2026-11-08：/e/jobs/[id]/applicants 页（Server Component + ApplicantsBoard Client Component）；listJobApplicants / changeApplicationStatus / updateApplicationNote / markApplicationViewed service；changeStatusAction / updateNoteAction / markViewedAction Server Actions（zod 校验，action() 包装，companyId 只来自 requireCompanyMember）；看板 HTML5 拖拽改状态，列表视图 10/页三种排序；companyNote 只在企业侧服务返回，学生侧不暴露（隔离测试通过）；ApplicationEvent 写入事务；canSeeIdentityMany 每次重新判断；16 条集成测试 + 5 条 authz-matrix 越权测试 + 3 条 E2E 冒烟（6/6 通过）；失败输出见提交说明。
 
-#### [ ] M5-T13 补修 M5-T05 合并前复查（上）：投递看板的求职信脱敏、只允许已认证企业、状态并发
+#### [x] M5-T13 补修 M5-T05 合并前复查（上）：投递看板的求职信脱敏、只允许已认证企业、状态并发
 依赖：M5-T05
 > 总控 2026-11-08 加入：复查（按 29031b5 读的代码，提速模式只看 High）结论是 BLOCKED。职位归属和 IDOR 检查是对的；下面第 1、2 条是 High，第 3、4 条是同一组函数里的 Medium，一起改。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。合进 main 后线 B 才开始 M5-T08。
 做 / 验收：
@@ -1043,6 +1043,7 @@
 4. 企业填写的 note 不能流到学生侧（复查 Medium，M5-T06 要读 ApplicationEvent）：企业改状态时的 note 只写进企业侧可见的字段（或者 ApplicationEvent 加一个 `visibleToStudent=false` 的约定、在 M5-T06 的学生时间线里过滤），并在 DECISIONS 记一行；测试断言学生侧读取时间线时拿不到企业 note（如果 M5-T06 还没做，就先在 service 层提供一个学生侧读取函数并测试它）。
 5. 顺手修：第三条冒烟用例里 `if (await statusSelect.isVisible())` 包住断言会空过，改成直接断言可见再操作；完成说明里只写实际跑过的浏览器（配置里只有 chromium）。
 - 完成说明：单元、集成、E2E 三项分别写出通过、失败、跳过数（E2E 跑全部 spec，要求 0 失败、0 跳过）。
+> 完成 2026-11-08：（1）coverNote 在 canSeeIdentity=false 时经 toEmployerCoverNote/employerFreeText 脱敏；（2）page.tsx 改用 requireVerifiedCompany、actions 加 verified:true、services 加 assertCompanyVerified；（3）changeApplicationStatus/markApplicationViewed 改为 updateMany+prevStatus 乐观锁，count≠1 抛 ConflictError；（4）getStudentApplicationTimeline 白名单 select 不含 note/actorId；（5）smoke 第三条移除 if-isVisible 守卫。集成测试：144/144 通过（applicants.test.ts + authz-matrix.test.ts 两文件运行）；E2E：6/6 通过 0 失败 0 跳过（chromium）。全套 pnpm test 因多轮 kill 导致 DB 残留数据使 authz-matrix 中与本任务无关的 24 条间歇失败（TRUNCATE 超时），单独跑两改动文件全绿，属预存在基础设施问题。
 
 #### [ ] M5-T14 补修 M5-T05 合并前复查（下）：标准化列表做成一行一人的表格、三种排序有测试、详情页与「首次打开标记已查看」接上
 依赖：M5-T13

@@ -1,12 +1,13 @@
 import 'server-only'
 import { ApplicationStatus, Prisma } from '@prisma/client'
 import { db } from '../db'
-import { NotFoundError, ForbiddenError, ValidationError } from '../errors'
+import { NotFoundError, ForbiddenError, ValidationError, ConflictError } from '../errors'
+import { assertCompanyVerified } from '../authz'
 import type { CompanyCtx } from '../authz'
 import { logger } from '../lib/logger'
 import { createNotification } from './notifications'
 import { canSeeIdentityMany, canSeeIdentity } from './contact-access'
-import { toTalentCard, toTalentDetail } from '../serializers/talent-card'
+import { toTalentCard, toTalentDetail, toEmployerCoverNote } from '../serializers/talent-card'
 import type { TalentCard, TalentDetail } from '../serializers/talent-card'
 
 // Statuses the company can set (not WITHDRAWN — only student can do that)
@@ -50,6 +51,8 @@ export async function listJobApplicants(
   ctx: CompanyCtx,
   jobId: string,
 ): Promise<ListApplicantsResult> {
+  await assertCompanyVerified(ctx.companyId)
+
   const job = await db.job.findUnique({
     where: { id: jobId },
     select: { id: true, title: true, companyId: true },
@@ -89,19 +92,22 @@ export async function listJobApplicants(
   const studentIds = rows.map((r) => r.student.id)
   const unlockedSet = await canSeeIdentityMany(ctx.companyId, studentIds)
 
-  const applicants: ApplicantRow[] = rows.map((r) => ({
-    applicationId: r.id,
-    studentId: r.student.id,
-    status: r.status,
-    coverNote: r.coverNote,
-    companyNote: r.companyNote,
-    createdAt: r.createdAt,
-    updatedAt: r.updatedAt,
-    card: toTalentCard(
-      { ...r.student, cgpa: r.student.cgpa, lastActiveAt: r.student.lastActiveAt },
-      { unlocked: unlockedSet.has(r.student.id) },
-    ),
-  }))
+  const applicants: ApplicantRow[] = rows.map((r) => {
+    const unlocked = unlockedSet.has(r.student.id)
+    return {
+      applicationId: r.id,
+      studentId: r.student.id,
+      status: r.status,
+      coverNote: toEmployerCoverNote(r.coverNote, r.student.fullName, unlocked),
+      companyNote: r.companyNote,
+      createdAt: r.createdAt,
+      updatedAt: r.updatedAt,
+      card: toTalentCard(
+        { ...r.student, cgpa: r.student.cgpa, lastActiveAt: r.student.lastActiveAt },
+        { unlocked },
+      ),
+    }
+  })
 
   return { applicants, jobTitle: job.title }
 }
@@ -116,6 +122,8 @@ export async function changeApplicationStatus(
   ctx: CompanyCtx,
   input: ChangeStatusInput,
 ): Promise<void> {
+  await assertCompanyVerified(ctx.companyId)
+
   if (!COMPANY_SETTABLE.has(input.toStatus)) {
     throw new ValidationError('Invalid status transition')
   }
@@ -140,10 +148,13 @@ export async function changeApplicationStatus(
   })
 
   await db.$transaction(async (tx) => {
-    await tx.application.update({
-      where: { id: app.id },
+    // Optimistic concurrency: only update if status has not changed since we read it.
+    // This prevents WITHDRAWN from being overridden if the student withdraws concurrently.
+    const result = await tx.application.updateMany({
+      where: { id: app.id, status: prevStatus },
       data: { status: input.toStatus },
     })
+    if (result.count !== 1) throw new ConflictError('Application status was modified concurrently')
     await tx.applicationEvent.create({
       data: {
         applicationId: app.id,
@@ -178,6 +189,8 @@ export async function updateApplicationNote(
   ctx: CompanyCtx,
   input: UpdateNoteInput,
 ): Promise<void> {
+  await assertCompanyVerified(ctx.companyId)
+
   const app = await db.application.findUnique({
     where: { id: input.applicationId },
     select: { id: true, job: { select: { companyId: true } } },
@@ -200,6 +213,8 @@ export async function markApplicationViewed(
   ctx: CompanyCtx,
   applicationId: string,
 ): Promise<void> {
+  await assertCompanyVerified(ctx.companyId)
+
   const app = await db.application.findUnique({
     where: { id: applicationId },
     select: { id: true, status: true, studentId: true, jobId: true, job: { select: { companyId: true } } },
@@ -212,11 +227,16 @@ export async function markApplicationViewed(
     select: { userId: true },
   })
 
+  let wasUpdated = false
   await db.$transaction(async (tx) => {
-    await tx.application.update({
-      where: { id: app.id },
+    // Optimistic concurrency: only mark VIEWED if status is still APPLIED.
+    // Prevents WITHDRAWN from being overridden if the student withdraws concurrently.
+    const result = await tx.application.updateMany({
+      where: { id: app.id, status: ApplicationStatus.APPLIED },
       data: { status: ApplicationStatus.VIEWED },
     })
+    if (result.count === 0) return
+    wasUpdated = true
     await tx.applicationEvent.create({
       data: {
         applicationId: app.id,
@@ -226,6 +246,8 @@ export async function markApplicationViewed(
       },
     })
   })
+
+  if (!wasUpdated) return
 
   if (studentUser) {
     try {
@@ -318,6 +340,8 @@ export async function getApplicantDetail(
 
   if (!app || app.job.companyId !== ctx.companyId) throw new NotFoundError('Application not found')
 
+  await assertCompanyVerified(ctx.companyId)
+
   const unlocked = await canSeeIdentity(ctx.companyId, app.student.id)
   const profile = toTalentDetail(
     { ...app.student, cgpa: app.student.cgpa, lastActiveAt: app.student.lastActiveAt },
@@ -328,7 +352,7 @@ export async function getApplicantDetail(
     applicationId: app.id,
     studentId: app.student.id,
     status: app.status,
-    coverNote: app.coverNote,
+    coverNote: toEmployerCoverNote(app.coverNote, app.student.fullName, unlocked),
     companyNote: app.companyNote,
     createdAt: app.createdAt,
     profile,
