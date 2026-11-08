@@ -214,3 +214,4 @@
 
 | 2026-11-08 | M5-T08 (D-NOTIFY-01) | 通知邮件与 Notification 记录分两步：先在事务内 `createNotification(tx,...)` 写 DB 行，事务提交后再 fire-and-forget `sendNotificationEmail(userId,...)`；email 失败不影响业务，只 logger.error 记录。signup-cap 管理员预警、quota.exhausted 通知、referral.qualified 通知也走同一模式（先 DB 后 email，邮件只捕获不上抛）。 | 事务里不能发外部 HTTP；email 是尽力通知，非核心业务；数据库行可重放或审计，email 丢了不可追 |
 | 2026-11-08 | M5-T08 (D-NOTIFY-02) | employer-daily-digest 任务定时在 KL 时间 08:00 执行，只聚合前一个 KL 自然日（00:00–24:00 转为 UTC 区间）的申请，空日则跳过发信；companyId 来自任务查询（OWNER 成员 + verified active 公司），不信任外部传入。 | 覆盖 KL 时区夏令时（马来西亚无夏令时，Asia/Kuala_Lumpur 固定 UTC+8），避免跨天聚合出现重复或漏条 |
+| 2026-11-08 | M7-T03 (D-DATARIGHTS-01) | ZIP 库选 `fflate@0.8.3`（纯 JS，无 install 脚本）。备选方案：`jszip`（有 install 脚本）、`archiver`（依赖 Node native 模块）。fflate 体积小、无构建依赖、CommonJS+ESM 双格式，适合在 worker 进程里同步压缩用户数据包。 | CLAUDE.md 要求新依赖无 install 脚本；fflate 在 allowBuilds 白名单之外仍可安装，不引发 pnpm approve-builds 提示 |

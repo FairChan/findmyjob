@@ -10,6 +10,8 @@ import { runPilotMonthlyCredits } from './pilot-monthly-credits'
 import { runReconcileWallets } from './reconcile-wallets'
 import { runExpireInvitations } from './expire-invitations'
 import { runEmployerDailyDigest } from './employer-daily-digest'
+import { runExportUserData } from './export-user-data'
+import { runPurgeDeletedAccounts } from './purge-deleted-accounts'
 import { pingHealthcheck } from '../lib/healthchecks'
 
 export async function registerJobs(boss: PgBoss): Promise<void> {
@@ -119,6 +121,34 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
     try {
       await runEmployerDailyDigest()
       pingHealthcheck('employer-daily-digest')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
+  })
+
+  // ── export-user-data ──────────────────────────────────────────────────────
+  await boss.createQueue('export-user-data')
+  await boss.work('export-user-data', async (jobs) => {
+    for (const job of jobs) {
+      try {
+        await runExportUserData(job.data as { requestId: string; userId: string })
+      } catch (err) {
+        Sentry.captureException(err)
+        throw err
+      }
+    }
+  })
+
+  // ── purge-deleted-accounts ─────────────────────────────────────────────────
+  // Runs daily at 03:30 KL time to purge accounts deleted > 30 days ago.
+  await boss.createQueue('purge-deleted-accounts')
+  await boss.schedule('purge-deleted-accounts', '30 3 * * *', {}, { tz: 'Asia/Kuala_Lumpur', missed: 'once' })
+  await boss.work('purge-deleted-accounts', async () => {
+    try {
+      const { purged } = await runPurgeDeletedAccounts()
+      logger.info({ purged }, 'purge-deleted-accounts completed')
+      pingHealthcheck('purge-deleted-accounts')
     } catch (err) {
       Sentry.captureException(err)
       throw err

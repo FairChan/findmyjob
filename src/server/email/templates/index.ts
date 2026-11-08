@@ -276,6 +276,48 @@ function signupCapWarnEn(vars: { count: number; cap: number; threshold: number }
   }
 }
 
+// ---- data-export-ready ---------------------------------------------------
+
+function dataExportReadyZh(vars: { requestId: string; locale: string }): EmailContent {
+  const url = `${appUrl()}/${vars.locale}/s/privacy/exports/${vars.requestId}`
+  const body = `<p>您好，</p><p>您申请的个人数据导出已准备好。请在 <strong>24 小时内</strong>登录 FindMYJob 下载：</p><p><a href="${esc(url)}">查看下载链接</a></p><p>下载链接在站内页面上生成后 5 分钟内有效。如超时请重新进入该页面。</p>`
+  return {
+    subject: 'FindMYJob 数据导出已就绪',
+    html: wrap(body),
+    text: `FindMYJob 数据导出已就绪。请在 24 小时内登录 FindMYJob 访问：${url}`,
+  }
+}
+
+function dataExportReadyEn(vars: { requestId: string; locale: string }): EmailContent {
+  const url = `${appUrl()}/${vars.locale}/s/privacy/exports/${vars.requestId}`
+  const body = `<p>Hello,</p><p>Your personal data export is ready. Please <strong>sign in to FindMYJob within 24 hours</strong> to download it:</p><p><a href="${esc(url)}">View download link</a></p><p>Once on the page, the download link is valid for 5 minutes. If it expires, reload the page.</p>`
+  return {
+    subject: 'FindMYJob — Your data export is ready',
+    html: wrap(body),
+    text: `FindMYJob data export ready. Sign in within 24 hours: ${url}`,
+  }
+}
+
+// ---- account-deletion-confirmed ------------------------------------------
+
+function accountDeletionConfirmedZh(): EmailContent {
+  const body = `<p>您好，</p><p>您的 FindMYJob 账号删除申请已收到，账号已停用并立即从人才库中移除。</p><p>30 天后，您的个人联系方式和简历文件将被永久删除，档案将被匿名化处理。</p><p>如有疑问，请联系 FindMYJob 团队。</p>`
+  return {
+    subject: 'FindMYJob 账号删除申请已确认',
+    html: wrap(body),
+    text: 'FindMYJob 账号删除申请已收到，账号已停用。30 天后个人信息将被永久删除。',
+  }
+}
+
+function accountDeletionConfirmedEn(): EmailContent {
+  const body = `<p>Hello,</p><p>We have received your request to delete your FindMYJob account. Your account has been deactivated and immediately removed from the talent pool.</p><p>After 30 days, your personal contact details and resume files will be permanently deleted and your profile will be anonymised.</p><p>If you have questions, please contact the FindMYJob team.</p>`
+  return {
+    subject: 'FindMYJob — Account deletion confirmed',
+    html: wrap(body),
+    text: 'FindMYJob account deletion confirmed. Your account is deactivated; personal data will be permanently deleted after 30 days.',
+  }
+}
+
 // ---- signup-attempt ------------------------------------------------------
 
 function signupAttemptZh(): EmailContent {
@@ -310,6 +352,8 @@ export type TemplateVars =
   | { template: 'daily-digest'; locale: string; rows: DigestJobRow[] }
   | { template: 'signup-cap-warn'; locale: string; count: number; cap: number; threshold: number }
   | { template: 'signup-attempt'; locale: string }
+  | { template: 'data-export-ready'; locale: string; requestId: string }
+  | { template: 'account-deletion-confirmed'; locale: string }
 
 export function renderEmailTemplate(vars: TemplateVars): EmailContent {
   const zh = vars.locale === 'zh'
@@ -336,5 +380,9 @@ export function renderEmailTemplate(vars: TemplateVars): EmailContent {
       return zh ? signupCapWarnZh(vars) : signupCapWarnEn(vars)
     case 'signup-attempt':
       return zh ? signupAttemptZh() : signupAttemptEn()
+    case 'data-export-ready':
+      return zh ? dataExportReadyZh({ requestId: vars.requestId, locale: vars.locale }) : dataExportReadyEn({ requestId: vars.requestId, locale: vars.locale })
+    case 'account-deletion-confirmed':
+      return zh ? accountDeletionConfirmedZh() : accountDeletionConfirmedEn()
   }
 }

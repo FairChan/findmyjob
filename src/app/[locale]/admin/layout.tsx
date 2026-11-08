@@ -54,6 +54,7 @@ export default async function AdminLayout({
           schoolsLabel={t('navSchools')}
           partnersLabel={t('navPartners')}
           notificationsLabel={t('navNotifications')}
+          dataRequestsLabel={t('navDataRequests')}
           pendingCount={pendingCount}
         />
       </aside>

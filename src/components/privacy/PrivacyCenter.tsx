@@ -1,14 +1,27 @@
 'use client'
 import { useState, useTransition, useRef } from 'react'
+import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import {
   setVisibilityAction,
   addBlockedCompanyAction,
   removeBlockedCompanyAction,
   searchVerifiedCompaniesAction,
 } from '@/server/actions/privacy'
+import {
+  requestExportAction,
+  requestDeletionAction,
+} from '@/server/actions/data-rights'
 
 interface Company {
   id: string
@@ -40,6 +53,7 @@ interface Props {
   initialBlocked: BlockedEntry[]
   profileViews: ViewEntry[]
   unlocks: UnlockEntry[]
+  locale: string
 }
 
 function ToggleSwitch({
@@ -83,8 +97,10 @@ export default function PrivacyCenter({
   initialBlocked,
   profileViews,
   unlocks,
+  locale,
 }: Props) {
   const t = useTranslations('privacy')
+  const router = useRouter()
   const [visible, setVisible] = useState(initialVisible)
   const [blocked, setBlocked] = useState<BlockedEntry[]>(initialBlocked)
   const [searchQuery, setSearchQuery] = useState('')
@@ -95,6 +111,46 @@ export default function PrivacyCenter({
   const [isSearchPending, startSearch] = useTransition()
   const [isBlockPending, startBlock] = useTransition()
   const searchRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const [exportPending, setExportPending] = useState(false)
+  const [exportDone, setExportDone] = useState(false)
+  const [exportRequestId, setExportRequestId] = useState<string | null>(null)
+  const [exportError, setExportError] = useState('')
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [deletePending, setDeletePending] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+
+  async function handleExport() {
+    setExportError('')
+    setExportPending(true)
+    try {
+      const res = await requestExportAction({})
+      if (res.ok) {
+        setExportDone(true)
+        setExportRequestId((res.data as { requestId: string }).requestId)
+      } else {
+        setExportError(t('errorGeneric'))
+      }
+    } finally {
+      setExportPending(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleteError('')
+    setDeletePending(true)
+    try {
+      const res = await requestDeletionAction({})
+      if (res.ok) {
+        router.push(`/${locale}/login`)
+      } else {
+        setDeleteError(t('errorGeneric'))
+      }
+    } finally {
+      setDeletePending(false)
+    }
+  }
 
   function handleVisibilityChange(granted: boolean) {
     setVisibilityError('')
@@ -295,6 +351,98 @@ export default function PrivacyCenter({
           </ul>
         )}
       </section>
+
+      {/* Data rights section */}
+      <section aria-labelledby="data-rights-heading">
+        <h2 id="data-rights-heading" className="mb-1 text-lg font-semibold">
+          {t('dataRightsTitle')}
+        </h2>
+        <p className="mb-4 text-sm text-muted-foreground">{t('dataRightsDesc')}</p>
+
+        <div className="space-y-4">
+          {/* Export */}
+          <div className="rounded-md border p-4">
+            <h3 className="text-sm font-medium mb-1">{t('exportTitle')}</h3>
+            <p className="text-xs text-muted-foreground mb-3">{t('exportDesc')}</p>
+            {exportDone ? (
+              <div className="space-y-2">
+                <p className="text-sm text-green-700">{t('exportRequested')}</p>
+                {exportRequestId && (
+                  <a
+                    href={`/${locale}/s/privacy/exports/${exportRequestId}`}
+                    className="text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    {t('exportViewLink')}
+                  </a>
+                )}
+              </div>
+            ) : (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExport}
+                  disabled={exportPending}
+                  className="min-h-[44px]"
+                >
+                  {exportPending ? t('exportPending') : t('exportButton')}
+                </Button>
+                {exportError && (
+                  <p role="alert" className="mt-2 text-sm text-destructive">{exportError}</p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Delete */}
+          <div className="rounded-md border border-destructive/30 p-4">
+            <h3 className="text-sm font-medium mb-1 text-destructive">{t('deleteTitle')}</h3>
+            <p className="text-xs text-muted-foreground mb-3">{t('deleteDesc')}</p>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setDeleteDialogOpen(true)}
+              className="min-h-[44px]"
+            >
+              {t('deleteButton')}
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Delete confirmation dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('deleteConfirmTitle')}</DialogTitle>
+            <DialogDescription>{t('deleteConfirmDesc')}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">{t('deleteConfirmType')}</p>
+            <Input
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder={t('deleteConfirmPlaceholder')}
+              aria-label={t('deleteConfirmPlaceholder')}
+            />
+            {deleteError && (
+              <p role="alert" className="text-sm text-destructive">{deleteError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={deletePending}>
+              {t('deleteCancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deletePending || deleteConfirmText !== t('deleteConfirmPlaceholder')}
+              onClick={handleDelete}
+            >
+              {deletePending ? t('deletePending') : t('deleteConfirmButton')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

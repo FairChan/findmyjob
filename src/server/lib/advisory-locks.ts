@@ -12,6 +12,7 @@ export const LOCK_NS = {
   APPLICATION: 1005,
   // lane B 号段 1050–1099
   INVITATION: 1050,
+  DATA_EXPORT: 1051,
 } as const
 
 /**

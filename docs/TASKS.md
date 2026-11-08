@@ -1214,7 +1214,7 @@
 > 完成 2026-11-05：/legal/privacy 和 /legal/terms 页（中英各一，服务端读 src/content/legal/*.md，react-markdown+remark-gfm 渲染）；/legal/reconsent 重同意页（Server Action + 客户端表单）；services/legal-consent.ts（needsReconsent、recordLegalConsent）；proxy.ts 加 checkReconsent 钩子（M1-T04 接入真实 session 后激活）；unit tests 7 个；lint/typecheck/test 全部通过。偏差：页首草案横幅来自内容文件自带的 blockquote，无需额外渲染；重同意重定向需 M1-T04 完成后才可端到端验证
 > 修复 2026-11-05：needsReconsent 移除 granted:true 过滤，取最新记录后判断 granted===true（修复撤回后仍返回不需重同意的 bug）；page 读取 currentVersion 传入表单，action schema 增加 version 字段，recordLegalConsent 比较 submittedVersion 与当前版本不符时抛 VersionMismatchError；版本号与正文绑定留 GATE-M7 前人工决定
 
-#### [ ] M7-T03 数据权利
+#### [x] M7-T03 数据权利
 依赖：M6-T01
 做：
 - `services/data-rights.ts`：导出（worker 生成 zip）。邮件里只放站内链接 `/[locale]/s/privacy/exports/[id]`；用户登录后，服务端确认是本人且未满 24 小时，再现场签一个 300 秒的 GET。
@@ -1224,6 +1224,8 @@
 - 导出包内容完整；导出邮件里没有对象存储的域名
 - purge 跑完后，该学生的 StudentContact、ResumeFile 记录和对象的所有版本都被清除；以 findmyjob_app 身份运行不报 42501（集成测试）
 - purge 跑完后，用该学生的哨兵值（`哨兵测试同学甲`、`+60 12-000 0420`、`leak-sentinel@example.test`）查 User（name、email）、StudentProfile、Education、Experience、Application（coverNote、companyNote）、ApplicationEvent.note、TalentFolderItem.note、Invitation.message、Notification.payload，以及对象存储里该用户的 `exports/` 前缀，都查不到；CreditLedger 和 AuditLog 只剩内部 ID（AuditLog.ip 按 D22）（TM-029）
+
+> 完成 2026-11-08：services/data-rights.ts（导出去重、软删除）、jobs/export-user-data.ts（zip 不含 companyNote）、jobs/purge-deleted-accounts.ts（PDPA 30 天匿名化、S3 全版本删除、idempotent）、actions/data-rights.ts（Server Action）、/s/privacy/exports/[id] 下载页、/admin/data-requests 管理页；S3 mock 改 function 构造函数解决 vitest 箭头函数不能作 constructor 的问题；Company 无 slug 字段（测试 bug 修复）；11 项集成测试全绿
 
 #### [x] M7-T04 可观测性：Sentry 与健康检查
 依赖：M0-T08
