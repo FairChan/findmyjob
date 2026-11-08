@@ -35,7 +35,7 @@ vi.mock('next/headers', () => ({
 }))
 
 import { setupTestDb, testDb } from '../setup/db'
-import { createStudent, createEmployer, createEmployerWithoutCompany } from '../factories'
+import { createStudent, createEmployer, createEmployerWithoutCompany, createJob } from '../factories'
 import { requireUser, requireStudent, requireEmployer, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
 import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
 import { createCompany, updateCompany } from '@/server/services/company'
@@ -1650,5 +1650,104 @@ describe('resume.download (M4-T09)', () => {
     const res = await GET(new Request(`http://localhost/api/resumes/${oversizedResume.id}/download`))
     // 403 (no unlock), not 422 (file too large) — sizeBytes check moved after identityAccess
     expect(res.status).toBe(403)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// application authz (M5-T04): action-level guard tests
+// ---------------------------------------------------------------------------
+
+describe('application authz (M5-T04): applyToJobAction / withdrawApplicationAction', () => {
+  async function seedApplySettings() {
+    await testDb.systemSetting.upsert({
+      where: { key: 'apply.minCompleteness' },
+      create: { key: 'apply.minCompleteness', value: 60 },
+      update: { value: 60 },
+    })
+    const { clearSettingsCache } = await import('@/server/services/settings')
+    clearSettingsCache()
+  }
+
+  async function makeStudentWithJob() {
+    const { userId, profileId } = await createStudent(testDb, { completeness: 70 })
+    const emp = await createEmployer(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    // M5-T12: pre-seed JobView so canApplyToJob returns true (quota bypass fix)
+    await testDb.jobView.create({ data: { studentId: profileId, jobId: job.id } })
+    return { userId, profileId, companyId: emp.companyId, job }
+  }
+
+  it('guest (no session) → applyToJobAction returns FORBIDDEN', async () => {
+    await seedApplySettings()
+    const { job } = await makeStudentWithJob()
+    mockSession(null)
+    const { applyToJobAction } = await import('@/server/actions/applications')
+    const result = await applyToJobAction({ jobId: job.id })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('employer session → applyToJobAction returns FORBIDDEN', async () => {
+    await seedApplySettings()
+    const emp = await createEmployer(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    mockSession(emp.userId)
+    const { applyToJobAction } = await import('@/server/actions/applications')
+    const result = await applyToJobAction({ jobId: job.id })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('student session → applyToJobAction succeeds', async () => {
+    await seedApplySettings()
+    const { userId, job } = await makeStudentWithJob()
+    mockSession(userId)
+    const { applyToJobAction } = await import('@/server/actions/applications')
+    const result = await applyToJobAction({ jobId: job.id })
+    expect(result.ok).toBe(true)
+  })
+
+  it('student session, low completeness → returns COMPLETENESS_LOW', async () => {
+    await seedApplySettings()
+    const { userId: uid } = await createStudent(testDb, { completeness: 30 })
+    const emp = await createEmployer(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    mockSession(uid)
+    const { applyToJobAction } = await import('@/server/actions/applications')
+    const result = await applyToJobAction({ jobId: job.id })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('COMPLETENESS_LOW')
+  })
+
+  it('student session, duplicate apply → returns DUPLICATE_APPLICATION', async () => {
+    await seedApplySettings()
+    const { userId, job } = await makeStudentWithJob()
+    mockSession(userId)
+    const { applyToJobAction } = await import('@/server/actions/applications')
+    // First apply succeeds
+    await applyToJobAction({ jobId: job.id })
+    // Second apply is duplicate
+    const result = await applyToJobAction({ jobId: job.id })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('DUPLICATE_APPLICATION')
+  })
+
+  it('student A cannot withdraw student B application via action', async () => {
+    await seedApplySettings()
+    const { userId: uid1, job } = await makeStudentWithJob()
+    const { userId: uid2 } = await createStudent(testDb, { completeness: 70 })
+
+    // uid1 applies
+    mockSession(uid1)
+    const { applyToJobAction, withdrawApplicationAction } = await import('@/server/actions/applications')
+    const applyResult = await applyToJobAction({ jobId: job.id })
+    expect(applyResult.ok).toBe(true)
+    const { applicationId } = (applyResult as { ok: true; data: { applicationId: string } }).data
+
+    // uid2 tries to withdraw uid1's application
+    mockSession(uid2)
+    const withdrawResult = await withdrawApplicationAction({ applicationId })
+    expect(withdrawResult.ok).toBe(false)
+    expect((withdrawResult as { ok: false; code: string }).code).toBe('NOT_FOUND')
   })
 })

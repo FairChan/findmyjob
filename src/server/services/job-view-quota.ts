@@ -55,6 +55,22 @@ export async function getQuota(studentId: string): Promise<QuotaResult> {
 }
 
 /**
+ * Returns true if the student is allowed to apply to a job without first viewing it on the page.
+ * True when: has an existing JobView for this job, OR has an Invitation, OR quota is unlimited.
+ * This prevents the quota-bypass attack: student with exhausted quota applies without viewing,
+ * causing openJob to exempt the application-based view for free.
+ */
+export async function canApplyToJob(studentId: string, jobId: string): Promise<boolean> {
+  const [invitation, jobView] = await Promise.all([
+    db.invitation.findFirst({ where: { studentId, jobId }, select: { id: true } }),
+    db.jobView.findUnique({ where: { studentId_jobId: { studentId, jobId } }, select: { studentId: true } }),
+  ])
+  if (invitation || jobView) return true
+  const quota = await getQuota(studentId)
+  return quota.limit === null
+}
+
+/**
  * Records that a student opened a job detail page.
  *
  * - Jobs the student has applied to or been invited to are always allowed and do not consume quota.
