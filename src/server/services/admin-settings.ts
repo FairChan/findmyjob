@@ -1,0 +1,116 @@
+import 'server-only'
+import { z } from 'zod'
+import { db } from '../db'
+import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { getSetting, setSetting } from './settings'
+import type { UserCtx } from '../authz'
+
+async function assertAdmin(userId: string): Promise<void> {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { role: true, status: true },
+  })
+  if (!user || user.role !== 'ADMIN' || user.status !== 'ACTIVE') {
+    throw new ForbiddenError()
+  }
+}
+
+export interface SettingMeta {
+  key: string
+  defaultValue: unknown
+  schema: z.ZodType<unknown>
+  group: string
+  p1?: boolean
+}
+
+export const SETTINGS: SettingMeta[] = [
+  { key: 'billing.enabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
+  { key: 'billing.studentEnabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
+  { key: 'pilot.monthlyCredits', defaultValue: 30, schema: z.number().int().min(0).max(10000), group: 'pilot' },
+  { key: 'unlock.costCredits', defaultValue: 1, schema: z.number().int().min(0).max(1000), group: 'unlock' },
+  { key: 'unlock.enabled', defaultValue: true, schema: z.boolean(), group: 'unlock', p1: true },
+  { key: 'limits.profileViewsPerDay', defaultValue: 200, schema: z.number().int().min(1).max(100000), group: 'limits' },
+  { key: 'limits.companyProfileViewsPerDay', defaultValue: 400, schema: z.number().int().min(1).max(100000), group: 'limits' },
+  { key: 'limits.searchPagesPerDay', defaultValue: 300, schema: z.number().int().min(1).max(100000), group: 'limits' },
+  { key: 'limits.unlocksPerDay', defaultValue: 50, schema: z.number().int().min(1).max(100000), group: 'limits' },
+  { key: 'limits.otpSendsPerHour', defaultValue: 5, schema: z.number().int().min(1).max(100), group: 'limits' },
+  { key: 'limits.otpSendsPerEmailPerDay', defaultValue: 5, schema: z.number().int().min(1).max(100), group: 'limits' },
+  { key: 'limits.uploadsPerHour', defaultValue: 20, schema: z.number().int().min(1).max(1000), group: 'limits' },
+  { key: 'limits.jobReportsPerDay', defaultValue: 10, schema: z.number().int().min(1).max(1000), group: 'limits' },
+  { key: 'talentSearch.maxPage', defaultValue: 25, schema: z.number().int().min(1).max(1000), group: 'talentSearch' },
+  { key: 'talentPool.minCompleteness', defaultValue: 60, schema: z.number().int().min(0).max(100), group: 'talentPool' },
+  { key: 'talentPool.searchEnabled', defaultValue: true, schema: z.boolean(), group: 'talentPool', p1: true },
+  { key: 'team.maxMembers', defaultValue: 3, schema: z.number().int().min(1).max(100), group: 'team' },
+  { key: 'jobs.autoPublishAfter', defaultValue: 1000, schema: z.number().int().min(0).max(1000000), group: 'jobs' },
+  {
+    key: 'jobs.salaryBands',
+    defaultValue: [2000, 3000, 5000, 8000],
+    schema: z.array(z.number().int().min(0)).min(1).max(20),
+    group: 'jobs',
+  },
+  { key: 'invitations.expireDays', defaultValue: 14, schema: z.number().int().min(1).max(365), group: 'invitations' },
+  { key: 'invitations.freeMonthlyQuota', defaultValue: 20, schema: z.number().int().min(0).max(10000), group: 'invitations' },
+  { key: 'studentQuota.enabled', defaultValue: true, schema: z.boolean(), group: 'studentQuota' },
+  { key: 'studentQuota.baseJobViews', defaultValue: 20, schema: z.number().int().min(0).max(10000), group: 'studentQuota' },
+  { key: 'studentQuota.tierSize', defaultValue: 3, schema: z.number().int().min(1).max(100), group: 'studentQuota' },
+  { key: 'studentQuota.tierBonus', defaultValue: 10, schema: z.number().int().min(1).max(1000), group: 'studentQuota' },
+  { key: 'studentQuota.unlimitedAt', defaultValue: 12, schema: z.number().int().min(1).max(1000), group: 'studentQuota' },
+  { key: 'referral.minCompleteness', defaultValue: 90, schema: z.number().int().min(0).max(100), group: 'referral' },
+  { key: 'referral.requireSchoolVerified', defaultValue: false, schema: z.boolean(), group: 'referral' },
+  { key: 'referral.maxQualifiedPerDay', defaultValue: 3, schema: z.number().int().min(1).max(100), group: 'referral' },
+  { key: 'apply.minCompleteness', defaultValue: 60, schema: z.number().int().min(0).max(100), group: 'apply' },
+  { key: 'signup.studentCap', defaultValue: 3000, schema: z.number().int().min(0).max(1000000), group: 'signup' },
+  { key: 'signup.warnRatio', defaultValue: 0.9, schema: z.number().min(0).max(1), group: 'signup' },
+  { key: 'signup.unverifiedTtlHours', defaultValue: 48, schema: z.number().int().min(1).max(720), group: 'signup' },
+  { key: 'search.defaultMode', defaultValue: 'EXACT', schema: z.enum(['EXACT', 'RELATED']), group: 'search' },
+  { key: 'search.relatedFallbackBelow', defaultValue: 5, schema: z.number().int().min(0).max(100), group: 'search' },
+  { key: 'resume.maxPages', defaultValue: 20, schema: z.number().int().min(1).max(100), group: 'resume' },
+  { key: 'legal.currentVersion', defaultValue: '2026-11-draft', schema: z.string().min(1).max(100), group: 'legal' },
+  { key: 'uploads.enabled', defaultValue: true, schema: z.boolean(), group: 'uploads', p1: true },
+]
+
+const SETTINGS_BY_KEY = new Map<string, SettingMeta>(SETTINGS.map((s) => [s.key, s]))
+
+export interface SettingEntry extends SettingMeta {
+  currentValue: unknown
+}
+
+/** Serializable subset safe to pass to Client Components (no Zod schema). */
+export interface SettingDisplay {
+  key: string
+  defaultValue: unknown
+  group: string
+  p1?: boolean
+  currentValue: unknown
+}
+
+export async function getAllSettings(ctx: UserCtx): Promise<SettingDisplay[]> {
+  await assertAdmin(ctx.userId)
+  const rows = await db.systemSetting.findMany()
+  const dbMap = new Map(rows.map((r) => [r.key, r.value]))
+  return SETTINGS.map((s) => ({
+    key: s.key,
+    defaultValue: s.defaultValue,
+    group: s.group,
+    p1: s.p1,
+    currentValue: dbMap.has(s.key) ? dbMap.get(s.key) : s.defaultValue,
+  }))
+}
+
+export async function updateSettingAdmin(
+  ctx: UserCtx,
+  key: string,
+  rawValue: unknown,
+): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const meta = SETTINGS_BY_KEY.get(key)
+  if (!meta) throw new NotFoundError(`Unknown setting key: ${key}`)
+  const parsed = meta.schema.safeParse(rawValue)
+  if (!parsed.success) {
+    const msg = parsed.error.issues[0]?.message ?? parsed.error.message ?? 'Invalid value'
+    throw new ValidationError(msg)
+  }
+  await setSetting(key, parsed.data, ctx.userId)
+}
+
+export { getSetting }

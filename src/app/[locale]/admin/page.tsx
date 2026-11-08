@@ -25,7 +25,7 @@ export default async function AdminDashboardPage({
   const signupPct = Math.min(100, Math.round(signupRatio * 100))
 
   const metricCards = [
-    { label: t('statPendingCompanies'), value: stats.pendingCompanyCount, href: `/${locale}/admin/companies` },
+    { label: t('statPendingCompanies'), value: stats.pendingCompanyCount, href: `/${locale}/admin/companies?status=PENDING` },
     { label: t('statPendingJobs'), value: stats.pendingJobCount, href: `/${locale}/admin/jobs` },
     { label: t('statPublishedJobs'), value: stats.publishedJobCount, href: undefined },
     { label: t('statVerifiedCompanies'), value: stats.verifiedCompanyCount, href: undefined },

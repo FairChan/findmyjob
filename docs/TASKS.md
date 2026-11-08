@@ -1159,10 +1159,11 @@
 - 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
 > 完成 2026-11-08：(1) E2E 修复：学生 context 先真登录、确认 /zh/s 可访问后再停用，断言 URL=/zh/login 无 redirect= 参数；(2) readStudentContactAdminAction 新增 action + 界面按钮 + getContactForAdmin 内部 ADMIN 检查；(3) approveSchoolVerificationManually / grantJobViewQuota / restoreUser 均改为单 $transaction（写操作+审计原子性）；(4) suspendUser 改 `!== 'ACTIVE'` 防停用 DELETED；admin/students 页 query params 改 safeParse。失败输出见提交说明。unit 26/26（+9），authz-matrix 140/140（+2），E2E smoke 8/8，全部通过，0 失败，0 跳过。
 
-#### [ ] M6-T03 企业管理
+#### [x] M6-T03 企业管理
 依赖：M6-T01
 做：列表、详情、停用、标记创始合作伙伴、设置公司定位标签、调整点数（调用 `credits.adminAdjust`）。`requireCompanyMember` 每次请求都检查 Company.isActive。
 验收：停用企业的成员下一次请求就无法访问企业端
+> 完成 2026-11-08：admin-companies.ts 服务（searchCompanies、getCompanyAdminDetail、deactivateCompany、reactivateCompany、setFoundingPartner、setCompanyTags、adjustCompanyCredits）；server actions admin-companies.ts；/admin/companies 列表页改写为全量搜索；/admin/companies/[companyId] 新增 AdminCompanyActions 组件（停用/恢复、创始合作伙伴、定位标签、调整点数）；COMPANY_TAGS 提取到 src/lib/company-tags.ts 以支持客户端组件；requireCompanyMember 已在每次请求检查 isActive（早已实现）；i18n zh/en 齐全。unit 23/23，authz-matrix 146/146（+3），E2E smoke 8/8，全部通过，0 失败，0 跳过。失败输出见提交说明。
 
 #### [x] M6-T04 学校与合作伙伴
 依赖：M6-T01
@@ -1170,10 +1171,34 @@
 验收：首页合作伙伴墙随后台配置变化
 > 完成 2026-11-08：admin-schools-partners.ts（CRUD + assertAdmin + logAudit + getHomePartners）；/admin/schools 和 /admin/partners 页面与 Server Actions；upload-input.ts 新增 PARTNER_LOGO purpose；首页展示合作伙伴；i18n zh/en 齐全。unit 20/20，authz-matrix 138/138，E2E smoke 12/12 通过。RED（assertAdmin 移除）→ 5 FAILED，GREEN（恢复）→ 20 PASSED。
 
-#### [ ] M6-T05 系统设置
+#### [x] M6-T05 系统设置
 依赖：M6-T01
 做：`/admin/settings`：按 PRD §5 的 key 渲染表单，按类型校验；保存时写审计 `setting.update`。
 验收：修改后 60 秒内生效；非法值被拒
+> 完成 2026-11-08：admin-settings.ts 服务（SETTINGS 注册表 38 条 key、getAllSettings、updateSettingAdmin + assertAdmin + logAudit via setSetting）；/admin/settings 页面与 SettingsForm 客户端组件（按 group 分组、各参数独立保存按钮）；admin-nav-links 新增 Settings 入口；i18n zh/en 齐全。unit 15/15，authz-matrix 149/149（+3），E2E smoke 7/7 通过，0 失败，0 跳过。失败输出见提交说明。自查：a) 鉴权在服务端（assertAdmin in service，action auth:'admin'），不信任客户端；b) 无点数/锁定写操作；c) 写操作（setSetting）与 setting.update 审计在 setSetting 内同步（非事务，但 audit 在 upsert 之后，服务器宕机最多丢审计，不丢设置值，属 DECISIONS 范围内）；d) 验收全部覆盖；e) E2E 0 失败 0 跳过；f) 未删除已有断言；g) BLOCKED 条件：无。
+
+#### [x] M6-T12 补修 M6-T03 合并前复查：恢复「待审核企业」列表、停用企业的职位下架、点数调整校验
+依赖：M6-T03
+> 总控 2026-11-08 加入：复查（按 3aa737d 读的代码，只看 High）结论是 BLOCKED。安全和点数这部分是对的：requireCompanyMember 和 requireVerifiedCompany 每次请求都从数据库读 isActive，联系方式在企业停用时失败关闭，点数调整只经 adminAdjust → applyLedgerEntry，并在同一个事务里写 credits.adjust 审计。下面第 1 条是 High（功能回退），其余是会直接影响使用的 Medium，一起改。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
+做 / 验收：
+1. 恢复待审核企业列表（High，M3-T03「/admin/companies：待审列表 → 详情」）：现在 `admin/companies/page.tsx` 把 `listPendingVerifications` 换成了只有 q / isActive 筛选的 `searchCompanies`，看板上「待审核企业 N」点进去是全部企业，待审的会被淹没。改法：`searchCompaniesSchema` 加 `verificationStatus`（`z.nativeEnum(VerificationStatus).optional()`），列表页加状态筛选（safeParse，非法值回到默认），看板链接改成 `?status=PENDING`，PENDING 时按提交时间排序。测试：集成测试 `searchCompanies({ verificationStatus: 'PENDING' })` 只返回 PENDING 的企业；E2E 打开 `/zh/admin/companies?status=PENDING` 能看到待审企业的名称、看不到已认证的。
+2. 停用企业的职位要下架（复查 Medium，用户试用时会直接看到）：公开职位搜索（job-search.ts）、职位详情和 `applyToJob` 都要过滤 `company.isActive`，停用企业的已发布职位不再出现在列表、详情页返回 404、投递返回 NOT_FOUND。测试：停用后公开搜索不返回、投递被拒。
+3. 停用企业时写会话撤销审计（ARCHITECTURE §5.7）：`deactivateCompany` 删除成员会话的同时，在同一个事务里写 `auth.session.revoke`（metadata 放 userIds）；「revokes member sessions」那条测试加断言。
+4. 点数调整校验：`adjustCompanyCreditsSchema` 的 delta 不能是 0（`.refine(d => d !== 0)`），note 和停用 reason 都要 `.trim().min(1)`；企业没有钱包时返回 NotFound/Validation，而不是 INTERNAL_ERROR。测试：delta 0、note 全是空格、负数超过余额（InsufficientCreditsError，余额不变）。
+5. 详情页对不存在的 companyId 返回 404，而不是 500（`getCompanyAdminDetail` 抛的 NotFoundError 要接住并调用 `notFound()`）。
+6. E2E：停用后不要等「任意一个 200」，改成轮询 `db.company.isActive === false`；再加一段：停用后员工重新登录，访问 `/zh/e` 被拒（这是唯一真正走到 isActive 检查的 E2E 路径）。
+- 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
+> 完成 2026-11-08：(1) searchCompanies 加 verificationStatus 过滤，PENDING 时按 createdAt asc 排序；看板链接改 ?status=PENDING；(2) job-search.ts 和 jobs/[id]/page.tsx 过滤 company.isActive=false；applyToJob 加 !company.isActive 检查；(3) deactivateCompany 事务内写 auth.session.revoke 审计（metadata.userIds）；(4) adjustCompanyCreditsSchema delta.refine(≠0)、note.trim().min(1)；没有钱包时抛 NotFoundError；(5) admin/companies/[companyId]/page.tsx catch NotFoundError → notFound()；(6) smoke-m6-t03 改轮询 isActive；smoke-m6-t12 新增 4 条 E2E（verificationStatus 过滤/404/看板链接/停用后 /zh/e 被拒）。vitest：admin-companies.test.ts 44 通过 0 失败 0 跳过；applications.test.ts 20 通过 0 失败 0 跳过；job-search.test.ts 16 通过 0 失败 0 跳过；合计 80/80 通过。E2E：smoke-m6-t03.spec.ts 8/8 通过，smoke-m6-t12.spec.ts 4/4 通过，合计 12/12 通过。
+
+#### [ ] M6-T13 补修 M6-T05 复查：清空数字字段不再存成 0、高影响开关加确认、设置审计记新旧值
+依赖：M6-T05
+> 总控 2026-11-08 加入：复查（按 97e6bff 读的代码，只看 High）结论是 OK，没有 High。权限三层都在，每个键都有带上下限的 zod 校验，未知键被拒，60 秒内生效。下面是会直接影响使用的 Medium，一起改。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
+做 / 验收：
+1. 清空数字字段不能存成 0（`settings-form.tsx` 现在用 `Number('')`，结果是 0）：输入去掉空白后为空时，把原字符串交给服务端，让 zod 拒绝，界面显示校验错误。测试：单元测试覆盖「空字符串 → 不是 0」；`updateSettingAdmin` 对 `unlock.costCredits` 传 `''`、`-1`、`1.5` 都抛 ValidationError，库里的值不变。
+2. 高影响开关先确认（用 shadcn Dialog，中英文案同时加）：`legal.currentVersion`（文案写明「所有用户下次访问时要重新同意条款」）、`billing.enabled`（写明「开启后停止试点每月赠送点数」）、`unlock.enabled`、`uploads.enabled`、`talentPool.searchEnabled`。取消时不提交。E2E：改 `legal.currentVersion` 时出现确认框，点取消后数据库里的值不变，点确认后才变。
+3. 设置审计记新旧值：`setSetting` 里先读旧行，upsert 和 `logAudit(…, tx)` 放进同一个 `$transaction`，metadata 写 `{ key, from, to }`（这些设置值里没有秘密）。测试：改 `unlock.costCredits` 后审计行的 from 和 to 正确；写完立刻 `getSetting` 读到新值（保住删缓存那一行）。
+4. 把 `tests/unit/admin-settings.test.ts` 里 `expect(audit).toBeDefined()` 改成 `not.toBeNull()`（findFirst 查不到返回 null，原断言恒为真）。
+- 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
 
 #### [ ] M6-T06 审计日志
 依赖：M6-T01

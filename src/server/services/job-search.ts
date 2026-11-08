@@ -312,7 +312,7 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
       ...(workMode ? { workMode } : {}),
       ...(state ? { state } : {}),
       ...(salaryAtLeast ? { salaryVisible: true, salaryMax: { gte: salaryAtLeast } } : {}),
-      ...(Object.keys(companyWhere).length ? { company: companyWhere } : {}),
+      company: { isActive: true, ...companyWhere },
     }
 
     if (sort === 'salary') {
@@ -453,6 +453,7 @@ export async function searchJobs(params: SearchParams): Promise<SearchResult> {
     JOIN "Company" c ON c."id" = j."companyId"
     WHERE j."status" = 'PUBLISHED'
       AND (j."deadline" IS NULL OR j."deadline" > NOW())
+      AND c."isActive" = true
       ${typeFilter}
       ${stateFilter}
       ${workModeFilter}
