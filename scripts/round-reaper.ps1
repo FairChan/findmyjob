@@ -26,7 +26,8 @@ param(
 )
 $ErrorActionPreference = 'Continue'
 
-function Get-Procs { Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, Name }
+function Get-Procs { Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, CreationDate, Name, CommandLine }
+function Short($p) { $c = ([string]$p.CommandLine) -replace '\s+', ' '; if ($c.Length -gt 160) { $c = $c.Substring(0, 160) }; return $c }
 function Get-Ticks($p) { if ($null -eq $p.CreationDate) { return 0 }; return ([datetime]$p.CreationDate).ToUniversalTime().Ticks }
 
 # This script's own ancestry (powershell -> bash auto-build -> ... -> controller): never ended.
@@ -42,12 +43,10 @@ for ($n = 0; $n -lt 64 -and $byId0.ContainsKey($cur); $n++) {
 }
 
 $known = @{}   # pid -> creation ticks (in memory only)
-$script:lastSeen = @{}   # pid -> last time (UTC ticks) we saw it alive with the recorded CreationDate
 function Add-Known($p) {
   $id = [int]$p.ProcessId
   if ($protected.ContainsKey($id) -or $known.ContainsKey($id)) { return $false }
   $known[$id] = Get-Ticks $p
-  $script:lastSeen[$id] = (Get-Date).ToUniversalTime().Ticks
   Add-Content -LiteralPath $Log -Value ("{0}`t{1}`t{2}" -f $id, $known[$id], $p.Name)
   return $true
 }
@@ -65,19 +64,13 @@ function Snapshot {
   foreach ($k in @($known.Keys)) { $queue.Enqueue([int]$k) }
   while ($queue.Count -gt 0) {
     $id = [int]$queue.Dequeue()
-    # Expand only while the PID is still ours (same CreationDate). If nobody holds it any more, adopt only
-    # children created no later than one interval after we last saw it alive (a later child belongs to whoever reused the PID).
-    $cutoff = [int64]::MaxValue
-    if ($byId.ContainsKey($id)) {
-      if ((Get-Ticks $byId[$id]) -ne $known[$id]) { continue }
-      $script:lastSeen[$id] = (Get-Date).ToUniversalTime().Ticks
-    } else {
-      $cutoff = $script:lastSeen[$id] + [int64]$IntervalSec * 10000000
-    }
+    # Expand only while the parent is alive AND still the same process (same CreationDate). A dead parent is never
+    # expanded: missing an orphan leaves one harmless leftover, adopting a stranger's child could end the wrong process.
+    if (-not $byId.ContainsKey($id)) { continue }
+    if ((Get-Ticks $byId[$id]) -ne $known[$id]) { continue }
     if (-not $byParent.ContainsKey($id)) { continue }
     foreach ($child in $byParent[$id]) {
       if ((Get-Ticks $child) -lt $known[$id]) { continue }   # created before the parent: PID reuse
-      if ((Get-Ticks $child) -gt $cutoff) { continue }       # created after the parent died: someone else's
       if (Add-Known $child) { $queue.Enqueue([int]$child.ProcessId) }
     }
   }
@@ -99,9 +92,9 @@ foreach ($id in @($known.Keys | Sort-Object { $known[$_] } -Descending)) {
   if ($protected.ContainsKey($id) -or -not $alive.ContainsKey($id)) { continue }
   $p = $alive[$id]
   if ((Get-Ticks $p) -ne $known[$id]) { Write-Output ("reap: skip pid {0} ({1}): CreationDate differs, PID reused" -f $id, $p.Name); continue }
-  if ($DryRun) { Write-Output ("reap: would end pid {0} ({1})" -f $id, $p.Name); continue }
+  if ($DryRun) { Write-Output ("reap: would end pid {0} ({1}) parent {2}: {3}" -f $id, $p.Name, $p.ParentProcessId, (Short $p)); continue }
   & taskkill.exe /PID $id /F *> $null
-  if ($LASTEXITCODE -eq 0) { $ended++; Write-Output ("reap: ended pid {0} ({1})" -f $id, $p.Name) }
+  if ($LASTEXITCODE -eq 0) { $ended++; Write-Output ("reap: ended pid {0} ({1}) parent {2}: {3}" -f $id, $p.Name, $p.ParentProcessId, (Short $p)) }
   else { Write-Output ("reap: taskkill pid {0} ({1}) exit {2}" -f $id, $p.Name, $LASTEXITCODE) }
 }
 if ($DryRun) { Write-Output "reap: dry run, nothing ended" } else { Write-Output ("reap: {0} leftover process(es) ended" -f $ended) }
