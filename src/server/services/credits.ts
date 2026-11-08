@@ -175,6 +175,18 @@ export async function grantPilotCredits(
   })
 }
 
+/** Returns total credits issued (positive deltas) and consumed (abs of negative deltas) across all companies. */
+export async function getCreditTotals(): Promise<{ granted: number; consumed: number }> {
+  const [grantedAgg, consumedAgg] = await Promise.all([
+    db.creditLedger.aggregate({ _sum: { delta: true }, where: { delta: { gt: 0 } } }),
+    db.creditLedger.aggregate({ _sum: { delta: true }, where: { delta: { lt: 0 } } }),
+  ])
+  return {
+    granted: grantedAgg._sum.delta ?? 0,
+    consumed: Math.abs(consumedAgg._sum.delta ?? 0),
+  }
+}
+
 export async function reconcileWallet(ctx: { companyId: string }): Promise<{
   ok: boolean
   expected: number
