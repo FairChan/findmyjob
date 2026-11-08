@@ -208,6 +208,68 @@ export interface StudentApplicationEvent {
   createdAt: Date
 }
 
+export interface StudentApplicationSummary {
+  id: string
+  status: ApplicationStatus
+  coverNote: string | null
+  createdAt: Date
+  job: {
+    id: string
+    title: string
+    companyName: string
+  }
+  events: StudentApplicationEvent[]
+}
+
+/**
+ * Returns all applications for the calling student, newest first.
+ * Company internal notes are intentionally excluded from each event.
+ */
+export async function listStudentApplications(ctx: UserCtx): Promise<StudentApplicationSummary[]> {
+  const studentId = await getStudentProfileId(ctx.userId)
+
+  const rows = await db.application.findMany({
+    where: { studentId },
+    select: {
+      id: true,
+      status: true,
+      coverNote: true,
+      createdAt: true,
+      job: {
+        select: {
+          id: true,
+          title: true,
+          company: { select: { legalName: true } },
+        },
+      },
+      events: {
+        select: {
+          id: true,
+          fromStatus: true,
+          toStatus: true,
+          createdAt: true,
+          // note and actorId are intentionally excluded — company notes must not reach students
+        },
+        orderBy: { createdAt: 'asc' },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  return rows.map((row) => ({
+    id: row.id,
+    status: row.status,
+    coverNote: row.coverNote,
+    createdAt: row.createdAt,
+    job: {
+      id: row.job.id,
+      title: row.job.title,
+      companyName: row.job.company.legalName,
+    },
+    events: row.events,
+  }))
+}
+
 /**
  * Returns the status-change timeline for the student's own application.
  * The company's internal note (ApplicationEvent.note) is intentionally excluded —

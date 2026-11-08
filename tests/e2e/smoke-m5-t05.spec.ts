@@ -144,12 +144,13 @@ test.describe('M5-T05 applicants board smoke', () => {
       await expect(statusSelect).toBeVisible({ timeout: 5000 })
       // Select SHORTLISTED
       await statusSelect.selectOption('SHORTLISTED')
-      // Wait briefly for the action to complete
-      await page.waitForTimeout(1500)
-
-      // Verify in DB
-      const updated = await e2eDb.application.findUnique({ where: { id: application.id } })
-      expect(updated?.status).toBe('SHORTLISTED')
+      // 轮询数据库直到 server action 写完；固定等 1.5 秒在机器忙时会读到旧状态（线 B 报的 flaky）。断言的值不变
+      await expect
+        .poll(
+          () => e2eDb.application.findUnique({ where: { id: application.id } }).then((a) => a?.status),
+          { timeout: 15000 },
+        )
+        .toBe('SHORTLISTED')
     } finally {
       await e2eDb.applicationEvent.deleteMany({ where: { applicationId: application.id } })
       await e2eDb.application.delete({ where: { id: application.id } }).catch(() => {})

@@ -35,6 +35,8 @@ import {
   applyToJob,
   withdrawApplication,
   getMyApplicationForJob,
+  listStudentApplications,
+  getStudentApplicationTimeline,
 } from '@/server/services/applications'
 import { canApplyToJob } from '@/server/services/job-view-quota'
 import { getContactForCompany } from '@/server/services/contact-access'
@@ -445,5 +447,146 @@ describe('getMyApplicationForJob', () => {
 
     expect(result?.id).toBe(applicationId)
     expect(result?.status).toBe(ApplicationStatus.APPLIED)
+  })
+})
+
+describe('listStudentApplications (M5-T06)', () => {
+  it('returns empty list when student has no applications', async () => {
+    const { userId } = await createStudentWithCompleteness(70)
+    const list = await listStudentApplications({ userId })
+    expect(list).toHaveLength(0)
+  })
+
+  it('returns applications with job info and events, newest first', async () => {
+    await seedApplySettings()
+    const { userId, profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job1 = await createPublishedJob(emp.companyId, emp.userId)
+    const job2 = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job1.id)
+    await addJobView(profileId, job2.id)
+
+    // Apply to job1 first, then job2
+    const { applicationId: id1 } = await applyToJob({ userId }, { jobId: job1.id })
+    const { applicationId: id2 } = await applyToJob({ userId }, { jobId: job2.id })
+
+    const list = await listStudentApplications({ userId })
+    expect(list).toHaveLength(2)
+    // newest first (job2 applied after job1)
+    expect(list[0].id).toBe(id2)
+    expect(list[1].id).toBe(id1)
+
+    // Check job info is present
+    expect(list[0].job.id).toBe(job2.id)
+    expect(list[0].job.title).toBeTruthy()
+    expect(list[0].job.companyName).toBeTruthy()
+
+    // Events are included (at least the APPLIED event)
+    expect(list[0].events.length).toBeGreaterThanOrEqual(1)
+    expect(list[0].events[0].toStatus).toBe(ApplicationStatus.APPLIED)
+  })
+
+  it('company note (ApplicationEvent.note) is excluded from events', async () => {
+    await seedApplySettings()
+    const { userId, profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
+
+    const { applicationId } = await applyToJob({ userId }, { jobId: job.id })
+    // Simulate company writing a note in an event (direct DB write to bypass the company service)
+    await testDb.applicationEvent.create({
+      data: {
+        applicationId,
+        fromStatus: ApplicationStatus.APPLIED,
+        toStatus: ApplicationStatus.VIEWED,
+        note: 'secret company note',
+      },
+    })
+
+    const list = await listStudentApplications({ userId })
+    expect(list).toHaveLength(1)
+    // No event object should contain a note field
+    for (const ev of list[0].events) {
+      expect(ev).not.toHaveProperty('note')
+      expect(ev).not.toHaveProperty('actorId')
+    }
+  })
+
+  it('student A cannot see student B applications (IDOR protection)', async () => {
+    await seedApplySettings()
+    const { userId: uidA, profileId: pidA } = await createStudentWithCompleteness(70)
+    const { userId: uidB } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(pidA, job.id)
+
+    // Only student A applies
+    await applyToJob({ userId: uidA }, { jobId: job.id })
+
+    // Student B's list should be empty
+    const listB = await listStudentApplications({ userId: uidB })
+    expect(listB).toHaveLength(0)
+
+    // Student A's list should have 1 entry
+    const listA = await listStudentApplications({ userId: uidA })
+    expect(listA).toHaveLength(1)
+  })
+
+  it('throws ForbiddenError when user has no StudentProfile', async () => {
+    const user = await testDb.user.create({
+      data: { name: 'No Profile', email: 'noprofile-list@example.test', emailVerified: true, role: 'STUDENT', status: 'ACTIVE' },
+    })
+    await expect(listStudentApplications({ userId: user.id })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+})
+
+describe('getStudentApplicationTimeline (M5-T06)', () => {
+  it('returns events in chronological order excluding note and actorId', async () => {
+    await seedApplySettings()
+    const { userId, profileId } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
+
+    const { applicationId } = await applyToJob({ userId }, { jobId: job.id })
+    // Company changes status with a note
+    await testDb.applicationEvent.create({
+      data: {
+        applicationId,
+        fromStatus: ApplicationStatus.APPLIED,
+        toStatus: ApplicationStatus.VIEWED,
+        note: 'internal note',
+        actorId: emp.userId,
+      },
+    })
+
+    const timeline = await getStudentApplicationTimeline({ userId }, applicationId)
+    expect(timeline.length).toBeGreaterThanOrEqual(2)
+
+    // Events are ordered oldest first
+    expect(timeline[0].toStatus).toBe(ApplicationStatus.APPLIED)
+    expect(timeline[1].toStatus).toBe(ApplicationStatus.VIEWED)
+
+    // note and actorId must be absent
+    for (const ev of timeline) {
+      expect(ev).not.toHaveProperty('note')
+      expect(ev).not.toHaveProperty('actorId')
+    }
+  })
+
+  it('throws NotFoundError when application belongs to a different student', async () => {
+    await seedApplySettings()
+    const { userId: uid1, profileId: pid1 } = await createStudentWithCompleteness(70)
+    const { userId: uid2 } = await createStudentWithCompleteness(70)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(pid1, job.id)
+
+    const { applicationId } = await applyToJob({ userId: uid1 }, { jobId: job.id })
+
+    await expect(
+      getStudentApplicationTimeline({ userId: uid2 }, applicationId),
+    ).rejects.toBeInstanceOf(NotFoundError)
   })
 })
