@@ -10,7 +10,8 @@
     "closeMenu": "关闭菜单",
     "notifications": "消息通知",
     "privacy": "隐私中心",
-    "myProfile": "我的档案"
+    "myProfile": "我的档案",
+    "myApplications": "我的投递"
   },
   "localeSwitcher": {
     "label": "切换语言",
@@ -1008,6 +1009,41 @@
     "errorForbidden": "权限不足",
     "coverNoteLabel": "求职附言",
     "identityLocked": "未解锁",
-    "viewProfile": "查看完整档案"
+    "viewProfile": "查看完整档案",
+    "colName": "姓名",
+    "colSchool": "学校",
+    "colMajor": "专业",
+    "colDegree": "学历",
+    "colGradYearMonth": "毕业年月",
+    "colCGPA": "CGPA",
+    "colWorkAuth": "工作许可",
+    "colLanguages": "语言",
+    "colInternships": "实习",
+    "colCampus": "校园活动",
+    "colCompleteness": "完成度",
+    "colActions": "操作",
+    "statusChangeError": "状态更新失败，请重试"
+  },
+  "myApplications": {
+    "title": "我的投递",
+    "empty": "暂无投递记录",
+    "appliedAt": "投递于",
+    "coverNoteLabel": "求职附言",
+    "timelineLabel": "状态时间线",
+    "statusTransition": "{to}",
+    "withdrawButton": "撤回",
+    "withdrawing": "撤回中…",
+    "withdrawSuccess": "已撤回",
+    "withdrawError": "撤回失败，请稍后重试",
+    "status": {
+      "APPLIED": "待处理",
+      "VIEWED": "已查看",
+      "SHORTLISTED": "已入围",
+      "INTERVIEW": "面试中",
+      "OFFER": "已发 Offer",
+      "HIRED": "已录用",
+      "REJECTED": "已拒绝",
+      "WITHDRAWN": "已撤回"
+    }
   }
 }

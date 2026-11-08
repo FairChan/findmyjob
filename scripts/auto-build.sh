@@ -81,6 +81,7 @@ DENY=(AskUserQuestion
   "Bash(git stash *)" "Bash(git rebase *)" "Bash(git commit --amend *)" "Bash(git worktree *)"
   "Bash(npx prisma migrate reset *)" "Bash(pnpm prisma migrate reset *)" "Bash(pnpm exec prisma migrate reset *)"
   "Bash(npx prisma db push *)" "Bash(pnpm prisma db push *)" "Bash(docker compose down *)"
+  "Bash(kill *)" "Bash(taskkill *)" "Bash(tskill *)" "Bash(pkill *)" "Bash(killall *)" "Bash(wmic *)" "Bash(/usr/bin/kill *)" "Bash(command kill *)" "Bash(Stop-Process *)" "Bash(powershell* Stop-Process*)" "Bash(xargs kill*)" "PowerShell(Stop-Process *)" "PowerShell(taskkill *)"
   "Edit(**/CLAUDE.md)" "Write(**/CLAUDE.md)" "Edit(.claude/**)" "Write(.claude/**)"
   "Edit(.githooks/**)" "Write(.githooks/**)"
   "Edit(.auto-build/**)" "Write(.auto-build/**)"

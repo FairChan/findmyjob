@@ -41,6 +41,10 @@ export interface ApplicantRow {
   createdAt: Date
   updatedAt: Date
   card: TalentCard
+  graduationMonth: number | null
+  languages: string[]
+  internshipCount: number
+  campusCount: number
 }
 
 export interface ListApplicantsResult {
@@ -79,12 +83,15 @@ export async function listJobApplicants(
           major: true,
           degreeLevel: true,
           graduationYear: true,
+          graduationMonth: true,
           cgpa: true,
           workAuth: true,
           completeness: true,
           visibility: true,
           lastActiveAt: true,
           school: { select: { id: true, nameZh: true, nameEn: true } },
+          languages: { select: { language: true } },
+          experiences: { select: { kind: true } },
         },
       },
     },
@@ -107,6 +114,10 @@ export async function listJobApplicants(
         { ...r.student, cgpa: r.student.cgpa, lastActiveAt: r.student.lastActiveAt },
         { unlocked },
       ),
+      graduationMonth: r.student.graduationMonth,
+      languages: r.student.languages.map((l) => l.language),
+      internshipCount: r.student.experiences.filter((e) => e.kind === 'INTERNSHIP').length,
+      campusCount: r.student.experiences.filter((e) => e.kind === 'CAMPUS').length,
     }
   })
 

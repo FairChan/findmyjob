@@ -297,6 +297,22 @@ describe('markApplicationViewed', () => {
     const unchanged = await testDb.application.findUnique({ where: { id: appB.id } })
     expect(unchanged?.status).toBe('APPLIED')
   })
+
+  it('second call is no-op — does not write a duplicate ApplicationEvent (M5-T14)', async () => {
+    const emp = await createVerifiedEmployer()
+    const student = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId)
+    const app = await createApplication(student.profileId, job.id, ApplicationStatus.APPLIED)
+
+    const ctx = { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const }
+    await markApplicationViewed(ctx, app.id)
+    await markApplicationViewed(ctx, app.id)
+
+    const events = await testDb.applicationEvent.findMany({
+      where: { applicationId: app.id, toStatus: 'VIEWED' },
+    })
+    expect(events).toHaveLength(1)
+  })
 })
 
 // ---------------------------------------------------------------------------
