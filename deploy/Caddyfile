@@ -3,6 +3,14 @@
 }
 
 {$APP_DOMAIN} {
+	header {
+		Strict-Transport-Security "max-age={$HSTS_MAX_AGE:300}"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Frame-Options "DENY"
+		-Server
+	}
+
 	request_body {
 		max_size 11MB
 	}

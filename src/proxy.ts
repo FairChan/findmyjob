@@ -24,6 +24,51 @@ function hasSessionCookie(request: NextRequest): boolean {
 // Segments of the app that require authentication
 const PROTECTED_SEGMENTS = ['s', 'e', 'admin'] as const
 
+// URL path slugs for auth-related pages (no-index, private)
+const AUTH_PAGE_SLUGS = [
+  'login',
+  'register',
+  'verify-email',
+  'reset-password',
+  'forgot-password',
+  'legal/reconsent',
+] as const
+
+function requiresNoIndex(pathname: string): boolean {
+  for (const locale of routing.locales) {
+    // Protected app sections: /s, /e, /admin
+    for (const seg of PROTECTED_SEGMENTS) {
+      if (
+        pathname === `/${locale}/${seg}` ||
+        pathname.startsWith(`/${locale}/${seg}/`)
+      ) {
+        return true
+      }
+    }
+    // Auth pages
+    for (const slug of AUTH_PAGE_SLUGS) {
+      if (
+        pathname === `/${locale}/${slug}` ||
+        pathname.startsWith(`/${locale}/${slug}/`)
+      ) {
+        return true
+      }
+    }
+  }
+  // Also match without locale prefix
+  for (const seg of PROTECTED_SEGMENTS) {
+    if (pathname === `/${seg}` || pathname.startsWith(`/${seg}/`)) {
+      return true
+    }
+  }
+  for (const slug of AUTH_PAGE_SLUGS) {
+    if (pathname === `/${slug}` || pathname.startsWith(`/${slug}/`)) {
+      return true
+    }
+  }
+  return false
+}
+
 function isProtectedPage(pathname: string): boolean {
   for (const locale of routing.locales) {
     for (const seg of PROTECTED_SEGMENTS) {
@@ -44,10 +89,15 @@ function isProtectedPage(pathname: string): boolean {
   return false
 }
 
+// API routes declared `route({ auth: 'public' })` must also pass here, or anonymous visitors get a
+// 401 before the handler runs: the home page's partner logos are loaded logged-out, and browsers
+// send CSP violation reports without cookies.
 function isProtectedApi(pathname: string): boolean {
   if (!pathname.startsWith('/api/')) return false
   if (pathname.startsWith('/api/auth/')) return false
   if (pathname === '/api/health') return false
+  if (pathname === '/api/csp-report') return false
+  if (pathname.startsWith('/api/partner-logos/')) return false
   return true
 }
 
@@ -111,6 +161,7 @@ export default async function middleware(request: NextRequest) {
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'private, no-store',
+          'X-Robots-Tag': 'noindex, nofollow',
           'x-request-id': requestId,
         },
       })
@@ -157,10 +208,10 @@ export default async function middleware(request: NextRequest) {
   const response = intlMiddleware(req)
   response.headers.set('x-request-id', requestId)
 
-  // Admin pages contain PII aggregates — prevent caching and crawler indexing.
-  if (pathname.includes('/admin')) {
+  // Protected pages (student, employer, admin) and auth pages: prevent caching and indexing.
+  if (requiresNoIndex(pathname)) {
     response.headers.set('Cache-Control', 'private, no-store')
-    response.headers.set('X-Robots-Tag', 'noindex')
+    response.headers.set('X-Robots-Tag', 'noindex, nofollow')
   }
 
   return response

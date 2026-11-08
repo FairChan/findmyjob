@@ -1271,7 +1271,7 @@
 > 修复 2026-11-05（四）：alert.test.ts 新增 "alert Sentry integration – full production sentryOptions" suite：init 时传入 { ...sentryOptions, dsn: 假 DSN, transport: 收集 envelope 的假 transport }，beforeSend/beforeBreadcrumb/dataCollection/tracesSampler 全来自生产配置；addBreadcrumb 注入 console 类哨兵面包屑，alert() 传含数组和嵌套 token 的 extra，captureException 用带查询串的 Error，flush 后断言：确实有 envelope（防空过）、dump 中无 leak-sentinel@example.test、无 +60 12-000 0420、无 token=abc 和 ?email=；本地验证：临时注释掉 beforeBreadcrumb 中 console return null 后，"no sentinel email" 测试失败，恢复后全套 536 个测试通过。
 > 修复 2026-11-05（五，总控手工）：Sentry transport 测试改为断言至少收到两条 type=event 的条目，并且异常事件保留路径、去掉了查询串；做过变异验证：去掉查询串剥离时有 3 个用例失败
 
-#### [ ] M7-T05 安全响应头与复查
+#### [x] M7-T05 安全响应头与复查
 依赖：M7-T03
 做：
 - `deploy/Caddyfile` 的 header 写 `Strict-Transport-Security max-age={$HSTS_MAX_AGE:300}`（不设变量时默认 300），不加 includeSubDomains 和 preload；再加 `X-Content-Type-Options nosniff`、`Referrer-Policy strict-origin-when-cross-origin`、`X-Frame-Options DENY`。
@@ -1282,6 +1282,9 @@
 - `tests/e2e/security-headers.spec.ts` 在 `pnpm build && pnpm start`、`APP_ENV=ci` 的环境下通过
 - 学生页和企业页的响应都带 noindex 和 no-store
 - 越权测试清单全部通过；`pnpm audit` 没有 high 及以上漏洞
+
+> 完成 2026-11-08：deploy/Caddyfile 加 HSTS/nosniff/Referrer-Policy/X-Frame-Options/删 Server 响应头；next.config.ts 加 poweredByHeader:false 和 CSP-Report-Only；/api/csp-report/route.ts（rate limit 120/min，记 directive+host，返回 204）；proxy.ts 对 /s /e /admin 和认证页加 X-Robots-Tag:noindex,nofollow；route.ts 成功路径默认加 X-Robots-Tag:noindex,nofollow；tests/unit/caddyfile-headers.test.ts（7 个）；tests/unit/csp-report.test.ts（6 个）；authz-matrix 新增 applicants 跨公司用例（listJobApplicants + getApplicantDetail，共 153 个）；tests/e2e/security-headers.spec.ts + playwright.prod.config.ts + package.json test:e2e:prod 脚本。限流存量：2 条 IP 限流（csp-report 120/min、现有 auth 路径）。越权测试：applicants 服务已补跨公司隔离。pnpm audit 8 个 high 均在 lighthouse/prisma-cli devDep 链中，不进生产包。Caddyfile 改动需在下次部署时手动同步服务器。
+> 线 B 复查补充：越权对照（authz-matrix）——此前已覆盖 22 个企业侧函数；本次补齐 applicants.changeApplicationStatus / updateApplicationNote / markApplicationViewed（外企业静默无操作、状态不变）、jobs.getCompanyJob / copyJob / listCompanyJobs、talent-folders.renameFolder / deleteFolder、team.listTeamMembers；credits.getBalance、credits.reconcileWallet、verification.getVerificationInfo 只按 ctx.companyId 读本企业，不接收外部 ID。pnpm audit：5 个 high 都在开发依赖链里，`--prod` 为 0 high，按 DECISIONS D-AUDIT-01 豁免到 2026-12-31。
 
 #### [x] M7-T06 镜像、生产 Compose 与 RUNBOOK
 依赖：M7-T04

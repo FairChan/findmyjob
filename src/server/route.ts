@@ -78,14 +78,20 @@ export function route(
   opts: {
     auth: AuthOption
     input?: z.ZodType<unknown>
+    /**
+     * Only honoured with auth 'public'. For unauthenticated sinks that change no state, such as
+     * /api/csp-report: browsers may send violation reports without an Origin header (or "null").
+     */
+    skipOriginCheck?: boolean
   },
   handler: RouteHandler,
 ): (req: Request) => Promise<Response> {
+  const skipOrigin = opts.skipOriginCheck === true && opts.auth === 'public'
   return async (req: Request): Promise<Response> => {
     const requestId = req.headers.get('x-request-id') ?? randomUUID()
     try {
       // Origin check for state-mutating methods
-      if (req.method !== 'GET' && req.method !== 'HEAD') {
+      if (!skipOrigin && req.method !== 'GET' && req.method !== 'HEAD') {
         const origin = req.headers.get('origin')
         if (!isOriginAllowed(origin)) {
           return new Response(JSON.stringify({ ok: false, code: 'FORBIDDEN' }), {
@@ -93,7 +99,7 @@ export function route(
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
-              'X-Robots-Tag': 'noindex',
+              'X-Robots-Tag': 'noindex, nofollow',
             },
           })
         }
@@ -109,7 +115,7 @@ export function route(
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
-              'X-Robots-Tag': 'noindex',
+              'X-Robots-Tag': 'noindex, nofollow',
             },
           })
         }
@@ -133,7 +139,7 @@ export function route(
               headers: {
                 'Content-Type': 'application/json',
                 'Cache-Control': 'private, no-store',
-                'X-Robots-Tag': 'noindex',
+                'X-Robots-Tag': 'noindex, nofollow',
               },
             })
           }
@@ -145,7 +151,7 @@ export function route(
             headers: {
               'Content-Type': 'application/json',
               'Cache-Control': 'private, no-store',
-              'X-Robots-Tag': 'noindex',
+              'X-Robots-Tag': 'noindex, nofollow',
             },
           })
         }
@@ -154,10 +160,15 @@ export function route(
 
       const response = await handler(req, { ...authCtx, input: parsedInput })
 
-      // Ensure Cache-Control is set on the response
-      if (!response.headers.has('Cache-Control')) {
+      // Ensure Cache-Control and X-Robots-Tag are set for all /api responses.
+      // partner-logos sets its own Cache-Control (public, max-age=86400) so only
+      // X-Robots-Tag is added there; no-store is added when no Cache-Control is present.
+      const needsCacheControl = !response.headers.has('Cache-Control')
+      const needsRobotsTag = !response.headers.has('X-Robots-Tag')
+      if (needsCacheControl || needsRobotsTag) {
         const headers = new Headers(response.headers)
-        headers.set('Cache-Control', 'private, no-store')
+        if (needsCacheControl) headers.set('Cache-Control', 'private, no-store')
+        if (needsRobotsTag) headers.set('X-Robots-Tag', 'noindex, nofollow')
         return new Response(response.body, {
           status: response.status,
           statusText: response.statusText,
@@ -173,7 +184,7 @@ export function route(
           headers: {
             'Content-Type': 'application/json',
             'Cache-Control': 'private, no-store',
-            'X-Robots-Tag': 'noindex',
+            'X-Robots-Tag': 'noindex, nofollow',
           },
         })
       }
@@ -189,7 +200,7 @@ export function route(
         headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'private, no-store',
-          'X-Robots-Tag': 'noindex',
+          'X-Robots-Tag': 'noindex, nofollow',
         },
       })
     }
