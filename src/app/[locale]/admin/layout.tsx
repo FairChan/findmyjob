@@ -48,8 +48,11 @@ export default async function AdminLayout({
         <AdminNavLinks
           locale={locale}
           dashboardLabel={t('navDashboard')}
+          studentsLabel={t('navStudents')}
           companiesLabel={t('navCompanies')}
           jobsLabel={t('navJobs')}
+          schoolsLabel={t('navSchools')}
+          partnersLabel={t('navPartners')}
           notificationsLabel={t('navNotifications')}
           pendingCount={pendingCount}
         />

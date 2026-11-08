@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export const purposeSchema = z.enum(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO'])
+export const purposeSchema = z.enum(['RESUME', 'VERIFICATION', 'PAYMENT_PROOF', 'LOGO', 'PARTNER_LOGO'])
 
 export const idSchema = z.string().cuid()
 
