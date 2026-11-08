@@ -1304,6 +1304,12 @@
 依赖：M7-T01
 做：一条 E2E 串起全部流程：学生注册 → 4 步资料 → 认证学校 → 开启人才库 → 邀请同学；企业注册 → 提交认证 → 运营通过 → 搜人 → 解锁 → 学生收到通知；企业发职位 → 审核 → 学生搜索、打开详情（扣额度）→ 投递 → 看板推进到 OFFER。
 验收：CI 中稳定通过（连续 3 次）
+> 总控 2026-11-08 补充（按「先能用」排在 M6-T13 之后，跑在 milestone/M6 上）：
+> - 写成一个文件 `tests/e2e/full-flow.spec.ts`，用 `test.describe.serial` 分成几段 test（学生、企业认证、解锁与通知、职位到 OFFER），前一段的 id 和账号放在 describe 作用域的变量里传给后一段。学生注册和企业注册必须走界面（注册页、邮件验证码从 mailpit 读，照 `onboarding.spec.ts` / `auth-redirect.spec.ts` 已有的写法）；运营账号可以用 `loginAs(page, { role: 'ADMIN' })`。
+> - 不改任何全局 SystemSetting。确实要改的，用 try/finally 恢复原值，并照 `smoke-m6-t13.spec.ts` 的做法等 `/api/internal/needs-reconsent` 和页面都看到原值（route handler 有自己的一份 60 秒设置缓存）。
+> - 断言要落在用户能看到的结果上：学生收到「被解锁」通知（通知页能看到）、职位详情打开后额度少 1（数据库里的查看记录 + 页面显示的剩余额度）、看板卡片最后在 OFFER 列。不要只断言「没有报错」。
+> - 验收里的「连续 3 次」：本地跑 `pnpm test:e2e --workers=1 --repeat-each=3 tests/e2e/full-flow.spec.ts`，三次全部通过，把 passed / failed / flaky 数写进完成说明。单条命令超过 600 秒就分三次各跑一遍，每次都贴结果。
+> - 这一条只加测试；测试暴露出产品 bug 时，修掉并在提交说明里贴修复前的失败输出原文（ROUND_NOTE c）。
 
 #### [ ] M7-T08 PWA 与移动端走查
 依赖：M7-T01
