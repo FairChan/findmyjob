@@ -178,6 +178,16 @@ export function employerFreeText(text: string, fullName: string, unlocked: boole
   return redactNameParts(redact(text), fullName)
 }
 
+/**
+ * Returns the employer-visible version of a cover note.
+ * When unlocked=false (identity revoked or not yet revealed): redacts PII and name.
+ * When unlocked=true: returns the text as-is.
+ */
+export function toEmployerCoverNote(text: string | null, fullName: string, unlocked: boolean): string | null {
+  if (text === null) return null
+  return employerFreeText(text, fullName, unlocked)
+}
+
 // --- Serializers ---
 
 /**

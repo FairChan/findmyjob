@@ -965,5 +965,37 @@
     "inviteNoJobs": "No open positions. Please publish a job first.",
     "companyInvites": "{company} invited you to apply for \"{job}\"",
     "navInvitations": "Invitations"
+  },
+  "applicants": {
+    "title": "Applicants · {jobTitle}",
+    "backToJobs": "Back to Jobs",
+    "kanbanView": "Kanban",
+    "listView": "Standardized List",
+    "noApplicants": "No applicants yet",
+    "status": {
+      "APPLIED": "Applied",
+      "VIEWED": "Viewed",
+      "SHORTLISTED": "Shortlisted",
+      "INTERVIEW": "Interview",
+      "OFFER": "Offer",
+      "HIRED": "Hired",
+      "REJECTED": "Rejected",
+      "WITHDRAWN": "Withdrawn"
+    },
+    "noteLabel": "Internal Note",
+    "notePlaceholder": "This note is only visible to your company members, not to the student…",
+    "noteSave": "Save",
+    "noteSaving": "Saving…",
+    "noteCancel": "Cancel",
+    "noteSuccess": "Note saved",
+    "sortByCgpa": "Sort by CGPA",
+    "sortByGradYear": "Sort by Grad Year",
+    "sortByCompleteness": "Sort by Completeness",
+    "changeStatusLabel": "Change status",
+    "errorUnknown": "Action failed, please try again",
+    "errorForbidden": "Insufficient permissions",
+    "coverNoteLabel": "Cover Note",
+    "identityLocked": "Identity locked",
+    "viewProfile": "View Profile"
   }
 }

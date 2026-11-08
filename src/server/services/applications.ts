@@ -200,3 +200,43 @@ export async function getMyApplicationForJob(
     select: { id: true, status: true },
   })
 }
+
+export interface StudentApplicationEvent {
+  id: string
+  fromStatus: ApplicationStatus | null
+  toStatus: ApplicationStatus
+  createdAt: Date
+}
+
+/**
+ * Returns the status-change timeline for the student's own application.
+ * The company's internal note (ApplicationEvent.note) is intentionally excluded —
+ * it must never reach the student side. M5-T06 must maintain this contract.
+ */
+export async function getStudentApplicationTimeline(
+  ctx: UserCtx,
+  applicationId: string,
+): Promise<StudentApplicationEvent[]> {
+  const studentId = await getStudentProfileId(ctx.userId)
+
+  const app = await db.application.findUnique({
+    where: { id: applicationId },
+    select: { id: true, studentId: true },
+  })
+
+  if (!app || app.studentId !== studentId) {
+    throw new NotFoundError('Application not found')
+  }
+
+  return db.applicationEvent.findMany({
+    where: { applicationId },
+    select: {
+      id: true,
+      fromStatus: true,
+      toStatus: true,
+      createdAt: true,
+      // note and actorId are intentionally omitted — company notes must not reach student
+    },
+    orderBy: { createdAt: 'asc' },
+  })
+}

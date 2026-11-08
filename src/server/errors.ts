@@ -84,3 +84,9 @@ export class InvitationQuotaError extends AppError {
     super(message, 'INVITATION_QUOTA_EXCEEDED', 429)
   }
 }
+
+export class ConflictError extends AppError {
+  constructor(message = 'Conflict: resource was modified by another operation') {
+    super(message, 'CONFLICT', 409)
+  }
+}
