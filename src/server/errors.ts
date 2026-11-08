@@ -78,3 +78,9 @@ export class CompletenessLowError extends AppError {
     super(message, 'COMPLETENESS_LOW', 400)
   }
 }
+
+export class InvitationQuotaError extends AppError {
+  constructor(message = 'Monthly invitation quota exceeded') {
+    super(message, 'INVITATION_QUOTA_EXCEEDED', 429)
+  }
+}

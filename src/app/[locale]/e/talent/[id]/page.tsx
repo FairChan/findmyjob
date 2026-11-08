@@ -13,6 +13,8 @@ import type { TalentDetail, TalentEducation, TalentExperience } from '@/server/s
 import { Button } from '@/components/ui/button'
 import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
 import { UnlockButton } from '@/components/talent/UnlockButton'
+import { InviteButton } from '@/components/invitations/InviteButton'
+import { getMonthlyInvitationUsage } from '@/server/services/invitations'
 
 // ---- Label maps ----
 
@@ -130,18 +132,29 @@ function ExperienceList({
 
 // ---- Detail body ----
 
+interface InviteJob {
+  id: string
+  title: string
+}
+
 function TalentDetailBody({
   detail,
   locale,
   tLabel,
   tFolders,
   costCredits,
+  inviteJobs,
+  inviteUsed,
+  inviteQuota,
 }: {
   detail: TalentDetail
   locale: string
   tLabel: (key: string, values?: Record<string, string | number>) => string
   tFolders: (key: string) => string
   costCredits: number
+  inviteJobs: InviteJob[]
+  inviteUsed: number
+  inviteQuota: number
 }) {
   return (
     <div className="space-y-6">
@@ -215,6 +228,12 @@ function TalentDetailBody({
                 }}
               />
             )}
+            <InviteButton
+              studentId={detail.id}
+              jobs={inviteJobs}
+              usedQuota={inviteUsed}
+              totalQuota={inviteQuota}
+            />
           </div>
         </div>
 
@@ -376,7 +395,22 @@ export default async function TalentDetailPage({
     )
   }
 
-  const costCredits = await getSetting<number>('unlock.costCredits', 1)
+  const [costCredits, inviteUsage] = await Promise.all([
+    getSetting<number>('unlock.costCredits', 1),
+    getMonthlyInvitationUsage(ctx.companyId),
+  ])
+
+  // Fetch published jobs for this company (for the invite dialog)
+  const now = new Date()
+  const publishedJobs = await db.job.findMany({
+    where: {
+      companyId: ctx.companyId,
+      status: 'PUBLISHED',
+      OR: [{ deadline: null }, { deadline: { gt: now } }],
+    },
+    select: { id: true, title: true },
+    orderBy: { publishedAt: 'desc' },
+  })
 
   let detail: TalentDetail
   try {
@@ -412,7 +446,16 @@ export default async function TalentDetailPage({
         </Button>
       </nav>
 
-      <TalentDetailBody detail={detail} locale={locale} tLabel={tLabel} tFolders={tFolders} costCredits={costCredits} />
+      <TalentDetailBody
+        detail={detail}
+        locale={locale}
+        tLabel={tLabel}
+        tFolders={tFolders}
+        costCredits={costCredits}
+        inviteJobs={publishedJobs}
+        inviteUsed={inviteUsage.used}
+        inviteQuota={inviteUsage.quota}
+      />
     </main>
   )
 }
