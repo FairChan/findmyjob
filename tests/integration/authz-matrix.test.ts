@@ -2224,6 +2224,84 @@ describe('notifications authz (M5-T08)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// admin-companies authz (M6-T03)
+// ---------------------------------------------------------------------------
+
+describe('admin-companies authz (M6-T03)', () => {
+  it('deactivateCompanyAction: student cannot deactivate', async () => {
+    const { userId } = await createStudent(testDb)
+    const company = await testDb.company.create({ data: { legalName: `AC-${Date.now()}`, isActive: true } })
+    mockSession(userId)
+    const { deactivateCompanyAction } = await import('@/server/actions/admin-companies')
+    const result = await deactivateCompanyAction({ companyId: company.id, reason: 'test' })
+    expect(result.ok).toBe(false)
+  })
+
+  it('deactivateCompanyAction: employer cannot deactivate', async () => {
+    const { userId } = await createEmployer(testDb)
+    const company = await testDb.company.create({ data: { legalName: `AC-${Date.now()}`, isActive: true } })
+    mockSession(userId)
+    const { deactivateCompanyAction } = await import('@/server/actions/admin-companies')
+    const result = await deactivateCompanyAction({ companyId: company.id, reason: 'test' })
+    expect(result.ok).toBe(false)
+  })
+
+  it('adjustCompanyCreditsAction: student cannot adjust credits', async () => {
+    const { userId } = await createStudent(testDb)
+    const company = await testDb.company.create({ data: { legalName: `AC-${Date.now()}` } })
+    await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    mockSession(userId)
+    const { adjustCompanyCreditsAction } = await import('@/server/actions/admin-companies')
+    const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'test' })
+    expect(result.ok).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// admin-settings authz (M6-T05)
+// ---------------------------------------------------------------------------
+
+describe('admin-settings authz (M6-T05)', () => {
+  it('updateSettingAction: student → FORBIDDEN', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
+    const result = await updateSettingAction({ key: 'team.maxMembers', value: 5 })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('updateSettingAction: employer → FORBIDDEN', async () => {
+    const { userId } = await createEmployer(testDb)
+    mockSession(userId)
+    const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
+    const result = await updateSettingAction({ key: 'team.maxMembers', value: 5 })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('updateSettingAction: admin with invalid value → VALIDATION_ERROR', async () => {
+    const { userId } = await createStudent(testDb)
+    // Promote to ADMIN for this test
+    const admin = await testDb.user.create({
+      data: {
+        name: 'Admin',
+        email: `admin-auth-${Date.now()}@example.test`,
+        emailVerified: true,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+    })
+    mockSession(admin.id)
+    const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
+    // number out of range
+    const result = await updateSettingAction({ key: 'pilot.monthlyCredits', value: -100 })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('VALIDATION_ERROR')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // M7-T03 data-rights authz rows
 // ---------------------------------------------------------------------------
 

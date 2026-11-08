@@ -77,7 +77,11 @@ function Snapshot {
 }
 
 $root = $byId0[[int]$RootPid]
-if ($null -eq $root) { Write-Output "reap: root pid $RootPid not found, nothing watched"; exit 0 }
+for ($try = 0; $null -eq $root -and $try -lt 10; $try++) {
+  Start-Sleep -Seconds 1
+  $root = Get-Procs | Where-Object { [int]$_.ProcessId -eq [int]$RootPid } | Select-Object -First 1
+}
+if ($null -eq $root) { Write-Output "reap: root pid $RootPid not found after 10 s, nothing watched"; exit 0 }
 [void](Add-Known $root)
 while (-not (Test-Path -LiteralPath $StopFile)) {
   Snapshot

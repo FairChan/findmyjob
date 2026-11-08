@@ -160,10 +160,19 @@ docs/TASKS.md 就是已批准的设计，不走 brainstorming。
     >"$out.json" 2>"$out.stderr" &
   round_pid=$!
   REAP_STOP="$REAPER_DIR/r${i}.stop" REAP_OUT="$REAPER_DIR/r${i}.out"
-  round_win="$(cat "/proc/$round_pid/winpid" 2>/dev/null || true)"
+  # $! 先是 fork 出来的 bash，展开完 $(cat …) 这些参数后才 exec 成 timeout.exe；那之前读到的 winpid 是马上就退出的 bash。
+  # 等 exename 变成 timeout 再取 winpid（最多 10 秒），否则 watcher 会报 root pid not found
+  round_win=""
+  for _ in $(seq 1 20); do
+    if [[ "$(cat "/proc/$round_pid/exename" 2>/dev/null || true)" == *timeout* ]]; then
+      round_win="$(cat "/proc/$round_pid/winpid" 2>/dev/null || true)"; break
+    fi
+    sleep 0.5
+  done
   if [[ -n "$round_win" && -n "$REAPER_SHA" && "$(sha256sum "$REAPER_PS1" | cut -d' ' -f1)" == "$REAPER_SHA" ]]; then
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$REAPER_PS1")" -RootPid "$round_win" \
-      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" \n      $([[ "${AUTO_BUILD_REAP:-dry}" == kill ]] || echo -DryRun) >"$REAP_OUT" 2>&1 &
+      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" \
+      $([[ "${AUTO_BUILD_REAP:-dry}" == kill ]] || echo -DryRun) >"$REAP_OUT" 2>&1 &
     watcher=$!
   elif [[ -n "$REAPER_SHA" ]]; then
     log "警告：round-reaper 副本的 sha256 变了或拿不到轮次 PID，本轮不做进程清理"
