@@ -15,6 +15,13 @@ import { validateTestDbUrl } from '../lib/validate-test-db-url'
 // separate key space, so this cannot collide with any LOCK_NS namespace.
 export const TEST_DB_LOCK_KEY = 7301946001n
 
+// Prisma recycles a pooled connection that has been idle longer than max_idle_connection_lifetime
+// (300 s by default) the next time it is used, and a session-level advisory lock dies with that
+// connection. A full run takes ~16 minutes, and one lane B full run (2026-11-08, 952 s) did find the
+// lock already gone. Re-asserting the lock on the same client well inside that window keeps the
+// connection from ever counting as idle, and re-takes the lock if the session was ever swapped.
+const HEARTBEAT_MS = 30_000
+
 export interface TestDbLock {
   dbName: string
   release: () => Promise<void>
@@ -42,11 +49,23 @@ export async function acquireTestDbLock(rawUrl: string | undefined): Promise<Tes
     throw new Error(testDbLockBusyMessage(dbName))
   }
 
+  const heartbeat = setInterval(() => {
+    client.$queryRaw<Array<{ locked: boolean }>>`SELECT pg_try_advisory_lock(${TEST_DB_LOCK_KEY}) AS locked`
+      .then((r) => {
+        if (!r[0]?.locked) console.error(`[test-db-lock] lost the lock on ${dbName} to another run`)
+      })
+      .catch(() => {})
+  }, HEARTBEAT_MS)
+  heartbeat.unref()
+
   return {
     dbName,
     release: async () => {
+      clearInterval(heartbeat)
       try {
-        await client.$queryRaw`SELECT pg_advisory_unlock(${TEST_DB_LOCK_KEY})`
+        // Each heartbeat re-acquire stacks one more hold on the same session; drop them all.
+        // pg_advisory_unlock_all() returns void, which $queryRaw cannot deserialize.
+        await client.$executeRaw`SELECT pg_advisory_unlock_all()`
       } finally {
         await client.$disconnect()
       }

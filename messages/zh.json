@@ -167,8 +167,34 @@
     "bannerAdminActionRequired": "请联系企业管理员处理认证事宜。",
     "bannerRejectedReason": "驳回原因"
   },
+  "adminLayout": {
+    "title": "FindMYJob · 运营后台",
+    "adminLabel": "运营管理员",
+    "returnToFront": "返回前台",
+    "navDashboard": "数据看板",
+    "navCompanies": "企业认证",
+    "navJobs": "职位审核"
+  },
   "adminDashboard": {
-    "title": "运营后台"
+    "title": "数据看板",
+    "statPendingCompanies": "待审核企业",
+    "statPendingJobs": "待审核职位",
+    "statPublishedJobs": "在招职位",
+    "statVerifiedCompanies": "认证企业",
+    "statStudents": "注册学生",
+    "statCompleteness": "完成度≥60%",
+    "statApplications": "总投递",
+    "statUnlocks": "总解锁",
+    "statCreditsGranted": "点数发放",
+    "statCreditsConsumed": "点数消耗",
+    "weeklyRegistrations": "每周新注册学生",
+    "signupProgress": "注册人数进度",
+    "signupProgressDesc": "已验证学生 / 注册上限",
+    "signupUnit": "人",
+    "signupCapLabel": "上限 {cap}",
+    "schoolDistribution": "学校分布",
+    "noSchoolData": "暂无学校数据",
+    "actionReview": "去处理"
   },
   "onboarding": {
     "title": "完善档案",

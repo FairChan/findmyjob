@@ -156,6 +156,13 @@ export default async function middleware(request: NextRequest) {
   }
   const response = intlMiddleware(req)
   response.headers.set('x-request-id', requestId)
+
+  // Admin pages contain PII aggregates — prevent caching and crawler indexing.
+  if (pathname.includes('/admin')) {
+    response.headers.set('Cache-Control', 'private, no-store')
+    response.headers.set('X-Robots-Tag', 'noindex')
+  }
+
   return response
 }
 
