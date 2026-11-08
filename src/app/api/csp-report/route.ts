@@ -26,7 +26,7 @@ function extractHost(uri: string | undefined): string | undefined {
   }
 }
 
-export const POST = route({ auth: 'public' }, async (req) => {
+export const POST = route({ auth: 'public', skipOriginCheck: true }, async (req) => {
   // Rate limit by IP — 120 reports / 1 min window
   const ip = getClientIp(req.headers) ?? 'unknown'
   const rl = await checkRateLimit(`csp-report:${ip}`, {

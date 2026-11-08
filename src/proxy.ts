@@ -89,10 +89,15 @@ function isProtectedPage(pathname: string): boolean {
   return false
 }
 
+// API routes declared `route({ auth: 'public' })` must also pass here, or anonymous visitors get a
+// 401 before the handler runs: the home page's partner logos are loaded logged-out, and browsers
+// send CSP violation reports without cookies.
 function isProtectedApi(pathname: string): boolean {
   if (!pathname.startsWith('/api/')) return false
   if (pathname.startsWith('/api/auth/')) return false
   if (pathname === '/api/health') return false
+  if (pathname === '/api/csp-report') return false
+  if (pathname.startsWith('/api/partner-logos/')) return false
   return true
 }
 

@@ -75,4 +75,13 @@ test.describe('Security response headers', () => {
     // 404 from an unknown partner is expected — the key point is it doesn't 500
     expect([200, 404]).toContain(res.status)
   })
+
+  test('csp-report accepts a cookieless browser report (204, not a proxy 401)', async () => {
+    const res = await fetch(`${BASE}/api/csp-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/csp-report' },
+      body: JSON.stringify({ 'csp-report': { 'violated-directive': 'script-src', 'blocked-uri': 'https://evil.example/x.js' } }),
+    })
+    expect(res.status).toBe(204)
+  })
 })
