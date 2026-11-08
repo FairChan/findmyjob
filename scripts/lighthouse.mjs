@@ -10,36 +10,31 @@
 import { writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { chromium } from 'playwright'
+import { chromium } from '@playwright/test'
 
 const url = process.argv[2] ?? 'http://localhost:3000'
 const outFile = join(tmpdir(), `lighthouse-${Date.now()}.json`)
 
-// Resolve Playwright's bundled Chromium executable path
-const browser = await chromium.launch({ headless: true })
-const executablePath = browser.executablePath ? browser.executablePath() : chromium.executablePath()
-await browser.close()
+// Lighthouse needs a Chrome it can reach over the DevTools protocol, so keep Playwright's bundled
+// Chromium open with a remote-debugging port for the duration of the run.
+const port = Number(process.env.LIGHTHOUSE_CDP_PORT ?? 9333)
+const browser = await chromium.launch({ headless: true, args: [`--remote-debugging-port=${port}`] })
 
-process.env.CHROME_PATH = executablePath
-
-// Dynamic import after setting env var so Lighthouse picks it up
 const { default: lighthouse } = await import('lighthouse')
 
-const result = await lighthouse(url, {
-  port: undefined,
-  logLevel: 'error',
-  output: 'json',
-  formFactor: 'mobile',
-  screenEmulation: {
-    mobile: true,
-    width: 375,
-    height: 812,
-    deviceScaleFactor: 2,
-    disabled: false,
-  },
-  onlyCategories: ['performance', 'accessibility'],
-  chromePath: executablePath,
-})
+let result
+try {
+  result = await lighthouse(url, {
+    port,
+    logLevel: 'error',
+    output: 'json',
+    formFactor: 'mobile',
+    screenEmulation: { mobile: true, width: 375, height: 812, deviceScaleFactor: 2, disabled: false },
+    onlyCategories: ['performance', 'accessibility'],
+  })
+} finally {
+  await browser.close()
+}
 
 if (!result?.report) {
   console.error('Lighthouse returned no report')
