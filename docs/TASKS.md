@@ -1124,6 +1124,20 @@
 - E2E 用两个浏览器上下文：运营停用学生后，这名学生的下一次请求就被重定向到登录页
 > 完成 2026-11-08：实现 searchStudents / getStudentAdminDetail / approveSchoolVerificationManually / grantJobViewQuota / suspendUser / restoreUser；suspendUser 在单个 $transaction 内完成 status 更新 + session 清除 + 双审计；联系方式读取经 getContactForAdmin（遵循 ESLint 仅限 contact-access.ts 的约束）；20 条单元测试 + 6 条 authz-matrix 测试 + 8 条 E2E 冒烟全部通过。
 
+#### [ ] M6-T10 补修 M6-T02 合并前复查：停用后「下一次请求被拒」的 E2E 要真登录、运营查看联系方式接上界面、写操作与审计同事务
+依赖：M6-T02
+> 总控 2026-11-08 加入：复查（按 a0d7e82 读的代码，提速模式只看 High）结论是 BLOCKED。服务层是对的：停用、删会话、双审计在同一个事务里，每次请求都重新查状态，`getContactForAdmin` 在事务里先写 `contact.read` 再解密、失败就整体失败。只做下面列的。每条都按 ROUND_NOTE 把撤掉实现后的失败输出原文贴进提交说明。
+做 / 验收：
+1. 验收 E2E 是空过的（High）：`tests/e2e/smoke-m6-t02.spec.ts` 约 111–120 行，学生那个 context 从来没登录，`goto('/zh/s')` 是被 proxy 的「没有 cookie」分支重定向的（URL 带 `redirect=`），不管运营做没做停用都会过。改成：
+   - 学生 context 先用创建时的邮箱密码真正登录，断言 `/zh/s` 能打开、cookie 里有会话；
+   - 运营停用后，等 server action 的响应，或者轮询 `db.user.status === 'SUSPENDED'`，不要匹配任意一个 200；
+   - 学生 context 再 `goto('/zh/s')`，断言 URL 是 `/zh/login`、不带 `redirect=` 参数（证明走的是服务端 requireStudent 的路径）；
+   - 红跑：临时去掉 `admin-users.ts` 里的 `tx.user.update` 和 `tx.session.deleteMany`，这条 E2E 要失败，原文贴进提交说明。
+2. 运营查看联系方式（M6-T02「做」）：`readStudentContactAdmin` 现在没有任何 action、界面或测试。加一个 `auth: 'admin'` 的 action 和学生详情页上的「查看联系方式」按钮（点击后才读取、才写审计，不在页面加载时自动读）；`getContactForAdmin` 内部也检查调用者是 ADMIN。测试：查看一次恰好写 1 条 `contact.read`，actor 是运营的 userId，metadata 里没有任何明文；非运营调用被拒。
+3. 写操作和审计放进同一个事务（复查 Medium）：发放额度、人工学校认证、恢复账号，这三处现在写和审计是分开的，审计失败会留下没审计的操作。每处都改成一个 `$transaction`，`logAudit` 传 tx；各补一条断言审计行（`student.view_grant`、`student.school_verify`、`user.restore`）的测试。
+4. 顺手修：只有 `status === 'ACTIVE'` 才能停用（现在 DELETED 也能被停用，恢复后会把已删除的账号变回 ACTIVE）；`/admin/students` 的 `?page=abc`、非法 `?status=`、超长 q 不能 500，改用 safeParse，非法时回到默认值并提示。
+- 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
+
 #### [ ] M6-T03 企业管理
 依赖：M6-T01
 做：列表、详情、停用、标记创始合作伙伴、设置公司定位标签、调整点数（调用 `credits.adminAdjust`）。`requireCompanyMember` 每次请求都检查 Company.isActive。
