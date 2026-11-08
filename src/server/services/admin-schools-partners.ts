@@ -370,14 +370,64 @@ export async function deletePartner(
 
 // ==================== Public (no auth) ====================
 
-export async function getHomePartners(): Promise<PartnerListItem[]> {
-  return db.partner.findMany({
+/** Public partner data — no private fields (notes, agreementKey, logoKey never sent to client). */
+export interface HomePartner {
+  id: string
+  name: string
+  nameEn: string | null
+  type: string
+  website: string | null
+  description: string | null
+  showOnHome: boolean
+  sortOrder: number
+  hasLogo: boolean
+}
+
+const PUBLIC_PARTNER_SELECT = {
+  id: true,
+  name: true,
+  nameEn: true,
+  type: true,
+  website: true,
+  description: true,
+  showOnHome: true,
+  sortOrder: true,
+  logoKey: true, // server-side only; excluded from returned type
+} as const
+
+function toHomePartner(row: {
+  id: string
+  name: string
+  nameEn: string | null
+  type: string
+  website: string | null
+  description: string | null
+  showOnHome: boolean
+  sortOrder: number
+  logoKey: string | null
+}): HomePartner {
+  const { logoKey, ...rest } = row
+  return { ...rest, hasLogo: Boolean(logoKey && isPartnerLogoKey(logoKey)) }
+}
+
+export async function getHomePartners(): Promise<HomePartner[]> {
+  const rows = await db.partner.findMany({
     where: { showOnHome: true },
+    select: PUBLIC_PARTNER_SELECT,
     orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
   })
+  return rows.map(toHomePartner)
+}
+
+export async function getPublicPartners(): Promise<HomePartner[]> {
+  const rows = await db.partner.findMany({
+    select: PUBLIC_PARTNER_SELECT,
+    orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+  })
+  return rows.map(toHomePartner)
 }
 
 /** Validate that a partner logo key belongs to the partner-logos prefix. */
 export function isPartnerLogoKey(key: string): boolean {
-  return key.startsWith('partner-logos/')
+  return /^partner-logos\/[^/]+\/[0-9a-f-]{36}\.(png|jpg)$/.test(key)
 }

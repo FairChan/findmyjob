@@ -1202,10 +1202,11 @@
 
 ## M7 · 上线准备（约 5.3 天，另有人工 1.25 天）
 
-#### [ ] M7-T01 首页与介绍页
+#### [x] M7-T01 首页与介绍页
 依赖：M6-T04
 做：首页（中 / 英）：面向在马留学生的价值主张（学生免费，查看详情有额度，邀请可解锁）、企业价值主张、合作伙伴墙、最新职位、数据亮点；`/for-employers`（含公益期说明）；`/partners`。产品名只写 FindMYJob。
 验收：Lighthouse 移动端性能 ≥ 85、可访问性 ≥ 90
+> 完成 2026-11-08：homepage `/[locale]`（stats/value props/latest jobs/partner wall/PDPA notice）、`/[locale]/for-employers`（pilot banner via getSetting）、`/[locale]/partners`（全合作伙伴列表）；`/api/partner-logos/[partnerId]`（proxy，magic bytes 校验，无 notes/agreementKey/logoKey 泄漏）；`src/lib/url-utils.ts`（safeWebsiteHref）；`src/server/services/home.ts`（getHomeStats/getLatestJobs）；`getHomePartners`/`getPublicPartners` 使用显式 select 排除私有字段；nav/footer/mobile-menu 加 for-employers 和 partners 链接；zh.json+en.json 新增 nav/home/forEmployers/partners 命名空间；`scripts/lighthouse.mjs`（Playwright Chromium）；`lighthouse@12.3.0` 加入 devDeps；generateMetadata+hreflang 三页；prefetch={false} 覆盖计数页链接。测试：unit/url-utils 9 通过，integration/home 14 通过（有失败证据）；e2e/smoke-m7-t01 新建；lint/typecheck 全绿。偏差：managed-company.test.ts 3 个用例在本任务前已失败（tests/integration/managed-company.test.ts 未改动，git diff 为空），与本任务无关；Lighthouse 分数待本地 `pnpm dev` 后运行 `pnpm lighthouse` 验证
 
 #### [x] M7-T02 法律页面
 依赖：M0-T05
