@@ -66,11 +66,16 @@ beforeEach(() => {
 
 describe('isPartnerLogoKey', () => {
   it('returns true for valid prefix', () => {
-    expect(isPartnerLogoKey('partner-logos/abc/file.png')).toBe(true)
+    expect(isPartnerLogoKey('partner-logos/acme/abc12345-0000-0000-0000-000000000001.png')).toBe(true)
+    expect(isPartnerLogoKey('partner-logos/uni-malaya/abc12345-0000-0000-0000-000000000001.jpg')).toBe(true)
   })
   it('returns false for other prefix', () => {
     expect(isPartnerLogoKey('logos/abc/file.png')).toBe(false)
     expect(isPartnerLogoKey('')).toBe(false)
+  })
+  it('returns false for non-uuid filename', () => {
+    expect(isPartnerLogoKey('partner-logos/abc/file.png')).toBe(false)
+    expect(isPartnerLogoKey('partner-logos/abc/../../etc/passwd')).toBe(false)
   })
 })
 

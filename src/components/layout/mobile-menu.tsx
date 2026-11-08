@@ -37,6 +37,12 @@ export default function MobileMenu({ locale }: { locale: Locale }) {
             <Link href="/companies" onClick={() => setOpen(false)} className="text-base font-medium">
               {t('companies')}
             </Link>
+            <Link href="/for-employers" onClick={() => setOpen(false)} className="text-base font-medium">
+              {t('forEmployers')}
+            </Link>
+            <Link href="/partners" onClick={() => setOpen(false)} className="text-base font-medium">
+              {t('partners')}
+            </Link>
             <div className="mt-4 border-t pt-4">
               <Link
                 href="/login"
