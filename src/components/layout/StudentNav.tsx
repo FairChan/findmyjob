@@ -9,10 +9,15 @@ interface Props {
 
 export default async function StudentNav({ userId, locale }: Props) {
   const t = await getTranslations('nav')
+  const tInv = await getTranslations('invitations')
 
-  const unreadCount = await db.notification.count({
-    where: { userId, readAt: null },
-  })
+  const [unreadCount, pendingInvitationCount] = await Promise.all([
+    db.notification.count({ where: { userId, readAt: null } }),
+    db.studentProfile.findUnique({ where: { userId }, select: { id: true } }).then(async (p) => {
+      if (!p) return 0
+      return db.invitation.count({ where: { studentId: p.id, status: 'SENT' } })
+    }),
+  ])
 
   return (
     <nav
@@ -25,6 +30,25 @@ export default async function StudentNav({ userId, locale }: Props) {
           className="shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           {t('myProfile')}
+        </Link>
+        <Link
+          href="/s/invitations"
+          className="relative shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={
+            pendingInvitationCount > 0
+              ? `${tInv('navInvitations')} (${pendingInvitationCount})`
+              : tInv('navInvitations')
+          }
+        >
+          {tInv('navInvitations')}
+          {pendingInvitationCount > 0 && (
+            <span
+              aria-hidden="true"
+              className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground"
+            >
+              {pendingInvitationCount > 99 ? '99+' : pendingInvitationCount}
+            </span>
+          )}
         </Link>
         <Link
           href="/s/notifications"
