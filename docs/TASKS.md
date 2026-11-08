@@ -1159,10 +1159,11 @@
 - 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
 > 完成 2026-11-08：(1) E2E 修复：学生 context 先真登录、确认 /zh/s 可访问后再停用，断言 URL=/zh/login 无 redirect= 参数；(2) readStudentContactAdminAction 新增 action + 界面按钮 + getContactForAdmin 内部 ADMIN 检查；(3) approveSchoolVerificationManually / grantJobViewQuota / restoreUser 均改为单 $transaction（写操作+审计原子性）；(4) suspendUser 改 `!== 'ACTIVE'` 防停用 DELETED；admin/students 页 query params 改 safeParse。失败输出见提交说明。unit 26/26（+9），authz-matrix 140/140（+2），E2E smoke 8/8，全部通过，0 失败，0 跳过。
 
-#### [ ] M6-T03 企业管理
+#### [x] M6-T03 企业管理
 依赖：M6-T01
 做：列表、详情、停用、标记创始合作伙伴、设置公司定位标签、调整点数（调用 `credits.adminAdjust`）。`requireCompanyMember` 每次请求都检查 Company.isActive。
 验收：停用企业的成员下一次请求就无法访问企业端
+> 完成 2026-11-08：admin-companies.ts 服务（searchCompanies、getCompanyAdminDetail、deactivateCompany、reactivateCompany、setFoundingPartner、setCompanyTags、adjustCompanyCredits）；server actions admin-companies.ts；/admin/companies 列表页改写为全量搜索；/admin/companies/[companyId] 新增 AdminCompanyActions 组件（停用/恢复、创始合作伙伴、定位标签、调整点数）；COMPANY_TAGS 提取到 src/lib/company-tags.ts 以支持客户端组件；requireCompanyMember 已在每次请求检查 isActive（早已实现）；i18n zh/en 齐全。unit 23/23，authz-matrix 146/146（+3），E2E smoke 8/8，全部通过，0 失败，0 跳过。失败输出见提交说明。
 
 #### [x] M6-T04 学校与合作伙伴
 依赖：M6-T01

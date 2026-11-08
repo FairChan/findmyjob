@@ -2222,3 +2222,37 @@ describe('notifications authz (M5-T08)', () => {
     expect(rows.every((r) => r.readAt !== null)).toBe(true)
   })
 })
+
+// ---------------------------------------------------------------------------
+// admin-companies authz (M6-T03)
+// ---------------------------------------------------------------------------
+
+describe('admin-companies authz (M6-T03)', () => {
+  it('deactivateCompanyAction: student cannot deactivate', async () => {
+    const { userId } = await createStudent(testDb)
+    const company = await testDb.company.create({ data: { legalName: `AC-${Date.now()}`, isActive: true } })
+    mockSession(userId)
+    const { deactivateCompanyAction } = await import('@/server/actions/admin-companies')
+    const result = await deactivateCompanyAction({ companyId: company.id, reason: 'test' })
+    expect(result.ok).toBe(false)
+  })
+
+  it('deactivateCompanyAction: employer cannot deactivate', async () => {
+    const { userId } = await createEmployer(testDb)
+    const company = await testDb.company.create({ data: { legalName: `AC-${Date.now()}`, isActive: true } })
+    mockSession(userId)
+    const { deactivateCompanyAction } = await import('@/server/actions/admin-companies')
+    const result = await deactivateCompanyAction({ companyId: company.id, reason: 'test' })
+    expect(result.ok).toBe(false)
+  })
+
+  it('adjustCompanyCreditsAction: student cannot adjust credits', async () => {
+    const { userId } = await createStudent(testDb)
+    const company = await testDb.company.create({ data: { legalName: `AC-${Date.now()}` } })
+    await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    mockSession(userId)
+    const { adjustCompanyCreditsAction } = await import('@/server/actions/admin-companies')
+    const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'test' })
+    expect(result.ok).toBe(false)
+  })
+})
