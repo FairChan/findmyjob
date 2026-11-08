@@ -2367,3 +2367,93 @@ describe('data-rights authz (M7-T03)', () => {
     expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Remaining employer-side services: company A's ctx must never read or change company B's data
+// (M7-T05 acceptance: every employer-side service that takes companyId has a cross-company case).
+// ---------------------------------------------------------------------------
+
+describe('employer-side services cross-company authz (M7-T05, remaining)', () => {
+  async function verifiedEmployer() {
+    const emp = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    return { ...emp, ctx: { userId: emp.userId, companyId: emp.companyId, role: 'OWNER' as const } }
+  }
+  async function appOf(emp: { companyId: string; userId: string }) {
+    const student = await createStudent(testDb)
+    const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
+    const app = await testDb.application.create({
+      data: { jobId: job.id, studentId: student.profileId, status: 'APPLIED', companyNote: 'B note' },
+    })
+    return { job, app }
+  }
+
+  it('changeApplicationStatus: A cannot move B application; status unchanged', async () => {
+    const a = await verifiedEmployer()
+    const b = await verifiedEmployer()
+    const { app } = await appOf(b)
+    const { changeApplicationStatus } = await import('@/server/services/applicants')
+    await expect(changeApplicationStatus(a.ctx, { applicationId: app.id, toStatus: 'SHORTLISTED' })).rejects.toBeInstanceOf(NotFoundError)
+    expect((await testDb.application.findUniqueOrThrow({ where: { id: app.id } })).status).toBe('APPLIED')
+  })
+
+  it('updateApplicationNote: A cannot overwrite B note; note unchanged', async () => {
+    const a = await verifiedEmployer()
+    const b = await verifiedEmployer()
+    const { app } = await appOf(b)
+    const { updateApplicationNote } = await import('@/server/services/applicants')
+    await expect(updateApplicationNote(a.ctx, { applicationId: app.id, note: 'A wrote this' })).rejects.toBeInstanceOf(NotFoundError)
+    expect((await testDb.application.findUniqueOrThrow({ where: { id: app.id } })).companyNote).toBe('B note')
+  })
+
+  it('markApplicationViewed: A opening B application is a silent no-op; B status unchanged', async () => {
+    const a = await verifiedEmployer()
+    const b = await verifiedEmployer()
+    const { app } = await appOf(b)
+    const { markApplicationViewed } = await import('@/server/services/applicants')
+    // By design this runs on page open and returns quietly for a foreign or missing application.
+    await markApplicationViewed(a.ctx, app.id)
+    expect((await testDb.application.findUniqueOrThrow({ where: { id: app.id } })).status).toBe('APPLIED')
+    expect(await testDb.applicationEvent.count({ where: { applicationId: app.id } })).toBe(0)
+  })
+
+  it('getCompanyJob and copyJob: A cannot read or copy B job; no copy is created', async () => {
+    const a = await verifiedEmployer()
+    const b = await verifiedEmployer()
+    const { job } = await appOf(b)
+    const { getCompanyJob, copyJob } = await import('@/server/services/jobs')
+    await expect(getCompanyJob(a.ctx, job.id)).rejects.toBeInstanceOf(NotFoundError)
+    await expect(copyJob(a.ctx, job.id)).rejects.toBeInstanceOf(NotFoundError)
+    expect(await testDb.job.count({ where: { companyId: a.companyId } })).toBe(0)
+  })
+
+  it('listCompanyJobs: A sees only its own jobs', async () => {
+    const a = await verifiedEmployer()
+    const b = await verifiedEmployer()
+    const { job: jobB } = await appOf(b)
+    const jobA = await createJob(testDb, a.companyId, a.userId, { status: 'PUBLISHED' })
+    const { listCompanyJobs } = await import('@/server/services/jobs')
+    const ids = (await listCompanyJobs(a.ctx)).map((j) => j.id)
+    expect(ids).toEqual([jobA.id])
+    expect(ids).not.toContain(jobB.id)
+  })
+
+  it('renameFolder and deleteFolder: A cannot touch B folder; folder unchanged', async () => {
+    const a = await verifiedEmployer()
+    const b = await verifiedEmployer()
+    const folder = await testDb.talentFolder.create({ data: { companyId: b.companyId, name: 'B folder', createdById: b.userId } })
+    const { renameFolder, deleteFolder } = await import('@/server/services/talent-folders')
+    await expect(renameFolder(a.ctx, { id: folder.id, name: 'pwned' })).rejects.toBeInstanceOf(NotFoundError)
+    await expect(deleteFolder(a.ctx, { id: folder.id })).rejects.toBeInstanceOf(NotFoundError)
+    expect((await testDb.talentFolder.findUniqueOrThrow({ where: { id: folder.id } })).name).toBe('B folder')
+  })
+
+  it('listTeamMembers: A sees only its own members', async () => {
+    const a = await verifiedEmployer()
+    const b = await verifiedEmployer()
+    const { listTeamMembers } = await import('@/server/services/team')
+    const userIds = (await listTeamMembers(a.ctx)).map((m) => m.userId)
+    expect(userIds).toContain(a.userId)
+    expect(userIds).not.toContain(b.userId)
+  })
+})
