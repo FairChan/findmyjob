@@ -1066,10 +1066,13 @@
 
 ## M6 · 运营后台（约 2.8 天）
 
-#### [ ] M6-T01 后台布局与数据看板
+#### [x] M6-T01 后台布局与数据看板
 依赖：M5-T08
 做：`/admin` 布局 + 侧边导航；看板：PRD §4 的各项指标（总数 + 按周趋势图），含注册人数 / 上限进度。
 验收：数字与数据库直接查询结果一致（集成测试）
+
+> 完成 2026-11-08：admin-dashboard service（getDashboardStats 含 assertAdmin；周分桶 date_trunc Asia/KL；creditTotals 委托 credits.ts）；AdminLayout 仿原型侧边栏（AdminNavLinks client component，aria-current，移动端横排）；AdminDashboardPage（指标卡 10 项、WeeklyBars、注册进度条、学校分布、robots noindex、requireAdmin 在页面内独立校验）；Cache-Control: private, no-store + X-Robots-Tag 通过 proxy.ts 对全部 admin 路由统一加头；messages zh+en 新增 adminLayout 和扩充 adminDashboard；集成测试 7 个通过（含周边界测试）；authz-matrix +4 个用例；E2E 冒烟 8 个通过（全绿无跳过）；pnpm lint/typecheck/test/db:check 全部通过（1607 passed，4 skipped）；依赖 M5-T08 按排序约束处理（只读现有表，经总控批准）；未加新索引（admin 看板为低频只读操作，无需优化）；失败输出见提交说明。
+> 自查：1. 鉴权在服务端：符合（page.tsx 和 service 各自独立 requireAdmin/assertAdmin）；2. 输入走 zod：不适用（纯只读，无外部输入）；3. 越权有测试：符合（authz-matrix +4 行）；4. 加锁和并发：不适用（纯只读聚合，无写操作）；5. 测试失败证据：见提交说明；6. E2E 冒烟：符合（8 个通过）；7-12：均符合或不适用。
 
 #### [ ] M6-T02 学生管理
 依赖：M6-T01

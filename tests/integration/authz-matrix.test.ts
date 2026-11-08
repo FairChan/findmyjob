@@ -1652,3 +1652,45 @@ describe('resume.download (M4-T09)', () => {
     expect(res.status).toBe(403)
   })
 })
+
+// ---------------------------------------------------------------------------
+// admin-dashboard authz (M6-T01)
+// ---------------------------------------------------------------------------
+
+describe('admin-dashboard authz (M6-T01)', () => {
+  it('getDashboardStats: student → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    const { getDashboardStats } = await import('@/server/services/admin-dashboard')
+    await expect(getDashboardStats({ userId })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('getDashboardStats: employer → ForbiddenError', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { getDashboardStats } = await import('@/server/services/admin-dashboard')
+    await expect(getDashboardStats({ userId })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('getDashboardStats: unauthenticated (non-existent userId) → ForbiddenError', async () => {
+    const { getDashboardStats } = await import('@/server/services/admin-dashboard')
+    await expect(getDashboardStats({ userId: 'nonexistent-id' })).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('getDashboardStats: admin → returns stats object', async () => {
+    const admin = await testDb.user.create({
+      data: {
+        name: 'Dashboard Admin',
+        email: `dashboard-admin-matrix-${Date.now()}@example.test`,
+        emailVerified: true,
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      },
+    })
+    const { getDashboardStats } = await import('@/server/services/admin-dashboard')
+    const stats = await getDashboardStats({ userId: admin.id })
+    expect(typeof stats.studentCount).toBe('number')
+    expect(typeof stats.verifiedCompanyCount).toBe('number')
+    expect(stats.signupCap).toBeGreaterThan(0)
+    expect(Array.isArray(stats.weeklyRegistrations)).toBe(true)
+    expect(stats.weeklyRegistrations).toHaveLength(12)
+  })
+})

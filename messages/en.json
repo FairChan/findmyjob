@@ -167,8 +167,34 @@
     "bannerAdminActionRequired": "Please ask your company admin to handle verification.",
     "bannerRejectedReason": "Rejection Reason"
   },
+  "adminLayout": {
+    "title": "FindMYJob · Admin",
+    "adminLabel": "Admin",
+    "returnToFront": "Back to Site",
+    "navDashboard": "Dashboard",
+    "navCompanies": "Company Review",
+    "navJobs": "Job Review"
+  },
   "adminDashboard": {
-    "title": "Admin Dashboard"
+    "title": "Dashboard",
+    "statPendingCompanies": "Pending Companies",
+    "statPendingJobs": "Pending Jobs",
+    "statPublishedJobs": "Published Jobs",
+    "statVerifiedCompanies": "Verified Companies",
+    "statStudents": "Registered Students",
+    "statCompleteness": "Completeness ≥60%",
+    "statApplications": "Total Applications",
+    "statUnlocks": "Total Unlocks",
+    "statCreditsGranted": "Credits Issued",
+    "statCreditsConsumed": "Credits Consumed",
+    "weeklyRegistrations": "Weekly New Students",
+    "signupProgress": "Signup Progress",
+    "signupProgressDesc": "Verified students / Cap",
+    "signupUnit": "students",
+    "signupCapLabel": "Cap: {cap}",
+    "schoolDistribution": "School Distribution",
+    "noSchoolData": "No school data yet",
+    "actionReview": "Review"
   },
   "onboarding": {
     "title": "Complete Your Profile",
