@@ -54,6 +54,7 @@ mkdir -p "$RUN_DIR" || { echo "停止：无法创建 $RUN_DIR"; exit 1; }
 log() { echo "$*" | tee -a "$RUN_DIR/summary.txt"; }
 stop() { log "停止：$2"; exit "$1"; }
 # 轮次结束时清理本轮自己留下的进程（用户 2026-11-08 批准；同日按安全复查加固）：
+# 默认只记录、只打印「would end」（dry run）；确认无误后用 AUTO_BUILD_REAP=kill 才真的结束进程（2026-11-08：v1 疑似误杀线 B 的 verify）。
 # 跑的是 auto-build 启动时复制到仓库外临时目录、并记下 sha256 的那份脚本；进程树只在 watcher 内存里，
 # 收到停止信号后由 watcher 自己清理（只清 PID 和 CreationDate 都对得上的，不碰自身祖先进程）。
 REAPER_DIR="$(mktemp -d)"
@@ -162,7 +163,7 @@ docs/TASKS.md 就是已批准的设计，不走 brainstorming。
   round_win="$(cat "/proc/$round_pid/winpid" 2>/dev/null || true)"
   if [[ -n "$round_win" && -n "$REAPER_SHA" && "$(sha256sum "$REAPER_PS1" | cut -d' ' -f1)" == "$REAPER_SHA" ]]; then
     powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(cygpath -w "$REAPER_PS1")" -RootPid "$round_win" \
-      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" >"$REAP_OUT" 2>&1 &
+      -Log "$(cygpath -w "$REAPER_DIR/r${i}.tree.tsv")" -StopFile "$(cygpath -w "$REAP_STOP")" \n      $([[ "${AUTO_BUILD_REAP:-dry}" == kill ]] || echo -DryRun) >"$REAP_OUT" 2>&1 &
     watcher=$!
   elif [[ -n "$REAPER_SHA" ]]; then
     log "警告：round-reaper 副本的 sha256 变了或拿不到轮次 PID，本轮不做进程清理"

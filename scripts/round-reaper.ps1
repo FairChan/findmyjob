@@ -21,7 +21,8 @@ param(
   [Parameter(Mandatory = $true)][int]$RootPid,
   [Parameter(Mandatory = $true)][string]$Log,
   [Parameter(Mandatory = $true)][string]$StopFile,
-  [int]$IntervalSec = 10
+  [int]$IntervalSec = 10,
+  [switch]$DryRun
 )
 $ErrorActionPreference = 'Continue'
 
@@ -41,10 +42,12 @@ for ($n = 0; $n -lt 64 -and $byId0.ContainsKey($cur); $n++) {
 }
 
 $known = @{}   # pid -> creation ticks (in memory only)
+$script:lastSeen = @{}   # pid -> last time (UTC ticks) we saw it alive with the recorded CreationDate
 function Add-Known($p) {
   $id = [int]$p.ProcessId
   if ($protected.ContainsKey($id) -or $known.ContainsKey($id)) { return $false }
   $known[$id] = Get-Ticks $p
+  $script:lastSeen[$id] = (Get-Date).ToUniversalTime().Ticks
   Add-Content -LiteralPath $Log -Value ("{0}`t{1}`t{2}" -f $id, $known[$id], $p.Name)
   return $true
 }
@@ -62,11 +65,19 @@ function Snapshot {
   foreach ($k in @($known.Keys)) { $queue.Enqueue([int]$k) }
   while ($queue.Count -gt 0) {
     $id = [int]$queue.Dequeue()
-    # Expand only if the PID is still ours (same CreationDate) or no longer held by anyone.
-    if ($byId.ContainsKey($id) -and (Get-Ticks $byId[$id]) -ne $known[$id]) { continue }
+    # Expand only while the PID is still ours (same CreationDate). If nobody holds it any more, adopt only
+    # children created no later than one interval after we last saw it alive (a later child belongs to whoever reused the PID).
+    $cutoff = [int64]::MaxValue
+    if ($byId.ContainsKey($id)) {
+      if ((Get-Ticks $byId[$id]) -ne $known[$id]) { continue }
+      $script:lastSeen[$id] = (Get-Date).ToUniversalTime().Ticks
+    } else {
+      $cutoff = $script:lastSeen[$id] + [int64]$IntervalSec * 10000000
+    }
     if (-not $byParent.ContainsKey($id)) { continue }
     foreach ($child in $byParent[$id]) {
       if ((Get-Ticks $child) -lt $known[$id]) { continue }   # created before the parent: PID reuse
+      if ((Get-Ticks $child) -gt $cutoff) { continue }       # created after the parent died: someone else's
       if (Add-Known $child) { $queue.Enqueue([int]$child.ProcessId) }
     }
   }
@@ -83,12 +94,15 @@ Snapshot
 
 $alive = @{}; foreach ($p in Get-Procs) { $alive[[int]$p.ProcessId] = $p }
 $ended = 0
-foreach ($id in @($known.Keys)) {
+# End only recorded PIDs, one at a time and newest first (never taskkill /T: that would also end children we never recorded).
+foreach ($id in @($known.Keys | Sort-Object { $known[$_] } -Descending)) {
   if ($protected.ContainsKey($id) -or -not $alive.ContainsKey($id)) { continue }
   $p = $alive[$id]
   if ((Get-Ticks $p) -ne $known[$id]) { Write-Output ("reap: skip pid {0} ({1}): CreationDate differs, PID reused" -f $id, $p.Name); continue }
-  & taskkill.exe /PID $id /T /F *> $null
+  if ($DryRun) { Write-Output ("reap: would end pid {0} ({1})" -f $id, $p.Name); continue }
+  & taskkill.exe /PID $id /F *> $null
   if ($LASTEXITCODE -eq 0) { $ended++; Write-Output ("reap: ended pid {0} ({1})" -f $id, $p.Name) }
+  else { Write-Output ("reap: taskkill pid {0} ({1}) exit {2}" -f $id, $p.Name, $LASTEXITCODE) }
 }
-Write-Output ("reap: {0} leftover process(es) ended" -f $ended)
+if ($DryRun) { Write-Output "reap: dry run, nothing ended" } else { Write-Output ("reap: {0} leftover process(es) ended" -f $ended) }
 exit 0
