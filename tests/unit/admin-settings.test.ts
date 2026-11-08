@@ -13,6 +13,7 @@ vi.mock('server-only', () => ({}))
 
 import { setupTestDb, testDb } from '../setup/db'
 import { getAllSettings, updateSettingAdmin, SETTINGS } from '@/server/services/admin-settings'
+import { clearSettingsCache, getSetting } from '@/server/services/settings'
 import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
 
 setupTestDb()
@@ -151,8 +152,65 @@ describe('updateSettingAdmin', () => {
       where: { actorId: admin.id, action: 'setting.update', targetId: 'team.maxMembers' },
       orderBy: { createdAt: 'desc' },
     })
-    expect(audit).toBeDefined()
+    expect(audit).not.toBeNull()
     expect(audit?.targetType).toBe('SystemSetting')
+  })
+
+  it('audit metadata records from and to values', async () => {
+    const admin = await mkAdmin()
+    // First set to a known value
+    await updateSettingAdmin({ userId: admin.id }, 'unlock.costCredits', 3)
+    // Then update to a new value
+    await updateSettingAdmin({ userId: admin.id }, 'unlock.costCredits', 7)
+    const audit = await testDb.auditLog.findFirst({
+      where: { actorId: admin.id, action: 'setting.update', targetId: 'unlock.costCredits' },
+      orderBy: { createdAt: 'desc' },
+    })
+    expect(audit).not.toBeNull()
+    const meta = audit?.metadata as Record<string, unknown>
+    expect(meta).toBeDefined()
+    expect(meta.key).toBe('unlock.costCredits')
+    expect(meta.from).toBe(3)
+    expect(meta.to).toBe(7)
+  })
+
+  it('getSetting reads new value after updateSettingAdmin (cache cleared)', async () => {
+    const admin = await mkAdmin()
+    clearSettingsCache()
+    await updateSettingAdmin({ userId: admin.id }, 'team.maxMembers', 9)
+    const val = await getSetting('team.maxMembers', 3)
+    expect(val).toBe(9)
+  })
+
+  it('rejects empty string for numeric field unlock.costCredits', async () => {
+    const admin = await mkAdmin()
+    await expect(
+      updateSettingAdmin({ userId: admin.id }, 'unlock.costCredits', ''),
+    ).rejects.toThrow(ValidationError)
+  })
+
+  it('rejects negative value for unlock.costCredits', async () => {
+    const admin = await mkAdmin()
+    await expect(
+      updateSettingAdmin({ userId: admin.id }, 'unlock.costCredits', -1),
+    ).rejects.toThrow(ValidationError)
+  })
+
+  it('rejects fractional value for unlock.costCredits', async () => {
+    const admin = await mkAdmin()
+    await expect(
+      updateSettingAdmin({ userId: admin.id }, 'unlock.costCredits', 1.5),
+    ).rejects.toThrow(ValidationError)
+  })
+
+  it('DB value unchanged after rejected empty string', async () => {
+    const admin = await mkAdmin()
+    await updateSettingAdmin({ userId: admin.id }, 'unlock.costCredits', 2)
+    await expect(
+      updateSettingAdmin({ userId: admin.id }, 'unlock.costCredits', ''),
+    ).rejects.toThrow(ValidationError)
+    const row = await testDb.systemSetting.findUnique({ where: { key: 'unlock.costCredits' } })
+    expect(row?.value).toBe(2)
   })
 
   it('SETTINGS registry covers all PRD §5 required keys', () => {

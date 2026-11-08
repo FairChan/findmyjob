@@ -301,7 +301,15 @@
     "group_search": "Search",
     "group_resume": "Resume",
     "group_legal": "Legal",
-    "group_uploads": "Uploads"
+    "group_uploads": "Uploads",
+    "confirmTitle": "Confirm Change",
+    "confirmCancel": "Cancel",
+    "confirmOk": "Confirm",
+    "confirmDescLegalVersion": "After this change, all users must re-accept the terms on their next visit.",
+    "confirmDescBillingEnabled": "Enabling billing stops the pilot free monthly credits.",
+    "confirmDescUnlockEnabled": "This switch controls the unlock feature for all users.",
+    "confirmDescUploadsEnabled": "This switch controls file uploads for all users.",
+    "confirmDescTalentPoolSearch": "This switch controls talent pool search for all companies."
   },
   "adminDashboard": {
     "title": "Dashboard",

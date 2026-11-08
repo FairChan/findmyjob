@@ -301,7 +301,15 @@
     "group_search": "搜索",
     "group_resume": "简历",
     "group_legal": "法律",
-    "group_uploads": "上传"
+    "group_uploads": "上传",
+    "confirmTitle": "确认修改",
+    "confirmCancel": "取消",
+    "confirmOk": "确认",
+    "confirmDescLegalVersion": "修改法律文件版本号后，所有用户下次访问时须重新同意条款。",
+    "confirmDescBillingEnabled": "开启计费后将停止试点期的每月赠送点数。",
+    "confirmDescUnlockEnabled": "此开关控制所有用户的解锁功能，请谨慎操作。",
+    "confirmDescUploadsEnabled": "此开关控制所有用户的上传功能，请谨慎操作。",
+    "confirmDescTalentPoolSearch": "此开关控制所有企业对人才库的搜索权限，请谨慎操作。"
   },
   "adminDashboard": {
     "title": "数据看板",
