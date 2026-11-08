@@ -332,7 +332,17 @@ export async function listStudentInvitations(ctx: { userId: string }): Promise<S
     },
   })
 
-  return invitations
+  // Mask salary when salaryVisible=false before returning to RSC payload (PRD §3.2 / ARCHITECTURE §5.2)
+  return invitations.map((inv) => ({
+    ...inv,
+    job: inv.job
+      ? {
+          ...inv.job,
+          salaryMin: inv.job.salaryVisible ? inv.job.salaryMin : null,
+          salaryMax: inv.job.salaryVisible ? inv.job.salaryMax : null,
+        }
+      : null,
+  }))
 }
 
 // ---- Company list ----
