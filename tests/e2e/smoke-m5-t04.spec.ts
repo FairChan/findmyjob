@@ -63,7 +63,13 @@ test.describe('M5-T04 application smoke', () => {
         update: { value: 60 },
       })
 
-      await loginAs(page, { role: 'STUDENT' })
+      const { userId } = await loginAs(page, { role: 'STUDENT' })
+      // loginAs 不建档案；这里建一个完成度 0 的档案，页面应显示「完善档案后投递」而不是报错
+      await e2eDb.studentProfile.upsert({
+        where: { userId },
+        create: { userId, fullName: 'E2E Smoke Student', completeness: 0 },
+        update: { completeness: 0 },
+      })
       // Student created by loginAs has completeness 0 — completeness check redirects to onboarding
       // so we just verify the page is healthy (shows "Complete Profile to Apply" button)
       await expectPageHealthy(page, `/zh/jobs/${job.id}`)
@@ -91,9 +97,11 @@ test.describe('M5-T04 application smoke', () => {
       const { userId } = await loginAs(page, { role: 'STUDENT' })
 
       // Set completeness to 70 so they can apply
-      await e2eDb.studentProfile.update({
+      // loginAs 绕过了 Better Auth 的注册钩子，不会建 StudentProfile；这里用 upsert 保证档案存在
+      await e2eDb.studentProfile.upsert({
         where: { userId },
-        data: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+        create: { userId, fullName: 'E2E Apply Student', completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+        update: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
       })
 
       // Clear job view quota settings to allow viewing
@@ -145,7 +153,7 @@ test.describe('M5-T04 application smoke', () => {
   })
 
   test('student who already applied sees Applied badge on page load', async ({ page }) => {
-    const { job, company, cleanup } = await createTestJob('AlreadyApplied')
+    const { job, company, cleanup } = await createTestJob('PriorSubmit')
 
     try {
       await e2eDb.systemSetting.upsert({
@@ -160,9 +168,11 @@ test.describe('M5-T04 application smoke', () => {
       })
 
       const { userId } = await loginAs(page, { role: 'STUDENT' })
-      await e2eDb.studentProfile.update({
+      // loginAs 绕过了 Better Auth 的注册钩子，不会建 StudentProfile；这里用 upsert 保证档案存在
+      await e2eDb.studentProfile.upsert({
         where: { userId },
-        data: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+        create: { userId, fullName: 'E2E Apply Student', completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+        update: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
       })
 
       const profile = await e2eDb.studentProfile.findUnique({ where: { userId } })
@@ -268,9 +278,11 @@ test.describe('M5-T04 application smoke', () => {
       })
 
       const { userId } = await loginAs(page, { role: 'STUDENT' })
-      await e2eDb.studentProfile.update({
+      // loginAs 绕过了 Better Auth 的注册钩子，不会建 StudentProfile；这里用 upsert 保证档案存在
+      await e2eDb.studentProfile.upsert({
         where: { userId },
-        data: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+        create: { userId, fullName: 'E2E Apply Student', completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
+        update: { completeness: 70, workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'] },
       })
 
       const profile = await e2eDb.studentProfile.findUnique({ where: { userId } })
