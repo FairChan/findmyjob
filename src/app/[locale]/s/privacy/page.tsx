@@ -45,6 +45,7 @@ export default async function PrivacyPage() {
         initialBlocked={blocked}
         profileViews={formattedViews}
         unlocks={formattedUnlocks}
+        locale={locale}
       />
     </main>
   )

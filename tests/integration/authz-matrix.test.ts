@@ -2300,3 +2300,32 @@ describe('admin-settings authz (M6-T05)', () => {
     expect((result as { ok: false; code: string }).code).toBe('VALIDATION_ERROR')
   })
 })
+
+// ---------------------------------------------------------------------------
+// M7-T03 data-rights authz rows
+// ---------------------------------------------------------------------------
+
+describe('data-rights authz (M7-T03)', () => {
+  it('resolveDataRequestAction: student → FORBIDDEN', async () => {
+    const { userId } = await createStudent(testDb)
+    mockSession(userId)
+    const { resolveDataRequestAction } = await import('@/server/actions/data-rights')
+    const result = await resolveDataRequestAction({
+      requestId: 'cltest000000000000000000',
+      resolution: 'DONE',
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+
+  it('resolveDataRequestAction: guest → FORBIDDEN', async () => {
+    mockSession(null)
+    const { resolveDataRequestAction } = await import('@/server/actions/data-rights')
+    const result = await resolveDataRequestAction({
+      requestId: 'cltest000000000000000000',
+      resolution: 'DONE',
+    })
+    expect(result.ok).toBe(false)
+    expect((result as { ok: false; code: string }).code).toBe('FORBIDDEN')
+  })
+})

@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings } from 'lucide-react'
+import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings, FileText } from 'lucide-react'
 
 interface AdminNavLinksProps {
   locale: string
@@ -14,6 +14,7 @@ interface AdminNavLinksProps {
   partnersLabel: string
   notificationsLabel: string
   settingsLabel: string
+  dataRequestsLabel: string
   pendingCount: number
 }
 
@@ -26,6 +27,7 @@ const NAV_ITEMS = [
   { key: 'partners', href: (locale: string) => `/${locale}/admin/partners`, icon: Handshake, end: false },
   { key: 'notifications', href: (locale: string) => `/${locale}/admin/notifications`, icon: Bell, end: false },
   { key: 'settings', href: (locale: string) => `/${locale}/admin/settings`, icon: Settings, end: false },
+  { key: 'dataRequests', href: (locale: string) => `/${locale}/admin/data-requests`, icon: FileText, end: false },
 ] as const
 
 export function AdminNavLinks({
@@ -38,6 +40,7 @@ export function AdminNavLinks({
   partnersLabel,
   notificationsLabel,
   settingsLabel,
+  dataRequestsLabel,
   pendingCount,
 }: AdminNavLinksProps) {
   const pathname = usePathname()
@@ -51,6 +54,7 @@ export function AdminNavLinks({
     partners: partnersLabel,
     notifications: notificationsLabel,
     settings: settingsLabel,
+    dataRequests: dataRequestsLabel,
   }
 
   return (
