@@ -15,6 +15,8 @@ export async function getHomeStats(): Promise<HomeStats> {
       where: {
         status: 'PUBLISHED',
         OR: [{ deadline: null }, { deadline: { gte: now } }],
+        // Same rule as public search (M6-T12): a suspended company's jobs are not public.
+        company: { isActive: true },
       },
     }),
   ])
@@ -27,6 +29,7 @@ export async function getLatestJobs(limit = 6): Promise<JobListItem[]> {
     where: {
       status: 'PUBLISHED',
       OR: [{ deadline: null }, { deadline: { gte: now } }],
+      company: { isActive: true },
     },
     select: {
       id: true,

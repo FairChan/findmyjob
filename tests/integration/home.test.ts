@@ -37,7 +37,7 @@ vi.mock('@/lib/storage', () => ({
 import { setupTestDb, testDb } from '../setup/db'
 import { createEmployer, createJob } from '../factories'
 import { getHomePartners, getPublicPartners } from '@/server/services/admin-schools-partners'
-import { getLatestJobs } from '@/server/services/home'
+import { getHomeStats, getLatestJobs } from '@/server/services/home'
 import { getObjectBytes } from '@/lib/storage'
 
 setupTestDb()
@@ -190,6 +190,25 @@ describe('getLatestJobs', () => {
 })
 
 // ---- Partner logo proxy ----
+
+describe('home jobs exclude suspended companies (M6-T12 rule)', () => {
+  it('getLatestJobs and the published-job count skip jobs of an inactive company', async () => {
+    const active = await createEmployer(testDb)
+    const suspended = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: suspended.companyId }, data: { isActive: false } })
+    const okJob = await createJob(testDb, active.companyId, active.userId, { status: 'PUBLISHED' })
+    const hiddenJob = await createJob(testDb, suspended.companyId, suspended.userId, { status: 'PUBLISHED' })
+
+    const ids = (await getLatestJobs(50)).map((j) => j.id)
+    expect(ids).toContain(okJob.id)
+    expect(ids).not.toContain(hiddenJob.id)
+
+    const stats = await getHomeStats()
+    const expected = await testDb.job.count({ where: { status: 'PUBLISHED', company: { isActive: true } } })
+    expect(stats.publishedJobCount).toBe(expected)
+    expect(await testDb.job.count({ where: { status: 'PUBLISHED' } })).toBe(expected + 1)
+  })
+})
 
 describe('partner logo proxy', () => {
   const makeRequest = (partnerId: string) =>
