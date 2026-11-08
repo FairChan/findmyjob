@@ -1114,7 +1114,7 @@
 > 完成 2026-11-08：admin-dashboard service（getDashboardStats 含 assertAdmin；周分桶 date_trunc Asia/KL；creditTotals 委托 credits.ts）；AdminLayout 仿原型侧边栏（AdminNavLinks client component，aria-current，移动端横排）；AdminDashboardPage（指标卡 10 项、WeeklyBars、注册进度条、学校分布、robots noindex、requireAdmin 在页面内独立校验）；Cache-Control: private, no-store + X-Robots-Tag 通过 proxy.ts 对全部 admin 路由统一加头；messages zh+en 新增 adminLayout 和扩充 adminDashboard；集成测试 7 个通过（含周边界测试）；authz-matrix +4 个用例；E2E 冒烟 8 个通过（全绿无跳过）；pnpm lint/typecheck/test/db:check 全部通过（1607 passed，4 skipped）；依赖 M5-T08 按排序约束处理（只读现有表，经总控批准）；未加新索引（admin 看板为低频只读操作，无需优化）；失败输出见提交说明。
 > 自查：1. 鉴权在服务端：符合（page.tsx 和 service 各自独立 requireAdmin/assertAdmin）；2. 输入走 zod：不适用（纯只读，无外部输入）；3. 越权有测试：符合（authz-matrix +4 行）；4. 加锁和并发：不适用（纯只读聚合，无写操作）；5. 测试失败证据：见提交说明；6. E2E 冒烟：符合（8 个通过）；7-12：均符合或不适用。
 
-#### [ ] M6-T02 学生管理
+#### [x] M6-T02 学生管理
 依赖：M6-T01
 做：
 - 搜索、详情（运营可见全部字段，查看联系方式要写审计）、人工学校认证（学生上传学生证 → 运营审核）、给学生加查看额度（ADMIN_GRANT，必须写原因）。
@@ -1122,6 +1122,7 @@
 验收：
 - 停用后学生立刻无法登录，并从人才库消失
 - E2E 用两个浏览器上下文：运营停用学生后，这名学生的下一次请求就被重定向到登录页
+> 完成 2026-11-08：实现 searchStudents / getStudentAdminDetail / approveSchoolVerificationManually / grantJobViewQuota / suspendUser / restoreUser；suspendUser 在单个 $transaction 内完成 status 更新 + session 清除 + 双审计；联系方式读取经 getContactForAdmin（遵循 ESLint 仅限 contact-access.ts 的约束）；20 条单元测试 + 6 条 authz-matrix 测试 + 8 条 E2E 冒烟全部通过。
 
 #### [ ] M6-T03 企业管理
 依赖：M6-T01

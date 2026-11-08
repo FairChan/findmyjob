@@ -256,6 +256,41 @@ export async function getContactForCompany(
   })
 }
 
+/**
+ * Admin-only: returns decrypted contact data for any student profile.
+ * Writes a contact.read audit record. The caller must have already verified ADMIN role.
+ */
+export async function getContactForAdmin(
+  studentProfileId: string,
+  ctx: UserCtx,
+  ip?: string,
+): Promise<ContactData> {
+  return db.$transaction(async (tx) => {
+    const row = await tx.studentContact.findUnique({ where: { studentId: studentProfileId } })
+
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'contact.read',
+      targetType: 'StudentContact',
+      targetId: studentProfileId,
+      metadata: { source: 'admin' },
+      ip,
+    }, tx)
+
+    if (!row) {
+      return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
+    }
+
+    return {
+      phone: decryptIfPresent(row.phone, 'phone', studentProfileId),
+      email: decryptIfPresent(row.email, 'email', studentProfileId),
+      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentProfileId),
+      wechat: decryptIfPresent(row.wechat, 'wechat', studentProfileId),
+      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentProfileId),
+    }
+  })
+}
+
 /** Encrypts and upserts the student's own contact info. */
 export async function updateOwnContact(ctx: UserCtx, input: UpdateContactInput): Promise<void> {
   const studentId = await getStudentId(ctx)
