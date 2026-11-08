@@ -1,8 +1,8 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 import { SignupClosedError } from '@/server/errors'
 
-vi.mock('@/server/db', () => ({
-  db: {
+vi.mock('@/server/db', () => {
+  const db = {
     user: {
       count: vi.fn(),
       deleteMany: vi.fn(),
@@ -15,8 +15,12 @@ vi.mock('@/server/db', () => ({
     auditLog: {
       create: vi.fn().mockResolvedValue(undefined),
     },
-  },
-}))
+    // setSetting writes the setting and its audit row in one transaction (M6-T13); the
+    // transaction client is the same mock so upsert/audit assertions still see the calls.
+    $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(db)),
+  }
+  return { db }
+})
 
 vi.mock('@/server/lib/alert', () => ({
   alert: vi.fn(),
