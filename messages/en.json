@@ -173,7 +173,8 @@
     "returnToFront": "Back to Site",
     "navDashboard": "Dashboard",
     "navCompanies": "Company Review",
-    "navJobs": "Job Review"
+    "navJobs": "Job Review",
+    "navNotifications": "Notifications"
   },
   "adminDashboard": {
     "title": "Dashboard",
@@ -341,12 +342,23 @@
   "notifications": {
     "title": "Notifications",
     "subtitle": "See what companies have done with your profile.",
+    "subtitleEmployer": "See notifications about applications, invitations and credits.",
+    "subtitleAdmin": "See system alerts and operations notifications.",
     "empty": "No notifications yet.",
+    "markAllRead": "Mark all as read",
     "talentUnlock": "A company unlocked your contact details",
     "companyVerified": "Your company has been verified",
     "companyRejected": "Your company verification was rejected",
     "jobApproved": "Your job has been approved",
     "jobRejected": "Your job was rejected",
+    "applicationStatusChanged": "Your application status was updated",
+    "invitationReceived": "You received a job invitation",
+    "invitationAccepted": "A student accepted your invitation",
+    "invitationDeclined": "A student declined your invitation",
+    "creditsGranted": "Credits have been added to your account",
+    "creditsLow": "Your credit balance is running low",
+    "quotaExhausted": "Your job view quota has been used up",
+    "referralQualified": "A friend you invited has qualified",
     "systemAlert": "System notification",
     "unknownType": "Notification",
     "privacyLink": "View Privacy Centre for details",

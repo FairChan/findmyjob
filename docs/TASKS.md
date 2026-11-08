@@ -1072,6 +1072,7 @@
 依赖：M5-T07
 做：通知铃铛 + 未读数 + 列表 + 全部已读；按收件人语言渲染中 / 英邮件模板；接入 PRD §6 的全部事件；`employer-daily-digest` 任务。
 验收：PRD §6 每一行都有对应测试或 E2E 覆盖
+> 进度 2026-11-08 第 1 轮：notify.ts（sendNotificationEmail + sendDailyDigestEmail）；email/templates/index.ts（PRD §6 全部事件模板，zh/en）；email-cap.ts 新增 9 种模板；review-company/review-jobs/applicants/unlock/invitations 接入真实邮件；quota.exhausted + referral.qualified + signup-cap-warn 通知；employer-daily-digest 任务（KL 08:00 cron）；/s/notifications 增强 + /e/notifications 新建 + /admin/notifications 新建；markAllNotificationsReadAction（auth:'user'）；MarkAllReadButton 客户端组件；admin nav 加 Bell 通知入口；i18n zh+en 同步更新；notify.test.ts 8 个用例；authz-matrix +3 行；E2E smoke-m5-t08 4 个用例；lint✓ typecheck✓；剩余：pnpm test + E2E 因测试库锁未能确认绿。
 
 #### [x] M5-T09 职位搜索 service（精确 / 关联）
 依赖：M5-T03

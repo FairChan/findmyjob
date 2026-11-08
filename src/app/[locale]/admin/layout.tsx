@@ -44,6 +44,7 @@ export default async function AdminLayout({
           dashboardLabel={t('navDashboard')}
           companiesLabel={t('navCompanies')}
           jobsLabel={t('navJobs')}
+          notificationsLabel={t('navNotifications')}
           pendingCount={pendingCount}
         />
       </aside>

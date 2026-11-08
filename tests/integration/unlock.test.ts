@@ -28,6 +28,10 @@ vi.mock('@/server/lib/alert', () => ({
   alert: vi.fn(),
 }))
 
+vi.mock('@/server/services/notify', () => ({
+  sendNotificationEmail: vi.fn().mockResolvedValue(undefined),
+}))
+
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer } from '../factories'
 import { unlockStudent } from '@/server/services/unlock'

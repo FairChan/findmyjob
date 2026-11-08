@@ -15,6 +15,15 @@ export const EMAIL_TEMPLATES = {
   'job-alert': 'job alert notification',
   'invitation': 'platform invitation',
   'newsletter': 'newsletter',
+  'company-verification': 'company verification result',
+  'job-review': 'job review result',
+  'application-status': 'application status update',
+  'talent-unlocked': 'talent unlock notification',
+  'invitation-received': 'invitation received',
+  'credits-granted': 'credits granted',
+  'credits-low': 'low credits warning',
+  'daily-digest': 'daily new applications digest',
+  'signup-cap-warn': 'signup cap warning',
 } as const
 
 export type EmailTemplate = keyof typeof EMAIL_TEMPLATES

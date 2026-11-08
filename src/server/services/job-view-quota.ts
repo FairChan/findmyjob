@@ -2,6 +2,8 @@ import 'server-only'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { createNotification } from './notifications'
+import { logger } from '../lib/logger'
 
 export type QuotaResult = {
   used: number
@@ -130,6 +132,22 @@ export async function openJob(studentId: string, jobId: string): Promise<OpenJob
     isNewView = true
     resultQuota = { ...quota, used: used + 1 }
   })
+
+  if (isNewView && resultQuota.limit !== null && resultQuota.used >= resultQuota.limit) {
+    // Student just used their last quota slot — notify them post-commit (best-effort)
+    const studentUser = await db.studentProfile.findUnique({
+      where: { id: studentId },
+      select: { userId: true },
+    })
+    if (studentUser) {
+      await createNotification(db, studentUser.userId, 'quota.exhausted', {
+        used: resultQuota.used,
+        limit: resultQuota.limit,
+      }).catch((err) => {
+        logger.error({ err, studentId }, 'Failed to send quota.exhausted notification')
+      })
+    }
+  }
 
   return { allowed, isNewView, quota: resultQuota }
 }

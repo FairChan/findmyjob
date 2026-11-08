@@ -4,6 +4,7 @@ import { getTranslations, getLocale } from 'next-intl/server'
 import { requireStudent } from '@/server/authz'
 import { listNotifications } from '@/server/services/notifications'
 import { NotificationsClient } from '@/components/notifications/NotificationsClient'
+import { MarkAllReadButton } from '@/components/notifications/MarkAllReadButton'
 import { formatKLDate } from '@/lib/format-date'
 
 export default async function NotificationsPage({
@@ -31,6 +32,22 @@ export default async function NotificationsPage({
         return t('jobApproved')
       case 'job.rejected':
         return t('jobRejected')
+      case 'application.status.changed':
+        return t('applicationStatusChanged')
+      case 'invitation.received':
+        return t('invitationReceived')
+      case 'invitation.accepted':
+        return t('invitationAccepted')
+      case 'invitation.declined':
+        return t('invitationDeclined')
+      case 'credits.granted':
+        return t('creditsGranted')
+      case 'credits.low':
+        return t('creditsLow')
+      case 'quota.exhausted':
+        return t('quotaExhausted')
+      case 'referral.qualified':
+        return t('referralQualified')
       case 'system.alert':
         return t('systemAlert')
       default:
@@ -38,10 +55,17 @@ export default async function NotificationsPage({
     }
   }
 
+  const unreadCount = notifications.filter((n) => n.readAt === null).length
+
   return (
     <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
-      <p className="mb-6 text-sm text-muted-foreground">{t('subtitle')}</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="mb-1 text-2xl font-bold">{t('title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
+        </div>
+        {unreadCount > 0 && <MarkAllReadButton label={t('markAllRead')} />}
+      </div>
 
       {notifications.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
