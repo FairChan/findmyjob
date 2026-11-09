@@ -2723,3 +2723,85 @@ describe('listAuditLogs authz (M6-T06)', () => {
     expect(Array.isArray(result.items)).toBe(true)
   })
 })
+
+describe('public job reporting action (M7-T09)', () => {
+  async function publishedJob() {
+    const employer = await createEmployer(testDb)
+    return createJob(testDb, employer.companyId, employer.userId, { status: 'PUBLISHED' })
+  }
+
+  it.each(['guest', 'suspended', 'deleted', 'missing', 'expired-admin'] as const)(
+    '%s cannot submit a report or notification', async (actor) => {
+      const job = await publishedJob()
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'missing') mockSession('missing-report-user')
+      else if (actor === 'expired-admin') {
+        const admin = await createTwoFactorAdmin()
+        mockSession(admin.id, {
+          createdAt: new Date(Date.now() - 13 * 3600_000), twoFactorVerifiedAt: new Date(),
+        })
+      } else {
+        const student = await createStudent(testDb)
+        await testDb.user.update({ where: { id: student.userId }, data: {
+          status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+        } })
+        mockSession(student.userId)
+      }
+      const before = await testDb.notification.count()
+      const { createReportAction } = await import('@/server/actions/reports')
+      expect(await createReportAction({ jobId: job.id, reason: 'OTHER' }))
+        .toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.jobReport.count()).toBe(0)
+      expect(await testDb.notification.count()).toBe(before)
+    },
+  )
+
+  it.each(['STUDENT', 'EMPLOYER', 'ADMIN'] as const)(
+    '%s submits using its session identity, never client-supplied identity', async (role) => {
+      const job = await publishedJob()
+      const student = await createStudent(testDb)
+      await testDb.user.update({ where: { id: student.userId }, data: { role } })
+      mockSession(student.userId)
+      const { createReportAction } = await import('@/server/actions/reports')
+      const result = await createReportAction({
+        jobId: job.id, reason: 'MISMATCH', note: '  synthetic report  ',
+        reporterId: 'forged-reporter', userId: 'forged-user', resolverId: 'forged-resolver',
+      })
+      expect(result).toMatchObject({ ok: true, data: { reportId: expect.any(String) } })
+      const reports = await testDb.jobReport.findMany()
+      expect(reports).toHaveLength(1)
+      expect(reports[0]).toMatchObject({
+        jobId: job.id, reporterId: student.userId, reason: 'MISMATCH',
+        note: 'synthetic report', resolverId: null, status: 'OPEN',
+      })
+      expect(await testDb.jobView.count()).toBe(0)
+      expect(await testDb.application.count()).toBe(0)
+    },
+  )
+
+  it('invalid payload is rejected before mutation', async () => {
+    const student = await createStudent(testDb)
+    mockSession(student.userId)
+    const { createReportAction } = await import('@/server/actions/reports')
+    expect(await createReportAction({ jobId: '', reason: 'FAKE_REASON' }))
+      .toEqual({ ok: false, code: 'VALIDATION_ERROR' })
+    expect(await testDb.jobReport.count()).toBe(0)
+  })
+
+  it('the eleventh submission returns the domain limit code', async () => {
+    const student = await createStudent(testDb)
+    const job = await publishedJob()
+    await testDb.systemSetting.upsert({ where: { key: 'limits.jobReportsPerDay' },
+      create: { key: 'limits.jobReportsPerDay', value: 10 }, update: { value: 10 },
+    })
+    clearSettingsCache()
+    mockSession(student.userId)
+    const { createReportAction } = await import('@/server/actions/reports')
+    for (let index = 0; index < 10; index++) {
+      expect(await createReportAction({ jobId: job.id, reason: 'OTHER' })).toMatchObject({ ok: true })
+    }
+    expect(await createReportAction({ jobId: job.id, reason: 'OTHER' }))
+      .toEqual({ ok: false, code: 'RATE_LIMITED' })
+    expect(await testDb.jobReport.count({ where: { reporterId: student.userId } })).toBe(10)
+  })
+})

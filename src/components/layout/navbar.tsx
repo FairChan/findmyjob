@@ -15,7 +15,7 @@ export default async function Navbar({ locale }: { locale: Locale }) {
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-6" aria-label={t('home')}>
+        <nav className="hidden lg:flex items-center gap-4" aria-label={t('home')}>
           <Link href="/" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             {t('home')}
           </Link>
@@ -31,9 +31,12 @@ export default async function Navbar({ locale }: { locale: Locale }) {
           <Link href="/partners" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             {t('partners')}
           </Link>
+          <Link href="/safety" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+            {t('safety')}
+          </Link>
         </nav>
 
-        <div className="hidden md:flex items-center gap-4">
+        <div className="hidden lg:flex items-center gap-4">
           <LocaleSwitcher currentLocale={locale} />
           <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             {t('login')}

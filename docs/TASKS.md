@@ -1323,11 +1323,12 @@
 验收：手机可「添加到主屏幕」；学生端所有页面在 375px 宽度下无横向滚动
 > 完成 2026-11-09：manifest.ts + gen-icons.mjs（纯 Node zlib）+ sw.js + ServiceWorkerRegistrar；修复 footer/StudentNav/ProfileEditor/LocaleForm/StudentRegisterForm/job-form-client/company-form/resume-client/verification-form/admin-nav-links/admin-layout 的 375px 触控目标和溢出问题；44 个 E2E + 12 个单元测试全绿。
 
-#### [ ] M7-T09 反诈专区与职位举报（P1，可在试点后做）
+#### [x] M7-T09 反诈专区与职位举报（P1，可在试点后做）
 依赖：M7-T01
 做：`/safety` 反诈专区页（内容来自 Article）；职位详情页「举报」按钮，按用户限流每天 `limits.jobReportsPerDay` 次；`services/reports.ts`、`services/articles.ts`。
 验收：举报出现在运营队列里；处理时写审计 `job.report.resolve`；第 11 次举报被拒
 > M5-T08 已备好：举报建好之后，调用 `src/server/services/notify.ts` 的 `notifyNewReport(reportId)`（给运营发站内 report.new）。
+> 完成 2026-11-10：双语反诈页复用已发布文章分页与安全 Markdown；完整/额度锁定职位均可举报，成功不重复读取职位，运营通知/处理审计与第 11 次限流已验证。全量 Vitest 2544 passed / 4 既有性能基准 skipped，定向 33/33、最终 M7 E2E 9/9、既有导航和 375px 回归 48/48，lint/typecheck/build 通过；20 张截图已检查，独立复核 clean。真实反诈内容与联系方式仍由人工核实。
 
 #### [x] M7-T10 k6 压测脚本（browse+search 和 smoke）
 依赖：M7-T06

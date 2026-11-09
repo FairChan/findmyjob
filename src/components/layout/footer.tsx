@@ -20,6 +20,9 @@ export default async function Footer() {
             <Link href="/partners" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('partners')}
             </Link>
+            <Link href="/safety" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              {t('safety')}
+            </Link>
             <Link href="/legal/privacy" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('privacy')}
             </Link>

@@ -18,7 +18,7 @@ export default function MobileMenu({ locale }: { locale: Locale }) {
       <Button
         variant="ghost"
         size="icon"
-        className="md:hidden"
+        className="lg:hidden"
         aria-label={t('openMenu')}
         onClick={() => setOpen(true)}
       >
@@ -42,6 +42,9 @@ export default function MobileMenu({ locale }: { locale: Locale }) {
             </Link>
             <Link href="/partners" onClick={() => setOpen(false)} className="text-base font-medium">
               {t('partners')}
+            </Link>
+            <Link href="/safety" onClick={() => setOpen(false)} className="text-base font-medium">
+              {t('safety')}
             </Link>
             <div className="mt-4 border-t pt-4">
               <Link

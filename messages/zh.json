@@ -14,7 +14,8 @@
     "notifications": "消息通知",
     "privacy": "隐私中心",
     "myProfile": "我的档案",
-    "myApplications": "我的投递"
+    "myApplications": "我的投递",
+    "safety": "求职防骗"
   },
   "localeSwitcher": {
     "label": "切换语言",
@@ -28,7 +29,8 @@
     "partners": "合作伙伴",
     "legal": "法律条款",
     "privacy": "隐私政策",
-    "terms": "用户协议"
+    "terms": "用户协议",
+    "safety": "求职防骗"
   },
   "home": {
     "title": "FindMYJob — 在马来西亚找实习和工作",
@@ -659,7 +661,7 @@
     "kindCampus": "校园活动",
     "kindAward": "奖项",
     "removeSkill": "删除技能 {skill}",
-    "skipStep4Hint":"经历和简历可以稍后在档案页补充。",
+    "skipStep4Hint": "经历和简历可以稍后在档案页补充。",
     "errorRequired": "此项为必填",
     "errorCgpaRange": "GPA 请填 0.00–4.00",
     "errorAtLeastOneIntent": "请至少选择一种求职类型"
@@ -1678,5 +1680,51 @@
       "REJECTED": "已拒绝",
       "WITHDRAWN": "已撤回"
     }
+  },
+  "safety": {
+    "title": "求职防骗",
+    "description": "了解常见招聘骗局，查看求职指南和经过核实的联系信息。",
+    "all": "全部内容",
+    "category": "内容类别",
+    "categories": {
+      "FRAUD_CASE": "诈骗案例",
+      "GUIDE": "求职指南",
+      "CONTACT": "联系信息"
+    },
+    "filter": "查看内容",
+    "reset": "查看全部",
+    "empty": "此类别暂时没有已发布内容。",
+    "next": "下一页",
+    "updatedAt": "更新于 {date}",
+    "video": "在新标签页观看视频",
+    "errorQuery": "筛选或分页条件无效，请返回全部内容重试。",
+    "emergencyTitle": "遇到紧急情况",
+    "emergency": "在马来西亚遇到紧急危险，请拨打报警电话 999。",
+    "verifiedContacts": "领事保护及其他联系方式由运营核实后在联系信息中发布。"
+  },
+  "jobReports": {
+    "trigger": "举报职位",
+    "title": "举报职位",
+    "description": "告诉我们这个职位可能存在的问题，运营人员会查看并处理。",
+    "reason": "举报原因",
+    "reasons": {
+      "ASKS_PAYMENT": "要求先交钱",
+      "FAKE_SALARY": "虚假薪资",
+      "ILLEGAL_WORK": "疑似非法工作",
+      "MISMATCH": "信息与实际不符",
+      "OTHER": "其他"
+    },
+    "note": "补充说明（可选）",
+    "noteHint": "最多 1000 字，请勿填写密码或不必要的个人资料。",
+    "submit": "提交举报",
+    "submitting": "正在提交…",
+    "cancel": "取消",
+    "close": "关闭",
+    "success": "举报已收到，感谢你帮助维护求职安全。",
+    "errorInvalid": "请选择有效原因，说明不得超过 1000 字。",
+    "errorLimit": "今天的举报次数已用完，请明天再试。",
+    "errorUnavailable": "这个职位已不可用，无法提交举报。",
+    "errorForbidden": "当前会话无法提交举报，请重新登录。",
+    "errorGeneric": "提交失败，请稍后重试。"
   }
 }

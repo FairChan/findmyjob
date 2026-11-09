@@ -11,6 +11,7 @@ import { openJob } from '@/server/services/job-view-quota'
 import { toJobDetail } from '@/server/serializers/job'
 import { stateLabel } from '@/lib/my-states'
 import { ShareJobButton } from './ShareJobButton'
+import { ReportJobDialog } from '@/components/jobs/report-job-dialog'
 import { ApplyModal, AppliedStatus, WithdrawnStatus } from '@/components/apply/ApplyModal'
 import { getSetting } from '@/server/services/settings'
 
@@ -249,7 +250,10 @@ export default async function JobDetailPage({ params }: PageProps) {
           </section>
         )}
       </article>
-      <ShareJobButton jobId={id} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
+      <div className="flex flex-wrap items-start gap-x-3">
+        <ShareJobButton jobId={id} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
+        <ReportJobDialog jobId={id} />
+      </div>
     </div>
   )
 }
@@ -290,7 +294,10 @@ function LockedJobCard({
             {t('inviteButton')}
           </Link>
         </div>
-        <ShareJobButton jobId={jobId} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
+        <div className="flex flex-wrap items-start gap-x-3">
+          <ShareJobButton jobId={jobId} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
+          <ReportJobDialog jobId={jobId} />
+        </div>
       </div>
     </div>
   )

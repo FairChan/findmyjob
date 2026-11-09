@@ -14,7 +14,8 @@
     "notifications": "Notifications",
     "privacy": "Privacy Centre",
     "myProfile": "My Profile",
-    "myApplications": "My Applications"
+    "myApplications": "My Applications",
+    "safety": "Job safety"
   },
   "localeSwitcher": {
     "label": "Switch language",
@@ -28,7 +29,8 @@
     "partners": "Partners",
     "legal": "Legal",
     "privacy": "Privacy Policy",
-    "terms": "Terms of Service"
+    "terms": "Terms of Service",
+    "safety": "Job safety"
   },
   "home": {
     "title": "FindMYJob — Find Internships & Jobs in Malaysia",
@@ -1678,5 +1680,51 @@
       "REJECTED": "Rejected",
       "WITHDRAWN": "Withdrawn"
     }
+  },
+  "safety": {
+    "title": "Job safety",
+    "description": "Learn about recruitment scams, read job search guides and find verified contact information.",
+    "all": "All content",
+    "category": "Content category",
+    "categories": {
+      "FRAUD_CASE": "Scam cases",
+      "GUIDE": "Job search guides",
+      "CONTACT": "Contact information"
+    },
+    "filter": "View content",
+    "reset": "View all",
+    "empty": "There is no published content in this category yet.",
+    "next": "Next page",
+    "updatedAt": "Updated {date}",
+    "video": "Watch video in a new tab",
+    "errorQuery": "The filter or page parameters are invalid. Return to all content and try again.",
+    "emergencyTitle": "In an emergency",
+    "emergency": "If you are in immediate danger in Malaysia, call 999.",
+    "verifiedContacts": "Consular and other contact details are published after verification by our team."
+  },
+  "jobReports": {
+    "trigger": "Report job",
+    "title": "Report job",
+    "description": "Tell us what may be wrong with this listing. Our team will review your report.",
+    "reason": "Report reason",
+    "reasons": {
+      "ASKS_PAYMENT": "Payment requested upfront",
+      "FAKE_SALARY": "False salary",
+      "ILLEGAL_WORK": "Suspected illegal work",
+      "MISMATCH": "Listing does not match reality",
+      "OTHER": "Other"
+    },
+    "note": "Additional details (optional)",
+    "noteHint": "Up to 1000 characters. Avoid passwords and unnecessary personal information.",
+    "submit": "Submit report",
+    "submitting": "Submitting…",
+    "cancel": "Cancel",
+    "close": "Close",
+    "success": "Report received. Thank you for helping keep job searches safe.",
+    "errorInvalid": "Select a valid reason and keep the details within 1000 characters.",
+    "errorLimit": "You have reached today's report limit. Please try again tomorrow.",
+    "errorUnavailable": "This job is no longer available and cannot be reported.",
+    "errorForbidden": "Your session cannot submit this report. Please sign in again.",
+    "errorGeneric": "Could not submit the report. Please try again later."
   }
 }
