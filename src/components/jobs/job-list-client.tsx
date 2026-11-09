@@ -1,6 +1,6 @@
 'use client'
 import { useState, useTransition } from 'react'
-import { Link } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import type { JobListItem } from '@/app/[locale]/e/jobs/page'
 import { copyJobAction, closeJobAction } from '@/app/[locale]/e/jobs/actions'
@@ -40,6 +40,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function JobListClient({ jobs, locale, t }: Props) {
+  const router = useRouter()
   const [localJobs, setLocalJobs] = useState(jobs)
   const [isPending, startTransition] = useTransition()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -92,6 +93,7 @@ export default function JobListClient({ jobs, locale, t }: Props) {
         prev.map(j => (j.id === jobId ? { ...j, status: result.data.status as typeof j.status } : j)),
       )
       setActionSuccess(t.closeSuccess)
+      router.refresh()
     })
   }
 

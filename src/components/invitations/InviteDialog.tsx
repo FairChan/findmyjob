@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { sendInvitationAction } from '@/server/actions/invitations'
+import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
 
 export interface InviteJob {
   id: string
@@ -13,27 +14,30 @@ export interface InviteJob {
 }
 
 interface Props {
+  canPurchase?: boolean
   studentId: string
   jobs: InviteJob[]
   usedQuota: number
-  totalQuota: number
+  totalQuota: number | null
   open: boolean
   onClose: () => void
 }
 
-export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onClose }: Props) {
+export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onClose, canPurchase = false }: Props) {
   const t = useTranslations('invitations')
   const router = useRouter()
   const [jobId, setJobId] = useState(jobs[0]?.id ?? '')
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [limitReached, setLimitReached] = useState(false)
   const [success, setSuccess] = useState(false)
 
   async function handleSubmit() {
     if (!jobId) return
     setSubmitting(true)
     setError(null)
+    setLimitReached(false)
     try {
       const result = await sendInvitationAction({ studentId, jobId, message: message.trim() || null })
       if (result.ok) {
@@ -45,7 +49,7 @@ export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onC
         }, 1200)
       } else {
         if (result.code === 'INVITATION_QUOTA_EXCEEDED') {
-          setError(t('inviteErrorQuota'))
+          setLimitReached(true)
         } else if (result.code === 'DUPLICATE_APPLICATION') {
           setError(t('inviteAlreadyApplied'))
         } else if (result.code === 'NOT_FOUND') {
@@ -114,12 +118,15 @@ export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onC
             </div>
 
             <p className="rounded-lg bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-              {t('inviteDialogQuota', { used: usedQuota, quota: totalQuota })}
+              {totalQuota === null
+                ? t('inviteDialogQuotaUnlimited', { used: usedQuota })
+                : t('inviteDialogQuota', { used: usedQuota, quota: totalQuota })}
             </p>
 
             {error && (
-              <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
+              <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
             )}
+            {limitReached && <EntitlementLimitNotice resource="invitations" canPurchase={canPurchase} />}
           </div>
         )}
 

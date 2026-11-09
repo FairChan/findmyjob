@@ -7,6 +7,8 @@ import { db } from '@/server/db'
 import JobFormClient from '@/components/jobs/job-form-client'
 import { updateJobAction } from '../../actions'
 import { NotFoundError } from '@/server/errors'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
+import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 
 export default async function EditJobPage({
   params,
@@ -32,6 +34,7 @@ export default async function EditJobPage({
     select: { verificationStatus: true },
   })
   const isVerified = company?.verificationStatus === 'VERIFIED'
+  const usage = await getCompanyEntitlementUsage(ctx)
 
   const initialData = {
     jobId: job.id,
@@ -71,7 +74,9 @@ export default async function EditJobPage({
           {t('notEditable')}
         </p>
       )}
+      <CompanyEntitlementSummary usage={usage} resource="jobs" />
       <JobFormClient
+        canPurchase={usage.canPurchase}
         mode="edit"
         isVerified={isVerified}
         isEditable={isEditable}

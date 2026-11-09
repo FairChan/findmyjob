@@ -3,6 +3,8 @@ import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { requireCompanyMember } from '@/server/authz'
 import { listCompanyJobs } from '@/server/services/jobs'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
+import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 import JobListClient from '@/components/jobs/job-list-client'
 import type { JobStatus, JobType } from '@prisma/client'
 
@@ -31,7 +33,7 @@ export default async function JobsPage({ params }: { params: Promise<{ locale: s
   const t = await getTranslations('jobs')
 
   const ctx = await requireCompanyMember('RECRUITER', h)
-  const jobs = await listCompanyJobs(ctx)
+  const [jobs, usage] = await Promise.all([listCompanyJobs(ctx), getCompanyEntitlementUsage(ctx)])
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8">
@@ -45,6 +47,7 @@ export default async function JobsPage({ params }: { params: Promise<{ locale: s
         </Link>
       </div>
 
+      <CompanyEntitlementSummary usage={usage} resource="jobs" />
       <JobListClient
         jobs={jobs as JobListItem[]}
         locale={locale}

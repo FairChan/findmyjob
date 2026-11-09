@@ -206,8 +206,10 @@ flowchart LR
 | `reconcile-wallets` | 每天 03:00 |
 | `purge-deleted-accounts` | 每天 04:00，清理软删除满 30 天、仍有 PII 的账号（可重复执行） |
 | `employer-daily-digest` | 每天 09:00，新投递汇总 |
-| `expire-subscriptions`（M8） | 每天 00:30 |
+| `expire-subscriptions` | 每天 00:30 Asia/Kuala_Lumpur，missed:once；按公司主键每批 50，逐公司 CREDIT 事务过期并持久去重到期前 7 天站内提醒 |
 | `prune-rate-limit`（P1，M7-T14） | 定期清理限流桶 |
+
+套餐权益由 `subscription-entitlements.ts` 在调用方事务内统一解析：半开有效期 `[startsAt, endsAt)` 内已付款商业快照优先，关闭新销售不撤销已付权益。无有效段时，公益期沿现有配置，收费期用有限 FREE；异常快照不从当前商品补造。发布职位、席位预留/接受及学生邀请在同公司 CREDIT 锁后采样时间、复查身份与容量，再完成写入。邀请进一步按 CREDIT → INVITATION 取锁，并以吉隆坡自然月上下界计数。到期不删除职位/成员、不清空余额、不重置月用量；PENDING_REVIEW 不预留职位，已过期 PUBLISHED 重新开放须重新占位。显示层只读取 `getCompanyEntitlementUsage` 的来源、有效期、计数、限额及购买能力白名单；执行入口始终再次检查。
 
 ### 5.7 必须写审计日志的动作
 `auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`article.save`、`search.synonym.save`、`plan.create`、`plan.update`、`plan.deactivate`、`plan.delete`、`order.create`、`order.proof.attach`、`order.proof.view`、`order.cancel`、`order.confirm`、`setting.update`、`user.suspend`、`data.export`、`data.delete`

@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button'
 import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
 import { UnlockButton } from '@/components/talent/UnlockButton'
 import { InviteButton } from '@/components/invitations/InviteButton'
-import { getMonthlyInvitationUsage } from '@/server/services/invitations'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 
 // ---- Label maps ----
 
@@ -149,6 +149,7 @@ function TalentDetailBody({
   inviteJobs,
   inviteUsed,
   inviteQuota,
+  canPurchase,
 }: {
   detail: TalentDetail
   locale: string
@@ -159,7 +160,8 @@ function TalentDetailBody({
   billingEnabled: boolean
   inviteJobs: InviteJob[]
   inviteUsed: number
-  inviteQuota: number
+  inviteQuota: number | null
+  canPurchase: boolean
 }) {
   return (
     <div className="space-y-6">
@@ -237,6 +239,7 @@ function TalentDetailBody({
               jobs={inviteJobs}
               usedQuota={inviteUsed}
               totalQuota={inviteQuota}
+              canPurchase={canPurchase}
             />
           </div>
         </div>
@@ -369,7 +372,7 @@ export default async function TalentDetailPage({
   const tFoldersMsg = await getTranslations('talentFolders')
   const tFolders = (key: string) => tFoldersMsg(key as Parameters<typeof tFoldersMsg>[0])
 
-  let ctx: { userId: string; companyId: string }
+  let ctx: Awaited<ReturnType<typeof requireCompanyMember>>
   try {
     ctx = await requireCompanyMember('RECRUITER', await headers())
   } catch (err) {
@@ -403,7 +406,7 @@ export default async function TalentDetailPage({
     getValidatedUnlockSettings(),
     getSetting<boolean>('unlock.enabled', true),
     getSetting<boolean>('billing.enabled', false),
-    getMonthlyInvitationUsage(ctx.companyId),
+    getCompanyEntitlementUsage(ctx),
   ])
 
   // Fetch published jobs for this company (for the invite dialog)
@@ -461,8 +464,9 @@ export default async function TalentDetailPage({
         unlockEnabled={unlockEnabled}
         billingEnabled={billingEnabled}
         inviteJobs={publishedJobs}
-        inviteUsed={inviteUsage.used}
-        inviteQuota={inviteUsage.quota}
+        inviteUsed={inviteUsage.invitations.used}
+        inviteQuota={inviteUsage.invitations.limit}
+        canPurchase={inviteUsage.canPurchase}
       />
     </main>
   )

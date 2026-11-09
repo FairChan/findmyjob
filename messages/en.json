@@ -1,4 +1,27 @@
 {
+  "entitlements": {
+    "title": "Current usage limits",
+    "sourcePilot": "Pilot allowances",
+    "sourceFree": "Free plan allowances",
+    "sourceSubscription": "Active paid plan allowances",
+    "effectiveUntil": "Current term ends {date} (Kuala Lumpur time)",
+    "jobs": "Open jobs",
+    "seats": "Team members",
+    "invitations": "Student invitations this month",
+    "finiteUsage": "Used {used} / {limit}",
+    "unlimitedUsage": "Used {used}, unlimited",
+    "reservedSeats": "Another {reserved} seats are reserved by pending invitations",
+    "jobsRetained": "Existing jobs are kept. New open jobs must fit the current limit.",
+    "seatsRetained": "Existing members are kept. New members and invitations must fit the current limit.",
+    "invitationsRetained": "Sent invitations are kept. Changing plans does not reset this month's usage.",
+    "jobsLimit": "The open-job limit has been reached. Close jobs you no longer need. You can still save drafts.",
+    "seatsLimit": "The team seat limit has been reached. Review existing members and pending invitations.",
+    "invitationsLimit": "The monthly invitation limit has been reached. Wait for next month's allowance.",
+    "contactOwner": "Contact your company owner to resolve the current limit.",
+    "viewPlans": "View plans",
+    "manageBilling": "View billing",
+    "reviewJobLimit": "This company has reached its open-job limit. Contact the company owner to resolve capacity; this job was not approved."
+  },
   "nav": {
     "studentNavigation": "Student navigation",
     "skipToMain": "Skip to main content",
@@ -722,6 +745,9 @@
     "errorValidation": "Please check your input format (phone must include country code, e.g. +60)"
   },
   "notifications": {
+    "subscriptionExpiring": "Plan expiring soon",
+    "subscriptionExpiringDetail": "The current continuous plan coverage ends {date} (Kuala Lumpur time).",
+    "subscriptionBilling": "View billing",
     "title": "Notifications",
     "subtitle": "See what companies have done with your profile.",
     "subtitleEmployer": "See notifications about applications, invitations and credits.",
@@ -1506,6 +1532,7 @@
     "withdrawnBadge": "Withdrawn"
   },
   "invitations": {
+    "inviteDialogQuotaUnlimited": "Sent {used} invitations this month, unlimited allowance",
     "myInvitationsTitle": "Received Invitations",
     "myInvitationsSubtitle": "Invitations from employers who found you in the talent pool. Accepting counts as applying.",
     "companyInvitationsTitle": "Sent Invitations",

@@ -56,6 +56,8 @@ setupTestDb()
 
 async function seedSettings(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
+    // This suite exercises the existing pilot quota, not the commercial FREE plan.
+    'billing.enabled': false,
     'invitations.freeMonthlyQuota': 3,
     'invitations.expireDays': 14,
     'talentPool.minCompleteness': 60,
@@ -156,7 +158,7 @@ describe('sendInvitation', () => {
 
     await expect(
       sendInvitation({ userId, companyId }, { studentId: s3.profileId, jobId: job2.id }),
-    ).rejects.toBeInstanceOf(InvitationQuotaError)
+    ).rejects.toMatchObject({ code: 'INVITATION_QUOTA_EXCEEDED', httpStatus: 429 })
   })
 
   it('quota counts only current KL month (last-month invitation does not count)', async () => {
@@ -212,6 +214,7 @@ describe('sendInvitation', () => {
     expect(succeeded).toHaveLength(2)
     expect(failed).toHaveLength(1)
     expect(failed[0]!.reason).toBeInstanceOf(InvitationQuotaError)
+    expect(failed[0]!.reason).toMatchObject({ code: 'INVITATION_QUOTA_EXCEEDED', httpStatus: 429 })
   })
 
   it('invisible student (blocked) cannot be invited', async () => {

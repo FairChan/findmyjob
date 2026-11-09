@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { acceptInviteAction } from '@/server/actions/team'
+import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
 
 interface Props {
   token: string
@@ -24,6 +25,7 @@ interface Props {
 
 export default function AcceptInviteClient({ token, companyName, role, locale, t }: Props) {
   const [error, setError] = useState('')
+  const [seatLimitReached, setSeatLimitReached] = useState(false)
   const [accepted, setAccepted] = useState(false)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -37,13 +39,15 @@ export default function AcceptInviteClient({ token, companyName, role, locale, t
 
   function handleAccept() {
     setError('')
+    setSeatLimitReached(false)
     startTransition(async () => {
       const res = await acceptInviteAction({ token })
       if (res.ok) {
         setAccepted(true)
         setTimeout(() => router.push(`/${locale}/e`), 2000)
       } else {
-        setError(mapError(res.code))
+        if (res.code === 'SEAT_LIMIT_EXCEEDED') setSeatLimitReached(true)
+        else setError(mapError(res.code))
       }
     })
   }
@@ -74,8 +78,9 @@ export default function AcceptInviteClient({ token, companyName, role, locale, t
         {t.acceptButton}
       </button>
       {error && (
-        <p className="mt-3 text-sm text-destructive">{error}</p>
+        <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>
       )}
+      {seatLimitReached && <EntitlementLimitNotice resource="seats" />}
     </div>
   )
 }

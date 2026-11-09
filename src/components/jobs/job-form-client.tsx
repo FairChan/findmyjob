@@ -4,6 +4,7 @@ import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { isImeComposing } from '@/lib/ime'
 import { MY_STATES } from '@/lib/my-states'
+import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
 
 export interface JobFormData {
   jobId?: string
@@ -33,6 +34,7 @@ type ActionResult =
   | { ok: false; code: string }
 
 interface Props {
+  canPurchase?: boolean
   mode: 'create' | 'edit'
   isVerified: boolean
   isEditable?: boolean
@@ -93,12 +95,14 @@ export default function JobFormClient({
   isEditable = true,
   initialData,
   onSaveOrSubmit,
+  canPurchase = false,
   backHref,
   t,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [limitReached, setLimitReached] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   const [title, setTitle] = useState(initialData?.title ?? '')
@@ -192,11 +196,13 @@ export default function JobFormClient({
   function handleSave(submit: boolean) {
     if (!validate()) return
     setError(null)
+    setLimitReached(false)
     setSuccessMsg(null)
     startTransition(async () => {
       const result = await onSaveOrSubmit(buildPayload(submit))
       if (!result.ok) {
-        if (result.code === 'FORBIDDEN') setError(t.errorForbidden)
+        if (result.code === 'JOB_POST_LIMIT_EXCEEDED') setLimitReached(true)
+        else if (result.code === 'FORBIDDEN') setError(t.errorForbidden)
         else setError(t.errorUnknown)
         return
       }
@@ -204,7 +210,7 @@ export default function JobFormClient({
       setSuccessMsg(submit ? t.submitSuccess : t.saveSuccess)
       if (mode === 'create') {
         router.push(`/e/jobs/${result.data.id}/edit`)
-      }
+      } else router.refresh()
     })
   }
 
@@ -524,7 +530,8 @@ export default function JobFormClient({
       </div>
 
       {/* Feedback */}
-      {error && <p className="rounded bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
+      {limitReached && <EntitlementLimitNotice resource="jobs" canPurchase={canPurchase} />}
+      {error && <p role="alert" className="rounded bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
       {successMsg && (
         <p className="rounded bg-green-50 p-3 text-sm text-green-700">{successMsg}</p>
       )}

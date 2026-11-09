@@ -1,4 +1,27 @@
 {
+  "entitlements": {
+    "title": "当前使用额度",
+    "sourcePilot": "公益期额度",
+    "sourceFree": "免费方案额度",
+    "sourceSubscription": "已生效套餐额度",
+    "effectiveUntil": "本段权益有效至 {date}（吉隆坡时间）",
+    "jobs": "在招职位",
+    "seats": "团队成员",
+    "invitations": "本月学生邀请",
+    "finiteUsage": "已用 {used} / {limit}",
+    "unlimitedUsage": "已用 {used}，不限",
+    "reservedSeats": "另有 {reserved} 个待接受邀请预留席位",
+    "jobsRetained": "已有职位保留。新增在招职位须符合当前额度。",
+    "seatsRetained": "已有成员保留。新增成员及邀请须符合当前额度。",
+    "invitationsRetained": "已发邀请保留。本月用量不会因套餐变更而重置。",
+    "jobsLimit": "在招职位已达当前上限。可先关闭不再招聘的职位。草稿仍可保存。",
+    "seatsLimit": "团队席位已达当前上限。请检查现有成员及待接受邀请。",
+    "invitationsLimit": "本月学生邀请已达当前上限。请等待下月额度更新。",
+    "contactOwner": "请联系企业所有者处理当前额度。",
+    "viewPlans": "查看方案",
+    "manageBilling": "查看账单",
+    "reviewJobLimit": "该企业的在招职位已达上限。请联系企业所有者处理额度；本次未批准职位。"
+  },
   "nav": {
     "studentNavigation": "学生导航",
     "skipToMain": "跳到主要内容",
@@ -722,6 +745,9 @@
     "errorValidation": "请检查输入格式（手机号需含国际区号，如 +60）"
   },
   "notifications": {
+    "subscriptionExpiring": "套餐即将到期",
+    "subscriptionExpiringDetail": "当前连续套餐权益将于 {date} 到期（吉隆坡时间）。",
+    "subscriptionBilling": "查看账单",
     "title": "消息通知",
     "subtitle": "查看企业对你档案的操作通知。",
     "subtitleEmployer": "查看与投递、邀请和点数相关的通知。",
@@ -1506,6 +1532,7 @@
     "withdrawnBadge": "已撤回"
   },
   "invitations": {
+    "inviteDialogQuotaUnlimited": "本月已发送 {used} 次邀请，配额不限",
     "myInvitationsTitle": "收到的邀请",
     "myInvitationsSubtitle": "企业在人才库看到你后发来的投递邀请。接受即视为投递该职位。",
     "companyInvitationsTitle": "发出的邀请",

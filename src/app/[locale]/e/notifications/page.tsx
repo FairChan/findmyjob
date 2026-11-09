@@ -4,12 +4,19 @@ import { requireCompanyMember } from '@/server/authz'
 import { listNotifications } from '@/server/services/notifications'
 import { NotificationsClient } from '@/components/notifications/NotificationsClient'
 import { MarkAllReadButton } from '@/components/notifications/MarkAllReadButton'
-import { formatKLDate } from '@/lib/format-date'
+import { formatKLDate, formatKLDateTime } from '@/lib/format-date'
+
+function expiryDate(payload: Record<string, unknown>): string | null {
+  const value = payload.endsAt
+  if (typeof value !== 'string') return null
+  const date = new Date(value)
+  return Number.isFinite(date.getTime()) && date.toISOString() === value ? value : null
+}
 
 export default async function EmployerNotificationsPage() {
   const t = await getTranslations('notifications')
   const detectedLocale = await getLocale()
-  const { userId } = await requireCompanyMember('RECRUITER', await headers())
+  const { userId, role } = await requireCompanyMember('RECRUITER', await headers())
 
   const notifications = await listNotifications({ userId })
   const ids = notifications.map((n) => n.id)
@@ -29,6 +36,8 @@ export default async function EmployerNotificationsPage() {
         return t('applicationNew')
       case 'order.confirmed':
         return t('orderConfirmed')
+      case 'subscription.expiring':
+        return t('subscriptionExpiring')
       case 'invitation.accepted':
         return t('invitationAccepted')
       case 'invitation.declined':
@@ -60,7 +69,9 @@ export default async function EmployerNotificationsPage() {
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
         <ul className="divide-y rounded-md border">
-          {notifications.map((n) => (
+          {notifications.map((n) => {
+            const endsAt = n.type === 'subscription.expiring' ? expiryDate(n.payload) : null
+            return (
             <li
               key={n.id}
               className="flex items-start justify-between gap-4 px-4 py-3"
@@ -74,12 +85,15 @@ export default async function EmployerNotificationsPage() {
                     </span>
                   )}
                 </div>
+                {endsAt && <p className="mt-2 text-sm text-muted-foreground"><time dateTime={endsAt}>{t('subscriptionExpiringDetail', { date: formatKLDateTime(endsAt, detectedLocale) })}</time></p>}
+                {n.type === 'subscription.expiring' && role === 'OWNER' && <a href={'/' + detectedLocale + '/e/billing'} className="mt-1 inline-flex min-h-10 items-center text-sm text-brand underline underline-offset-4">{t('subscriptionBilling')}</a>}
               </div>
               <span className="shrink-0 text-xs text-muted-foreground">
                 {formatKLDate(n.createdAt, detectedLocale)}
               </span>
             </li>
-          ))}
+            )
+          })}
         </ul>
       )}
 

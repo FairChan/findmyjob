@@ -54,8 +54,12 @@ vi.mock('@/server/services/unlock', () => ({
   getValidatedUnlockSettings: mocks.validatedSettings,
 }))
 vi.mock('@/server/services/talent-view', () => ({ viewTalentProfile: mocks.viewTalent }))
-vi.mock('@/server/services/invitations', () => ({
-  getMonthlyInvitationUsage: async () => ({ used: 0, quota: 10 }),
+vi.mock('@/server/services/subscription-entitlements', () => ({
+  getCompanyEntitlementUsage: async () => ({
+    source: 'PILOT', effectiveUntil: null, canPurchase: false,
+    jobs: { used: 0, limit: null }, seats: { used: 1, reserved: 0, limit: 3 },
+    invitations: { used: 0, limit: 10 },
+  }),
 }))
 vi.mock('@/components/talent/SaveToFolderButton', () => ({ SaveToFolderButton: () => null }))
 vi.mock('@/components/invitations/InviteButton', () => ({ InviteButton: () => null }))

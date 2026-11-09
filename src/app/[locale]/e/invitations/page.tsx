@@ -3,7 +3,9 @@ import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { requireCompanyMember } from '@/server/authz'
 import { ForbiddenError } from '@/server/errors'
-import { listCompanyInvitations, getMonthlyInvitationUsage } from '@/server/services/invitations'
+import { listCompanyInvitations } from '@/server/services/invitations'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
+import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 import { CompanyInvitationList } from '@/components/invitations/CompanyInvitationList'
 
 export default async function EmployerInvitationsPage({
@@ -14,7 +16,7 @@ export default async function EmployerInvitationsPage({
   const { locale } = await params
   const t = await getTranslations('invitations')
 
-  let ctx: { userId: string; companyId: string }
+  let ctx: Awaited<ReturnType<typeof requireCompanyMember>>
   try {
     ctx = await requireCompanyMember('RECRUITER', await headers())
   } catch (err) {
@@ -24,7 +26,7 @@ export default async function EmployerInvitationsPage({
 
   const [invitations, usage] = await Promise.all([
     listCompanyInvitations(ctx),
-    getMonthlyInvitationUsage(ctx.companyId),
+    getCompanyEntitlementUsage(ctx),
   ])
 
   return (
@@ -32,11 +34,9 @@ export default async function EmployerInvitationsPage({
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h1 className="text-2xl font-bold">{t('companyInvitationsTitle')}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {t('companyInvitationsSubtitle', { used: usage.used, quota: usage.quota })}
-          </p>
         </div>
       </div>
+      <CompanyEntitlementSummary usage={usage} resource="invitations" />
       <CompanyInvitationList invitations={invitations} locale={locale} />
     </main>
   )

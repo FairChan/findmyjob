@@ -16,6 +16,7 @@ vi.mock('@/server/jobs/purge-unverified', () => ({ runPurgeUnverified: vi.fn() }
 vi.mock('@/server/jobs/requalify-referrals', () => ({ runRequalifyReferrals: vi.fn() }))
 vi.mock('@/server/jobs/pilot-monthly-credits', () => ({ runPilotMonthlyCredits: vi.fn() }))
 vi.mock('@/server/jobs/reconcile-wallets', () => ({ runReconcileWallets: vi.fn() }))
+vi.mock('@/server/jobs/expire-subscriptions', () => ({ runExpireSubscriptions: vi.fn() }))
 vi.mock('@/server/lib/healthchecks', () => ({ pingHealthcheck: vi.fn() }))
 
 import { registerJobs } from '@/server/jobs/registry'

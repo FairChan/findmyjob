@@ -4,6 +4,8 @@ import { requireCompanyMember } from '@/server/authz'
 import { db } from '@/server/db'
 import JobFormClient from '@/components/jobs/job-form-client'
 import { createJobAction } from '../actions'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
+import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 
 export default async function NewJobPage({ params }: { params: Promise<{ locale: string }> }) {
   await params
@@ -16,11 +18,14 @@ export default async function NewJobPage({ params }: { params: Promise<{ locale:
     select: { verificationStatus: true },
   })
   const isVerified = company?.verificationStatus === 'VERIFIED'
+  const usage = await getCompanyEntitlementUsage(ctx)
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-bold">{t('newJobTitle')}</h1>
+      <CompanyEntitlementSummary usage={usage} resource="jobs" />
       <JobFormClient
+        canPurchase={usage.canPurchase}
         mode="create"
         isVerified={isVerified}
         onSaveOrSubmit={createJobAction}
