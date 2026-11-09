@@ -46,6 +46,8 @@ export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onC
       } else {
         if (result.code === 'INVITATION_QUOTA_EXCEEDED') {
           setError(t('inviteErrorQuota'))
+        } else if (result.code === 'DUPLICATE_APPLICATION') {
+          setError(t('inviteAlreadyApplied'))
         } else if (result.code === 'NOT_FOUND') {
           setError(t('inviteAlreadyExists'))
         } else {

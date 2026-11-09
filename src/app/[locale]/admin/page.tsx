@@ -61,12 +61,17 @@ export default async function AdminDashboardPage({
         ))}
       </div>
 
-      {/* Weekly chart + signup progress */}
-      <div className="grid gap-5 lg:grid-cols-2">
+      {/* Weekly activity */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <WeeklyBars
           title={t('weeklyRegistrations')}
           data={stats.weeklyRegistrations}
         />
+        <WeeklyBars title={t('weeklyApplications')} data={stats.weeklyApplications} />
+        <WeeklyBars title={t('weeklyUnlocks')} data={stats.weeklyUnlocks} />
+        <WeeklyBars title={t('weeklyPublishedJobs')} data={stats.weeklyPublishedJobs} />
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Signup progress */}
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <p className="font-semibold">{t('signupProgress')}</p>

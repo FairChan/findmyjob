@@ -12,7 +12,7 @@ export function WeeklyBars({ title, data }: WeeklyBarsProps) {
   const max = Math.max(...data.map((d) => d.value), 1)
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5">
+    <div className="@container min-w-0 rounded-xl border border-gray-200 bg-white p-5">
       <p className="font-semibold">{title}</p>
       <div className="relative mt-4 flex h-44 items-end gap-[2px] border-b border-gray-200">
         {data.map((d, i) => (
@@ -36,10 +36,12 @@ export function WeeklyBars({ title, data }: WeeklyBarsProps) {
           </div>
         ))}
       </div>
-      <div className="mt-1.5 flex gap-[2px] text-center text-[11px] text-gray-400">
+      <div className="mt-3 flex h-7 gap-[2px] text-center text-[11px] text-gray-400 @[400px]:mt-1.5 @[400px]:h-auto">
         {data.map((d) => (
-          <span key={d.label} className="flex-1 truncate">
-            {d.label}
+          <span key={d.label} className="min-w-0 flex-1">
+            <span className="inline-block -rotate-45 whitespace-nowrap @[400px]:rotate-0">
+              {d.label}
+            </span>
           </span>
         ))}
       </div>

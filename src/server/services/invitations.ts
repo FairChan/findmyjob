@@ -63,6 +63,14 @@ export async function sendInvitation(
   const result = await db.$transaction(async (tx) => {
     await lockXact(tx, LOCK_NS.INVITATION, ctx.companyId)
 
+    const application = await tx.application.findUnique({
+      where: { jobId_studentId: { jobId: input.jobId, studentId: input.studentId } },
+      select: { status: true },
+    })
+    if (application && application.status !== 'WITHDRAWN') {
+      throw new DuplicateApplicationError()
+    }
+
     // Idempotency: return existing SENT invitation for same company+student+job
     const existing = await tx.invitation.findFirst({
       where: {
@@ -190,11 +198,22 @@ export async function acceptInvitation(
     applicationId = existing.id
   }
 
-  // Conditional update: a concurrent accept/decline or the expiry job may have got there first.
-  const updated = await db.invitation.updateMany({
+  // Keep the unique application link on the first invitation. A losing concurrent accept
+  // can still accept its own invitation, but must re-check status and expiry on the retry.
+  const markAccepted = (linkedApplicationId: string | null) => db.invitation.updateMany({
     where: { id: inv.id, status: InvitationStatus.SENT, expiresAt: { gt: new Date() } },
-    data: { status: InvitationStatus.ACCEPTED, applicationId, respondedAt: new Date() },
+    data: { status: InvitationStatus.ACCEPTED, applicationId: linkedApplicationId, respondedAt: new Date() },
   })
+  let updated
+  try {
+    updated = await markAccepted(applicationId)
+  } catch (err) {
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002' ||
+      !Array.isArray(err.meta?.target) || !err.meta.target.includes('applicationId')) {
+      throw err
+    }
+    updated = await markAccepted(null)
+  }
   if (updated.count === 0) {
     throw new ForbiddenError('Invitation already responded to')
   }
