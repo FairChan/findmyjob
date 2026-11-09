@@ -1440,6 +1440,12 @@
 - 启用 Better Auth 的 twoFactor 插件。requireAdmin 检查 2FA，没开就跳转到设置页。试点期间先用密码管理器生成的独立强密码作为补偿控制。
 - 查看联系方式、调整点数、确认订单这些操作，要求 10 分钟内的新鲜会话；ADMIN 会话最长 12 小时（实现方式待核实）。
 验收：没开 2FA 的 ADMIN 访问 /admin，被引导去设置 2FA；连续输错 TOTP 5 次后被限流
+> 总控 2026-11-09 补充：
+> - 试点期间运营账号继续用密码管理器生成的独立强密码作为补偿控制，在 DECISIONS 记一行。
+> - staging 上已有的演示运营账号，上线后第一次进 /admin 会被引导去设置 2FA，这是预期行为。轮次不改 `deploy/**` 和种子数据里的账号或密码；合并前由总控先通知部署会话。
+> - E2E 不能为了好跑而关掉 2FA 检查：`loginAs(page, { role: 'ADMIN' })` 要改成给测试运营账号写好已启用 2FA 的状态并走一次真实的 TOTP 验证（或者等价的服务端会话标记），让现有用到 ADMIN 的 spec 全部继续通过。TOTP 计算优先用 Better Auth 自带的工具；要加新依赖，先在 DECISIONS 记一行。
+> - 「实现方式待核实」：照 `node_modules/better-auth` 里 twoFactor 插件和 session 配置（freshAge、expiresIn）的实际导出来实现，不要凭记忆写选项名。新鲜会话检查放在 `requireAdmin` 或者 action 的 auth 层，`authz-matrix.test.ts` 给需要新鲜会话的动作加「会话太旧 → 被拒」的行。
+> - 验收里的「输错 5 次被限流」要有集成测试或 E2E。
 
 #### [x] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）
 依赖：M7-T04、M0-T11
@@ -1462,6 +1468,10 @@
 - middleware 为每个请求生成 nonce；script-src 写 self、nonce 和 strict-dynamic，再加 challenges.cloudflare.com；frame-src 只放 Turnstile；生产环境不允许 unsafe-eval。
 - HSTS_MAX_AGE 改为 31536000；确认所有子域都已经是 https 之后，再加 includeSubDomains。
 验收：强制模式下，375px 和 1280px 两种宽度走完「注册 → 上传」，控制台没有 CSP 报错；每次请求的 nonce 都不同
+> 总控 2026-11-09 补充：
+> - HSTS 现在由 `deploy/Caddyfile` 的 `{$HSTS_MAX_AGE:300}` 控制。默认值保持 300，不改 Caddyfile 的默认、不加 includeSubDomains 和 preload：一年的 HSTS 落到 staging 域名上很难撤回。这一条只在 RUNBOOK 写清楚「E3 前、确认所有子域都是 https 之后，由部署会话把生产环境的 HSTS_MAX_AGE 设为 31536000」，`tests/unit/caddyfile-headers.test.ts` 的现有断言不放宽。
+> - CSP 在 M7-T05 之后已经由应用发 Report-Only（看 next.config 和 proxy）。这一条改成强制模式时，开发环境（`pnpm dev`、E2E）仍要能跑：dev 需要的 unsafe-eval 只在非生产放行，生产判断只看 `APP_ENV=production`。
+> - 「每次请求 nonce 都不同」要有测试：连续请求两次同一页面，响应头里的 nonce 不同，并且页面里的 script 标签带的是同一个 nonce。
 
 #### [x] M7-T16 CI 扩展扫描（P1，M7 之后）
 依赖：M7-T06
@@ -1486,6 +1496,10 @@
 - generateMetadata、`src/app/sitemap.ts` 只收录已认证的企业；hreflang 写 zh-Hans、en、x-default；分页页面的 canonical 指向自身。
 - Logo 走 `/api/logos/[companyId]`，设 public 长缓存。
 验收：4 个公开页都达到阈值；sitemap 里没有 /s、/e、/admin
+> 总控 2026-11-09 补充：
+> - 线 B 在 M7-T01 已经加了 devDependency `lighthouse` 12.3.0 和 `pnpm lighthouse <url>` 脚本。复用它，不要再装第二个版本；`pnpm lh` 和 `scripts/lighthouse.mjs` 在它的基础上加阈值判断。Lighthouse 只对生产构建跑（`pnpm build` 后 `pnpm start`），单条命令不超过 600 秒。
+> - 新加 `auth: 'public'` 的 API 路由（比如 `/api/logos/[companyId]`）时，要同步加进 `src/proxy.ts` 的 isProtectedApi 放行名单，否则未登录访问会被拦成 401（线 B 2026-11-09 的提醒）；照 `/api/partner-logos/[partnerId]` 的写法设 public 长缓存，并且只对已认证、未停用的企业返回 logo。
+> - a11y spec 里每个页面都要真的加载到目标页面（断言 URL 和 h1），不能被重定向到登录页或 reconsent 页之后对那一页做扫描。
 
 #### [x] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
 依赖：M7-T10
