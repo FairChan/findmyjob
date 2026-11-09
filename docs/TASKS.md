@@ -1710,7 +1710,7 @@
 13. 来自 M4 修复任务的最终核对（Low）：`credits.adjust` 审计写入失败时整笔回滚的测试；解锁后查学生 userId 的那次 `studentProfile.findUnique` 也放进通知的 try/catch；global-setup 里补账本行和改余额放进同一个事务；水印考虑页面 /Rotate；format-date 的断言改成完整字符串比较，admin 页面的日期也走 format-date；mark-as-read action 加「传别人的通知 id 不生效」的测试；解锁通知 payload 断言完整形状；StudentNav 的 aria-label 改成导航用途的名字。
 14. 来自 GATE-M4 取证（2026-11-08）：「列表悬停 3 秒 ProfileView 不变」的 E2E 跑在 next dev 上（dev 不做 prefetch），也不数 ProfileView 行数，去掉 `prefetch={false}` 时没有测试会失败；改用 next start 跑这一条，或者加一条断言 Link 带 `prefetch={false}` 的组件测试。上传拒绝补路由级测试（断言 putObject 没被调用），`resumeFile.create` 失败时删掉已上传的对象；补「被移除的成员下一次请求被拒」的测试，以及只删掉 team.ts 里已用邀请检查时会失败的测试；补 `student.visibility.change` 审计的断言；pii-leak 断言响应里没有 `/api/resumes/`。另外，sanitizePdf 的 Dest/Rect 尾部元素现在只要求不是 PDFRef，按 M4-T25 原规格收紧为只能是 PDFName、PDFNumber、PDFNull（处理好 CJS 导出下的 instanceof）。
 
-#### [ ] M6-T11 运营后台加固（P1，首次使用之后）
+#### [x] M6-T11 运营后台加固（P1，首次使用之后）
 依赖：M6-T04、M6-T10
 > 总控 2026-11-08 加入：来自 M6-T02、M6-T04 复查的 Medium 和 Low，按「先能用」的规则放到首次使用之后再做。
 做 / 验收：
@@ -1719,6 +1719,7 @@
 3. 学校 `emailDomains` 在服务端 trim、转小写、校验格式；`logoKey` 只接受 `^partner-logos/[^/]+/[0-9a-f-]{36}\.(png|jpg)$`。
 4. `getHomePartners` 只 select 公开字段（名称、logo、类型、排序、website），不返回 notes、agreementKey（如果线 B 的 M7-T01 已经改了，这条勾掉）。
 5. 来自 M6-T02：sanitizePdf 不相关；`/admin/students` 的筛选参数非法时回到默认值（如果 M6-T10 已经做了，勾掉）。
+> 完成 2026-11-09：(1) httpsUrlSchema 限制 http/https，updatePartner 对 nameEn/description/notes/logoKey 加 || null；(2) upload-authz.test.ts 新增 5 条 PARTNER_LOGO 路由测试（student/employer→403，>2MB→413，SVG→400，admin+PNG→200）；(3) emailDomainSchema 加 trim/lowercase/format 校验，partnerLogoKeySchema 加 PARTNER_LOGO_KEY_RE 验证；(4) M7-T01 已做（PUBLIC_PARTNER_SELECT 不含 notes/agreementKey，home.test.ts 验证）✓；(5) M6-T10 已做（admin/students safeParse query params）✓。vitest unit 34/34 + 12/12，home.test.ts 集成 15/15，E2E smoke-m6-t04 12/12，0 失败，0 跳过。失败输出见提交说明。
 
 ---
 

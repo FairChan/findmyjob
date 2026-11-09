@@ -25,6 +25,9 @@ import {
   deletePartner,
   getHomePartners,
   isPartnerLogoKey,
+  createPartnerSchema,
+  updatePartnerSchema,
+  createSchoolSchema,
 } from '@/server/services/admin-schools-partners'
 import { ForbiddenError, NotFoundError } from '@/server/errors'
 
@@ -327,5 +330,159 @@ describe('concurrent partner creates', () => {
     // All 5 creates should succeed with distinct IDs
     const ids = results.map((r) => r.id)
     expect(new Set(ids).size).toBe(5)
+  })
+})
+
+// ==================== M6-T11: partner website validation ====================
+
+describe('partner website validation (M6-T11)', () => {
+  it('javascript: URL is rejected in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'javascript:alert(1)',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('ftp: URL is rejected in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'ftp://files.example.com',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('https URL is accepted in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'https://example.com',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('http URL is accepted in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'http://example.com',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('website: "" clears to null after updatePartner', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      { name: `WebsiteNull-${uid()}`, type: 'ENTERPRISE', showOnHome: false, sortOrder: 0, website: 'https://example.com' },
+    )
+    await updatePartner({ userId: admin.id }, id, { website: '' })
+    const updated = await getPartner({ userId: admin.id }, id)
+    expect(updated.website).toBeNull()
+  })
+
+  it('nameEn: "" clears to null after updatePartner', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      { name: `NameEnNull-${uid()}`, type: 'ENTERPRISE', showOnHome: false, sortOrder: 0, nameEn: 'English Name' },
+    )
+    await updatePartner({ userId: admin.id }, id, { nameEn: '' })
+    const updated = await getPartner({ userId: admin.id }, id)
+    expect(updated.nameEn).toBeNull()
+  })
+})
+
+// ==================== M6-T11: logoKey validation ====================
+
+describe('partner logoKey validation (M6-T11)', () => {
+  it('invalid logoKey is rejected in schema', () => {
+    const result = updatePartnerSchema.safeParse({ logoKey: 'evil/../../../etc/passwd.png' })
+    expect(result.success).toBe(false)
+  })
+
+  it('valid logoKey passes schema', () => {
+    const result = updatePartnerSchema.safeParse({
+      logoKey: 'partner-logos/acme/abc12345-0000-0000-0000-000000000001.png',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('empty logoKey clears to null after updatePartner', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      {
+        name: `LogoNull-${uid()}`,
+        type: 'ENTERPRISE',
+        showOnHome: false,
+        sortOrder: 0,
+        logoKey: 'partner-logos/acme/abc12345-0000-0000-0000-000000000001.png',
+      },
+    )
+    await updatePartner({ userId: admin.id }, id, { logoKey: '' })
+    const updated = await getPartner({ userId: admin.id }, id)
+    expect(updated.logoKey).toBeNull()
+  })
+})
+
+// ==================== M6-T11: emailDomains normalization ====================
+
+describe('school emailDomains normalization (M6-T11)', () => {
+  it('uppercase and spaces in domain are trimmed and lowercased', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['  XMU.EDU.MY  ', ' EXAMPLE.COM'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result).toMatchObject({
+      success: true,
+      data: { emailDomains: ['xmu.edu.my', 'example.com'] },
+    })
+  })
+
+  it('invalid domain format is rejected', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['not-a-domain'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('domain without TLD is rejected', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['localdomain'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('valid domain passes schema', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['xmu.edu.my'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.success).toBe(true)
   })
 })
