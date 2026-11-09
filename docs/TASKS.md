@@ -1748,10 +1748,11 @@
 
 ## M8 · 商业化（约 2 天）
 
-#### [ ] M8-T01 套餐与定价页
+#### [x] M8-T01 套餐与定价页
 依赖：GATE-M7
 做：后台 Plan 增删改；seed 写入 business/01 §5.3 的占位套餐；`/pricing`（`billing.enabled=false` 时显示「公益期免费」）。
 验收：定价页内容随后台配置变化
+> 完成 2026-11-10：管理员套餐 CRUD、CAS 冲突/历史引用保护、占位套餐 seed 和双语定价页；公益期只公开 FREE，公开 HTML/RSC 不泄漏隐藏商品。96 个新增服务/schema/seed 测试、10 个 action 权限测试及 2650 全量 Vitest 通过（4 个既有性能基准跳过），相关 E2E、lint/typecheck/build/db:check 和独立审查通过。用户授权提前完成代码；GATE-M7 未代签，未启用真实收费或运行完整 seed。
 
 #### [ ] M8-T02 订单与银行转账
 依赖：M8-T01

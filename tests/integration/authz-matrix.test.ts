@@ -2805,3 +2805,72 @@ describe('public job reporting action (M7-T09)', () => {
     expect(await testDb.jobReport.count({ where: { reporterId: student.userId } })).toBe(10)
   })
 })
+
+describe('plan management actions (M8-T01)', () => {
+  const terms = {
+    code: 'MATRIX_PLAN', kind: 'PLAN' as const, nameZh: '合成套餐', nameEn: 'Synthetic plan',
+    priceSen: 299900, credits: 120, durationDays: 365, jobPostLimit: 10,
+    seatLimit: 3, invitationQuota: 200, isActive: true, isPublic: true, sortOrder: 0,
+  }
+
+  it.each(['guest', 'student', 'employer', 'suspended', 'deleted', 'no-2fa', 'unverified-2fa', 'expired'] as const)(
+    '%s cannot create, update or delete a plan', async (actor) => {
+      const row = await testDb.plan.create({ data: terms })
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else if (actor === 'employer') mockSession((await createEmployer(testDb)).userId)
+      else {
+        const admin = await createTwoFactorAdmin(actor !== 'no-2fa')
+        if (actor === 'suspended' || actor === 'deleted') {
+          await testDb.user.update({ where: { id: admin.id }, data: {
+            status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+          } })
+        }
+        mockSession(admin.id, {
+          createdAt: new Date(Date.now() - (actor === 'expired' ? 13 * 3600_000 : 0)),
+          twoFactorVerifiedAt: actor === 'unverified-2fa' ? null : new Date(),
+        })
+      }
+      const { createPlanAction, updatePlanAction, deletePlanAction } = await import('@/server/actions/admin-plans')
+      const expected = { ok: false, code: actor === 'no-2fa' ? 'TWO_FACTOR_REQUIRED' : 'FORBIDDEN' }
+      expect(await createPlanAction({ ...terms, code: 'UNAUTHORIZED_PLAN' })).toEqual(expected)
+      expect(await updatePlanAction({ ...terms, id: row.id, expectedUpdatedAt: row.updatedAt.toISOString(), priceSen: 1 }))
+        .toEqual(expected)
+      expect(await deletePlanAction({ id: row.id })).toEqual(expected)
+      expect(await testDb.plan.findMany()).toEqual([row])
+      expect(await testDb.auditLog.count({ where: { targetType: 'Plan' } })).toBe(0)
+    },
+  )
+
+  it('verified ordinary admin uses the session actor for all three mutations', async () => {
+    const admin = await createTwoFactorAdmin()
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60_000)
+    mockSession(admin.id, { createdAt: thirtyMinutesAgo, twoFactorVerifiedAt: thirtyMinutesAgo })
+    const { createPlanAction, updatePlanAction, deletePlanAction } = await import('@/server/actions/admin-plans')
+    const result = await createPlanAction({ ...terms, actorId: 'forged', userId: 'forged' })
+    expect(result).toMatchObject({ ok: true, data: { id: expect.any(String) } })
+    if (!result.ok) throw new Error('Expected a successful authorized create')
+    const row = await testDb.plan.findUniqueOrThrow({ where: { id: result.data.id } })
+    expect(await updatePlanAction({ ...terms, id: row.id, expectedUpdatedAt: row.updatedAt.toISOString(), priceSen: 399901 }))
+      .toEqual({ ok: true, data: { id: row.id } })
+    expect(await testDb.plan.findUnique({ where: { id: row.id } })).toMatchObject({ priceSen: 399901 })
+    expect(await deletePlanAction({ id: row.id })).toEqual({ ok: true, data: undefined })
+    expect(await testDb.plan.findUnique({ where: { id: row.id } })).toBeNull()
+    const audits = await testDb.auditLog.findMany({ where: { targetId: row.id, targetType: 'Plan' } })
+    expect(audits.map((entry) => entry.action).sort()).toEqual(['plan.create', 'plan.delete', 'plan.update'])
+    expect(audits.every((entry) => entry.actorId === admin.id)).toBe(true)
+  })
+
+  it('invalid inputs are rejected by the wrapper without writes', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { createPlanAction, updatePlanAction, deletePlanAction } = await import('@/server/actions/admin-plans')
+    for (const result of [
+      await createPlanAction({ ...terms, priceSen: -1 }),
+      await updatePlanAction({ id: 'missing-plan', priceSen: 1 }),
+      await deletePlanAction({ id: '' }),
+    ]) expect(result).toEqual({ ok: false, code: 'VALIDATION_ERROR' })
+    expect(await testDb.plan.count()).toBe(0)
+    expect(await testDb.auditLog.count({ where: { targetType: 'Plan' } })).toBe(0)
+  })
+})

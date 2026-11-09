@@ -3,6 +3,7 @@ import { Link } from '@/i18n/navigation'
 
 export default async function Footer() {
   const t = await getTranslations('footer')
+  const nav = await getTranslations('nav')
   const year = new Date().getFullYear()
 
   return (
@@ -22,6 +23,9 @@ export default async function Footer() {
             </Link>
             <Link href="/safety" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('safety')}
+            </Link>
+            <Link href="/pricing" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+              {nav('pricing')}
             </Link>
             <Link href="/legal/privacy" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('privacy')}

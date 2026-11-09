@@ -20,6 +20,7 @@ interface AdminNavLinksProps {
   reportsLabel: string
   synonymsLabel: string
   articlesLabel: string
+  plansLabel: string
   pendingCount: number
 }
 
@@ -38,6 +39,7 @@ const NAV_ITEMS = [
   { key: 'reports', href: (locale: string) => `/${locale}/admin/reports`, icon: Flag, end: false },
   { key: 'synonyms', href: (locale: string) => `/${locale}/admin/synonyms`, icon: Languages, end: false },
   { key: 'articles', href: (locale: string) => `/${locale}/admin/articles`, icon: ShieldCheck, end: false },
+  { key: 'plans', href: (locale: string) => `/${locale}/admin/plans`, icon: ClipboardList, end: false },
 ] as const
 
 export function AdminNavLinks({
@@ -56,6 +58,7 @@ export function AdminNavLinks({
   reportsLabel,
   synonymsLabel,
   articlesLabel,
+  plansLabel,
   pendingCount,
 }: AdminNavLinksProps) {
   const pathname = usePathname()
@@ -75,6 +78,7 @@ export function AdminNavLinks({
     reports: reportsLabel,
     synonyms: synonymsLabel,
     articles: articlesLabel,
+    plans: plansLabel,
   }
 
   return (

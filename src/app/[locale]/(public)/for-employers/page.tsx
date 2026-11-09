@@ -28,6 +28,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ForEmployersPage({ params }: Props) {
   const { locale } = await params
   const t = await getTranslations({ locale, namespace: 'forEmployers' })
+  const nav = await getTranslations({ locale, namespace: 'nav' })
 
   const [billingEnabled, monthlyCredits, unlockCost] = await Promise.all([
     getSetting<boolean>('billing.enabled', false),
@@ -47,6 +48,9 @@ export default async function ForEmployersPage({ params }: Props) {
             className="mt-8 inline-flex items-center rounded-md bg-white px-6 py-2.5 text-sm font-semibold text-slate-900 hover:bg-white/90 transition-colors"
           >
             {t('ctaButton')}
+          </Link>
+          <Link href="/pricing" className="mt-4 block w-fit rounded-md px-2 py-2 text-sm font-medium underline underline-offset-4">
+            {nav('pricing')}
           </Link>
         </div>
       </section>
