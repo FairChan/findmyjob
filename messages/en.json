@@ -268,8 +268,24 @@
     "navNotifications": "Notifications",
     "navSettings": "System Settings",
     "navDataRequests": "Data Requests",
+    "navAudit": "Audit Log",
     "bellLabel": "Notifications",
     "bellLabelWithCount": "Notifications ({count} unread)"
+  },
+  "adminAudit": {
+    "title": "Audit Log",
+    "description": "Sensitive operations — profile views, unlocks, resume downloads, reviews, and settings changes — are all recorded here.",
+    "filterAction": "All Actions",
+    "filterActorEmail": "Actor Email",
+    "filterDateFrom": "From Date",
+    "filterDateTo": "To Date",
+    "filterSubmit": "Filter",
+    "colTime": "Time",
+    "colActor": "Actor",
+    "colAction": "Action",
+    "colTarget": "Target",
+    "nextPage": "Next Page",
+    "noResults": "No records found"
   },
   "adminSettings": {
     "title": "System Settings",

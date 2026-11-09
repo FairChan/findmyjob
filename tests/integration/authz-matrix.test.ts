@@ -2457,3 +2457,35 @@ describe('employer-side services cross-company authz (M7-T05, remaining)', () =>
     expect(userIds).not.toContain(b.userId)
   })
 })
+
+// ---------------------------------------------------------------------------
+// listAuditLogs authz (M6-T06)
+// ---------------------------------------------------------------------------
+
+describe('listAuditLogs authz (M6-T06)', () => {
+  it('student → ForbiddenError', async () => {
+    const { userId } = await createStudent(testDb)
+    const { listAuditLogs } = await import('@/server/services/admin-audit')
+    await expect(listAuditLogs({ userId }, {})).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('employer → ForbiddenError', async () => {
+    const { userId } = await createEmployer(testDb)
+    const { listAuditLogs } = await import('@/server/services/admin-audit')
+    await expect(listAuditLogs({ userId }, {})).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('unauthenticated (non-existent userId) → ForbiddenError', async () => {
+    const { listAuditLogs } = await import('@/server/services/admin-audit')
+    await expect(listAuditLogs({ userId: 'does-not-exist' }, {})).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('admin → returns items array', async () => {
+    const admin = await testDb.user.create({
+      data: { name: 'Admin', email: 'admin-audit-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+    })
+    const { listAuditLogs } = await import('@/server/services/admin-audit')
+    const result = await listAuditLogs({ userId: admin.id }, {})
+    expect(Array.isArray(result.items)).toBe(true)
+  })
+})
