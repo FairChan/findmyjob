@@ -994,6 +994,7 @@
     "errorUnknown": "操作失败，请稍后重试"
   },
   "companyProfile": {
+    "metaDescription": "查看 {name} 的企业简介及在招职位。",
     "foundingPartner": "创始合作伙伴",
     "location": "地点",
     "website": "官网",
@@ -1207,6 +1208,7 @@
   },
   "publicCompanies": {
     "title": "合作企业",
+    "description": "FindMYJob 合作企业名单，所有企业均经过 SSM 注册证书人工审核。",
     "subtitle": "所有企业都经过 SSM 注册证书人工审核",
     "tagAll": "全部",
     "tagFORTUNE_500": "世界500强",
@@ -1230,6 +1232,7 @@
   },
   "publicJobs": {
     "title": "职位列表",
+    "description": "搜索在马来西亚招聘中国留学生的实习和全职职位。",
     "empty": "暂无在招职位",
     "backToList": "返回职位列表",
     "descriptionLabel": "职位描述",

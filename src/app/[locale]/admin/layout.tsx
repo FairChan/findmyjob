@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
@@ -7,6 +8,10 @@ import { requireAdmin } from '@/server/authz'
 import { ForbiddenError } from '@/server/errors'
 import { db } from '@/server/db'
 import { AdminNavLinks } from '@/components/admin/admin-nav-links'
+
+export const metadata: Metadata = {
+  title: { default: 'Admin · FindMYJob', template: '%s · Admin · FindMYJob' },
+}
 
 export default async function AdminLayout({
   children,

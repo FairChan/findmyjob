@@ -1,16 +1,26 @@
 /**
- * Run Lighthouse mobile performance + accessibility audit.
+ * Run Lighthouse mobile performance + accessibility audit with threshold checks.
  * Uses Playwright's bundled Chromium so no separate Chrome install is needed.
  *
  * Usage: node scripts/lighthouse.mjs [url]
  *   url defaults to http://localhost:3000
  *
+ * Thresholds: performance ≥85, accessibility ≥90, LCP ≤2500ms, CLS ≤0.1, TBT ≤300ms
  * Output: JSON report saved to $TEMP/lighthouse-<timestamp>.json
+ * Exit code: 0 = all thresholds met, 1 = one or more thresholds missed
  */
 import { writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium } from '@playwright/test'
+
+const THRESHOLDS = {
+  performance: 85,
+  accessibility: 90,
+  lcpMs: 2500,
+  cls: 0.1,
+  tbtMs: 300,
+}
 
 const url = process.argv[2] ?? 'http://localhost:3000'
 const outFile = join(tmpdir(), `lighthouse-${Date.now()}.json`)
@@ -47,4 +57,33 @@ console.log(`Lighthouse report saved to: ${outFile}`)
 const { lhr } = result
 const perf = Math.round((lhr.categories.performance?.score ?? 0) * 100)
 const a11y = Math.round((lhr.categories.accessibility?.score ?? 0) * 100)
-console.log(`Performance: ${perf}  Accessibility: ${a11y}`)
+
+// Extract web vitals from audits
+const lcpAudit = lhr.audits['largest-contentful-paint']
+const clsAudit = lhr.audits['cumulative-layout-shift']
+const tbtAudit = lhr.audits['total-blocking-time']
+
+const lcpMs = Math.round((lcpAudit?.numericValue ?? 0))
+const cls = Number((clsAudit?.numericValue ?? 0).toFixed(3))
+const tbtMs = Math.round((tbtAudit?.numericValue ?? 0))
+
+console.log('\nResults:')
+console.log(`  Performance:   ${perf}  (threshold: ≥${THRESHOLDS.performance})  ${perf >= THRESHOLDS.performance ? '✓' : '✗'}`)
+console.log(`  Accessibility: ${a11y}  (threshold: ≥${THRESHOLDS.accessibility})  ${a11y >= THRESHOLDS.accessibility ? '✓' : '✗'}`)
+console.log(`  LCP:           ${lcpMs}ms  (threshold: ≤${THRESHOLDS.lcpMs}ms)  ${lcpMs <= THRESHOLDS.lcpMs ? '✓' : '✗'}`)
+console.log(`  CLS:           ${cls}  (threshold: ≤${THRESHOLDS.cls})  ${cls <= THRESHOLDS.cls ? '✓' : '✗'}`)
+console.log(`  TBT:           ${tbtMs}ms  (threshold: ≤${THRESHOLDS.tbtMs}ms)  ${tbtMs <= THRESHOLDS.tbtMs ? '✓' : '✗'}`)
+
+const passed =
+  perf >= THRESHOLDS.performance &&
+  a11y >= THRESHOLDS.accessibility &&
+  lcpMs <= THRESHOLDS.lcpMs &&
+  cls <= THRESHOLDS.cls &&
+  tbtMs <= THRESHOLDS.tbtMs
+
+if (!passed) {
+  console.error('\nOne or more Lighthouse thresholds not met.')
+  process.exit(1)
+}
+
+console.log('\nAll Lighthouse thresholds met.')

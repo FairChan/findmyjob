@@ -41,13 +41,27 @@ interface PageProps {
   }>
 }
 
-export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const { locale } = await params
   const raw = await searchParams
   const parsed = listParamsSchema.safeParse(raw)
-  const { q, type, state, workMode, industry, tags: rawTags, size, salary } = parsed.success ? parsed.data : {}
+  const { q, type, state, workMode, industry, tags: rawTags, size, salary, cursor } = parsed.success ? parsed.data : {}
   const hasFilters = !!(q || type || state || workMode || industry || rawTags || size || salary)
+  const t = await getTranslations({ locale, namespace: 'publicJobs' })
+  const baseUrl = (process.env.APP_URL ?? '').replace(/\/$/, '')
   return {
+    title: t('title'),
+    description: t('description'),
     robots: hasFilters ? 'noindex,follow' : undefined,
+    alternates: hasFilters ? undefined : {
+      // A paginated page is its own canonical; pointing it at page 1 would drop it from the index.
+      canonical: `${baseUrl}/${locale}/jobs${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+      languages: {
+        'zh-Hans': `${baseUrl}/zh/jobs`,
+        'en': `${baseUrl}/en/jobs`,
+        'x-default': `${baseUrl}/zh/jobs`,
+      },
+    },
   }
 }
 

@@ -2,8 +2,7 @@ import { z } from 'zod'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
-import { listPublicCompanies, isOwnLogoKey } from '@/server/services/company'
-import { getSignedDisplayUrl } from '@/lib/storage'
+import { listPublicCompanies } from '@/server/services/company'
 import type { CompanyTag } from '@prisma/client'
 
 const COMPANY_TAGS: CompanyTag[] = [
@@ -20,12 +19,27 @@ interface PageProps {
   searchParams: Promise<{ tag?: string; cursor?: string }>
 }
 
-export async function generateMetadata({ searchParams }: PageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
+  const { locale } = await params
   const raw = await searchParams
   const parsed = pageParamsSchema.safeParse(raw)
   const hasFilters = !!(parsed.success && parsed.data.tag)
+  const cursor = parsed.success ? parsed.data.cursor : undefined
+  const t = await getTranslations({ locale, namespace: 'publicCompanies' })
+  const baseUrl = (process.env.APP_URL ?? '').replace(/\/$/, '')
   return {
+    title: t('title'),
+    description: t('description'),
     robots: hasFilters ? 'noindex,follow' : undefined,
+    alternates: hasFilters ? undefined : {
+      // A paginated page is its own canonical; pointing it at page 1 would drop it from the index.
+      canonical: `${baseUrl}/${locale}/companies${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+      languages: {
+        'zh-Hans': `${baseUrl}/zh/companies`,
+        'en': `${baseUrl}/en/companies`,
+        'x-default': `${baseUrl}/zh/companies`,
+      },
+    },
   }
 }
 
@@ -38,22 +52,6 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
   const t = await getTranslations('publicCompanies')
 
   const { items: companies, nextCursor } = await listPublicCompanies({ tag, cursor })
-
-  // Fetch signed logo URLs (server-side, within 300s limit)
-  const logoUrls: Record<string, string | null> = {}
-  await Promise.all(
-    companies.map(async (company) => {
-      if (company.logoKey && isOwnLogoKey(company.id, company.logoKey)) {
-        try {
-          logoUrls[company.id] = await getSignedDisplayUrl(company.logoKey)
-        } catch {
-          logoUrls[company.id] = null
-        }
-      } else {
-        logoUrls[company.id] = null
-      }
-    }),
-  )
 
   function buildUrl(params: { tag?: CompanyTag; cursor?: string }): string {
     const p = new URLSearchParams()
@@ -110,7 +108,7 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
                 locale === 'zh'
                   ? (company.displayNameZh ?? company.legalName)
                   : (company.displayNameEn ?? company.legalName)
-              const logoUrl = logoUrls[company.id]
+              const hasLogo = !!company.logoKey
               return (
                 <Link
                   key={company.id}
@@ -118,10 +116,10 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
                   prefetch={false}
                   className="group flex flex-col items-center rounded-lg border bg-card p-4 text-center hover:border-primary/50 transition-colors"
                 >
-                  {logoUrl ? (
+                  {hasLogo ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={logoUrl}
+                      src={`/api/logos/${company.id}`}
                       alt={displayName}
                       className="h-14 w-14 rounded-md object-contain border bg-white"
                     />

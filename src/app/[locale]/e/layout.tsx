@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { Metadata } from 'next'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
@@ -6,6 +7,10 @@ import { getTranslations } from 'next-intl/server'
 import { requireEmployer } from '@/server/authz'
 import { ForbiddenError } from '@/server/errors'
 import { db } from '@/server/db'
+
+export const metadata: Metadata = {
+  title: { default: 'FindMYJob', template: '%s · FindMYJob' },
+}
 
 export default async function EmployerLayout({
   children,

@@ -35,6 +35,21 @@ self.addEventListener('fetch', (event) => {
   // All other requests (API, assets, XHR) go straight to the network.
   if (event.request.mode !== 'navigate') return
 
+  // Only the app's own pages. Everything else goes straight to the browser: the Mailpit inbox
+  // behind basic auth (/_mail/) would show a bare 401 instead of the password prompt if this
+  // worker answered it, and /api/ links (e.g. email verification) and /_next/ are not pages.
+  const url = new URL(event.request.url)
+  if (url.origin !== self.location.origin) return
+  const path = url.pathname
+  if (
+    path === '/_mail' ||
+    path.startsWith('/_mail/') ||
+    path.startsWith('/api/') ||
+    path.startsWith('/_next/')
+  ) {
+    return
+  }
+
   event.respondWith(
     fetch(event.request).catch(() =>
       caches
