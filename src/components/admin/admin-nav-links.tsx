@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings, FileText, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings, FileText, ClipboardList, TrendingUp, Flag, Languages, ShieldCheck } from 'lucide-react'
 
 interface AdminNavLinksProps {
   locale: string
@@ -16,6 +16,10 @@ interface AdminNavLinksProps {
   settingsLabel: string
   dataRequestsLabel: string
   auditLabel: string
+  growthLabel: string
+  reportsLabel: string
+  synonymsLabel: string
+  articlesLabel: string
   pendingCount: number
 }
 
@@ -30,6 +34,10 @@ const NAV_ITEMS = [
   { key: 'settings', href: (locale: string) => `/${locale}/admin/settings`, icon: Settings, end: false },
   { key: 'dataRequests', href: (locale: string) => `/${locale}/admin/data-requests`, icon: FileText, end: false },
   { key: 'audit', href: (locale: string) => `/${locale}/admin/audit`, icon: ClipboardList, end: false },
+  { key: 'growth', href: (locale: string) => `/${locale}/admin/growth`, icon: TrendingUp, end: false },
+  { key: 'reports', href: (locale: string) => `/${locale}/admin/reports`, icon: Flag, end: false },
+  { key: 'synonyms', href: (locale: string) => `/${locale}/admin/synonyms`, icon: Languages, end: false },
+  { key: 'articles', href: (locale: string) => `/${locale}/admin/articles`, icon: ShieldCheck, end: false },
 ] as const
 
 export function AdminNavLinks({
@@ -44,6 +52,10 @@ export function AdminNavLinks({
   settingsLabel,
   dataRequestsLabel,
   auditLabel,
+  growthLabel,
+  reportsLabel,
+  synonymsLabel,
+  articlesLabel,
   pendingCount,
 }: AdminNavLinksProps) {
   const pathname = usePathname()
@@ -59,6 +71,10 @@ export function AdminNavLinks({
     settings: settingsLabel,
     dataRequests: dataRequestsLabel,
     audit: auditLabel,
+    growth: growthLabel,
+    reports: reportsLabel,
+    synonyms: synonymsLabel,
+    articles: articlesLabel,
   }
 
   return (

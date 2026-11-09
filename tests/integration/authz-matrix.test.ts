@@ -120,6 +120,107 @@ beforeEach(() => {
 // requireUser
 // ---------------------------------------------------------------------------
 
+describe('growth and risk management actions (M6-T08)', () => {
+  const operations = ['voidReferral', 'resolveReport', 'saveArticle', 'saveSynonym'] as const
+  type Operation = (typeof operations)[number]
+
+  async function fixture(operation: Operation) {
+    if (operation === 'voidReferral') {
+      const referrer = await createStudent(testDb)
+      const invitee = await createStudent(testDb)
+      const row = await testDb.referral.create({
+        data: { referrerId: referrer.profileId, inviteeId: invitee.profileId, status: 'QUALIFIED' },
+      })
+      return { id: row.id, input: { referralId: row.id, reason: 'synthetic moderation' } }
+    }
+    if (operation === 'resolveReport') {
+      const employer = await createEmployer(testDb)
+      const job = await createJob(testDb, employer.companyId, employer.userId)
+      const student = await createStudent(testDb)
+      const row = await testDb.jobReport.create({
+        data: { jobId: job.id, reporterId: student.userId, reason: 'ASKS_PAYMENT' },
+      })
+      return { id: row.id, input: { reportId: row.id, status: 'RESOLVED' } }
+    }
+    if (operation === 'saveArticle') {
+      return { id: '', input: { category: 'GUIDE', title: 'Synthetic guide', body: 'Synthetic safe body', sortOrder: 0, published: false } }
+    }
+    return { id: '', input: { terms: ['synthetic-alias', 'synthetic-match'], active: true } }
+  }
+
+  async function invoke(operation: Operation, input: unknown) {
+    if (operation === 'voidReferral') {
+      return (await import('@/server/actions/admin-growth')).voidReferralAction(input)
+    }
+    if (operation === 'resolveReport') {
+      return (await import('@/server/actions/admin-reports')).resolveReportAction(input)
+    }
+    if (operation === 'saveArticle') {
+      return (await import('@/server/actions/admin-articles')).saveArticleAction(input)
+    }
+    return (await import('@/server/actions/admin-growth')).saveSynonymGroupAction(input)
+  }
+
+  async function state() {
+    return {
+      referrals: await testDb.referral.findMany({ orderBy: { id: 'asc' } }),
+      reports: await testDb.jobReport.findMany({ orderBy: { id: 'asc' } }),
+      articles: await testDb.article.findMany({ orderBy: { id: 'asc' } }),
+      synonyms: await testDb.searchSynonymGroup.findMany({ orderBy: { id: 'asc' } }),
+      audits: await testDb.auditLog.findMany({ orderBy: { id: 'asc' } }),
+    }
+  }
+
+  for (const operation of operations) {
+    it.each([
+      'guest', 'STUDENT', 'EMPLOYER', 'suspended-admin', 'deleted-admin',
+      'unverified-2fa', 'disabled-2fa', 'expired-admin',
+    ] as const)(operation + ': %s is rejected without mutations', async (actor) => {
+      const sample = await fixture(operation)
+      if (actor === 'guest') {
+        mockSession(null)
+      } else {
+        const admin = await createTwoFactorAdmin(actor !== 'disabled-2fa')
+        await testDb.user.update({
+          where: { id: admin.id },
+          data: {
+            role: actor === 'STUDENT' || actor === 'EMPLOYER' ? actor : 'ADMIN',
+            status: actor === 'suspended-admin' ? 'SUSPENDED' : actor === 'deleted-admin' ? 'DELETED' : 'ACTIVE',
+          },
+        })
+        mockSession(admin.id, {
+          createdAt: new Date(Date.now() - (actor === 'expired-admin' ? 721 : 0) * 60_000),
+          twoFactorVerifiedAt: actor === 'unverified-2fa' ? null : new Date(),
+        })
+      }
+      const before = await state()
+      const result = await invoke(operation, sample.input)
+      expect(result).toMatchObject({
+        ok: false,
+        code: actor === 'disabled-2fa' ? 'TWO_FACTOR_REQUIRED' : 'FORBIDDEN',
+      })
+      expect(await state()).toEqual(before)
+    })
+
+    it(operation + ': an active verified admin may operate after the sensitive fresh window', async () => {
+      const sample = await fixture(operation)
+      const admin = await createTwoFactorAdmin()
+      const verifiedAt = new Date(Date.now() - 11 * 60_000)
+      mockSession(admin.id, { createdAt: verifiedAt, twoFactorVerifiedAt: verifiedAt })
+      const result = await invoke(operation, sample.input)
+      expect(result.ok).toBe(true)
+      const events = await testDb.auditLog.findMany({ where: { actorId: admin.id } })
+      expect(events).toHaveLength(1)
+      expect(events[0].action).toBe({
+        voidReferral: 'referral.void',
+        resolveReport: 'job.report.resolve',
+        saveArticle: 'article.save',
+        saveSynonym: 'search.synonym.save',
+      }[operation])
+    })
+  }
+})
+
 describe('requireUser', () => {
   it('guest (no session) → ForbiddenError', async () => {
     mockSession(null)

@@ -49,7 +49,7 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen overflow-x-hidden bg-[#f5f6fa] lg:flex">
-      <aside className="shrink-0 bg-[#1f2433] text-white/75 lg:sticky lg:top-0 lg:h-screen lg:w-56">
+      <aside className="shrink-0 bg-[#1f2433] text-white/75 lg:sticky lg:top-0 lg:h-screen lg:w-56 lg:overflow-y-auto">
         <div className="flex h-14 items-center gap-2 px-5 font-semibold text-white">
           {t('title')}
         </div>
@@ -65,6 +65,10 @@ export default async function AdminLayout({
           settingsLabel={t('navSettings')}
           dataRequestsLabel={t('navDataRequests')}
           auditLabel={t('navAudit')}
+          growthLabel={t('navGrowth')}
+          reportsLabel={t('navReports')}
+          synonymsLabel={t('navSynonyms')}
+          articlesLabel={t('navArticles')}
           pendingCount={pendingCount}
         />
       </aside>

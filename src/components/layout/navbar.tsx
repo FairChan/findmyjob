@@ -8,7 +8,7 @@ export default async function Navbar({ locale }: { locale: Locale }) {
   const t = await getTranslations('nav')
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <header className="sticky top-0 z-40 border-b bg-background">
       <div className="container mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
         <Link href="/" className="font-bold text-xl text-brand">
           FindMYJob

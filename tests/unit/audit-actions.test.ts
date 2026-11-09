@@ -50,12 +50,17 @@ describe('AUDIT_ACTIONS matches ARCHITECTURE §5.7', () => {
     expect(dupes).toEqual([])
   })
 
-  it('§5.7 has exactly 27 actions', () => {
+  it('§5.7 has exactly 29 actions', () => {
     const archActions = parseArchitectureActions()
-    expect(archActions).toHaveLength(27)
+    expect(archActions).toHaveLength(29)
   })
 
-  it('AUDIT_ACTIONS has exactly 27 entries', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(27)
+  it('AUDIT_ACTIONS has exactly 29 entries', () => {
+    expect(AUDIT_ACTIONS).toHaveLength(29)
+  })
+
+  it('includes content and synonym management actions', () => {
+    expect(AUDIT_ACTIONS).toContain('article.save')
+    expect(AUDIT_ACTIONS).toContain('search.synonym.save')
   })
 })

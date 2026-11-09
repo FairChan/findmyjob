@@ -21,7 +21,7 @@ vi.mock('@/server/db', () => ({
 const mockGetSetting = vi.hoisted(() => vi.fn())
 vi.mock('@/server/services/settings', () => ({ getSetting: mockGetSetting }))
 
-import { expandTerms, escapeIlike, searchJobs, _clearSynonymCache } from '@/server/services/job-search'
+import { expandTerms, escapeIlike, searchJobs, _clearSynonymCache, invalidateSynonymCache } from '@/server/services/job-search'
 import { industryMatches } from '@/server/lib/taxonomy/industries'
 
 // Synonym groups matching the prototype + seed data
@@ -171,6 +171,28 @@ describe('industryMatches', () => {
 // ----- searchJobs with mocked DB -----
 
 describe('searchJobs', () => {
+  it('does not let an in-flight read repopulate the synonym cache after invalidation', async () => {
+    let releaseOldRead!: (rows: { terms: string[] }[]) => void
+    let markReadStarted!: () => void
+    const readStarted = new Promise<void>((resolve) => { markReadStarted = resolve })
+    mockSynonymFindMany.mockImplementationOnce(() => {
+      markReadStarted()
+      return new Promise<{ terms: string[] }[]>((resolve) => { releaseOldRead = resolve })
+    })
+    mockQueryRaw.mockResolvedValue([makeRow({ id: 'new-term-job', title: '琥珀岗位' })])
+
+    const oldSearch = searchJobs({ q: 'cobaltdesk', mode: 'RELATED' })
+    await readStarted
+    invalidateSynonymCache()
+    mockSynonymFindMany.mockResolvedValue([{ terms: ['cobaltdesk', '琥珀岗位'] }])
+    releaseOldRead([{ terms: ['cobaltdesk', 'violetdesk'] }])
+    await oldSearch
+
+    const nextSearch = await searchJobs({ q: 'cobaltdesk', mode: 'RELATED' })
+    expect([...nextSearch.exact, ...nextSearch.related].map((hit) => hit.job.id))
+      .toEqual(['new-term-job'])
+  })
+
   it('exact mode: same job ID appears only once (dedup)', async () => {
     const rows = [makeRow({ id: 'a', title: '财务助理' })]
     mockQueryRaw.mockResolvedValue(rows)

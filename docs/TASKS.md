@@ -1220,10 +1220,11 @@
 > 完成 2026-11-07：src/server/services/managed-company.ts（createManagedCompany/postJobAsPlatform/transferCompany/acceptManagedTransfer 四个函数，每步写对应审计日志）；scripts/import-companies.ts（zod 校验，dry-run 只统计不写 DB，实际导入用自己的 PrismaClient）；tests/integration/managed-company.test.ts（21 个用例，全部通过）；authz-matrix 补充 managed-company authz 段（4 个用例）；DECISIONS 新增 M6-T07 条目（平台账号不加入 CompanyMember 以支持批量导入，移交后 isManaged=false 让 postJobAsPlatform 被拒，满足「平台账号再操作被拒」验收标准）；pnpm lint/typecheck/test 全部通过（883 tests）；偏差：「删除平台账号的 CompanyMember」一步变为无需操作（admin 本来不是成员，见 DECISIONS M6-T07），移交完成通过 isManaged=false 保证
 > 修复 2026-11-07：修正完成说明里「每步写对应审计日志」的不实表述——原始代码的 acceptManagedTransfer 没有写审计。本轮补全：(1) acceptManagedTransfer 在事务后写 company.managed.transfer（phase:completed）和 company.invite.accept 两条审计，metadata 不含邮箱；(2) transferInputSchema 新增 verificationMethod 字段（DOMAIN_MATCH/PHONE_CALLBACK），DOMAIN_MATCH 时在服务端验证邮箱域名与官网域名一致，记入审计 metadata（TM-008）；(3) team.acceptInvite 遇到 isManaged=true 的 OWNER 邀请时改走 acceptManagedTransfer，非代管企业的 OWNER 邀请直接拒绝；(4) acceptManagedTransfer 事务内用带条件的 updateMany 防并发双移交，同时撤销其他待接受邀请；(5) 新增 src/server/actions/managed-company.ts 的 transferManagedCompanyAction（admin-only，token 不回传客户端，邮件 fire-and-forget）；运营后台暂无代管企业页面，待后续任务排入。pnpm lint/typecheck/test（managed-company + authz-matrix + team 共 146 tests）全部通过。
 
-#### [ ] M6-T08 增长与风控页（P1，可在试点后做）
+#### [x] M6-T08 增长与风控页（P1，可在试点后做）
 依赖：M6-T01
 做：注册数和上限进度、邀请记录（可作废）、举报队列、同义词表、反诈内容。
 验收：作废邀请后，邀请人的额度立刻重算；处理举报写审计 `job.report.resolve`
+> 完成 2026-11-09：新增增长/邀请、举报、同义词和反诈内容四个双语后台；邀请作废共用额度锁、审计同事务且保留历史访问，举报按 KL 自然日并发限流并原子处理，文章仅发布可公开读取，安全 Markdown 与提交后同义词缓存失效供 M7 复用。独立复核后修复成功反馈/焦点和 sticky 页头对比度。全量 Vitest 2511 passed / 4 既有性能基准 skipped，定向 E2E 12/12、完整 E2E 311/311，lint/typecheck/build 通过；48 张最终截图已留存。真实反诈内容与号码仍需人工核实，公开入口属于 M7-T09。
 
 ---
 

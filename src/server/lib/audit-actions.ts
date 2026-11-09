@@ -27,6 +27,8 @@ export const AUDIT_ACTIONS = [
   'job.review',
   'job.report.resolve',
   'referral.void',
+  'article.save',
+  'search.synonym.save',
   'order.confirm',
   'setting.update',
   'user.suspend',
