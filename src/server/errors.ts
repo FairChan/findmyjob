@@ -25,6 +25,18 @@ export class ForbiddenError extends AppError {
   }
 }
 
+export class TwoFactorRequiredError extends AppError {
+  constructor() {
+    super('Set up two-factor authentication', 'TWO_FACTOR_REQUIRED', 403)
+  }
+}
+
+export class FreshSessionRequiredError extends AppError {
+  constructor() {
+    super('Sign in again to continue', 'FRESH_SESSION_REQUIRED', 403)
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message = 'Validation failed') {
     super(message, 'VALIDATION_ERROR', 422)

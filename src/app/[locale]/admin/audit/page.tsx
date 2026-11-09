@@ -3,7 +3,7 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { requireAdmin } from '@/server/authz'
-import { ForbiddenError } from '@/server/errors'
+import { ForbiddenError, TwoFactorRequiredError } from '@/server/errors'
 import { listAuditLogs } from '@/server/services/admin-audit'
 import { AUDIT_ACTIONS } from '@/server/lib/audit-actions'
 
@@ -45,6 +45,7 @@ export default async function AdminAuditPage({
   try {
     await requireAdmin(await headers())
   } catch (err) {
+    if (err instanceof TwoFactorRequiredError) redirect(`/${locale}/two-factor/setup`)
     if (err instanceof ForbiddenError) {
       redirect(`/${locale}/login`)
     }

@@ -1,6 +1,6 @@
 import 'server-only'
 import { db } from './db'
-import { ForbiddenError } from './errors'
+import { ForbiddenError, TwoFactorRequiredError, FreshSessionRequiredError } from './errors'
 import { getSession } from './auth'
 import type { CompanyMemberRole } from '@prisma/client'
 
@@ -19,11 +19,16 @@ async function loadActiveUser(headers: Headers) {
 
   const user = await db.user.findUnique({
     where: { id: session.user.id },
-    select: { id: true, role: true, status: true },
+    select: { id: true, role: true, status: true, twoFactorEnabled: true },
   })
 
   if (!user || user.status !== 'ACTIVE') throw new ForbiddenError()
-  return user
+  // An admin's absolute lifetime must not grow when Better Auth refreshes updatedAt.
+  if (user.role === 'ADMIN') {
+    const age = Date.now() - new Date(session.session.createdAt).getTime()
+    if (!Number.isFinite(age) || age < 0 || age >= 12 * 3600_000) throw new ForbiddenError()
+  }
+  return { ...user, session: session.session }
 }
 
 export async function requireUser(headers: Headers): Promise<UserCtx> {
@@ -84,9 +89,14 @@ export async function requireVerifiedCompany(
   return { userId: user.id, companyId: member.companyId, role: member.role }
 }
 
-export async function requireAdmin(headers: Headers): Promise<UserCtx> {
+export async function requireAdmin(headers: Headers, options: { fresh?: boolean } = {}): Promise<UserCtx> {
   const user = await loadActiveUser(headers)
   if (user.role !== 'ADMIN') throw new ForbiddenError()
+  if (!user.twoFactorEnabled) throw new TwoFactorRequiredError()
+  const verifiedAt = user.session.twoFactorVerifiedAt
+  const age = verifiedAt ? Date.now() - new Date(verifiedAt).getTime() : NaN
+  if (!Number.isFinite(age) || age < 0) throw new ForbiddenError()
+  if (options.fresh && age >= 600_000) throw new FreshSessionRequiredError()
   return { userId: user.id }
 }
 

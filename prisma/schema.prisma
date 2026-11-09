@@ -262,6 +262,7 @@ model User {
   name          String
   email         String     @unique
   emailVerified Boolean    @default(false)
+  twoFactorEnabled Boolean @default(false)
   image         String?
   role          UserRole   @default(STUDENT)
   locale        Locale     @default(zh)
@@ -272,6 +273,7 @@ model User {
   updatedAt     DateTime   @updatedAt @db.Timestamptz(3)
 
   sessions       Session[]
+  twoFactors     TwoFactor[]
   accounts       Account[]
   studentProfile StudentProfile?
   memberships    CompanyMember[]
@@ -286,12 +288,27 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
   expiresAt DateTime @db.Timestamptz(3)
+  twoFactorVerifiedAt DateTime? @db.Timestamptz(3)
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([userId])
+}
+
+model TwoFactor {
+  id                      String    @id @default(cuid())
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secret                  String
+  backupCodes             String
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([secret])
 }
 
 model Account {

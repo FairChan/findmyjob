@@ -1436,7 +1436,7 @@
 > 修复 2026-11-07（合并前复查）：proxy.ts checkReconsent 改用固定 INTERNAL_BASE_URL（默认 127.0.0.1:3000）取代 request.nextUrl.origin，消除 Host 头注入可能把 session cookie 发送到攻击者控制的 host 的漏洞；env.ts 和 env.example 同步新增 INTERNAL_BASE_URL 可选字段；新增 tests/unit/proxy-reconsent.test.ts 3 条测试锁住行为。失败输出见提交说明。
 > 修复 2026-11-07（合并前全量 E2E）：(1) proxy.ts 增加 isPageNavigation 判断，Server Action (POST+Next-Action) 不做重新同意跳转；(2) auth.ts 修复 legalVersion 默认值与 needsReconsent 不一致（'1.0'→'2026-11-draft'）；(3) E2E fixture 写入当前版本同意记录（helpers/consent.ts, loginAs consent 选项, global-setup 清理+写入）；新增 reconsent.spec.ts。全量 E2E 104/104 通过。失败输出见提交说明。自查：1.鉴权在服务端：符合，proxy.ts 只改方法判断不改鉴权；2.输入走 zod：不适用，无新增输入；3.越权有测试：不适用；4.加锁和并发：不适用；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增页面；7-12.见提交说明。注：global-setup.ts 是 M4-T15 的文件，合并 M4 时可能有冲突。
 
-#### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
+#### [x] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02
 做：
 - 启用 Better Auth 的 twoFactor 插件。requireAdmin 检查 2FA，没开就跳转到设置页。试点期间先用密码管理器生成的独立强密码作为补偿控制。
@@ -1447,6 +1447,7 @@
 > - staging 上已有的演示运营账号，上线后第一次进 /admin 会被引导去设置 2FA，这是预期行为。轮次不改 `deploy/**` 和种子数据里的账号或密码；合并前由总控先通知部署会话。
 > - E2E 不能为了好跑而关掉 2FA 检查：`loginAs(page, { role: 'ADMIN' })` 要改成给测试运营账号写好已启用 2FA 的状态并走一次真实的 TOTP 验证（或者等价的服务端会话标记），让现有用到 ADMIN 的 spec 全部继续通过。TOTP 计算优先用 Better Auth 自带的工具；要加新依赖，先在 DECISIONS 记一行。
 > - 「实现方式待核实」：照 `node_modules/better-auth` 里 twoFactor 插件和 session 配置（freshAge、expiresIn）的实际导出来实现，不要凭记忆写选项名。新鲜会话检查放在 `requireAdmin` 或者 action 的 auth 层，`authz-matrix.test.ts` 给需要新鲜会话的动作加「会话太旧 → 被拒」的行。
+> 完成 2026-11-09：接入 Better Auth 官方 TOTP／单次备用码，运营未开通时引导设置，每次登录必须验证第二因素；5 次错误锁定 15 分钟且按 IP 限流。服务端验证标记防旧会话绕过，ADMIN 绝对期限 12 小时（含核心认证 API），查看联系方式／调点要求 10 分钟内验证；密码恢复不被旧 cookie 阻断。订单确认尚未实现，M8 必须沿用 admin-fresh。新增迁移仅应用到独立合成测试库；强密码要求、首次设置和人工恢复边界已记入 DECISIONS／RUNBOOK。最终全量 Vitest 2057 passed / 4 skipped（默认关闭的性能基准）/ 0 failed，完整 E2E 300 passed / 0 failed / 0 skipped（含 375/1280px），lint、typecheck、build、db:check 及容器外键索引补查通过。报告：`../findmyjob-plan/.reports/2026-11-09-m6-t09/summary.md`。未推送、合并或部署。
 > - 验收里的「输错 5 次被限流」要有集成测试或 E2E。
 
 #### [x] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）

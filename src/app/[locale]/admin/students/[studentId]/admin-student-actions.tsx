@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
+import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import {
   suspendUserAction,
@@ -20,6 +21,9 @@ interface Props {
 
 export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifiedAt }: Props) {
   const t = useTranslations('adminStudents')
+  const securityT = useTranslations('adminSecurity')
+  const locale = useLocale()
+  const pathname = usePathname()
   const router = useRouter()
 
   const [suspendReason, setSuspendReason] = useState('')
@@ -43,6 +47,7 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
   const [contact, setContact] = useState<ContactData | null>(null)
   const [contactLoading, setContactLoading] = useState(false)
   const [contactError, setContactError] = useState('')
+  const [contactAuthError, setContactAuthError] = useState<'FRESH_SESSION_REQUIRED' | 'TWO_FACTOR_REQUIRED' | null>(null)
 
   async function handleSuspend(e: React.FormEvent) {
     e.preventDefault()
@@ -114,11 +119,14 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
 
   async function handleViewContact() {
     setContactError('')
+    setContactAuthError(null)
     setContactLoading(true)
     try {
       const res = await readStudentContactAdminAction({ studentUserId })
       if (res.ok) {
         setContact(res.data)
+      } else if (res.code === 'FRESH_SESSION_REQUIRED' || res.code === 'TWO_FACTOR_REQUIRED') {
+        setContactAuthError(res.code)
       } else {
         setContactError(t('contactErrorFailed'))
       }
@@ -235,7 +243,23 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
           </dl>
         ) : (
           <div className="space-y-2">
-            {contactError && <p className="text-sm text-destructive">{contactError}</p>}
+            {contactError && <p role="alert" className="text-sm text-destructive">{contactError}</p>}
+            {contactAuthError && (
+              <div role="alert" className="space-y-1 text-sm">
+                <p className="text-destructive">
+                  {securityT(contactAuthError === 'FRESH_SESSION_REQUIRED' ? 'freshSessionRequired' : 'twoFactorRequired')}
+                </p>
+                <Link
+                  href={contactAuthError === 'FRESH_SESSION_REQUIRED'
+                    ? `/${locale}/login?redirect=${encodeURIComponent(pathname)}`
+                    : `/${locale}/two-factor/setup`}
+                  prefetch={false}
+                  className="inline-flex min-h-10 items-center text-brand underline underline-offset-4"
+                >
+                  {securityT(contactAuthError === 'FRESH_SESSION_REQUIRED' ? 'loginAgain' : 'setupTwoFactor')}
+                </Link>
+              </div>
+            )}
             <Button onClick={handleViewContact} disabled={contactLoading} variant="outline">
               {contactLoading ? '…' : t('viewContactBtn')}
             </Button>

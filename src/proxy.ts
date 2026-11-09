@@ -32,6 +32,7 @@ const AUTH_PAGE_SLUGS = [
   'reset-password',
   'forgot-password',
   'legal/reconsent',
+  'two-factor/setup',
 ] as const
 
 function requiresNoIndex(pathname: string): boolean {

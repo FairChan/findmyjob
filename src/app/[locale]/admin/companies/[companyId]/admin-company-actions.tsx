@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
+import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   deactivateCompanyAction,
   reactivateCompanyAction,
@@ -29,6 +30,9 @@ export function AdminCompanyActions({
   walletBalance,
 }: Props) {
   const t = useTranslations('adminCompanyManage')
+  const securityT = useTranslations('adminSecurity')
+  const locale = useLocale()
+  const pathname = usePathname()
   const router = useRouter()
 
   // Deactivate
@@ -57,6 +61,7 @@ export function AdminCompanyActions({
   const [creditNote, setCreditNote] = useState('')
   const [creditsLoading, setCreditsLoading] = useState(false)
   const [creditsError, setCreditsError] = useState('')
+  const [creditsAuthError, setCreditsAuthError] = useState<'FRESH_SESSION_REQUIRED' | 'TWO_FACTOR_REQUIRED' | null>(null)
   const [creditsSuccess, setCreditsSuccess] = useState('')
   const [currentBalance, setCurrentBalance] = useState(walletBalance)
 
@@ -134,6 +139,7 @@ export function AdminCompanyActions({
   async function handleCredits(e: React.FormEvent) {
     e.preventDefault()
     setCreditsError('')
+    setCreditsAuthError(null)
     setCreditsSuccess('')
     if (!creditNote.trim()) {
       setCreditsError(t('errorNoteRequired'))
@@ -153,6 +159,8 @@ export function AdminCompanyActions({
         setCreditDelta('')
         setCreditNote('')
         router.refresh()
+      } else if (!res.ok && (res.code === 'FRESH_SESSION_REQUIRED' || res.code === 'TWO_FACTOR_REQUIRED')) {
+        setCreditsAuthError(res.code)
       } else {
         setCreditsError(t('errorFailed'))
       }
@@ -332,7 +340,23 @@ export function AdminCompanyActions({
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-            {creditsError && <p className="text-sm text-destructive">{creditsError}</p>}
+            {creditsError && <p role="alert" className="text-sm text-destructive">{creditsError}</p>}
+            {creditsAuthError && (
+              <div role="alert" className="space-y-1 text-sm">
+                <p className="text-destructive">
+                  {securityT(creditsAuthError === 'FRESH_SESSION_REQUIRED' ? 'freshSessionRequired' : 'twoFactorRequired')}
+                </p>
+                <Link
+                  href={creditsAuthError === 'FRESH_SESSION_REQUIRED'
+                    ? `/${locale}/login?redirect=${encodeURIComponent(pathname)}`
+                    : `/${locale}/two-factor/setup`}
+                  prefetch={false}
+                  className="inline-flex min-h-10 items-center text-brand underline underline-offset-4"
+                >
+                  {securityT(creditsAuthError === 'FRESH_SESSION_REQUIRED' ? 'loginAgain' : 'setupTwoFactor')}
+                </Link>
+              </div>
+            )}
             {creditsSuccess && <p className="text-sm text-green-700">{creditsSuccess}</p>}
             <button
               type="submit"

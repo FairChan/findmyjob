@@ -5,7 +5,7 @@ import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { getTranslations } from 'next-intl/server'
 import { requireAdmin } from '@/server/authz'
-import { ForbiddenError } from '@/server/errors'
+import { ForbiddenError, TwoFactorRequiredError } from '@/server/errors'
 import { db } from '@/server/db'
 import { AdminNavLinks } from '@/components/admin/admin-nav-links'
 
@@ -26,6 +26,9 @@ export default async function AdminLayout({
     const ctx = await requireAdmin(await headers())
     userId = ctx.userId
   } catch (err) {
+    if (err instanceof TwoFactorRequiredError) {
+      redirect(`/${locale}/two-factor/setup`)
+    }
     if (err instanceof ForbiddenError) {
       redirect(`/${locale}/login`)
     }

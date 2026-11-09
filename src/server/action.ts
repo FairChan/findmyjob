@@ -15,6 +15,7 @@ export type AuthOption =
   | 'company'
   | CompanyAuthOpt
   | 'admin'
+  | 'admin-fresh'
 
 export type ActionContext<TInput> = {
   input: TInput
@@ -43,9 +44,9 @@ async function resolveAuth(auth: AuthOption): Promise<{
     return await requireStudent(h)
   }
 
-  if (auth === 'admin') {
+  if (auth === 'admin' || auth === 'admin-fresh') {
     const { requireAdmin } = await import('./authz')
-    return await requireAdmin(h)
+    return await requireAdmin(h, { fresh: auth === 'admin-fresh' })
   }
 
   // 'company' or { type: 'company', ... }

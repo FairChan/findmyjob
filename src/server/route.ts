@@ -49,9 +49,9 @@ async function resolveRouteAuth(
     return await requireStudent(h)
   }
 
-  if (auth === 'admin') {
+  if (auth === 'admin' || auth === 'admin-fresh') {
     const { requireAdmin } = await import('./authz')
-    return await requireAdmin(h)
+    return await requireAdmin(h, { fresh: auth === 'admin-fresh' })
   }
 
   const opt: CompanyAuthOpt =

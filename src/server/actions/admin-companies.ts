@@ -42,7 +42,7 @@ export const setCompanyTagsAction = action(
 )
 
 export const adjustCompanyCreditsAction = action(
-  { auth: 'admin', input: adjustCompanyCreditsSchema },
+  { auth: 'admin-fresh', input: adjustCompanyCreditsSchema },
   async (ctx) => {
     return adjustCompanyCredits({ userId: ctx.userId! }, ctx.input)
   },

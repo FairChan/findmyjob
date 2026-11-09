@@ -43,7 +43,7 @@ export const approveSchoolVerificationAction = action(
 )
 
 export const readStudentContactAdminAction = action(
-  { auth: 'admin', input: z.object({ studentUserId: z.string().min(1) }) },
+  { auth: 'admin-fresh', input: z.object({ studentUserId: z.string().min(1) }) },
   async (ctx) => {
     const h = await headers()
     const ip = getClientIp(h)

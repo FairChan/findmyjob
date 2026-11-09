@@ -69,6 +69,7 @@ function mockSession(userId: string | null, role: string = 'ADMIN') {
         userAgent: null,
         createdAt: new Date(),
         updatedAt: new Date(),
+        twoFactorVerifiedAt: role === 'ADMIN' ? new Date() : null,
       } as never,
     })
   }
@@ -107,6 +108,7 @@ async function createAdminUser() {
       emailVerified: true,
       role: 'ADMIN',
       status: 'ACTIVE',
+      twoFactorEnabled: true,
     },
   })
 }

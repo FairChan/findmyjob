@@ -55,7 +55,12 @@ setupTestDb()
 
 const noHeaders = new Headers()
 
-function mockSession(userId: string | null) {
+type MockSessionOptions = {
+  createdAt?: Date
+  twoFactorVerifiedAt?: Date | null
+}
+
+function mockSession(userId: string | null, options: MockSessionOptions = {}) {
   if (userId === null) {
     vi.mocked(authMod.getSession).mockResolvedValue(null)
   } else {
@@ -79,12 +84,33 @@ function mockSession(userId: string | null) {
         expiresAt: new Date(Date.now() + 86_400_000),
         ipAddress: null,
         userAgent: null,
-        createdAt: new Date(),
+        createdAt: options.createdAt ?? new Date(),
         updatedAt: new Date(),
+        twoFactorVerifiedAt: options.twoFactorVerifiedAt ?? null,
       },
     })
   }
 }
+
+function createTwoFactorAdmin(twoFactorEnabled = true) {
+  return testDb.user.create({
+    data: {
+      name: 'Two Factor Admin',
+      email: 'admin-two-factor-matrix@example.test',
+      emailVerified: true,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      twoFactorEnabled,
+    },
+  })
+}
+
+const adminSessionDenials = [
+  { scenario: '2FA not enabled', enabled: false, verified: true, ageMinutes: 0, code: 'TWO_FACTOR_REQUIRED' },
+  { scenario: '2FA not verified for this session', enabled: true, verified: false, ageMinutes: 0, code: 'FORBIDDEN' },
+  { scenario: 'session older than 12 hours', enabled: true, verified: true, ageMinutes: 721, code: 'FORBIDDEN' },
+  { scenario: 'session older than 10 minutes', enabled: true, verified: true, ageMinutes: 11, code: 'FRESH_SESSION_REQUIRED' },
+] as const
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -272,11 +298,53 @@ describe('requireAdmin', () => {
 
   it('admin user → pass', async () => {
     const admin = await testDb.user.create({
-      data: { name: 'Admin', email: 'admin2-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+      data: { name: 'Admin', email: 'admin2-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE', twoFactorEnabled: true },
     })
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const ctx = await requireAdmin(noHeaders)
     expect(ctx.userId).toBe(admin.id)
+  })
+
+  it('admin without enabled 2FA → TWO_FACTOR_REQUIRED', async () => {
+    const admin = await createTwoFactorAdmin(false)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    await expect(requireAdmin(noHeaders)).rejects.toMatchObject({ code: 'TWO_FACTOR_REQUIRED' })
+  })
+
+  it('enabled admin without session verification → ForbiddenError', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id)
+    await expect(requireAdmin(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('verified admin within 12 hours can use ordinary admin operations', async () => {
+    const admin = await createTwoFactorAdmin()
+    const createdAt = new Date(Date.now() - (12 * 60 - 1) * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: createdAt })
+    await expect(requireAdmin(noHeaders)).resolves.toEqual({ userId: admin.id })
+  })
+
+  it('admin session older than 12 hours is denied despite recent update and verification', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, {
+      createdAt: new Date(Date.now() - (12 * 60 + 1) * 60_000),
+      twoFactorVerifiedAt: new Date(),
+    })
+    await expect(requireAdmin(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('fresh admin verification within 10 minutes → pass', async () => {
+    const admin = await createTwoFactorAdmin()
+    const createdAt = new Date(Date.now() - 9 * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: createdAt })
+    await expect(requireAdmin(noHeaders, { fresh: true })).resolves.toEqual({ userId: admin.id })
+  })
+
+  it('admin verification older than 10 minutes → FRESH_SESSION_REQUIRED', async () => {
+    const admin = await createTwoFactorAdmin()
+    const createdAt = new Date(Date.now() - 11 * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: createdAt })
+    await expect(requireAdmin(noHeaders, { fresh: true })).rejects.toMatchObject({ code: 'FRESH_SESSION_REQUIRED' })
   })
 
   it('suspended admin → ForbiddenError', async () => {
@@ -2067,10 +2135,10 @@ describe('admin-users authz (M6-T02)', () => {
 
   it('suspendUserAction: admin → ok, user SUSPENDED, sessions deleted', async () => {
     const admin = await testDb.user.create({
-      data: { name: 'Admin M6', email: `admin-m6t02-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+      data: { name: 'Admin M6', email: `admin-m6t02-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE', twoFactorEnabled: true },
     })
     const { userId: targetId } = await makeStudentWithSession()
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const { suspendUserAction } = await import('@/server/actions/admin-users')
     const result = await suspendUserAction({ targetUserId: targetId, reason: 'authz test' })
     expect(result.ok).toBe(true)
@@ -2123,10 +2191,10 @@ describe('admin-users authz (M6-T02)', () => {
 
   it('readStudentContactAdminAction: admin → ok, writes contact.read audit', async () => {
     const admin = await testDb.user.create({
-      data: { name: 'Admin Contact', email: `admin-contact-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+      data: { name: 'Admin Contact', email: `admin-contact-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE', twoFactorEnabled: true },
     })
     const { userId: targetId, profileId } = await createStudent(testDb)
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
     const result = await readStudentContactAdminAction({ studentUserId: targetId })
     expect(result.ok).toBe(true)
@@ -2134,6 +2202,21 @@ describe('admin-users authz (M6-T02)', () => {
       where: { actorId: admin.id, action: 'contact.read', targetId: profileId },
     })
     expect(audits.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it.each(adminSessionDenials)('readStudentContactAdminAction: $scenario → $code, no contact audit', async ({ enabled, verified, ageMinutes, code }) => {
+    const admin = await createTwoFactorAdmin(enabled)
+    const { userId: targetId, profileId } = await createStudent(testDb)
+    const createdAt = new Date(Date.now() - ageMinutes * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: verified ? createdAt : null })
+
+    const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
+    const result = await readStudentContactAdminAction({ studentUserId: targetId })
+
+    expect(result).toEqual({ ok: false, code })
+    expect(await testDb.auditLog.count({
+      where: { actorId: admin.id, action: 'contact.read', targetId: profileId },
+    })).toBe(0)
   })
 
   it('createSchoolAction: student → FORBIDDEN', async () => {
@@ -2255,6 +2338,37 @@ describe('admin-companies authz (M6-T03)', () => {
     const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'test' })
     expect(result.ok).toBe(false)
   })
+
+  it('adjustCompanyCreditsAction: fresh verified admin → balance, ledger and audit updated', async () => {
+    const admin = await createTwoFactorAdmin()
+    const company = await testDb.company.create({ data: { legalName: 'Fresh session credits company' } })
+    const wallet = await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { adjustCompanyCreditsAction } = await import('@/server/actions/admin-companies')
+
+    const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'fresh session test' })
+
+    expect(result).toEqual({ ok: true, data: { balanceAfter: 150 } })
+    expect(await testDb.creditWallet.findUnique({ where: { id: wallet.id } })).toMatchObject({ balance: 150 })
+    expect(await testDb.creditLedger.count({ where: { walletId: wallet.id, actorId: admin.id, reason: 'ADMIN_ADJUST' } })).toBe(1)
+    expect(await testDb.auditLog.count({ where: { actorId: admin.id, action: 'credits.adjust', targetId: company.id } })).toBe(1)
+  })
+
+  it.each(adminSessionDenials)('adjustCompanyCreditsAction: $scenario → $code, no balance/ledger/audit changes', async ({ enabled, verified, ageMinutes, code }) => {
+    const admin = await createTwoFactorAdmin(enabled)
+    const company = await testDb.company.create({ data: { legalName: 'Denied session credits company' } })
+    const wallet = await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    const createdAt = new Date(Date.now() - ageMinutes * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: verified ? createdAt : null })
+    const { adjustCompanyCreditsAction } = await import('@/server/actions/admin-companies')
+
+    const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'denied session test' })
+
+    expect(result).toEqual({ ok: false, code })
+    expect(await testDb.creditWallet.findUnique({ where: { id: wallet.id } })).toMatchObject({ balance: 50 })
+    expect(await testDb.creditLedger.count({ where: { walletId: wallet.id } })).toBe(0)
+    expect(await testDb.auditLog.count({ where: { actorId: admin.id, action: 'credits.adjust', targetId: company.id } })).toBe(0)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -2290,9 +2404,10 @@ describe('admin-settings authz (M6-T05)', () => {
         emailVerified: true,
         role: 'ADMIN',
         status: 'ACTIVE',
+        twoFactorEnabled: true,
       },
     })
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
     // number out of range
     const result = await updateSettingAction({ key: 'pilot.monthlyCredits', value: -100 })
