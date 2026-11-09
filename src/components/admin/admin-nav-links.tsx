@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings, FileText } from 'lucide-react'
+import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings, FileText, ClipboardList } from 'lucide-react'
 
 interface AdminNavLinksProps {
   locale: string
@@ -15,6 +15,7 @@ interface AdminNavLinksProps {
   notificationsLabel: string
   settingsLabel: string
   dataRequestsLabel: string
+  auditLabel: string
   pendingCount: number
 }
 
@@ -28,6 +29,7 @@ const NAV_ITEMS = [
   { key: 'notifications', href: (locale: string) => `/${locale}/admin/notifications`, icon: Bell, end: false },
   { key: 'settings', href: (locale: string) => `/${locale}/admin/settings`, icon: Settings, end: false },
   { key: 'dataRequests', href: (locale: string) => `/${locale}/admin/data-requests`, icon: FileText, end: false },
+  { key: 'audit', href: (locale: string) => `/${locale}/admin/audit`, icon: ClipboardList, end: false },
 ] as const
 
 export function AdminNavLinks({
@@ -41,6 +43,7 @@ export function AdminNavLinks({
   notificationsLabel,
   settingsLabel,
   dataRequestsLabel,
+  auditLabel,
   pendingCount,
 }: AdminNavLinksProps) {
   const pathname = usePathname()
@@ -55,6 +58,7 @@ export function AdminNavLinks({
     notifications: notificationsLabel,
     settings: settingsLabel,
     dataRequests: dataRequestsLabel,
+    audit: auditLabel,
   }
 
   return (
@@ -69,7 +73,7 @@ export function AdminNavLinks({
             aria-current={isActive ? 'page' : undefined}
             className={`flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm ${
               isActive
-                ? 'bg-[var(--color-brand-500,#3b82f6)] text-white'
+                ? 'bg-[var(--color-brand-600,#2563eb)] text-white'
                 : 'text-white/75 hover:bg-white/10 hover:text-white'
             }`}
           >
