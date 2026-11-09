@@ -22,7 +22,8 @@ declare global {
           'expired-callback'?: () => void
           'error-callback'?: () => boolean | void
           theme?: 'light' | 'dark' | 'auto'
-          size?: 'normal' | 'compact' | 'flexible' | 'invisible'
+          size?: 'normal' | 'compact' | 'flexible'
+          appearance?: 'always' | 'execute' | 'interaction-only'
         },
       ) => string
       reset: (widgetId: string) => void
@@ -44,7 +45,7 @@ export default function TurnstileWidget({ siteKey, action, onToken, onExpire, on
       widgetIdRef.current = window.turnstile.render(containerRef.current, {
         sitekey: siteKey,
         action,
-        size: 'invisible',
+        appearance: 'execute',
         callback: onToken,
         'expired-callback': onExpire,
         // 出错时不要让用户卡在「正在验证」：报给表单，并重试一次挑战

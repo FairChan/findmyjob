@@ -1316,10 +1316,11 @@
 > - 验收里的「连续 3 次」：本地跑 `pnpm test:e2e --workers=1 --repeat-each=3 tests/e2e/full-flow.spec.ts`，三次全部通过，把 passed / failed / flaky 数写进完成说明。单条命令超过 600 秒就分三次各跑一遍，每次都贴结果。
 > - 这一条只加测试；测试暴露出产品 bug 时，修掉并在提交说明里贴修复前的失败输出原文（ROUND_NOTE c）。
 
-#### [ ] M7-T08 PWA 与移动端走查
+#### [x] M7-T08 PWA 与移动端走查
 依赖：M7-T01
 做：manifest、图标、离线页；在 375px 宽度下逐页检查学生端，修复布局问题；可点击区域不小于 24×24px。
 验收：手机可「添加到主屏幕」；学生端所有页面在 375px 宽度下无横向滚动
+> 完成 2026-11-09：manifest.ts + gen-icons.mjs（纯 Node zlib）+ sw.js + ServiceWorkerRegistrar；修复 footer/StudentNav/ProfileEditor/LocaleForm/StudentRegisterForm/job-form-client/company-form/resume-client/verification-form/admin-nav-links/admin-layout 的 375px 触控目标和溢出问题；44 个 E2E + 12 个单元测试全绿。
 
 #### [ ] M7-T09 反诈专区与职位举报（P1，可在试点后做）
 依赖：M7-T01

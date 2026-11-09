@@ -13,17 +13,17 @@ export default async function Footer() {
             <p className="text-sm font-semibold text-brand">FindMYJob</p>
             <p className="mt-1 text-xs text-muted-foreground">{t('tagline')}</p>
           </div>
-          <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="footer">
-            <Link href="/for-employers" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <nav className="flex flex-wrap gap-x-6 gap-y-1" aria-label="footer">
+            <Link href="/for-employers" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('forEmployers')}
             </Link>
-            <Link href="/partners" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/partners" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('partners')}
             </Link>
-            <Link href="/legal/privacy" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/legal/privacy" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('privacy')}
             </Link>
-            <Link href="/legal/terms" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/legal/terms" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
               {t('terms')}
             </Link>
           </nav>

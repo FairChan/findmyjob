@@ -159,7 +159,7 @@ export function VerificationForm({ locale }: { locale: string }) {
               type="file"
               accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
               multiple
-              className="sr-only"
+              className="absolute w-0 h-0 overflow-hidden opacity-0"
               onChange={handleFileChange}
               aria-label={t('addFile')}
             />

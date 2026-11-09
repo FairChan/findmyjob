@@ -348,7 +348,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
               <input
                 type="file"
                 accept="image/png,image/jpeg"
-                className="sr-only"
+                className="absolute w-0 h-0 overflow-hidden opacity-0"
                 disabled={logoUploading}
                 onChange={handleLogoUpload}
               />

@@ -96,7 +96,7 @@ export function ResumeManager({ resumes, locale }: Props) {
           ref={fileInputRef}
           type="file"
           accept=".pdf,application/pdf"
-          className="sr-only"
+          className="absolute w-0 h-0 overflow-hidden opacity-0"
           onChange={handleUpload}
           aria-label={t('uploadButton')}
         />
