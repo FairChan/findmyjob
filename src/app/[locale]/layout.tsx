@@ -5,6 +5,7 @@ import { getMessages, getTranslations } from 'next-intl/server'
 import { routing } from '@/i18n/routing'
 import Navbar from '@/components/layout/navbar'
 import Footer from '@/components/layout/footer'
+import { ServiceWorkerRegistrar } from '@/components/pwa/ServiceWorkerRegistrar'
 import '../globals.css'
 
 export default async function LocaleLayout({
@@ -33,6 +34,7 @@ export default async function LocaleLayout({
           >
             {t('skipToMain')}
           </a>
+          <ServiceWorkerRegistrar />
           <Navbar locale={locale} />
           <main id="main-content" className="flex-1">
             {children}

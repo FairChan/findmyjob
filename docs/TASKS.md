@@ -1316,10 +1316,11 @@
 > - 验收里的「连续 3 次」：本地跑 `pnpm test:e2e --workers=1 --repeat-each=3 tests/e2e/full-flow.spec.ts`，三次全部通过，把 passed / failed / flaky 数写进完成说明。单条命令超过 600 秒就分三次各跑一遍，每次都贴结果。
 > - 这一条只加测试；测试暴露出产品 bug 时，修掉并在提交说明里贴修复前的失败输出原文（ROUND_NOTE c）。
 
-#### [ ] M7-T08 PWA 与移动端走查
+#### [x] M7-T08 PWA 与移动端走查
 依赖：M7-T01
 做：manifest、图标、离线页；在 375px 宽度下逐页检查学生端，修复布局问题；可点击区域不小于 24×24px。
 验收：手机可「添加到主屏幕」；学生端所有页面在 375px 宽度下无横向滚动
+> 完成 2026-11-09：manifest.ts + gen-icons.mjs（纯 Node zlib）+ sw.js + ServiceWorkerRegistrar；修复 footer/StudentNav/ProfileEditor/LocaleForm/StudentRegisterForm/job-form-client/company-form/resume-client/verification-form/admin-nav-links/admin-layout 的 375px 触控目标和溢出问题；44 个 E2E + 12 个单元测试全绿。
 
 #### [ ] M7-T09 反诈专区与职位举报（P1，可在试点后做）
 依赖：M7-T01
@@ -1692,6 +1693,19 @@
 > 补修 2026-11-07（合并前复查）：（1）industry LIKE 转义：job-search.ts 非空查询路径 line 393 `industry + '.%'` → `escapeIlike(industry) + '.%'`；空查询路径 `startsWith: industry + '.'`（Prisma 不转义 LIKE 通配符）→ 改为 `$queryRaw` 先取匹配公司 ID 再 `id.in`；新增集成测试 `tests/integration/job-search.test.ts`：「`a_b` 筛选不命中 `axb.y`（underscore 当字面）」和「`%` 筛选不命中 `finance.bank`（percent 当字面）」（失败输出见提交说明）。（2）代理路由流式大小上限：route.ts 在 `Readable.toWeb` 之后接 `TransformStream` 计数器，超过 `VERIFICATION_MAX_BYTES` 时调 `controller.error()`，注释写明头已发出时不能回 502；已有的 ContentLength 检查保留；新增集成测试「无 ContentLength 超大对象被截断」（失败输出见提交说明）。unit test `tests/unit/job-search.test.ts` 中描述旧 ORM 结构的测试更新为新的 id.in 结构。lint✓ typecheck✓ 1386/1386 unit+integration✓ smoke E2E 8/8✓。
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
+
+#### [ ] M7-T20 线 B 用户可见 P1 修复（M5-T07 / M6-T01 复查遗留）
+依赖：M5-T07、M6-T01
+> 线 B 2026-11-09 写入，没开工，交给 Codex。只修下面两条，不碰计费、2FA、强制 CSP。
+做：
+1. 邀请接受时报 500：学生已经通过邀请 A 投递了职位 J，Invitation.applicationId 是 @unique。同一家企业又对 J 发了邀请 B，学生接受 B 时按 D-INV-01 去关联已有的投递，撞上唯一约束（P2002），结果是 500。
+   - `sendInvitation`：学生已经投过这个职位（有 Application，且不是 WITHDRAWN），就不再发新邀请，返回 AppError 子类，前端显示「该候选人已投递此职位」。
+   - `acceptInvitation`：已有的投递已经被别的邀请关联时，这个邀请改成 ACCEPTED，applicationId 留空，不报错，返回已有投递的 id。
+2. 数据看板只有注册数一条周趋势：PRD §4 要求按周看趋势。在 `admin-dashboard.ts` 里照 weeklyRegistrations 的写法（Asia/Kuala_Lumpur 自然周、最近 12 周、没有数据的周补 0），加上每周新增的投递、解锁和新发布的职位，看板页用 WeeklyBars 各画一张。
+验收：
+- 第 1 条：集成测试覆盖「再发邀请被拒」「接受第二个邀请不报 500」，以及并发接受两个邀请；文案中英两份 messages 都有。
+- 第 2 条：每个序列都等于直接查库算出来的结果（集成测试），并且测周边界。
+- （原来的第 3 条「proxy 对 /admin 匹配太宽」已经在 M7-T05 里改成按路径段匹配，不用再做。）
 
 #### [ ] M4-T17 点数与解锁加固（P1，收费前，即 M8 之前）
 依赖：M4-T16

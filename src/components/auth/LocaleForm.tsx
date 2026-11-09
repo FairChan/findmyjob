@@ -36,7 +36,7 @@ export default function LocaleForm({ currentLocale }: Props) {
             value="zh"
             checked={selected === 'zh'}
             onChange={() => setSelected('zh')}
-            className="accent-brand"
+            className="h-6 w-6 shrink-0 accent-brand"
           />
           <span className="text-sm">{t('localeChinese')}</span>
         </label>
@@ -47,7 +47,7 @@ export default function LocaleForm({ currentLocale }: Props) {
             value="en"
             checked={selected === 'en'}
             onChange={() => setSelected('en')}
-            className="accent-brand"
+            className="h-6 w-6 shrink-0 accent-brand"
           />
           <span className="text-sm">{t('localeEnglish')}</span>
         </label>

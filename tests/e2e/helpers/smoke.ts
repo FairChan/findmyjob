@@ -50,10 +50,9 @@ export async function expectPageHealthy(
   // Next.js default 404
   await expect(page.getByText('This page could not be found')).not.toBeVisible()
 
-  // Wait for content to settle before checking async console noise
-  await page.waitForLoadState('networkidle').catch(() => {
-    // networkidle timeout is not a crash — the page may stream; continue
-  })
+  // Wait for content to settle before checking async console noise.
+  // Cap at 5 s — pages with external CDN scripts (e.g. Turnstile) may never go networkidle.
+  await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 
   const allErrors = [...consoleErrors, ...pageErrors]
   if (allErrors.length > 0) {

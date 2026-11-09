@@ -45,7 +45,7 @@ export default async function AdminLayout({
     : t('bellLabel')
 
   return (
-    <div className="min-h-screen bg-[#f5f6fa] lg:flex">
+    <div className="min-h-screen overflow-x-hidden bg-[#f5f6fa] lg:flex">
       <aside className="shrink-0 bg-[#1f2433] text-white/75 lg:sticky lg:top-0 lg:h-screen lg:w-56">
         <div className="flex h-14 items-center gap-2 px-5 font-semibold text-white">
           {t('title')}

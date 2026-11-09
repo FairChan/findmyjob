@@ -383,6 +383,7 @@ export default function JobFormClient({
             checked={salaryVisible}
             onChange={e => setSalaryVisible(e.target.checked)}
             disabled={disabled}
+            className="h-6 w-6 shrink-0 accent-brand"
           />
           {t.salaryVisibleLabel}
         </label>
@@ -424,7 +425,7 @@ export default function JobFormClient({
               }}
               placeholder={t.languagesPlaceholder}
               maxLength={50}
-              className="flex-1 min-w-20 border-0 bg-transparent text-sm outline-none"
+              className="flex-1 min-w-20 border-0 bg-transparent text-sm outline-none py-1"
             />
           )}
         </div>
@@ -466,7 +467,7 @@ export default function JobFormClient({
               }}
               placeholder={t.skillsPlaceholder}
               maxLength={100}
-              className="flex-1 min-w-20 border-0 bg-transparent text-sm outline-none"
+              className="flex-1 min-w-20 border-0 bg-transparent text-sm outline-none py-1"
             />
           )}
         </div>
@@ -480,6 +481,7 @@ export default function JobFormClient({
             checked={acceptsStudentPass}
             onChange={e => setAcceptsStudentPass(e.target.checked)}
             disabled={disabled}
+            className="h-6 w-6 shrink-0 accent-brand"
           />
           {t.acceptsStudentPassLabel}
         </label>
@@ -489,6 +491,7 @@ export default function JobFormClient({
             checked={sponsorsWorkPass}
             onChange={e => setSponsorsWorkPass(e.target.checked)}
             disabled={disabled}
+            className="h-6 w-6 shrink-0 accent-brand"
           />
           {t.sponsorsWorkPassLabel}
         </label>

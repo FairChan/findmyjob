@@ -24,16 +24,16 @@ export default async function StudentNav({ userId, locale }: Props) {
       aria-label={t('notifications')}
       className="border-b bg-muted/40"
     >
-      <div className="container mx-auto flex max-w-5xl items-center gap-4 overflow-x-auto px-4 py-2 text-sm">
+      <div className="container mx-auto flex max-w-5xl items-center gap-4 overflow-x-auto px-4 py-1 text-sm">
         <Link
           href="/s/profile"
-          className="shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           {t('myProfile')}
         </Link>
         <Link
           href="/s/invitations"
-          className="relative shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="relative py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
           aria-label={
             pendingInvitationCount > 0
               ? `${tInv('navInvitations')} (${pendingInvitationCount})`
@@ -52,7 +52,7 @@ export default async function StudentNav({ userId, locale }: Props) {
         </Link>
         <Link
           href="/s/notifications"
-          className="relative shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="relative py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
           aria-label={
             unreadCount > 0
               ? `${t('notifications')} (${unreadCount})`
@@ -71,13 +71,13 @@ export default async function StudentNav({ userId, locale }: Props) {
         </Link>
         <Link
           href="/s/applications"
-          className="shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           {t('myApplications')}
         </Link>
         <Link
           href="/s/privacy"
-          className="shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
+          className="py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           {t('privacy')}
         </Link>
