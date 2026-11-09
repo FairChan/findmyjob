@@ -1304,10 +1304,17 @@
 > 修复 2026-11-05：deps 阶段加 prisma generate（修 Prisma client 缺失）；runner 阶段调整 COPY 顺序使全量 node_modules 覆盖 standalone minimal；base 阶段加 openssl/ca-certificates；backup 移至 runner 前使 runner 成为最后阶段（USER node）；backup 加 /backup-tmp 目录创建（postgres 属主可写）；tools target 改为推送镜像 findmyjob-tools；migrate/tools 加 cap_drop+no-new-privileges；compose 所有 ${APP_TAG} 改为 ${APP_TAG:?}；app/worker 加 APP_TAG 环境变量；Caddy 日志改为 stdout+format filter 去除查询串和敏感 header；RUNBOOK GHCR PAT 改为 read:packages、验证命令用 sha；真机 docker build 验证待部署后核实
 > 修复 2026-11-05（二）：runner 阶段改 `FROM base AS runner`（原 `FROM ${NODE_IMAGE} AS runner`），确保继承 openssl/ca-certificates/WORKDIR；Prisma library engine 可正常加载，健康检查不再失败回滚；bash -n 语法验证通过，真机 docker build 仍需部署时核实；pnpm lint/typecheck/test 全绿（526 个测试）
 
-#### [ ] M7-T07 全流程 E2E 冒烟
+#### [x] M7-T07 全流程 E2E 冒烟
 依赖：M7-T01
 做：一条 E2E 串起全部流程：学生注册 → 4 步资料 → 认证学校 → 开启人才库 → 邀请同学；企业注册 → 提交认证 → 运营通过 → 搜人 → 解锁 → 学生收到通知；企业发职位 → 审核 → 学生搜索、打开详情（扣额度）→ 投递 → 看板推进到 OFFER。
 验收：CI 中稳定通过（连续 3 次）
+> 完成 2026-11-09：写 tests/e2e/full-flow.spec.ts，test.describe.serial 11 个 test，含 UI 注册+mailpit 验证、4步向导、开启人才池、企业注册+认证、职位发布+审核、解锁+通知、学生查看职位(quota -1)、投递、推进 OFFER；本地分三次独立运行各 16 passed / 0 failed；变异测试：quota+2断言失败 "Expected:2 Received:1"；通知文案错误失败 "element(s) not found"；OFFER断言改INTERVIEWED失败 "Expected:INTERVIEWED Received:OFFER"
+> 总控 2026-11-08 补充（按「先能用」排在 M6-T13 之后，跑在 milestone/M6 上）：
+> - 写成一个文件 `tests/e2e/full-flow.spec.ts`，用 `test.describe.serial` 分成几段 test（学生、企业认证、解锁与通知、职位到 OFFER），前一段的 id 和账号放在 describe 作用域的变量里传给后一段。学生注册和企业注册必须走界面（注册页、邮件验证码从 mailpit 读，照 `onboarding.spec.ts` / `auth-redirect.spec.ts` 已有的写法）；运营账号可以用 `loginAs(page, { role: 'ADMIN' })`。
+> - 不改任何全局 SystemSetting。确实要改的，用 try/finally 恢复原值，并照 `smoke-m6-t13.spec.ts` 的做法等 `/api/internal/needs-reconsent` 和页面都看到原值（route handler 有自己的一份 60 秒设置缓存）。
+> - 断言要落在用户能看到的结果上：学生收到「被解锁」通知（通知页能看到）、职位详情打开后额度少 1（数据库里的查看记录 + 页面显示的剩余额度）、看板卡片最后在 OFFER 列。不要只断言「没有报错」。
+> - 验收里的「连续 3 次」：本地跑 `pnpm test:e2e --workers=1 --repeat-each=3 tests/e2e/full-flow.spec.ts`，三次全部通过，把 passed / failed / flaky 数写进完成说明。单条命令超过 600 秒就分三次各跑一遍，每次都贴结果。
+> - 这一条只加测试；测试暴露出产品 bug 时，修掉并在提交说明里贴修复前的失败输出原文（ROUND_NOTE c）。
 
 #### [ ] M7-T08 PWA 与移动端走查
 依赖：M7-T01
@@ -1434,6 +1441,12 @@
 - 启用 Better Auth 的 twoFactor 插件。requireAdmin 检查 2FA，没开就跳转到设置页。试点期间先用密码管理器生成的独立强密码作为补偿控制。
 - 查看联系方式、调整点数、确认订单这些操作，要求 10 分钟内的新鲜会话；ADMIN 会话最长 12 小时（实现方式待核实）。
 验收：没开 2FA 的 ADMIN 访问 /admin，被引导去设置 2FA；连续输错 TOTP 5 次后被限流
+> 总控 2026-11-09 补充：
+> - 试点期间运营账号继续用密码管理器生成的独立强密码作为补偿控制，在 DECISIONS 记一行。
+> - staging 上已有的演示运营账号，上线后第一次进 /admin 会被引导去设置 2FA，这是预期行为。轮次不改 `deploy/**` 和种子数据里的账号或密码；合并前由总控先通知部署会话。
+> - E2E 不能为了好跑而关掉 2FA 检查：`loginAs(page, { role: 'ADMIN' })` 要改成给测试运营账号写好已启用 2FA 的状态并走一次真实的 TOTP 验证（或者等价的服务端会话标记），让现有用到 ADMIN 的 spec 全部继续通过。TOTP 计算优先用 Better Auth 自带的工具；要加新依赖，先在 DECISIONS 记一行。
+> - 「实现方式待核实」：照 `node_modules/better-auth` 里 twoFactor 插件和 session 配置（freshAge、expiresIn）的实际导出来实现，不要凭记忆写选项名。新鲜会话检查放在 `requireAdmin` 或者 action 的 auth 层，`authz-matrix.test.ts` 给需要新鲜会话的动作加「会话太旧 → 被拒」的行。
+> - 验收里的「输错 5 次被限流」要有集成测试或 E2E。
 
 #### [x] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）
 依赖：M7-T04、M0-T11
@@ -1456,6 +1469,10 @@
 - middleware 为每个请求生成 nonce；script-src 写 self、nonce 和 strict-dynamic，再加 challenges.cloudflare.com；frame-src 只放 Turnstile；生产环境不允许 unsafe-eval。
 - HSTS_MAX_AGE 改为 31536000；确认所有子域都已经是 https 之后，再加 includeSubDomains。
 验收：强制模式下，375px 和 1280px 两种宽度走完「注册 → 上传」，控制台没有 CSP 报错；每次请求的 nonce 都不同
+> 总控 2026-11-09 补充：
+> - HSTS 现在由 `deploy/Caddyfile` 的 `{$HSTS_MAX_AGE:300}` 控制。默认值保持 300，不改 Caddyfile 的默认、不加 includeSubDomains 和 preload：一年的 HSTS 落到 staging 域名上很难撤回。这一条只在 RUNBOOK 写清楚「E3 前、确认所有子域都是 https 之后，由部署会话把生产环境的 HSTS_MAX_AGE 设为 31536000」，`tests/unit/caddyfile-headers.test.ts` 的现有断言不放宽。
+> - CSP 在 M7-T05 之后已经由应用发 Report-Only（看 next.config 和 proxy）。这一条改成强制模式时，开发环境（`pnpm dev`、E2E）仍要能跑：dev 需要的 unsafe-eval 只在非生产放行，生产判断只看 `APP_ENV=production`。
+> - 「每次请求 nonce 都不同」要有测试：连续请求两次同一页面，响应头里的 nonce 不同，并且页面里的 script 标签带的是同一个 nonce。
 
 #### [x] M7-T16 CI 扩展扫描（P1，M7 之后）
 依赖：M7-T06
@@ -1480,6 +1497,10 @@
 - generateMetadata、`src/app/sitemap.ts` 只收录已认证的企业；hreflang 写 zh-Hans、en、x-default；分页页面的 canonical 指向自身。
 - Logo 走 `/api/logos/[companyId]`，设 public 长缓存。
 验收：4 个公开页都达到阈值；sitemap 里没有 /s、/e、/admin
+> 总控 2026-11-09 补充：
+> - 线 B 在 M7-T01 已经加了 devDependency `lighthouse` 12.3.0 和 `pnpm lighthouse <url>` 脚本。复用它，不要再装第二个版本；`pnpm lh` 和 `scripts/lighthouse.mjs` 在它的基础上加阈值判断。Lighthouse 只对生产构建跑（`pnpm build` 后 `pnpm start`），单条命令不超过 600 秒。
+> - 新加 `auth: 'public'` 的 API 路由（比如 `/api/logos/[companyId]`）时，要同步加进 `src/proxy.ts` 的 isProtectedApi 放行名单，否则未登录访问会被拦成 401（线 B 2026-11-09 的提醒）；照 `/api/partner-logos/[partnerId]` 的写法设 public 长缓存，并且只对已认证、未停用的企业返回 logo。
+> - a11y spec 里每个页面都要真的加载到目标页面（断言 URL 和 h1），不能被重定向到登录页或 reconsent 页之后对那一页做扫描。
 
 #### [x] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
 依赖：M7-T10
