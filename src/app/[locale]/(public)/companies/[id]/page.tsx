@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server'
 import { z } from 'zod'
 import { getPublicCompany, isOwnLogoKey } from '@/server/services/company'
 import { getSignedDisplayUrl } from '@/lib/storage'
+import { safeWebsiteHref } from '@/lib/url-utils'
 
 const companyIdSchema = z.string().cuid()
 
@@ -18,6 +19,8 @@ export default async function CompanyPublicPage({
 
   const company = await getPublicCompany(id)
   if (!company) return notFound()
+  // Write-time validation already requires http(s); this also covers older or imported rows.
+  const websiteHref = safeWebsiteHref(company.website)
 
   const displayName =
     locale === 'zh'
@@ -72,9 +75,9 @@ export default async function CompanyPublicPage({
             </p>
           )}
 
-          {company.website && (
+          {websiteHref && (
             <a
-              href={company.website}
+              href={websiteHref}
               target="_blank"
               rel="noopener noreferrer"
               className="text-sm text-primary underline underline-offset-2 hover:text-primary/80 mt-1 inline-block"

@@ -25,6 +25,9 @@ import {
   deletePartner,
   getHomePartners,
   isPartnerLogoKey,
+  createPartnerSchema,
+  updatePartnerSchema,
+  createSchoolSchema,
 } from '@/server/services/admin-schools-partners'
 import { ForbiddenError, NotFoundError } from '@/server/errors'
 
@@ -76,6 +79,13 @@ describe('isPartnerLogoKey', () => {
   it('returns false for non-uuid filename', () => {
     expect(isPartnerLogoKey('partner-logos/abc/file.png')).toBe(false)
     expect(isPartnerLogoKey('partner-logos/abc/../../etc/passwd')).toBe(false)
+  })
+  it('returns false when the middle segment is a dot segment or has path-like characters', () => {
+    const uuid = 'abc12345-0000-0000-0000-000000000001'
+    expect(isPartnerLogoKey(`partner-logos/../${uuid}.png`)).toBe(false)
+    expect(isPartnerLogoKey(`partner-logos/./${uuid}.png`)).toBe(false)
+    expect(isPartnerLogoKey(`partner-logos/a\b/${uuid}.png`)).toBe(false)
+    expect(isPartnerLogoKey(`partner-logos/a%2e%2e/${uuid}.png`)).toBe(false)
   })
 })
 
@@ -253,6 +263,53 @@ describe('updatePartner', () => {
     const updated = await getPartner({ userId: admin.id }, id)
     expect(updated.showOnHome).toBe(false)
   })
+
+  it('empty strings clear nameEn, website, description and notes to null (M6-T11)', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      {
+        name: `ClearPart ${uid()}`,
+        nameEn: 'Clear EN',
+        type: 'SOE',
+        website: 'https://example.com/a',
+        description: 'desc',
+        notes: 'note',
+        showOnHome: true,
+        sortOrder: 0,
+      },
+    )
+    await updatePartner({ userId: admin.id }, id, { nameEn: '', website: '', description: '', notes: '' })
+    const row = await testDb.partner.findUniqueOrThrow({ where: { id } })
+    expect(row.nameEn).toBeNull()
+    expect(row.website).toBeNull()
+    expect(row.description).toBeNull()
+    expect(row.notes).toBeNull()
+  })
+
+  it('fields left out of an update keep their stored values (M6-T11)', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      {
+        name: `KeepPart ${uid()}`,
+        nameEn: 'Keep EN',
+        type: 'SOE',
+        website: 'https://example.com/keep',
+        description: 'keep desc',
+        notes: 'keep note',
+        showOnHome: true,
+        sortOrder: 3,
+      },
+    )
+    await updatePartner({ userId: admin.id }, id, { sortOrder: 4 })
+    const row = await testDb.partner.findUniqueOrThrow({ where: { id } })
+    expect(row.sortOrder).toBe(4)
+    expect(row.nameEn).toBe('Keep EN')
+    expect(row.website).toBe('https://example.com/keep')
+    expect(row.description).toBe('keep desc')
+    expect(row.notes).toBe('keep note')
+  })
 })
 
 describe('deletePartner', () => {
@@ -327,5 +384,169 @@ describe('concurrent partner creates', () => {
     // All 5 creates should succeed with distinct IDs
     const ids = results.map((r) => r.id)
     expect(new Set(ids).size).toBe(5)
+  })
+})
+
+// ==================== M6-T11: partner website validation ====================
+
+describe('partner website validation (M6-T11)', () => {
+  it('javascript: URL is rejected in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'javascript:alert(1)',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('ftp: URL is rejected in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'ftp://files.example.com',
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it.each([
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    'JaVaScRiPt:alert(1)',
+    ' javascript:alert(1)',
+    '//evil.example.com',
+  ])('%s is rejected in updatePartner schema', (website) => {
+    expect(updatePartnerSchema.safeParse({ website }).success).toBe(false)
+  })
+
+  it('https URL is accepted in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'https://example.com',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('http URL is accepted in createPartner schema', () => {
+    const result = createPartnerSchema.safeParse({
+      name: 'Test',
+      type: 'ENTERPRISE',
+      showOnHome: false,
+      sortOrder: 0,
+      website: 'http://example.com',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('website: "" clears to null after updatePartner', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      { name: `WebsiteNull-${uid()}`, type: 'ENTERPRISE', showOnHome: false, sortOrder: 0, website: 'https://example.com' },
+    )
+    await updatePartner({ userId: admin.id }, id, { website: '' })
+    const updated = await getPartner({ userId: admin.id }, id)
+    expect(updated.website).toBeNull()
+  })
+
+  it('nameEn: "" clears to null after updatePartner', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      { name: `NameEnNull-${uid()}`, type: 'ENTERPRISE', showOnHome: false, sortOrder: 0, nameEn: 'English Name' },
+    )
+    await updatePartner({ userId: admin.id }, id, { nameEn: '' })
+    const updated = await getPartner({ userId: admin.id }, id)
+    expect(updated.nameEn).toBeNull()
+  })
+})
+
+// ==================== M6-T11: logoKey validation ====================
+
+describe('partner logoKey validation (M6-T11)', () => {
+  it('invalid logoKey is rejected in schema', () => {
+    const result = updatePartnerSchema.safeParse({ logoKey: 'evil/../../../etc/passwd.png' })
+    expect(result.success).toBe(false)
+  })
+
+  it('valid logoKey passes schema', () => {
+    const result = updatePartnerSchema.safeParse({
+      logoKey: 'partner-logos/acme/abc12345-0000-0000-0000-000000000001.png',
+    })
+    expect(result.success).toBe(true)
+  })
+
+  it('empty logoKey clears to null after updatePartner', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      {
+        name: `LogoNull-${uid()}`,
+        type: 'ENTERPRISE',
+        showOnHome: false,
+        sortOrder: 0,
+        logoKey: 'partner-logos/acme/abc12345-0000-0000-0000-000000000001.png',
+      },
+    )
+    await updatePartner({ userId: admin.id }, id, { logoKey: '' })
+    const updated = await getPartner({ userId: admin.id }, id)
+    expect(updated.logoKey).toBeNull()
+  })
+})
+
+// ==================== M6-T11: emailDomains normalization ====================
+
+describe('school emailDomains normalization (M6-T11)', () => {
+  it('uppercase and spaces in domain are trimmed and lowercased', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['  XMU.EDU.MY  ', ' EXAMPLE.COM'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result).toMatchObject({
+      success: true,
+      data: { emailDomains: ['xmu.edu.my', 'example.com'] },
+    })
+  })
+
+  it('invalid domain format is rejected', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['not-a-domain'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('domain without TLD is rejected', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['localdomain'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('valid domain passes schema', () => {
+    const result = createSchoolSchema.safeParse({
+      nameZh: '测试大学',
+      nameEn: 'Test University',
+      emailDomains: ['xmu.edu.my'],
+      country: 'MY',
+      isPartner: false,
+    })
+    expect(result.success).toBe(true)
   })
 })

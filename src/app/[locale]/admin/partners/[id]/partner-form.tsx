@@ -91,16 +91,19 @@ export function PartnerForm({ locale, partner, initialLogoUrl }: Props) {
       } else {
         result = await updatePartnerAction({
           id: partner.id,
+          // Send the raw strings: an emptied field must reach the service as '' so it is
+          // stored as null. `x || undefined` would make updatePartner skip the field and
+          // leave the old value (e.g. a removed website) on the public pages.
           data: {
             name,
-            nameEn: nameEn || undefined,
+            nameEn,
             type,
-            logoKey: logoKey || undefined,
-            website: website || undefined,
-            description: description || undefined,
+            logoKey,
+            website,
+            description,
             showOnHome,
             sortOrder,
-            notes: notes || undefined,
+            notes,
           },
         })
       }

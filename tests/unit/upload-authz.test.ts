@@ -43,13 +43,15 @@ vi.mock('@/server/db', () => ({
   },
 }))
 
-// requireStudent and requireCompanyMember are set per-test below
+// requireStudent, requireCompanyMember, requireAdmin are set per-test below
 const mockRequireStudent = vi.fn()
 const mockRequireCompanyMember = vi.fn()
+const mockRequireAdmin = vi.fn()
 vi.mock('@/server/authz', () => ({
   requireStudent: mockRequireStudent,
   requireUser: vi.fn().mockResolvedValue({ userId: 'user-01' }),
   requireCompanyMember: mockRequireCompanyMember,
+  requireAdmin: mockRequireAdmin,
 }))
 
 vi.mock('@/server/route', async () => {
@@ -140,5 +142,75 @@ describe('upload route authz matrix (M2-T05)', () => {
     expect(res.status).toBe(400)
     const body = await res.json() as { code: string }
     expect(body.code).toBe('INVALID_PURPOSE')
+  })
+})
+
+// --- PARTNER_LOGO auth and validation tests (M6-T11) ---
+
+function makeOversizeRequest(purpose: string): Request {
+  // 3 MB + 1 byte — exceeds the PARTNER_LOGO 2 MB cap
+  const bytes = new Uint8Array(3 * 1024 * 1024 + 1)
+  const file = new File([bytes], 'big.png', { type: 'image/png' })
+  const fd = new FormData()
+  fd.set('file', file)
+  return new Request(`http://localhost/api/uploads/${purpose}`, {
+    method: 'POST',
+    body: fd,
+  })
+}
+
+describe('PARTNER_LOGO upload route (M6-T11)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockPutObject.mockResolvedValue(undefined)
+    // Default: requireAdmin throws → 403
+    mockRequireAdmin.mockRejectedValue(new Error('forbidden'))
+  })
+
+  it('student (requireAdmin throws) → 403, putObject not called', async () => {
+    const res = await POST(makeRequest('PARTNER_LOGO'))
+    expect(res.status).toBe(403)
+    const body = await res.json() as { code: string }
+    expect(body.code).toBe('FORBIDDEN')
+    expect(mockPutObject).not.toHaveBeenCalled()
+  })
+
+  it('employer (requireAdmin throws) → 403, putObject not called', async () => {
+    // requireCompanyMember would succeed for an employer, but requireAdmin still throws
+    mockRequireCompanyMember.mockResolvedValue({ companyId: 'co-01' })
+    const res = await POST(makeRequest('PARTNER_LOGO'))
+    expect(res.status).toBe(403)
+    expect(mockPutObject).not.toHaveBeenCalled()
+  })
+
+  it('admin + file > 2 MB → 413, putObject not called', async () => {
+    mockRequireAdmin.mockResolvedValue(undefined)
+    const res = await POST(makeOversizeRequest('PARTNER_LOGO'))
+    expect(res.status).toBe(413)
+    const body = await res.json() as { code: string }
+    expect(body.code).toBe('FILE_TOO_LARGE')
+    expect(mockPutObject).not.toHaveBeenCalled()
+  })
+
+  it('admin + SVG content (unrecognised magic bytes) → 400 INVALID_FILE_TYPE, putObject not called', async () => {
+    mockRequireAdmin.mockResolvedValue(undefined)
+    // SVG starts with text — detectFileType returns null
+    mockDetectFileType.mockReturnValueOnce(null)
+    const res = await POST(makeRequest('PARTNER_LOGO'))
+    expect(res.status).toBe(400)
+    const body = await res.json() as { code: string }
+    expect(body.code).toBe('INVALID_FILE_TYPE')
+    expect(mockPutObject).not.toHaveBeenCalled()
+  })
+
+  it('admin + valid PNG → 200, putObject called once', async () => {
+    mockRequireAdmin.mockResolvedValue(undefined)
+    mockDetectFileType.mockReturnValueOnce('png')
+    const res = await POST(makeRequest('PARTNER_LOGO'))
+    expect(res.status).toBe(200)
+    expect(mockPutObject).toHaveBeenCalledOnce()
+    const body = await res.json() as { ok: boolean; key: string }
+    expect(body.ok).toBe(true)
+    expect(body.key).toMatch(/^partner-logos\//)
   })
 })

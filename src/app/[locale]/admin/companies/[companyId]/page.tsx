@@ -6,6 +6,7 @@ import { requireAdmin } from '@/server/authz'
 import { getCompanyForReview } from '@/server/services/review-company'
 import { getCompanyAdminDetail } from '@/server/services/admin-companies'
 import { NotFoundError } from '@/server/errors'
+import { safeWebsiteHref } from '@/lib/url-utils'
 import { ReviewForm } from './review-form'
 import { AdminCompanyActions } from './admin-company-actions'
 
@@ -71,14 +72,18 @@ export default async function AdminCompanyDetailPage({
             <>
               <dt className="text-muted-foreground">{tReview('website')}</dt>
               <dd>
-                <a
-                  href={reviewData.website}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2"
-                >
-                  {reviewData.website}
-                </a>
+                {safeWebsiteHref(reviewData.website) ? (
+                  <a
+                    href={safeWebsiteHref(reviewData.website)!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline underline-offset-2"
+                  >
+                    {reviewData.website}
+                  </a>
+                ) : (
+                  <span className="break-all">{reviewData.website}</span>
+                )}
               </dd>
             </>
           )}
