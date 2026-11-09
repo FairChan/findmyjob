@@ -80,6 +80,13 @@ describe('isPartnerLogoKey', () => {
     expect(isPartnerLogoKey('partner-logos/abc/file.png')).toBe(false)
     expect(isPartnerLogoKey('partner-logos/abc/../../etc/passwd')).toBe(false)
   })
+  it('returns false when the middle segment is a dot segment or has path-like characters', () => {
+    const uuid = 'abc12345-0000-0000-0000-000000000001'
+    expect(isPartnerLogoKey(`partner-logos/../${uuid}.png`)).toBe(false)
+    expect(isPartnerLogoKey(`partner-logos/./${uuid}.png`)).toBe(false)
+    expect(isPartnerLogoKey(`partner-logos/a\b/${uuid}.png`)).toBe(false)
+    expect(isPartnerLogoKey(`partner-logos/a%2e%2e/${uuid}.png`)).toBe(false)
+  })
 })
 
 // ==================== School CRUD ====================
@@ -256,6 +263,53 @@ describe('updatePartner', () => {
     const updated = await getPartner({ userId: admin.id }, id)
     expect(updated.showOnHome).toBe(false)
   })
+
+  it('empty strings clear nameEn, website, description and notes to null (M6-T11)', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      {
+        name: `ClearPart ${uid()}`,
+        nameEn: 'Clear EN',
+        type: 'SOE',
+        website: 'https://example.com/a',
+        description: 'desc',
+        notes: 'note',
+        showOnHome: true,
+        sortOrder: 0,
+      },
+    )
+    await updatePartner({ userId: admin.id }, id, { nameEn: '', website: '', description: '', notes: '' })
+    const row = await testDb.partner.findUniqueOrThrow({ where: { id } })
+    expect(row.nameEn).toBeNull()
+    expect(row.website).toBeNull()
+    expect(row.description).toBeNull()
+    expect(row.notes).toBeNull()
+  })
+
+  it('fields left out of an update keep their stored values (M6-T11)', async () => {
+    const admin = await mkAdmin()
+    const { id } = await createPartner(
+      { userId: admin.id },
+      {
+        name: `KeepPart ${uid()}`,
+        nameEn: 'Keep EN',
+        type: 'SOE',
+        website: 'https://example.com/keep',
+        description: 'keep desc',
+        notes: 'keep note',
+        showOnHome: true,
+        sortOrder: 3,
+      },
+    )
+    await updatePartner({ userId: admin.id }, id, { sortOrder: 4 })
+    const row = await testDb.partner.findUniqueOrThrow({ where: { id } })
+    expect(row.sortOrder).toBe(4)
+    expect(row.nameEn).toBe('Keep EN')
+    expect(row.website).toBe('https://example.com/keep')
+    expect(row.description).toBe('keep desc')
+    expect(row.notes).toBe('keep note')
+  })
 })
 
 describe('deletePartner', () => {
@@ -356,6 +410,16 @@ describe('partner website validation (M6-T11)', () => {
       website: 'ftp://files.example.com',
     })
     expect(result.success).toBe(false)
+  })
+
+  it.each([
+    'data:text/html,<script>alert(1)</script>',
+    'vbscript:msgbox(1)',
+    'JaVaScRiPt:alert(1)',
+    ' javascript:alert(1)',
+    '//evil.example.com',
+  ])('%s is rejected in updatePartner schema', (website) => {
+    expect(updatePartnerSchema.safeParse({ website }).success).toBe(false)
   })
 
   it('https URL is accepted in createPartner schema', () => {

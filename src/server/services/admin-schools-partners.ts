@@ -16,7 +16,7 @@ async function assertAdmin(userId: string): Promise<void> {
 }
 
 /** Valid partner logo key pattern: partner-logos/<prefix>/<uuid>.(png|jpg) */
-export const PARTNER_LOGO_KEY_RE = /^partner-logos\/[^/]+\/[0-9a-f-]{36}\.(png|jpg)$/
+export const PARTNER_LOGO_KEY_RE = /^partner-logos\/[A-Za-z0-9_-]+\/[0-9a-f-]{36}\.(png|jpg)$/
 
 /** Validate that a partner logo key belongs to the partner-logos prefix. */
 export function isPartnerLogoKey(key: string): boolean {
