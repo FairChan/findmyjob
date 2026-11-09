@@ -21,16 +21,37 @@ function makeClient(): S3Client {
   })
 }
 
-export async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
+type StorageMutationOptions = { signal?: AbortSignal }
+
+async function withMutationClient<T>(
+  options: StorageMutationOptions | undefined,
+  operation: (client: S3Client, signal: AbortSignal | undefined) => Promise<T>,
+): Promise<T> {
+  const signal = options?.signal
+  if (signal?.aborted) throw downloadAborted()
   const client = makeClient()
-  await client.send(
-    new PutObjectCommand({
-      Bucket: env.S3_BUCKET,
-      Key: key,
-      Body: body,
-      ContentType: contentType,
-    }),
-  )
+  const onAbort = () => client.destroy?.()
+  signal?.addEventListener('abort', onAbort, { once: true })
+  try {
+    if (signal?.aborted) throw downloadAborted()
+    const result = await operation(client, signal)
+    if (signal?.aborted) throw downloadAborted()
+    return result
+  } catch (error) {
+    if (signal?.aborted) throw downloadAborted()
+    throw error
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
+    client.destroy?.()
+  }
+}
+
+export async function putObject(key: string, body: Buffer, contentType: string, options?: StorageMutationOptions): Promise<void> {
+  await withMutationClient(options, async (client, signal) => {
+    const command = new PutObjectCommand({ Bucket: env.S3_BUCKET, Key: key, Body: body, ContentType: contentType })
+    if (signal) await client.send(command, { abortSignal: signal })
+    else await client.send(command)
+  })
 }
 
 // RFC 5987 §3.2: encode non-attr-char characters
@@ -133,27 +154,18 @@ export async function getObjectBytes(
   }
 }
 
-export async function deleteAllVersions(key: string): Promise<void> {
-  const client = makeClient()
-  const bucket = env.S3_BUCKET
-
-  const list = await client.send(
-    new ListObjectVersionsCommand({ Bucket: bucket, Prefix: key }),
-  )
-
-  const toDelete = [
-    ...(list.Versions ?? []),
-    ...(list.DeleteMarkers ?? []),
-  ]
-    .filter(v => v.Key === key)
-    .map(v => ({ Key: v.Key!, VersionId: v.VersionId }))
-
-  if (toDelete.length === 0) return
-
-  await client.send(
-    new DeleteObjectsCommand({
-      Bucket: bucket,
-      Delete: { Objects: toDelete as { Key: string; VersionId?: string }[] },
-    }),
-  )
+export async function deleteAllVersions(key: string, options?: StorageMutationOptions): Promise<void> {
+  await withMutationClient(options, async (client, signal) => {
+    const bucket = env.S3_BUCKET
+    const listCommand = new ListObjectVersionsCommand({ Bucket: bucket, Prefix: key })
+    const list = signal ? await client.send(listCommand, { abortSignal: signal }) : await client.send(listCommand)
+    if (signal?.aborted) throw downloadAborted()
+    const toDelete = [...(list.Versions ?? []), ...(list.DeleteMarkers ?? [])]
+      .filter(v => v.Key === key)
+      .map(v => ({ Key: v.Key!, VersionId: v.VersionId }))
+    if (toDelete.length === 0) return
+    const command = new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: toDelete } })
+    const result = signal ? await client.send(command, { abortSignal: signal }) : await client.send(command)
+    if (result.Errors?.length) throw new Error('Object deletion failed')
+  })
 }

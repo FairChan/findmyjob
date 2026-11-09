@@ -5,6 +5,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { getSetting, setSetting } from './settings'
 import type { UserCtx } from '../authz'
 import { bankTransferSettingsSchema, EMPTY_BANK_TRANSFER, foundingOfferSettingsSchema, DEFAULT_FOUNDING_OFFER } from '../lib/billing-settings'
+import { invoiceIssuerSettingsSchema, EMPTY_INVOICE_ISSUER } from '../lib/invoice-settings'
 
 async function assertAdmin(userId: string): Promise<void> {
   const user = await db.user.findUnique({
@@ -28,6 +29,7 @@ export const SETTINGS: SettingMeta[] = [
   { key: 'billing.enabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
   { key: 'billing.studentEnabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
   { key: 'billing.bankTransfer', defaultValue: EMPTY_BANK_TRANSFER, schema: bankTransferSettingsSchema, group: 'billing' },
+  { key: 'billing.invoiceIssuer', defaultValue: EMPTY_INVOICE_ISSUER, schema: invoiceIssuerSettingsSchema, group: 'billing' },
   { key: 'billing.foundingOffer', defaultValue: DEFAULT_FOUNDING_OFFER, schema: foundingOfferSettingsSchema, group: 'billing' },
   { key: 'pilot.monthlyCredits', defaultValue: 30, schema: z.number().int().min(0).max(10000), group: 'pilot' },
   { key: 'unlock.costCredits', defaultValue: 1, schema: z.number().int().min(0).max(1000), group: 'unlock' },

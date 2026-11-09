@@ -2059,5 +2059,46 @@
     "receiptStatus": "Transaction status",
     "receiptSucceeded": "Succeeded",
     "notAvailable": "Not available"
+  },
+  "billingInvoice": {
+    "title": "Invoice",
+    "invoiceNumber": "Invoice number",
+    "issuedAt": "Issued at",
+    "notAvailable": "Not available",
+    "notIssued": "Payment is confirmed. Your invoice is not available yet. Refresh this page later.",
+    "processing": "Your invoice PDF is being prepared. Refresh this page later.",
+    "unavailable": "Your invoice is temporarily unavailable for download. Please check again later.",
+    "ready": "Your invoice is ready to download.",
+    "download": "Download invoice PDF",
+    "refresh": "Refresh invoice status",
+    "downloading": "Preparing download…",
+    "downloadStarted": "Download started. Check your browser's downloads.",
+    "error": {
+      "pending": "Your invoice PDF is still being prepared. Refresh this page later.",
+      "unavailable": "Your invoice is temporarily unavailable for download. Please check again later.",
+      "forbidden": "Your current account cannot download this invoice. Sign in as the company owner.",
+      "notFound": "This invoice is not available.",
+      "generic": "The download did not finish. Please try downloading again later."
+    }
+  },
+  "adminInvoiceIssuer": {
+    "title": "Invoice issuer",
+    "description": "Set the legal entity shown on newly issued invoices. The legal name, address and configuration version are required. Saved text is preserved exactly.",
+    "legalName": "Legal name",
+    "address": "Issuer address",
+    "registrationNo": "Registration number (optional)",
+    "version": "Configuration version",
+    "versionHint": "Use a reference that identifies this set of issuer details.",
+    "limitHint": "Maximum {max} characters. Longer text must be corrected before saving.",
+    "clearHint": "To stop issuing new invoices, clear every field and save. Existing invoices keep their original issuer details.",
+    "saveIssuer": "Save invoice issuer",
+    "saving": "Saving…",
+    "issuerSaved": "Invoice issuer saved.",
+    "errorInvalid": "Complete the legal name, address and configuration version, or clear every field. The legal name needs at least two characters. Keep each field within its stated limit.",
+    "errorForbidden": "You do not have permission to change the invoice issuer, or your admin session has expired. Sign in again.",
+    "errorTwoFactor": "Complete administrator two-factor authentication first.",
+    "errorGeneric": "The invoice issuer was not saved. Your input is retained. Please try again.",
+    "signIn": "Sign in again",
+    "setupTwoFactor": "Set up two-factor authentication"
   }
 }

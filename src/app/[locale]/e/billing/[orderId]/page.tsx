@@ -14,6 +14,7 @@ import { formatMoney, orderStatusKey } from '../billing-format'
 import { CancelOrderDialog } from './cancel-order-dialog'
 import { PaymentProofForm } from './payment-proof-form'
 import { StripeCheckoutForm } from './stripe-checkout-form'
+import { OrderInvoicePanel } from './order-invoice-panel'
 
 const stripeStateKey = {
   NOT_STARTED: 'stateNotStarted', CREATING: 'stateCreating', OPEN: 'stateOpen',
@@ -88,6 +89,10 @@ export default async function OrderPage({ params }: Props) {
           <div className="min-w-0"><dt className="text-gray-600">{stripe('receiptStatus')}</dt><dd className="mt-1 font-semibold">{stripe('receiptSucceeded')}</dd></div>
         </dl>
       </section>}
+      {order.status === 'PAID' && <OrderInvoicePanel orderId={order.id} invoice={order.invoice ? {
+        id: order.invoice.id, invoiceNo: order.invoice.invoiceNo,
+        issuedAt: order.invoice.issuedAt, pdfStatus: order.invoice.pdfStatus,
+      } : null} />}
       {needsProof && <>
         <BankDetails bank={order.bankTransfer} historical orderNo={order.orderNo} />
         <PaymentProofForm orderId={order.id} hasProof={order.hasProof} />

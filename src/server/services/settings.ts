@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
 import { bankTransferSettingsSchema, EMPTY_BANK_TRANSFER } from '../lib/billing-settings'
+import { configuredInvoiceIssuerSchema, EMPTY_INVOICE_ISSUER } from '../lib/invoice-settings'
 
 const TTL_MS = 60_000
 
@@ -59,7 +60,8 @@ export async function setSetting(
         action: 'setting.update',
         targetType: 'SystemSetting',
         targetId: key,
-        metadata: key === 'billing.bankTransfer' ? bankAudit(from, value) : { key, from, to: value },
+        metadata: key === 'billing.bankTransfer' ? bankAudit(from, value)
+          : key === 'billing.invoiceIssuer' ? invoiceIssuerAudit(from, value) : { key, from, to: value },
       },
       tx,
     )
@@ -79,6 +81,20 @@ function bankAudit(from: unknown, to: unknown) {
   const next = object(to)
   return {
     key: 'billing.bankTransfer', fromConfigured: configured(from), toConfigured: configured(to),
+    changedFields: fields.filter(field => previous[field] !== next[field]),
+  }
+}
+
+function invoiceIssuerAudit(from: unknown, to: unknown) {
+  const fields = Object.keys(EMPTY_INVOICE_ISSUER) as (keyof typeof EMPTY_INVOICE_ISSUER)[]
+  const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {}
+  const previous = object(from)
+  const next = object(to)
+  return {
+    key: 'billing.invoiceIssuer',
+    fromConfigured: configuredInvoiceIssuerSchema.safeParse(from).success,
+    toConfigured: configuredInvoiceIssuerSchema.safeParse(to).success,
     changedFields: fields.filter(field => previous[field] !== next[field]),
   }
 }

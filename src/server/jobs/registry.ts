@@ -10,6 +10,7 @@ import { runPilotMonthlyCredits } from './pilot-monthly-credits'
 import { runReconcileWallets } from './reconcile-wallets'
 import { runExpireInvitations } from './expire-invitations'
 import { runExpireSubscriptions } from './expire-subscriptions'
+import { runInvoiceTasks } from './invoice-tasks'
 import { runEmployerDailyDigest } from './employer-daily-digest'
 import { runExportUserData } from './export-user-data'
 import { runPurgeDeletedAccounts } from './purge-deleted-accounts'
@@ -119,6 +120,18 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
     try {
       await runExpireSubscriptions()
       pingHealthcheck('expire-subscriptions')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
+  })
+
+  await boss.createQueue('invoice-tasks')
+  await boss.schedule('invoice-tasks', '* * * * *', {}, { tz: 'Asia/Kuala_Lumpur', missed: 'once' })
+  await boss.work('invoice-tasks', async () => {
+    try {
+      await runInvoiceTasks()
+      pingHealthcheck('invoice-tasks')
     } catch (err) {
       Sentry.captureException(err)
       throw err

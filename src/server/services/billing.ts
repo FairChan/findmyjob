@@ -150,6 +150,7 @@ export interface OrderDetail extends OrderSummary {
   commercialSnapshot: CommercialSnapshotV1 | null
   bankTransfer: BankTransferDetails | null
   stripePayment: StripePaymentView | null
+  invoice: null | { id: string; invoiceNo: string; issuedAt: string; pdfStatus: 'QUEUED' | 'PROCESSING' | 'READY' | 'FAILED' }
 }
 export interface MyOrdersPage { items: OrderSummary[]; nextCursor: string | null }
 export interface AdminOrderRow extends OrderSummary { company: { id: string; displayName: string } }
@@ -475,11 +476,15 @@ export async function getMyOrder(ctx: CompanyCtx, input: GetMyOrderInput): Promi
   await assertOwner(ctx)
   const { orderId } = parse(getMyOrderSchema, input)
   const order = await ownOrder(ctx, orderId)
+  const invoice = await db.invoice.findUnique({
+    where: { orderId }, select: { id: true, invoiceNo: true, issuedAt: true, pdfStatus: true },
+  })
   const attempt = order.paymentProvider === 'STRIPE'
     ? await db.stripeCheckoutAttempt.findUnique({ where: { orderId }, select: { id: true, state: true, fpxReceipt: true } })
     : null
   return {
     ...summary(order), commercialSnapshot: snapshotOf(order),
+    invoice: invoice ? { ...invoice, issuedAt: invoice.issuedAt.toISOString() } : null,
     stripePayment: order.paymentProvider === 'STRIPE'
       ? { state: attempt?.state ?? 'NOT_STARTED', fpxReceipt: readFpxReceipt(order, attempt) } : null,
     bankTransfer: order.paymentProvider === 'BANK_TRANSFER' && UNPAID.includes(order.status)
@@ -624,6 +629,13 @@ async function settleOrder(
 }
 
 async function notifySettlementCommitted(companyId: string, amountSen: number, result: SettlementResult): Promise<void> {
+  // Issuance runs after commit; replay also recovers a previously failed issuance.
+  try {
+    const { ensureInvoiceForPaidOrder } = await import('./invoices')
+    await ensureInvoiceForPaidOrder(result.orderId)
+  } catch {
+    logger.error({ orderId: result.orderId, code: 'INVOICE_ISSUANCE_PENDING' }, 'Paid order invoice requires recovery')
+  }
   if (result.alreadyPaid) return
   try {
     await notifyOrderConfirmed(companyId, { orderId: result.orderId, amountSen })

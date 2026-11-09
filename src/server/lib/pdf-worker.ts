@@ -4,6 +4,7 @@ import { getSetting } from '../services/settings'
 // Static import so Next.js standalone nft follows the pnpm symlinks.
 // Runtime usage is in the eval worker string below; nft cannot see eval strings.
 import 'pdf-lib'
+import '@pdf-lib/fontkit'
 // nft: ensure DecodeStream sub-path is traced for the eval worker
 // @ts-ignore
 import 'pdf-lib/cjs/core/streams/DecodeStream'
@@ -72,13 +73,14 @@ DecodeStream.prototype.ensureBuffer = function ensureBufferWithBudget(requested)
 
 const pdfLib = require('pdf-lib');
 
-parentPort.once('message', async ({ input, params, maxInflatedBytes, script }) => {
+parentPort.once('message', async ({ input, params, maxInflatedBytes, script, includeFontkit }) => {
   inflatedBudget = maxInflatedBytes;
   inflatedTotal = 0;
   budgetExceeded = false;
   try {
-    const fn = new Function('pdfLib', 'input', 'params', '"use strict"; return (async () => { ' + script + ' })()');
-    const result = await fn(pdfLib, Buffer.from(input), params);
+    const fontkit = includeFontkit ? require('@pdf-lib/fontkit') : undefined;
+    const fn = new Function('pdfLib', 'input', 'params', 'fontkit', '"use strict"; return (async () => { ' + script + ' })()');
+    const result = await fn(pdfLib, Buffer.from(input), params, fontkit);
     if (budgetExceeded) {
       parentPort.postMessage({ ok: false, reason: 'too_large' });
       return;
@@ -113,7 +115,7 @@ export async function runCappedPdfWorker<T>(
   script: string,
   input: Buffer,
   params?: unknown,
-  opts?: { maxInflatedBytes?: number; timeoutMs?: number; signal?: AbortSignal },
+  opts?: { maxInflatedBytes?: number; timeoutMs?: number; signal?: AbortSignal; includeFontkit?: boolean },
 ): Promise<CappedPdfResult<T>> {
   const signal = opts?.signal
   if (signal?.aborted) return { ok: false, reason: 'aborted' }
@@ -182,7 +184,7 @@ export async function runCappedPdfWorker<T>(
       onAbort()
     } else {
       try {
-        worker.postMessage({ input, params, maxInflatedBytes, script })
+        worker.postMessage({ input, params, maxInflatedBytes, script, includeFontkit: opts?.includeFontkit === true })
       } catch {
         void finish({ ok: false, reason: 'failed' })
       }

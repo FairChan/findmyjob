@@ -45,7 +45,7 @@ const base: OrderDetail = {
   id: 'synthetic-order', orderNo: 'SYNTHETIC-ORDER-NO', kind: 'CREDIT_PACK', status: 'PENDING', paymentProvider: 'STRIPE', paymentMethod: null,
   amountSen: 149951, discountSen: 149950, currency: 'MYR', createdAt: '2026-11-10T00:00:00.000Z', paidAt: null, hasProof: false,
   plan: { id: 'synthetic-plan', code: 'SYNTHETIC_PACK', kind: 'CREDIT_PACK', nameZh: '合成点数包', nameEn: 'Synthetic credit pack', sourceUpdatedAt: '2026-01-01T00:00:00.000Z' },
-  commercialSnapshot: null, bankTransfer: null, stripePayment: null,
+  commercialSnapshot: null, bankTransfer: null, stripePayment: null, invoice: null,
 }
 let root: Root
 let container: HTMLDivElement

@@ -38,6 +38,7 @@ export const AUDIT_ACTIONS = [
   'order.proof.attach',
   'order.proof.view',
   'order.cancel',
+  'invoice.issue',
   'setting.update',
   'user.suspend',
   'data.export',

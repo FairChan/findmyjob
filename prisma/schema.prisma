@@ -917,6 +917,25 @@ model Subscription {
   @@index([planId])
 }
 
+enum InvoicePdfStatus {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum InvoicePdfErrorCode {
+  PDF_RENDER_FAILED
+  PDF_STORAGE_FAILED
+  PDF_LEASE_EXPIRED
+  INVALID_INVOICE_SNAPSHOT
+  LEGACY_INVOICE_SNAPSHOT_MISSING
+  UNSUPPORTED_GLYPH
+  PDF_LAYOUT_EXCEEDED
+  PDF_TOO_LARGE
+  PDF_FONT_UNAVAILABLE
+}
+
 model Invoice {
   id          String   @id @default(cuid())
   orderId     String   @unique
@@ -925,6 +944,25 @@ model Invoice {
   pdfKey      String?
   einvoiceRef String? // LHDN MyInvois 文档 UUID（预留）
   issuedAt    DateTime @default(now()) @db.Timestamptz(3)
+  invoiceSnapshot Json?
+  pdfStatus InvoicePdfStatus @default(READY)
+  pdfAttempts Int @default(0)
+  pdfNextAttemptAt DateTime? @db.Timestamptz(3)
+  pdfLeaseToken String?
+  pdfLeaseExpiresAt DateTime? @db.Timestamptz(3)
+  pdfErrorCode InvoicePdfErrorCode?
+  pdfSha256 String?
+  pdfSizeBytes Int?
+
+  @@index([pdfStatus, pdfNextAttemptAt])
+  @@index([pdfStatus, pdfLeaseExpiresAt])
+}
+
+model InvoiceCounter {
+  id String @id @default(cuid())
+  scope String @unique
+  lastValue BigInt @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 }
 
 // ==================== 合规 / 系统 ====================

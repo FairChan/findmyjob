@@ -2059,5 +2059,46 @@
     "receiptStatus": "交易状态",
     "receiptSucceeded": "成功",
     "notAvailable": "暂未提供"
+  },
+  "billingInvoice": {
+    "title": "发票",
+    "invoiceNumber": "发票编号",
+    "issuedAt": "开票时间",
+    "notAvailable": "暂未提供",
+    "notIssued": "付款已确认，发票尚未可用。请稍后刷新本页查看。",
+    "processing": "发票 PDF 正在准备中，请稍后刷新本页查看。",
+    "unavailable": "发票暂时无法下载，请稍后查看。",
+    "ready": "发票已可下载。",
+    "download": "下载发票 PDF",
+    "refresh": "刷新发票状态",
+    "downloading": "正在准备下载…",
+    "downloadStarted": "已开始下载，请查看浏览器的下载记录。",
+    "error": {
+      "pending": "发票 PDF 仍在准备中，请稍后刷新本页查看。",
+      "unavailable": "发票暂时无法下载，请稍后查看。",
+      "forbidden": "当前账号无法下载此发票，请使用企业所有者账号登录。",
+      "notFound": "此发票暂不可用。",
+      "generic": "下载未完成，请稍后重新下载。"
+    }
+  },
+  "adminInvoiceIssuer": {
+    "title": "开票主体",
+    "description": "设置新开发票上显示的法定主体。法定名称、主体地址和配置版本为必填项。保存时会完整保留填写的文本。",
+    "legalName": "法定名称",
+    "address": "主体地址",
+    "registrationNo": "注册号（可选）",
+    "version": "配置版本",
+    "versionHint": "填写能识别这组开票主体资料的版本标记。",
+    "limitHint": "最多 {max} 个字符。超长内容需修改后才能保存。",
+    "clearHint": "要停用新发票开具，请清空所有字段后保存。已有发票保留原来的开票主体资料。",
+    "saveIssuer": "保存开票主体",
+    "saving": "正在保存…",
+    "issuerSaved": "开票主体已保存。",
+    "errorInvalid": "请完整填写法定名称、主体地址和配置版本，或将全部字段清空。法定名称至少需要两个字符，各字段不得超过标明的长度限制。",
+    "errorForbidden": "你没有修改开票主体的权限，或管理员登录已失效。请重新登录。",
+    "errorTwoFactor": "请先完成管理员双重验证。",
+    "errorGeneric": "开票主体保存未完成，输入内容仍保留。请重试。",
+    "signIn": "重新登录",
+    "setupTwoFactor": "设置双重验证"
   }
 }

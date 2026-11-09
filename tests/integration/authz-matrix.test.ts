@@ -3040,3 +3040,69 @@ describe('billing actions (M8-T02)', () => {
       .toEqual([expect.objectContaining({ actorId: admin.id })])
   })
 })
+
+describe('invoice routes and issuer settings (M8-T05)', () => {
+  const invoiceId = 'cmw00000000000000000000001'
+  const issuer = {
+    schemaVersion: 1, version: 'SYNTHETIC_MATRIX_V1', legalName: 'SYNTHETIC Matrix Issuer',
+    address: 'SYNTHETIC Matrix Address', registrationNo: null,
+  }
+
+  it.each(['guest', 'student', 'recruiter', 'company-admin'] as const)(
+    '%s cannot dispatch invoice object reads', async actor => {
+      const owner = await createEmployer(testDb)
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else {
+        await testDb.companyMember.update({ where: { userId: owner.userId }, data: {
+          role: actor === 'recruiter' ? 'RECRUITER' : 'ADMIN',
+        } })
+        mockSession(owner.userId)
+      }
+      const service = await import('@/server/services/invoice-delivery')
+      const read = vi.spyOn(service, 'getInvoiceDownload')
+      try {
+        const { GET } = await import('@/app/api/invoices/[id]/download/route')
+        const response = await GET(new Request(`http://localhost/api/invoices/${invoiceId}/download`))
+        expect(response.status).toBe(403)
+        expect(response.headers.get('cache-control')).toBe('private, no-store')
+        expect(read).not.toHaveBeenCalled()
+      } finally { read.mockRestore() }
+    },
+  )
+
+  it('dispatches invoice reads using the live OWNER identity only', async () => {
+    const owner = await createEmployer(testDb)
+    mockSession(owner.userId)
+    const service = await import('@/server/services/invoice-delivery')
+    const bytes = Buffer.from('%PDF-synthetic-route-boundary')
+    const read = vi.spyOn(service, 'getInvoiceDownload').mockResolvedValue({ bytes, invoiceNo: 'FMJ-INV-00000001' })
+    try {
+      const { GET } = await import('@/app/api/invoices/[id]/download/route')
+      const response = await GET(new Request(`http://localhost/api/invoices/${invoiceId}/download?userId=forged&companyId=forged`))
+      expect(response.status).toBe(200)
+      expect(read).toHaveBeenCalledExactlyOnceWith({ userId: owner.userId }, invoiceId)
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes)
+    } finally { read.mockRestore() }
+  })
+
+  it.each(['student', 'employer'] as const)('%s cannot set the invoice issuer', async actor => {
+    const user = actor === 'student' ? await createStudent(testDb) : await createEmployer(testDb)
+    mockSession(user.userId)
+    const { saveInvoiceIssuerSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveInvoiceIssuerSettingsAction(issuer)).toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'billing.invoiceIssuer' } })).toBeNull()
+  })
+
+  it('verified ADMIN can save the issuer through the dedicated action', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { saveInvoiceIssuerSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveInvoiceIssuerSettingsAction(issuer)).toMatchObject({ ok: true })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'billing.invoiceIssuer' } }))
+      .toMatchObject({ value: issuer, updatedById: admin.id })
+    const audits = await testDb.auditLog.findMany({ where: { action: 'setting.update', targetId: 'billing.invoiceIssuer' } })
+    expect(audits).toHaveLength(1)
+    expect(JSON.stringify(audits[0].metadata)).not.toContain(issuer.legalName)
+  })
+})

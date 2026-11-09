@@ -212,7 +212,7 @@ flowchart LR
 套餐权益由 `subscription-entitlements.ts` 在调用方事务内统一解析：半开有效期 `[startsAt, endsAt)` 内已付款商业快照优先，关闭新销售不撤销已付权益。无有效段时，公益期沿现有配置，收费期用有限 FREE；异常快照不从当前商品补造。发布职位、席位预留/接受及学生邀请在同公司 CREDIT 锁后采样时间、复查身份与容量，再完成写入。邀请进一步按 CREDIT → INVITATION 取锁，并以吉隆坡自然月上下界计数。到期不删除职位/成员、不清空余额、不重置月用量；PENDING_REVIEW 不预留职位，已过期 PUBLISHED 重新开放须重新占位。显示层只读取 `getCompanyEntitlementUsage` 的来源、有效期、计数、限额及购买能力白名单；执行入口始终再次检查。
 
 ### 5.7 必须写审计日志的动作
-`auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`article.save`、`search.synonym.save`、`plan.create`、`plan.update`、`plan.deactivate`、`plan.delete`、`order.create`、`order.proof.attach`、`order.proof.view`、`order.cancel`、`order.confirm`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
+`auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`article.save`、`search.synonym.save`、`plan.create`、`plan.update`、`plan.deactivate`、`plan.delete`、`order.create`、`order.proof.attach`、`order.proof.view`、`order.cancel`、`order.confirm`、`invoice.issue`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
 
 ### 5.8 安全清单
 - 所有外部输入用 zod 校验，Server Actions 也不例外（经 `action()` / `route()`）。
@@ -275,6 +275,14 @@ flowchart LR
 - Sentry（`@sentry/nextjs` 锁精确版本，worker 用 `@sentry/node`）：在 `instrumentation.ts`（register、onRequestError）和 `instrumentation-client.ts` 里初始化，三处共用 `src/lib/sentry-options.ts`：`sendDefaultPii:false`、`tracesSampleRate:0`、不开 Replay、`release` 设为 `APP_TAG`、`beforeSend` 用 `scrubEvent`（删除 cookies、data、query_string 和除 user-agent 以外的 header；URL 换成路由模板；去掉 user；message 再过一遍 redact）。不运行 `npx @sentry/wizard`。区域按 D14。
 - `/api/health`：`SELECT 1`，2 秒超时，返回 `{ status, version }`，带 no-store；外部 uptime 监控它（D16）。定时任务和备份成功后 ping 各自的 healthchecks 地址。
 - 日志、AuditLog.metadata、Sentry 和 Notification 里不能出现解密后的联系方式、OTP 或令牌。
+
+### 5.14 不可变发票与受控下载（M8-T05）
+
+付款事务提交后 await `ensureInvoiceForPaidOrder`，失败只记录固定错误并由每分钟 `invoice-tasks` 恢复，不逆转到账；重放也可补发。发行先持 CREDIT，再持 INVOICE_NUMBER（1009）全局编号锁，同事务冻结订单商业快照、开票主体和买方资料、分配连续 FMJ-INV 编号并写 invoice.issue。已有 Invoice 不变。历史发票存在而计数器缺失时拒绝自动从一开始。开票主体通过独立管理员设置表单校验；空配置禁止新发行，不影响已发行文档。
+
+新发票 QUEUED；迁移默认 READY 保留旧 PDF。PDF worker 最多三次持久尝试、60 秒租约，token/attempt/租约与完整快照 CAS 发布。生成和 S3 I/O 在事务外，取消后等待实际退出；未知发布结果不删对象。候选 key 含独立 token，仅清理当前失败候选，绝不删除已发布赢家。原始快照不随套餐、主体或销售开关变化；完整嵌入固定 SHA-256 的 OFL 静态中文字体，关闭无 Unicode 映射的局部字形与连字替换，不依赖宿主字体。字体版本和派生过程见资产 manifest；真实像素与精确文字提取共同验收。
+
+下载只接受当前 ACTIVE 企业 OWNER，在读私有对象前后复查所属关系与权限，返回字节而非签名 URL。路由输出 attachment/private/no-store/nosniff/noindex；页面仅传编号、时间和 PDF 状态。GET 不发行、不渲染、不重置尝试。暂态读取失败保留 READY/key/hash/size；确证缺失或损坏才按原预算恢复。日志不含买方、主体、PDF 文本或对象路径。
 
 ## 6. 环境变量（`env.example`）
 
