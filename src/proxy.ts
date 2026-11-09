@@ -3,6 +3,8 @@ import { routing } from './i18n/routing'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSessionCookie } from 'better-auth/cookies'
+import { env } from './env'
+import { buildContentSecurityPolicy } from './lib/csp'
 
 // Fixed loopback address for the internal reconsent check.
 // Never derive this from the incoming Host/X-Forwarded-Host headers — that would
@@ -180,13 +182,26 @@ export default async function middleware(request: NextRequest) {
     return response
   }
 
+  // Next extracts its script nonce from the request CSP. Never trust a nonce
+  // supplied by the caller, and give the browser the exact same policy.
+  const nonce = Buffer.from(randomUUID()).toString('base64')
+  // Direct access is inlined at build time, like the browser instrumentation.
+  const csp = buildContentSecurityPolicy({ nonce, appEnv: env.APP_ENV, sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN })
+  requestHeaders.set('x-nonce', nonce)
+  requestHeaders.set('Content-Security-Policy', csp)
+  const withCsp = (response: NextResponse) => {
+    response.headers.set('Content-Security-Policy', csp)
+    response.headers.set('x-request-id', requestId)
+    return response
+  }
+
   // --- Protected page routes: redirect to login if no session ---
   if (isProtectedPage(pathname)) {
     if (!hasSessionCookie(request)) {
       const locale = extractLocale(pathname)
       const loginUrl = new URL(`/${locale}/login`, request.url)
       loginUrl.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(loginUrl)
+      return withCsp(NextResponse.redirect(loginUrl))
     }
   }
 
@@ -204,7 +219,7 @@ export default async function middleware(request: NextRequest) {
     const reconsentRedirect = await checkReconsent(req)
     if (reconsentRedirect) {
       reconsentRedirect.headers.set('x-request-id', requestId)
-      return reconsentRedirect
+      return withCsp(reconsentRedirect)
     }
   }
   const response = intlMiddleware(req)
@@ -216,7 +231,7 @@ export default async function middleware(request: NextRequest) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow')
   }
 
-  return response
+  return withCsp(response)
 }
 
 export const config = {

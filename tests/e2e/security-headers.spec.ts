@@ -4,7 +4,8 @@
  * Config: playwright.prod.config.ts
  *
  * Checks:
- * - Content-Security-Policy-Report-Only is present on all pages
+ * - Enforced Content-Security-Policy replaces Report-Only
+ * - Each HTML response has a fresh nonce matching its script tags
  * - X-Powered-By is absent (poweredByHeader: false)
  * - Private pages (/s, /e, /admin, login) carry X-Robots-Tag: noindex and Cache-Control: no-store
  * - /api/health carries X-Robots-Tag: noindex
@@ -20,12 +21,48 @@ async function headersFor(url: string): Promise<Record<string, string>> {
   return h
 }
 
+function scriptNonce(policy: string): string {
+  const scriptSources = policy.split(';').find((directive) => directive.trim().startsWith('script-src '))
+  const nonce = scriptSources?.match(/(?:^|\s)'nonce-([A-Za-z0-9+/_-]+={0,2})'(?:\s|$)/)?.[1]
+  expect(nonce, 'script-src must include a nonce').toBeTruthy()
+  return nonce!
+}
+
 test.describe('Security response headers', () => {
-  test('home page has CSP-Report-Only and no X-Powered-By', async () => {
+  test('home page has enforced CSP and no X-Powered-By', async () => {
     const headers = await headersFor(`${BASE}/zh`)
-    expect(headers['content-security-policy-report-only']).toBeTruthy()
-    expect(headers['content-security-policy-report-only']).toContain('report-uri /api/csp-report')
+    const policy = headers['content-security-policy'] ?? ''
+    expect(policy).toContain('report-uri /api/csp-report')
+    expect(policy).toContain("'strict-dynamic'")
+    expect(policy).toContain('https://challenges.cloudflare.com')
+    scriptNonce(policy)
+    expect(headers['content-security-policy-report-only']).toBeUndefined()
     expect(headers['x-powered-by']).toBeUndefined()
+  })
+
+  test('two requests to the same page have distinct nonces matching their HTML scripts', async () => {
+    const nonces: string[] = []
+
+    for (let requestNumber = 0; requestNumber < 2; requestNumber++) {
+      const response = await fetch(`${BASE}/zh`, { redirect: 'manual' })
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toContain('text/html')
+      expect(response.headers.get('content-security-policy-report-only')).toBeNull()
+      const nonce = scriptNonce(response.headers.get('content-security-policy') ?? '')
+      nonces.push(nonce)
+
+      const html = await response.text()
+      const scripts = html.match(/<script\b[^>]*>/gi) ?? []
+      expect(scripts.length, 'HTML must include framework and hydration scripts').toBeGreaterThan(0)
+      expect(scripts.some((script) => /\bsrc\s*=/.test(script)), 'HTML must include external scripts').toBe(true)
+      expect(scripts.some((script) => !/\bsrc\s*=/.test(script)), 'HTML must include inline scripts').toBe(true)
+      for (const script of scripts) {
+        const htmlNonce = script.match(/\snonce\s*=\s*(["'])(.*?)\1/i)?.[2]
+        expect(htmlNonce, `Script must use its response CSP nonce: ${script}`).toBe(nonce)
+      }
+    }
+
+    expect(nonces[0]).not.toBe(nonces[1])
   })
 
   test('login page (auth page) has noindex and no-store', async () => {

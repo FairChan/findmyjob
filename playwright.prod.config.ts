@@ -1,13 +1,14 @@
 /**
- * Playwright config for security-headers E2E tests run against a real production build.
+ * Security headers and registration/upload CSP checks against a production build.
  *
  * Usage:
  *   pnpm build && pnpm exec playwright test -c playwright.prod.config.ts --workers=1
  * Or via the package.json shortcut:
  *   pnpm test:e2e:prod
  *
- * Unlike the dev-server config, this starts `next start` on port 3011 so both lanes can run simultaneously.
- * No global-setup / global-teardown: these tests only check response headers, not test-database state.
+ * Unlike the dev-server config, this starts `next start` on port 3011.
+ * No shared login setup: registration/upload creates its own synthetic student.
+ * These tests run separately from Vitest and the dev E2E suite on the test database.
  */
 import { defineConfig, devices } from '@playwright/test'
 import { readFileSync } from 'fs'
@@ -38,7 +39,7 @@ validateTestDbUrl(testDatabaseUrl)
 const PROD_PORT = 3011
 
 export default defineConfig({
-  testMatch: ['**/security-headers.spec.ts'],
+  testMatch: ['**/security-headers.spec.ts', '**/csp-registration-upload.spec.ts'],
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
@@ -63,6 +64,9 @@ export default defineConfig({
     env: {
       DATABASE_URL: testDatabaseUrl,
       APP_ENV: 'ci',
+      APP_URL: `http://localhost:${PROD_PORT}`,
+      BETTER_AUTH_URL: `http://localhost:${PROD_PORT}`,
+      INTERNAL_BASE_URL: `http://127.0.0.1:${PROD_PORT}`,
       PORT: String(PROD_PORT),
       PROD_BASE_URL: `http://localhost:${PROD_PORT}`,
     },

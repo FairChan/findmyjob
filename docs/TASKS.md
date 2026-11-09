@@ -1465,7 +1465,7 @@
 > 修复 2026-11-05：assertFeatureEnabled 改 enabled !== true 防字符串 "false" 放行；checkEmailCap critical 参数改为 template 白名单（CRITICAL_TEMPLATES），alert 只在 count===cap+1 时触发一次；db-rate-limit 列名加双引号；rate-limit.ts 改为 async 基于 hitBucket，clearRateLimit 改写为 DELETE；HEALTHCHECKS_* 加入 env.ts；开关已就绪，待各入口实现时调用（见 DECISIONS 开发中决策）
 > 修复 2026-11-05（二）：env.ts 的 HEALTHCHECKS_* 改用 z.preprocess 将空字符串转 undefined 再做 URL 校验（防 env.example 直接用时报错）；email-cap 的 template 参数改为 EMAIL_TEMPLATES 常量派生的封闭联合类型 EmailTemplate（CRITICAL_TEMPLATES 通过 satisfies 从常量派生）；集成限流测试改为直接调用 hitBucket/checkRateLimit（不再复制 SQL），新增真实计数、第 6 次拒绝、新 PrismaClient 验证、key 隔离、resetAt 在未来、clearRateLimit 六个场景；新增 tests/unit/env.test.ts 验证空字符串→undefined 和非法 URL 报错；全部 526 个测试通过
 
-#### [ ] M7-T15 CSP 改为 nonce 强制模式，HSTS 改为一年（P1，E3 之前）
+#### [x] M7-T15 CSP 改为 nonce 强制模式，HSTS 改为一年（P1，E3 之前）
 依赖：M7-T05
 做：
 - middleware 为每个请求生成 nonce；script-src 写 self、nonce 和 strict-dynamic，再加 challenges.cloudflare.com；frame-src 只放 Turnstile；生产环境不允许 unsafe-eval。
@@ -1475,6 +1475,7 @@
 > - HSTS 现在由 `deploy/Caddyfile` 的 `{$HSTS_MAX_AGE:300}` 控制。默认值保持 300，不改 Caddyfile 的默认、不加 includeSubDomains 和 preload：一年的 HSTS 落到 staging 域名上很难撤回。这一条只在 RUNBOOK 写清楚「E3 前、确认所有子域都是 https 之后，由部署会话把生产环境的 HSTS_MAX_AGE 设为 31536000」，`tests/unit/caddyfile-headers.test.ts` 的现有断言不放宽。
 > - CSP 在 M7-T05 之后已经由应用发 Report-Only（看 next.config 和 proxy）。这一条改成强制模式时，开发环境（`pnpm dev`、E2E）仍要能跑：dev 需要的 unsafe-eval 只在非生产放行，生产判断只看 `APP_ENV=production`。
 > - 「每次请求 nonce 都不同」要有测试：连续请求两次同一页面，响应头里的 nonce 不同，并且页面里的 script 标签带的是同一个 nonce。
+> 完成 2026-11-09：proxy 每页面请求生成 nonce 并覆盖请求/响应 CSP，根布局动态渲染及根 Provider 固定文档 nonce，语言切换不影响 Turnstile；生产 APP_ENV 禁 eval，Sentry 仅允许构建期 DSN 精确 origin，API 附件 sandbox 保留。RUNBOOK 记录 E3 前生产 HSTS=31536000 的人工部署步骤，Caddy 默认300及其测试不改。lint/typecheck/build通过；Vitest 2077通过、4性能基准跳过；开发E2E300通过；next start专项14通过（含375/1280真实Cloudflare测试控件和注册到持久化上传/删除），增补Service Worker激活后导航专项1通过。独立复查无待修重要问题。尚未部署、未验证正式key/真机、未执行生产HSTS切换。
 
 #### [x] M7-T16 CI 扩展扫描（P1，M7 之后）
 依赖：M7-T06
@@ -1852,7 +1853,7 @@
 - [ ] 回滚演练由运维备份人独立完成：部署 A、部署 B、回滚，每一步都在 2 分钟内；有待执行迁移但没加 `--approve-migrations` 时，脚本在迁移前停下
 - [ ] 恢复演练：restore-drill.sh 的检查全部通过，实测 RTO ≤4 小时并已记录；healthchecks 显示绿色；备份文件前 21 字节是 `age-encryption.org/v1`；两个桶都开了版本控制
 - [ ] 伪造 X-Real-IP 或 X-Forwarded-For 后，仍按真实 IP 计数，第 6 次返回 429；AuditLog.ip 记录的是真实来源；停用一个已登录的学生后，他的下一次请求回到登录页；企业成员看其他企业的职位详情只显示锁定卡片；学校 OTP 第 6 次发送返回 429
-- [ ] 用 `curl -sI` 检查：HSTS max-age=300、nosniff、X-Frame-Options DENY、Referrer-Policy、Report-Only CSP 都在；私有页带 noindex 和 no-store；`APP_ENV=production` 时，用测试 Turnstile secret 或 http 的 BETTER_AUTH_URL 都无法启动
+- [ ] 用 `curl -sI` 检查：HSTS max-age=300（E3 前按 RUNBOOK 正式生产切换为 31536000）、nosniff、X-Frame-Options DENY、Referrer-Policy、强制 nonce CSP 都在；私有页带 noindex 和 no-store；`APP_ENV=production` 时，用测试 Turnstile secret 或 http 的 BETTER_AUTH_URL 都无法启动
 - [ ] Sentry：人为抛错产生的事件 JSON 里，没有邮箱、手机号、cookie 和 token；没有开 Replay；数据区域和 D14 一致；告警能送到 2 个人
 - [ ] 停掉 app 容器，10 分钟内两个人都收到 uptime 告警；日志轮转和 mem_limit 都已生效；k6 跑完后 dmesg 里没有 oom
 - [ ] k6 的 browse-search 达到阈值（p95 < 800ms，错误率 < 1%），结果记进 CAPACITY.md（M7-T10、M7-H02）；上线后 smoke.js 跑通

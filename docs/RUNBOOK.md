@@ -621,3 +621,11 @@ COMMIT;
 
 **记录**
 - [ ] 记一行检查结果到 `docs/incidents/weekly-checks.md`（日期、执行人、发现的问题编号；无问题写「无」）
+
+## CSP 强制模式与 E3 前 HSTS 切换（M7-T15）
+
+页面响应使用强制 `Content-Security-Policy`，不再发送 Report-Only。连续访问同一页面两次，应看到不同 nonce；每次原始 HTML 的 script nonce 应匹配该次响应。注册/登录的 Turnstile 脚本使用当前文档 nonce，页面内导航不更换它。Next 动态加载的同源 chunks 由 strict-dynamic 授信，可能使用 RSC 请求 nonce；不要仅凭导航后 DOM 中框架脚本 nonce 不同判为 CSP 失败，需同时检查原始 HTML、应用脚本和浏览器实际 CSP 违规。
+
+根布局读取请求头使页面动态渲染；不得缓存并跨请求复用带 nonce 的 HTML。`APP_ENV=production` 时 script-src 不含 unsafe-eval。Sentry 的允许连接 origin 来自构建时内联的公开 DSN，变更 DSN 后须重新构建。API/附件保留各自的安全头和 sandbox。生产构建回归命令为 `pnpm test:e2e:prod`，与 Vitest 和其他 E2E 串行执行；使用合成测试配置。正式 key、浏览器真机及生产环境验收仍在上线闸门完成。
+
+**E3 前、确认所有子域都是 HTTPS 之后，由部署会话把正式生产环境的 `HSTS_MAX_AGE` 设为 `31536000`。** `deploy/Caddyfile` 默认 `300` 保持不变，不把一年配置带到 staging，不添加 includeSubDomains 或 preload。部署会话变更后检查正式域名的 `Strict-Transport-Security: max-age=31536000`，记录执行人、时间与证据；本次本地代码任务不执行该切换。
