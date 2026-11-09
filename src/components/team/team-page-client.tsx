@@ -145,6 +145,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
                       value={member.role}
                       onChange={e => handleChangeRole(member.id, e.target.value as 'ADMIN' | 'RECRUITER')}
                       disabled={isPending}
+                      aria-label={t.changeRoleButton}
                       className="rounded border border-border bg-background px-2 py-1 text-sm"
                     >
                       <option value="ADMIN">{t.roleAdmin}</option>
@@ -191,8 +192,9 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">{t.roleLabel}</label>
+              <label htmlFor="invite-role" className="mb-1 block text-sm font-medium">{t.roleLabel}</label>
               <select
+                id="invite-role"
                 value={inviteRole}
                 onChange={e => setInviteRole(e.target.value as 'ADMIN' | 'RECRUITER')}
                 className="rounded border border-border bg-background px-3 py-2 text-sm"

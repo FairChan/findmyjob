@@ -1067,6 +1067,7 @@
     }
   },
   "companyProfile": {
+    "metaDescription": "View {name}'s company profile and open positions.",
     "foundingPartner": "Founding Partner",
     "location": "Location",
     "website": "Website",
@@ -1207,6 +1208,7 @@
   },
   "publicCompanies": {
     "title": "Partner Companies",
+    "description": "FindMYJob partner companies, all manually verified with SSM registration certificates.",
     "subtitle": "All companies are manually verified with SSM registration certificates",
     "tagAll": "All",
     "tagFORTUNE_500": "Fortune 500",
@@ -1230,6 +1232,7 @@
   },
   "publicJobs": {
     "title": "Job Listings",
+    "description": "Browse internship and full-time job listings in Malaysia for international students.",
     "empty": "No open positions at the moment",
     "backToList": "Back to job listings",
     "descriptionLabel": "Job Description",

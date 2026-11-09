@@ -1489,7 +1489,7 @@
 > 完成 2026-11-07：新增 scan-semgrep/scan-dependencies/scan-actions/scan-image 四个 CI job；创建 .trivyignore 和 osv-scanner.toml；修复 NEXT_PUBLIC_SENTRY_DSN 直接插值→env 传入；删除 @types/psl devDep（tsconfig paths 映射已足够）；失败输出见提交说明
 > 修复 2026-11-07（合并前复查）：semgrep `--config=auto` 与 `--metrics=off` 冲突改为明确 registry 规则集（p/typescript、p/react、p/nodejsscan、p/secrets、p/owasp-top-ten）；actionlint 改为 `rhysd/actionlint:1.7.4` Docker 镜像，去掉无哈希校验的 curl 下载；DECISIONS 追加决策说明。需要第一次 CI 运行来验证。
 
-#### [ ] M7-T17 质量包：a11y 全覆盖、锁版本 Lighthouse、SEO 元数据、Logo 缓存（P1，E2 之前）
+#### [x] M7-T17 质量包：a11y 全覆盖、锁版本 Lighthouse、SEO 元数据、Logo 缓存（P1，E2 之前）
 依赖：M7-T01
 做：用 accessibility、core-web-vitals、seo、web-quality-audit 这几个技能。
 - `tests/e2e/a11y.spec.ts` 覆盖学生端、公开页和企业端的全部页面；moderate 及以下的问题记到 `docs/A11Y.md`。
@@ -1501,6 +1501,7 @@
 > - 线 B 在 M7-T01 已经加了 devDependency `lighthouse` 12.3.0 和 `pnpm lighthouse <url>` 脚本。复用它，不要再装第二个版本；`pnpm lh` 和 `scripts/lighthouse.mjs` 在它的基础上加阈值判断。Lighthouse 只对生产构建跑（`pnpm build` 后 `pnpm start`），单条命令不超过 600 秒。
 > - 新加 `auth: 'public'` 的 API 路由（比如 `/api/logos/[companyId]`）时，要同步加进 `src/proxy.ts` 的 isProtectedApi 放行名单，否则未登录访问会被拦成 401（线 B 2026-11-09 的提醒）；照 `/api/partner-logos/[partnerId]` 的写法设 public 长缓存，并且只对已认证、未停用的企业返回 logo。
 > - a11y spec 里每个页面都要真的加载到目标页面（断言 URL 和 h1），不能被重定向到登录页或 reconsent 页之后对那一页做扫描。
+> 完成 2026-11-09：新增 /api/logos/[companyId]（公开长缓存，仅已认证企业）；proxy.ts 放行；sitemap.ts（仅收录已认证企业，含 hreflang）；generateMetadata 补齐 companies、jobs 页面；s/e/admin layout 加 metadata title 模板；team-page-client.tsx 修复 select-name a11y（htmlFor/id 关联 + aria-label）；scripts/lighthouse.mjs 加阈值+退出码；pnpm lh 脚本；docs/A11Y.md 记录首次扫描结果；tests/e2e/a11y.spec.ts 覆盖 20 个页面（公开5+学生6+企业6+beforeAll×3），20/20 通过。mutation 失败输出见提交说明。
 
 #### [x] M7-T18 k6 全场景与 5000 名学生的压测数据（P1，E4 之前）
 依赖：M7-T10

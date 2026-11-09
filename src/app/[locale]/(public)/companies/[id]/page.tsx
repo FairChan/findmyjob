@@ -1,17 +1,42 @@
+import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import { z } from 'zod'
-import { getPublicCompany, isOwnLogoKey } from '@/server/services/company'
-import { getSignedDisplayUrl } from '@/lib/storage'
+import { getPublicCompany } from '@/server/services/company'
 import { safeWebsiteHref } from '@/lib/url-utils'
 
 const companyIdSchema = z.string().cuid()
 
-export default async function CompanyPublicPage({
-  params,
-}: {
+interface PageProps {
   params: Promise<{ locale: string; id: string }>
-}) {
+}
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { locale, id } = await params
+  if (!companyIdSchema.safeParse(id).success) return {}
+  const company = await getPublicCompany(id)
+  if (!company) return {}
+  const t = await getTranslations({ locale, namespace: 'companyProfile' })
+  const displayName =
+    locale === 'zh'
+      ? (company.displayNameZh ?? company.legalName)
+      : (company.displayNameEn ?? company.legalName)
+  const baseUrl = (process.env.APP_URL ?? '').replace(/\/$/, '')
+  return {
+    title: displayName,
+    description: t('metaDescription', { name: displayName }),
+    alternates: {
+      canonical: `${baseUrl}/${locale}/companies/${id}`,
+      languages: {
+        'zh-Hans': `${baseUrl}/zh/companies/${id}`,
+        'en': `${baseUrl}/en/companies/${id}`,
+        'x-default': `${baseUrl}/zh/companies/${id}`,
+      },
+    },
+  }
+}
+
+export default async function CompanyPublicPage({ params }: PageProps) {
   const { locale, id } = await params
   const t = await getTranslations('companyProfile')
 
@@ -27,14 +52,7 @@ export default async function CompanyPublicPage({
       ? (company.displayNameZh ?? company.legalName)
       : (company.displayNameEn ?? company.legalName)
 
-  let logoUrl: string | null = null
-  if (company.logoKey && isOwnLogoKey(company.id, company.logoKey)) {
-    try {
-      logoUrl = await getSignedDisplayUrl(company.logoKey)
-    } catch {
-      // logo unavailable, fall through to initials placeholder
-    }
-  }
+  const hasLogo = !!company.logoKey
 
   const locationParts = [company.city, company.state].filter(Boolean)
 
@@ -42,10 +60,10 @@ export default async function CompanyPublicPage({
     <div className="container mx-auto max-w-3xl px-4 py-12">
       {/* Company header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 mb-8">
-        {logoUrl ? (
+        {hasLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={logoUrl}
+            src={`/api/logos/${company.id}`}
             alt={displayName}
             className="w-20 h-20 rounded-lg object-contain border bg-white flex-shrink-0"
           />

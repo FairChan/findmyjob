@@ -98,6 +98,7 @@ function isProtectedApi(pathname: string): boolean {
   if (pathname === '/api/health') return false
   if (pathname === '/api/csp-report') return false
   if (pathname.startsWith('/api/partner-logos/')) return false
+  if (pathname.startsWith('/api/logos/')) return false
   return true
 }
 
