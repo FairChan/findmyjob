@@ -15,6 +15,36 @@ async function assertAdmin(userId: string): Promise<void> {
   }
 }
 
+/** Valid partner logo key pattern: partner-logos/<prefix>/<uuid>.(png|jpg) */
+export const PARTNER_LOGO_KEY_RE = /^partner-logos\/[A-Za-z0-9_-]+\/[0-9a-f-]{36}\.(png|jpg)$/
+
+/** Validate that a partner logo key belongs to the partner-logos prefix. */
+export function isPartnerLogoKey(key: string): boolean {
+  return PARTNER_LOGO_KEY_RE.test(key)
+}
+
+/** HTTP/HTTPS-only URL schema. */
+const httpsUrlSchema = z
+  .string()
+  .url({ message: 'Invalid URL' })
+  .max(500)
+  .refine((v) => /^https?:\/\//.test(v), { message: 'URL must use http or https' })
+
+/** Email domain schema: trims, lowercases, and validates domain format. */
+const emailDomainSchema = z
+  .string()
+  .transform((v) => v.trim().toLowerCase())
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(253)
+      .regex(
+        /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/,
+        'Invalid email domain format',
+      ),
+  )
+
 // ==================== School schemas ====================
 
 export const createSchoolSchema = z.object({
@@ -23,7 +53,7 @@ export const createSchoolSchema = z.object({
   shortName: z.string().max(50).optional(),
   country: z.string().length(2).default('MY'),
   state: z.string().max(50).optional(),
-  emailDomains: z.array(z.string().max(100)).min(1),
+  emailDomains: z.array(emailDomainSchema).min(1),
   isPartner: z.boolean().default(false),
 })
 
@@ -33,7 +63,7 @@ export const updateSchoolSchema = z.object({
   shortName: z.string().max(50).optional(),
   country: z.string().length(2).optional(),
   state: z.string().max(50).optional(),
-  emailDomains: z.array(z.string().max(100)).min(1).optional(),
+  emailDomains: z.array(emailDomainSchema).min(1).optional(),
   isPartner: z.boolean().optional(),
   active: z.boolean().optional(),
 })
@@ -59,12 +89,18 @@ export interface SchoolListItem {
 
 export const PARTNER_TYPES = ['SCHOOL', 'ALUMNI_ASSOCIATION', 'SOE', 'ENTERPRISE', 'GOVERNMENT', 'NGO'] as const
 
+/** Partner logo key schema: allows empty string (clears to null) or a valid partner-logos key. */
+const partnerLogoKeySchema = z
+  .string()
+  .max(500)
+  .refine((v) => !v || PARTNER_LOGO_KEY_RE.test(v), { message: 'Invalid logo key format' })
+
 export const createPartnerSchema = z.object({
   name: z.string().min(1).max(200),
   nameEn: z.string().max(200).optional(),
   type: z.enum(PARTNER_TYPES),
-  logoKey: z.string().max(500).optional(),
-  website: z.string().url().max(500).or(z.literal('')).optional(),
+  logoKey: partnerLogoKeySchema.optional(),
+  website: httpsUrlSchema.or(z.literal('')).optional(),
   description: z.string().max(2000).optional(),
   showOnHome: z.boolean().default(true),
   sortOrder: z.number().int().min(0).default(0),
@@ -75,8 +111,8 @@ export const updatePartnerSchema = z.object({
   name: z.string().min(1).max(200).optional(),
   nameEn: z.string().max(200).optional(),
   type: z.enum(PARTNER_TYPES).optional(),
-  logoKey: z.string().max(500).optional(),
-  website: z.string().url().max(500).or(z.literal('')).optional(),
+  logoKey: partnerLogoKeySchema.optional(),
+  website: httpsUrlSchema.or(z.literal('')).optional(),
   description: z.string().max(2000).optional(),
   showOnHome: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
@@ -328,14 +364,14 @@ export async function updatePartner(
     where: { id },
     data: {
       ...(input.name !== undefined ? { name: input.name } : {}),
-      ...(input.nameEn !== undefined ? { nameEn: input.nameEn } : {}),
+      ...(input.nameEn !== undefined ? { nameEn: input.nameEn || null } : {}),
       ...(input.type !== undefined ? { type: input.type } : {}),
-      ...(input.logoKey !== undefined ? { logoKey: input.logoKey } : {}),
+      ...(input.logoKey !== undefined ? { logoKey: input.logoKey || null } : {}),
       ...(input.website !== undefined ? { website: input.website || null } : {}),
-      ...(input.description !== undefined ? { description: input.description } : {}),
+      ...(input.description !== undefined ? { description: input.description || null } : {}),
       ...(input.showOnHome !== undefined ? { showOnHome: input.showOnHome } : {}),
       ...(input.sortOrder !== undefined ? { sortOrder: input.sortOrder } : {}),
-      ...(input.notes !== undefined ? { notes: input.notes } : {}),
+      ...(input.notes !== undefined ? { notes: input.notes || null } : {}),
     },
   })
 
@@ -427,7 +463,3 @@ export async function getPublicPartners(): Promise<HomePartner[]> {
   return rows.map(toHomePartner)
 }
 
-/** Validate that a partner logo key belongs to the partner-logos prefix. */
-export function isPartnerLogoKey(key: string): boolean {
-  return /^partner-logos\/[^/]+\/[0-9a-f-]{36}\.(png|jpg)$/.test(key)
-}
