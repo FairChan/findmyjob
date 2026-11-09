@@ -40,6 +40,7 @@ vi.mock('@/server/db', () => ({
   db: {
     studentProfile: { findUnique: vi.fn().mockResolvedValue({ id: 'sp-01' }) },
     resumeFile: { create: vi.fn().mockResolvedValue({ id: 'rf-01' }) },
+    paymentProofUpload: { create: vi.fn().mockResolvedValue({ id: 'proof-01' }) },
   },
 }))
 

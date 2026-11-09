@@ -1754,11 +1754,12 @@
 验收：定价页内容随后台配置变化
 > 完成 2026-11-10：管理员套餐 CRUD、CAS 冲突/历史引用保护、占位套餐 seed 和双语定价页；公益期只公开 FREE，公开 HTML/RSC 不泄漏隐藏商品。96 个新增服务/schema/seed 测试、10 个 action 权限测试及 2650 全量 Vitest 通过（4 个既有性能基准跳过），相关 E2E、lint/typecheck/build/db:check 和独立审查通过。用户授权提前完成代码；GATE-M7 未代签，未启用真实收费或运行完整 seed。
 
-#### [ ] M8-T02 订单与银行转账
+#### [x] M8-T02 订单与银行转账
 依赖：M8-T01
 做：`services/billing.ts`：创建订单（orderNo 格式 `FMJ-YYYYMMDD-XXXX`）→ 显示收款信息 → 企业上传回单（经 `/api/uploads/PAYMENT_PROOF`，AWAITING_CONFIRMATION）→ 运营确认 → 同一事务内：订单 PAID + 发点（PURCHASE / PLAN_GRANT）+ 开通或续期订阅；审计 `order.confirm`。
 验收：重复确认不会重复发点；只有 OWNER 能下单
 > M5-T08 已备好：确认到账、事务提交之后，调用 `src/server/services/notify.ts` 的 `notifyOrderConfirmed(companyId, { orderId, amountSen })`（站内 order.confirmed + 邮件）。
+> 完成 2026-11-10：OWNER 报价确认/下单/持久回单归属及安全预览，近期二因素管理员核款；冻结净额和权益，订单/账本/连续订阅/审计同事务且重放幂等，通知失败不撤销到账。2817 全量 Vitest 通过（4 个既有性能基准跳过），八个业务 E2E、既有定价导航回归、375px 中英页面、lint/typecheck/build/db:check/FK 索引检查及独立复核通过。仅合成数据，真实收款信息、正式价格和开启收费另行确认。
 
 #### [ ] M8-T03 在线支付
 依赖：M8-T02

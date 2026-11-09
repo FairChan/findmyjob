@@ -2874,3 +2874,104 @@ describe('plan management actions (M8-T01)', () => {
     expect(await testDb.auditLog.count({ where: { targetType: 'Plan' } })).toBe(0)
   })
 })
+
+describe('billing actions (M8-T02)', () => {
+  it.each(['guest', 'student', 'recruiter', 'company-admin', 'suspended', 'deleted', 'inactive-company'] as const)(
+    '%s cannot quote, create, attach or cancel company orders', async actor => {
+      const { billingFixture } = await import('../helpers/billing-t02')
+      const f = await billingFixture()
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else {
+        mockSession(f.ctx.userId)
+        if (actor === 'recruiter' || actor === 'company-admin') {
+          await testDb.companyMember.updateMany({ where: { userId: f.ctx.userId }, data: {
+            role: actor === 'recruiter' ? 'RECRUITER' : 'ADMIN',
+          } })
+        } else if (actor === 'inactive-company') {
+          await testDb.company.update({ where: { id: f.ctx.companyId }, data: { isActive: false } })
+        } else {
+          await testDb.user.update({ where: { id: f.ctx.userId }, data: {
+            status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+          } })
+        }
+      }
+      const actions = await import('@/server/actions/billing')
+      for (const result of [
+        await actions.quoteOrderAction({ planId: f.plan.id }),
+        await actions.createOrderAction({ planId: f.plan.id }),
+        await actions.attachBankProofAction({ orderId: 'missing', proofKey: 'forged' }),
+        await actions.cancelPendingOrderAction({ orderId: 'missing' }),
+      ]) expect(result).toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.order.count()).toBe(0)
+      expect(await testDb.creditLedger.count()).toBe(0)
+      expect(await testDb.auditLog.count({ where: { action: 'order.confirm' } })).toBe(0)
+    },
+  )
+
+  it('uses the current OWNER and company, ignoring forged identity fields', async () => {
+    const { billingFixture } = await import('../helpers/billing-t02')
+    const f = await billingFixture()
+    const other = await createEmployer(testDb)
+    mockSession(f.ctx.userId)
+    const { quoteOrderAction, createOrderAction, cancelPendingOrderAction } = await import('@/server/actions/billing')
+    const quote = await quoteOrderAction({ planId: f.plan.id, companyId: other.companyId })
+    expect(quote).toMatchObject({ ok: true })
+    if (!quote.ok) throw new Error('Expected the owner quote')
+    const created = await createOrderAction({
+      planId: f.plan.id, method: 'BANK_TRANSFER', acceptedQuote: quote.data,
+      companyId: other.companyId, userId: other.userId,
+    })
+    expect(created).toMatchObject({ ok: true })
+    if (!created.ok) throw new Error('Expected the owner order')
+    expect(await testDb.order.findUnique({ where: { id: created.data.orderId } })).toMatchObject({
+      companyId: f.ctx.companyId, createdById: f.ctx.userId, status: 'PENDING',
+    })
+    mockSession(other.userId)
+    expect(await cancelPendingOrderAction({ orderId: created.data.orderId, companyId: f.ctx.companyId }))
+      .toEqual({ ok: false, code: 'NOT_FOUND' })
+    mockSession(f.ctx.userId)
+    expect(await cancelPendingOrderAction({ orderId: created.data.orderId })).toMatchObject({ ok: true })
+    expect(await testDb.order.findUnique({ where: { id: created.data.orderId } })).toMatchObject({ status: 'CANCELLED' })
+  })
+
+  it.each([
+    { name: 'no two factor', enabled: false, verified: true, sessionHours: 0, verificationMinutes: 0, code: 'TWO_FACTOR_REQUIRED' },
+    { name: 'unverified session', enabled: true, verified: false, sessionHours: 0, verificationMinutes: 0, code: 'FORBIDDEN' },
+    { name: 'expired session', enabled: true, verified: true, sessionHours: 13, verificationMinutes: 0, code: 'FORBIDDEN' },
+    { name: 'stale verification', enabled: true, verified: true, sessionHours: 0, verificationMinutes: 10, code: 'FRESH_SESSION_REQUIRED' },
+  ])('$name cannot confirm bank receipt', async scenario => {
+    const admin = await createTwoFactorAdmin(scenario.enabled)
+    mockSession(admin.id, {
+      createdAt: new Date(Date.now() - scenario.sessionHours * 3600_000),
+      twoFactorVerifiedAt: scenario.verified ? new Date(Date.now() - scenario.verificationMinutes * 60_000) : null,
+    })
+    const { confirmBankOrderAction } = await import('@/server/actions/billing')
+    expect(await confirmBankOrderAction({ orderId: 'missing', receivedAmountSen: 1, note: 'Synthetic receipt check' }))
+      .toEqual({ ok: false, code: scenario.code })
+    expect(await testDb.order.count()).toBe(0)
+    expect(await testDb.creditLedger.count()).toBe(0)
+    expect(await testDb.subscription.count()).toBe(0)
+    expect(await testDb.auditLog.count({ where: { action: 'order.confirm' } })).toBe(0)
+  })
+
+  it('fresh ADMIN confirmation uses its session actor and commits once', async () => {
+    const { billingFixture, awaitingOrder, PROOF_BYTES } = await import('../helpers/billing-t02')
+    const storage = await import('@/lib/storage')
+    vi.mocked(storage.getObjectBytes).mockResolvedValue(PROOF_BYTES)
+    const f = await billingFixture()
+    const order = await awaitingOrder(f)
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { confirmBankOrderAction } = await import('@/server/actions/billing')
+    const input = { orderId: order.id, receivedAmountSen: order.amountSen, note: 'SYNTHETIC RECEIPT', actorId: 'forged' }
+    expect(await confirmBankOrderAction(input)).toMatchObject({ ok: true, data: { alreadyPaid: false } })
+    expect(await confirmBankOrderAction(input)).toMatchObject({ ok: true, data: { alreadyPaid: true } })
+    expect(await testDb.order.findUnique({ where: { id: order.id } })).toMatchObject({
+      status: 'PAID', confirmedById: admin.id,
+    })
+    expect(await testDb.creditLedger.count({ where: { refType: 'Order', refId: order.id } })).toBe(1)
+    expect(await testDb.auditLog.findMany({ where: { action: 'order.confirm', targetId: order.id } }))
+      .toEqual([expect.objectContaining({ actorId: admin.id })])
+  })
+})

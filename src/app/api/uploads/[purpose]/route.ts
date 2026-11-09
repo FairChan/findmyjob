@@ -203,7 +203,35 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
   }
 
   // All checks passed — upload to object storage
-  await putObject(key, buf, MIME_TYPES[detectedType])
+  try {
+    await putObject(key, buf, MIME_TYPES[detectedType])
+  } catch (error) {
+    // Payment storage exceptions can contain the private object path.
+    if (purpose === 'PAYMENT_PROOF') {
+      logger.error({ userId, companyId, purpose }, 'Payment proof upload failed')
+      return rejectJson('INTERNAL_ERROR', 500)
+    }
+    throw error
+  }
+
+  if (purpose === 'PAYMENT_PROOF') {
+    try {
+      await db.paymentProofUpload.create({
+        data: {
+          companyId: companyId!, uploaderId: userId, storageKey: key,
+          mimeType: MIME_TYPES[detectedType], sizeBytes: buf.length,
+        },
+      })
+    } catch {
+      try {
+        await deleteAllVersions(key)
+      } catch {
+        logger.error({ userId, companyId, purpose }, 'Unrecorded payment proof cleanup failed')
+      }
+      return rejectJson('INTERNAL_ERROR', 500)
+    }
+    return Response.json({ ok: true, key })
+  }
 
   // For RESUME purpose: create ResumeFile record (studentProfileId already validated above)
   if (purpose === 'RESUME') {

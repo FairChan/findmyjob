@@ -113,6 +113,7 @@ export default async function EmployerDashboardPage({
         ]
       : []),
     { href: '/e/team' as const, label: t('linkTeam') },
+    ...(role === 'OWNER' ? [{ href: '/e/billing' as const, label: t('linkBilling') }] : []),
   ]
 
   const showAdminNote =

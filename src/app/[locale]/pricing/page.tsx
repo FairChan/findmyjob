@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { listPublicPlans } from '@/server/services/admin-plans'
 
@@ -65,6 +66,10 @@ export default async function PricingPage({ params }: Props) {
                 <dd data-testid={testId} className="min-w-0 text-right font-semibold tabular-nums">{pack ? t('noSubscription') : plan[key] ?? t(key === 'durationDays' ? 'noSubscription' : 'unlimited')}</dd>
               </div>)}
             </dl>
+            {billingEnabled && plan.code !== 'FREE' && <Link
+              href={`/${locale}/e/billing/new?planId=${encodeURIComponent(plan.id)}`}
+              className="mt-5 inline-flex min-h-10 items-center rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
+            >{t('reviewQuote')}</Link>}
           </article>
         })}
       </div>}

@@ -21,6 +21,7 @@ interface AdminNavLinksProps {
   synonymsLabel: string
   articlesLabel: string
   plansLabel: string
+  ordersLabel: string
   pendingCount: number
 }
 
@@ -40,6 +41,7 @@ const NAV_ITEMS = [
   { key: 'synonyms', href: (locale: string) => `/${locale}/admin/synonyms`, icon: Languages, end: false },
   { key: 'articles', href: (locale: string) => `/${locale}/admin/articles`, icon: ShieldCheck, end: false },
   { key: 'plans', href: (locale: string) => `/${locale}/admin/plans`, icon: ClipboardList, end: false },
+  { key: 'orders', href: (locale: string) => `/${locale}/admin/orders`, icon: FileText, end: false },
 ] as const
 
 export function AdminNavLinks({
@@ -59,6 +61,7 @@ export function AdminNavLinks({
   synonymsLabel,
   articlesLabel,
   plansLabel,
+  ordersLabel,
   pendingCount,
 }: AdminNavLinksProps) {
   const pathname = usePathname()
@@ -79,6 +82,7 @@ export function AdminNavLinks({
     synonyms: synonymsLabel,
     articles: articlesLabel,
     plans: plansLabel,
+    orders: ordersLabel,
   }
 
   return (

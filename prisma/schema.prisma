@@ -178,6 +178,11 @@ enum PaymentMethod {
   CARD
 }
 
+enum PaymentProviderKind {
+  BANK_TRANSFER
+  STRIPE
+}
+
 enum SubscriptionStatus {
   ACTIVE
   EXPIRED
@@ -545,18 +550,19 @@ model Company {
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
 
-  members       CompanyMember[]
-  invites       CompanyInvite[]
-  verifications CompanyVerification[]
-  wallet        CreditWallet?
-  jobs          Job[]
-  unlocks       TalentUnlock[]
-  views         ProfileView[]
-  folders       TalentFolder[]
-  invitations   Invitation[]
-  orders        Order[]
-  subscriptions Subscription[]
-  blockedBy     BlockedCompany[]
+  members             CompanyMember[]
+  invites             CompanyInvite[]
+  verifications       CompanyVerification[]
+  wallet              CreditWallet?
+  jobs                Job[]
+  unlocks             TalentUnlock[]
+  views               ProfileView[]
+  folders             TalentFolder[]
+  invitations         Invitation[]
+  orders              Order[]
+  subscriptions       Subscription[]
+  blockedBy           BlockedCompany[]
+  paymentProofUploads PaymentProofUpload[]
 
   @@index([industryCode])
 }
@@ -824,25 +830,27 @@ model Plan {
 }
 
 model Order {
-  id            String         @id @default(cuid())
-  orderNo       String         @unique // FMJ-YYYYMMDD-XXXX
-  companyId     String
-  company       Company        @relation(fields: [companyId], references: [id])
-  planId        String
-  plan          Plan           @relation(fields: [planId], references: [id])
-  kind          OrderKind
-  amountSen     Int
-  discountSen   Int            @default(0)
-  currency      String         @default("MYR")
-  status        OrderStatus    @default(PENDING)
-  paymentMethod PaymentMethod?
-  externalRef   String?        @unique // 支付网关交易号，用于 webhook 幂等
-  proofKey      String? // 银行转账回单
-  createdById   String
-  confirmedById String?
-  paidAt        DateTime?      @db.Timestamptz(3)
-  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+  id                 String               @id @default(cuid())
+  orderNo            String               @unique // FMJ-YYYYMMDD-XXXX
+  companyId          String
+  company            Company              @relation(fields: [companyId], references: [id])
+  planId             String
+  plan               Plan                 @relation(fields: [planId], references: [id])
+  kind               OrderKind
+  amountSen          Int
+  discountSen        Int                  @default(0)
+  currency           String               @default("MYR")
+  status             OrderStatus          @default(PENDING)
+  paymentMethod      PaymentMethod?
+  paymentProvider    PaymentProviderKind? // 历史 null 不猜通道；新订单由服务显式填写
+  commercialSnapshot Json? // 版本化商品/净额/权益快照；历史 null 不补造
+  externalRef        String?              @unique // 支付网关交易号，用于 webhook 幂等
+  proofKey           String? // 银行转账回单
+  createdById        String
+  confirmedById      String?
+  paidAt             DateTime?            @db.Timestamptz(3)
+  createdAt          DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(3)
 
   subscription Subscription?
   invoice      Invoice?
@@ -850,6 +858,19 @@ model Order {
   @@index([companyId, createdAt])
   @@index([status])
   @@index([planId])
+}
+
+model PaymentProofUpload {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  uploaderId String // 历史来源 actor；当前 OWNER 可接手同公司凭证
+  storageKey String   @unique
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([companyId, createdAt])
 }
 
 model Subscription {

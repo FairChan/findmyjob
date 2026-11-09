@@ -70,6 +70,7 @@ export default async function AdminLayout({
           synonymsLabel={t('navSynonyms')}
           articlesLabel={t('navArticles')}
           plansLabel={t('navPlans')}
+          ordersLabel={t('navOrders')}
           pendingCount={pendingCount}
         />
       </aside>
