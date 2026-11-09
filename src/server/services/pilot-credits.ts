@@ -25,8 +25,8 @@ export async function getValidatedPilotMonthlyCredits(): Promise<number> {
 /** Immediately top up a newly verified company during the pilot period. */
 export async function grantPilotCreditsOnVerification(companyId: string): Promise<void> {
   try {
-    const billingEnabled = await getSetting<boolean>('billing.enabled', false)
-    if (billingEnabled) return
+    const billingEnabled = await getSetting<unknown>('billing.enabled', false, { fresh: true })
+    if (billingEnabled !== false) return
 
     const monthlyCredits = await getValidatedPilotMonthlyCredits()
     const result = await grantPilotCredits(companyId, monthlyCredits, klMonthStartUtc())

@@ -7,8 +7,8 @@ import { alert } from '../lib/alert'
 
 /** Scheduled job: top up all verified companies at the start of each month. */
 export async function runPilotMonthlyCredits(): Promise<void> {
-  const billingEnabled = await getSetting<boolean>('billing.enabled', false)
-  if (billingEnabled) {
+  const billingEnabled = await getSetting<unknown>('billing.enabled', false, { fresh: true })
+  if (billingEnabled !== false) {
     logger.info('pilot-monthly-credits: skipped (billing.enabled=true)')
     return
   }

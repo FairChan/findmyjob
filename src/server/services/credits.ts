@@ -4,6 +4,7 @@ import { db } from '../db'
 import { ForbiddenError, InsufficientCreditsError, ValidationError } from '../errors'
 import { logAudit } from './audit'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { getSetting } from './settings'
 
 export interface LedgerEntryParams {
   companyId: string
@@ -131,7 +132,7 @@ export async function createWallet(tx: Prisma.TransactionClient, companyId: stri
 
 export interface GrantPilotCreditsResult {
   granted: number
-  reason: 'ok' | 'already_granted' | 'balance_sufficient' | 'no_wallet'
+  reason: 'ok' | 'already_granted' | 'balance_sufficient' | 'no_wallet' | 'billing_enabled'
 }
 
 /**
@@ -161,6 +162,11 @@ export async function grantPilotCredits(
 
   return db.$transaction(async tx => {
     await lockXact(tx, LOCK_NS.CREDIT, companyId)
+
+    // Selection and warm caches cannot authorize a grant after the sales switch.
+    if (await getSetting<unknown>('billing.enabled', false, { tx, fresh: true }) !== false) {
+      return { granted: 0, reason: 'billing_enabled' as const }
+    }
 
     // Idempotency: skip if already processed this KL month (delta=0 rows count)
     const alreadyProcessed = await tx.creditLedger.findFirst({

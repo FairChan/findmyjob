@@ -13,7 +13,7 @@ import { getValidatedUnlockSettings } from '@/server/services/unlock'
 import type { TalentDetail, TalentEducation, TalentExperience } from '@/server/serializers/talent-card'
 import { Button } from '@/components/ui/button'
 import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
-import { UnlockButton } from '@/components/talent/UnlockButton'
+import { UnlockButton, type UnlockCreditsAdvice } from '@/components/talent/UnlockButton'
 import { InviteButton } from '@/components/invitations/InviteButton'
 import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 
@@ -146,6 +146,7 @@ function TalentDetailBody({
   costCredits,
   unlockEnabled,
   billingEnabled,
+  insufficientCreditsAdvice,
   inviteJobs,
   inviteUsed,
   inviteQuota,
@@ -158,6 +159,7 @@ function TalentDetailBody({
   costCredits: number
   unlockEnabled: boolean
   billingEnabled: boolean
+  insufficientCreditsAdvice?: UnlockCreditsAdvice
   inviteJobs: InviteJob[]
   inviteUsed: number
   inviteQuota: number | null
@@ -221,6 +223,7 @@ function TalentDetailBody({
             {!detail.unlocked && unlockEnabled && (
               <UnlockButton
                 studentId={detail.id}
+                insufficientCreditsAdvice={insufficientCreditsAdvice}
                 labels={{
                   button: tLabel('unlockButton', { cost: costCredits }),
                   confirmTitle: tLabel('unlockConfirmTitle'),
@@ -402,12 +405,18 @@ export default async function TalentDetailPage({
     )
   }
 
-  const [unlockSettings, unlockEnabled, billingEnabled, inviteUsage] = await Promise.all([
+  const [unlockSettings, unlockEnabled, billingSetting, inviteUsage] = await Promise.all([
     getValidatedUnlockSettings(),
     getSetting<boolean>('unlock.enabled', true),
-    getSetting<boolean>('billing.enabled', false),
+    getSetting<unknown>('billing.enabled', false, { fresh: true }),
     getCompanyEntitlementUsage(ctx),
   ])
+  const billingEnabled = billingSetting === true
+  const insufficientCreditsAdvice: UnlockCreditsAdvice | undefined = billingEnabled
+    ? ctx.role === 'OWNER'
+      ? { text: tLabel('unlockPurchaseCredits'), href: `/${locale}/e/billing` }
+      : { text: tLabel('unlockAskOwnerToPurchase') }
+    : undefined
 
   // Fetch published jobs for this company (for the invite dialog)
   const now = new Date()
@@ -463,6 +472,7 @@ export default async function TalentDetailPage({
         costCredits={unlockSettings.costCredits}
         unlockEnabled={unlockEnabled}
         billingEnabled={billingEnabled}
+        insufficientCreditsAdvice={insufficientCreditsAdvice}
         inviteJobs={publishedJobs}
         inviteUsed={inviteUsage.invitations.used}
         inviteQuota={inviteUsage.invitations.limit}

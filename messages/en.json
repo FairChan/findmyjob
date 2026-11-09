@@ -971,6 +971,8 @@
     "unlockConfirmCancel": "Cancel",
     "unlockErrorInsufficient": "Insufficient credits",
     "unlockErrorInsufficientPilot": "Insufficient credits. Pilot credits will be replenished on the 1st of next month.",
+    "unlockPurchaseCredits": "Buy credits",
+    "unlockAskOwnerToPurchase": "Ask your company owner to purchase credits.",
     "unlockErrorRateLimit": "Daily unlock limit reached. Please try again tomorrow.",
     "unlockErrorGeneric": "Unlock failed, please try again",
     "sectionSummary": "Summary",
