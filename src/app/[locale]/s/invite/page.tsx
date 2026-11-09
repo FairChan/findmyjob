@@ -132,7 +132,7 @@ export default async function InvitePage({
                 ].join(' ')}
               >
                 <span>{isLast ? t('milestoneUnlimited') : `+${(m / tierSize) * tierBonus}`}</span>
-                <span className="font-normal opacity-70">{m}</span>
+                <span className="font-normal">{m}</span>
               </div>
             )
           })}

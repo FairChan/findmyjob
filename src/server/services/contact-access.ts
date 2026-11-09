@@ -1,8 +1,9 @@
 import 'server-only'
 import { z } from 'zod'
 import { db } from '../db'
-import { NotFoundError, ForbiddenError } from '../errors'
+import { NotFoundError, ForbiddenError, DecryptError } from '../errors'
 import { encryptField, decryptField } from '../lib/crypto'
+import { alert } from '../lib/alert'
 import { logAudit } from './audit'
 import type { UserCtx } from '../authz'
 
@@ -87,12 +88,27 @@ function encryptIfPresent(value: string | null | undefined, field: string, stude
   return encryptField(value, aad(field, studentId))
 }
 
-function decryptIfPresent(value: string | null, field: string, studentId: string) {
+function decryptIfPresent(
+  value: string | null,
+  field: string,
+  studentId: string,
+  onFailure: 'throw' | 'null',
+) {
   if (value == null) return null
-  return decryptField(value, aad(field, studentId))
+  try {
+    return decryptField(value, aad(field, studentId))
+  } catch (err) {
+    if (!(err instanceof DecryptError)) throw err
+    alert('contact.decrypt_failed', { studentId, field })
+    if (onFailure === 'throw') throw err
+    return null
+  }
 }
 
-/** Reads and decrypts the student's own contact info. */
+/**
+ * Reads the student's contact info for editing. Fail closed so an unreadable
+ * value cannot become an editable null and erase its ciphertext on submission.
+ */
 export async function getOwnContact(ctx: UserCtx): Promise<ContactData> {
   const studentId = await getStudentId(ctx)
   const row = await db.studentContact.findUnique({ where: { studentId } })
@@ -100,11 +116,11 @@ export async function getOwnContact(ctx: UserCtx): Promise<ContactData> {
     return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
   }
   return {
-    phone: decryptIfPresent(row.phone, 'phone', studentId),
-    email: decryptIfPresent(row.email, 'email', studentId),
-    whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
-    wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
-    linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
+    phone: decryptIfPresent(row.phone, 'phone', studentId, 'throw'),
+    email: decryptIfPresent(row.email, 'email', studentId, 'throw'),
+    whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId, 'throw'),
+    wechat: decryptIfPresent(row.wechat, 'wechat', studentId, 'throw'),
+    linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId, 'throw'),
   }
 }
 
@@ -247,11 +263,11 @@ export async function getContactForCompany(
     }
 
     return {
-      phone: decryptIfPresent(row.phone, 'phone', studentId),
-      email: decryptIfPresent(row.email, 'email', studentId),
-      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
-      wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
-      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
+      phone: decryptIfPresent(row.phone, 'phone', studentId, 'null'),
+      email: decryptIfPresent(row.email, 'email', studentId, 'null'),
+      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId, 'null'),
+      wechat: decryptIfPresent(row.wechat, 'wechat', studentId, 'null'),
+      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId, 'null'),
     }
   })
 }
@@ -285,11 +301,11 @@ export async function getContactForAdmin(
     }
 
     return {
-      phone: decryptIfPresent(row.phone, 'phone', studentProfileId),
-      email: decryptIfPresent(row.email, 'email', studentProfileId),
-      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentProfileId),
-      wechat: decryptIfPresent(row.wechat, 'wechat', studentProfileId),
-      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentProfileId),
+      phone: decryptIfPresent(row.phone, 'phone', studentProfileId, 'null'),
+      email: decryptIfPresent(row.email, 'email', studentProfileId, 'null'),
+      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentProfileId, 'null'),
+      wechat: decryptIfPresent(row.wechat, 'wechat', studentProfileId, 'null'),
+      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentProfileId, 'null'),
     }
   })
 }

@@ -508,6 +508,11 @@ test.describe('PII leak – talent search/detail (M4-T22, free-text coverage + i
         // 7. Account email (User.email, never serialized to employer side)
         expect(all).not.toContain(piiStudentAccountEmail)
 
+        // M4-T17: a locked candidate must not expose an internal resume URL in
+        // any collected HTML, RSC or Server Action response. The sentinel owns
+        // a real ResumeFile row, so this also guards a hidden download control.
+        expect(all).not.toContain('/api/resumes/')
+
         // Positive: detail h1 shows masked name — checked last (live DOM assertion on
         // current page, which is the detail page after the direct goto in step 8)
         const h1Text = await page.locator('h1').first().textContent()

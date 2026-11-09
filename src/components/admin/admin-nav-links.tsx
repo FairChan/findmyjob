@@ -80,7 +80,7 @@ export function AdminNavLinks({
             <Icon className="size-4 shrink-0" />
             {labels[key]}
             {key === 'dashboard' && pendingCount > 0 && (
-              <span className="ml-auto rounded-full bg-red-500 px-1.5 text-xs text-white">
+              <span className="ml-auto rounded-full bg-red-700 px-1.5 text-xs text-white">
                 {pendingCount}
               </span>
             )}

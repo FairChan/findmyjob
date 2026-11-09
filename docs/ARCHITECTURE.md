@@ -186,7 +186,7 @@ flowchart LR
 
   文件头：`%PDF-`、`89 50 4E 47`、`FF D8 FF`；SVG、HTML、XML 一律拒收。
 - **PDF 解析入口**：所有用 pdf-lib 解析用户 PDF 的地方（上传检查、下载水印）都必须经过 `src/server/lib/pdf-worker.ts` 的 `runCappedPdfWorker`，以防止解压炸弹。
-- **下载**：服务端先校验权限，再生成有效期不超过 300 秒的签名 GET，带 `Content-Disposition: attachment`，文件名按 RFC 5987 编码。企业下载简历走 `/api/resumes/[id]/download`：服务端读取 PDF → 用 `PDFDocument.create()` + `copyPages()` 重建文档（丢掉 OpenAction、JavaScript、附件）→ 每页加水印 → 流式返回，不暴露原始 URL；每个企业成员同时最多 2 个水印任务。
+- **下载**：服务端先校验权限，再生成有效期不超过 300 秒的签名 GET，带 `Content-Disposition: attachment`，文件名按 RFC 5987 编码。企业下载简历走 `/api/resumes/[id]/download`：有界读取 PDF → `sanitizePdf` 重建并严格清理危险动作、注释及附件 → 按页面旋转加水印 → 分块流式返回，不暴露原始 URL。PostgreSQL ConcurrencyLease 协调跨实例容量，每个成员最多 2 个，全局默认 4；60 秒租约、15 秒续租，取消/失租停止底层处理，响应结束后释放。PDF 处理仍需完整有界缓冲区，响应分块避免额外整份复制；详细截止与故障语义见 M4-T17 决策。
 - **Logo**：走 `/api/logos/[companyId]` 代理，设 public 长缓存（P1：M7-T17）。
 - **存储桶**：私有并阻止公共访问；开启版本控制，非当前版本 30 天后过期。删除用户数据时用 ListObjectVersions + DeleteObjects 删掉全部版本。
 - **Key 规则**：`resumes/{studentId}/{cuid}.pdf`、`verifications/{companyId}/{cuid}.{ext}`、`logos/{companyId}/{cuid}.{ext}`、`exports/{userId}/{cuid}.zip`。

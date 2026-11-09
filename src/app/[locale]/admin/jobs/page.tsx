@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { requireAdmin } from '@/server/authz'
 import { listPendingJobs } from '@/server/services/review-jobs'
+import { formatKLDate } from '@/lib/format-date'
 
 export default async function AdminJobsPage({
   params,
@@ -43,7 +44,7 @@ export default async function AdminJobsPage({
                     {tJobs(`type.${job.type}`)}
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(job.updatedAt).toLocaleDateString(locale === 'zh' ? 'zh-MY' : 'en-MY', { timeZone: 'Asia/Kuala_Lumpur' })}
+                    {formatKLDate(job.updatedAt, locale)}
                   </td>
                   <td className="p-3 text-right">
                     <Link

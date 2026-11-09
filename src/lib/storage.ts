@@ -65,16 +65,72 @@ export async function getSignedDisplayUrl(key: string): Promise<string> {
   return awsGetSignedUrl(client, command, { expiresIn: SIGNED_URL_EXPIRES_SECONDS })
 }
 
-export async function getObjectBytes(key: string, opts?: { maxBytes?: number }): Promise<Buffer> {
+type DownloadBody = {
+  transformToByteArray(): Promise<Uint8Array>
+  destroy?: () => unknown
+  [Symbol.asyncIterator]?: () => AsyncIterator<Uint8Array>
+}
+
+function downloadAborted(): Error {
+  return Object.assign(new Error('Object download aborted'), { name: 'AbortError' })
+}
+
+export async function getObjectBytes(
+  key: string,
+  opts?: { maxBytes?: number; signal?: AbortSignal },
+): Promise<Buffer> {
+  const signal = opts?.signal
+  if (signal?.aborted) throw downloadAborted()
   const client = makeClient()
   const command = new GetObjectCommand({ Bucket: env.S3_BUCKET, Key: key })
-  const response = await client.send(command)
-  if (!response.Body) throw new Error('Empty S3 response body')
-  if (opts?.maxBytes !== undefined && response.ContentLength !== undefined && response.ContentLength > opts.maxBytes) {
-    throw Object.assign(new Error(`S3 object exceeds maxBytes: ${response.ContentLength} > ${opts.maxBytes}`), { code: 'FILE_TOO_LARGE' })
+  let body: DownloadBody | undefined
+  const onAbort = () => {
+    body?.destroy?.()
+    client.destroy?.()
   }
-  const bytes = await (response.Body as unknown as { transformToByteArray(): Promise<Uint8Array> }).transformToByteArray()
-  return Buffer.from(bytes)
+  const checkSize = (size: number) => {
+    if (opts?.maxBytes !== undefined && size > opts.maxBytes) {
+      throw Object.assign(new Error('S3 object exceeds maxBytes'), { code: 'FILE_TOO_LARGE' })
+    }
+  }
+  signal?.addEventListener('abort', onAbort, { once: true })
+  try {
+    if (signal?.aborted) throw downloadAborted()
+    const response = signal
+      ? await client.send(command, { abortSignal: signal })
+      : await client.send(command)
+    if (!response.Body) throw new Error('Empty S3 response body')
+    body = response.Body as DownloadBody
+    if (signal?.aborted) throw downloadAborted()
+    if (response.ContentLength !== undefined) checkSize(response.ContentLength)
+
+    // The Node SDK returns a Readable. Bound actual bytes as well as ContentLength,
+    // and await its completion/close so cancellation cannot leave a reader running.
+    if (body[Symbol.asyncIterator]) {
+      const chunks: Buffer[] = []
+      let total = 0
+      for await (const chunk of body as AsyncIterable<Uint8Array>) {
+        if (signal?.aborted) throw downloadAborted()
+        total += chunk.byteLength
+        checkSize(total)
+        chunks.push(Buffer.from(chunk.buffer, chunk.byteOffset, chunk.byteLength))
+      }
+      if (signal?.aborted) throw downloadAborted()
+      return Buffer.concat(chunks, total)
+    }
+
+    const bytes = await body.transformToByteArray()
+    if (signal?.aborted) throw downloadAborted()
+    checkSize(bytes.byteLength)
+    return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength)
+  } catch (error) {
+    body?.destroy?.()
+    if (signal?.aborted) throw downloadAborted()
+    throw error
+  } finally {
+    signal?.removeEventListener('abort', onAbort)
+    client.destroy?.()
+  }
 }
 
 export async function deleteAllVersions(key: string): Promise<void> {

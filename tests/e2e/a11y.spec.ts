@@ -21,8 +21,6 @@ import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
 import { e2eDb as db } from './helpers/db'
 
-test.describe.configure({ mode: 'serial' })
-
 type AxeViolation = Awaited<ReturnType<AxeBuilder['analyze']>>['violations'][number]
 
 function formatViolations(violations: AxeViolation[]): string {

@@ -1041,6 +1041,18 @@ model JobReport {
 
 // ==================== 认证限流（Better Auth rateLimit） ====================
 
+/// 跨进程容量租约；ownerKey 为内部标识，不级联删除仍在运行的任务
+model ConcurrencyLease {
+  id        String   @id @default(cuid())
+  scope     String
+  ownerKey  String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([scope, expiresAt])
+  @@index([scope, ownerKey, expiresAt])
+}
+
 /// Better Auth database rate-limit storage（key = IP + path, lastRequest 为 Unix ms 时间戳）
 model rateLimit {
   id          String @id @default(cuid())

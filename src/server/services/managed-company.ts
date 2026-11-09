@@ -8,7 +8,7 @@ import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createCompanySchema } from './company'
 import { jobFormSchema } from './jobs'
-import { grantPilotCreditsOnVerification } from '../jobs/pilot-monthly-credits'
+import { grantPilotCreditsOnVerification } from './pilot-credits'
 import { logger } from '../lib/logger'
 import type { UserCtx } from '../authz'
 

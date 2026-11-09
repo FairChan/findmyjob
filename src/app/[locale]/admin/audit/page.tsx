@@ -6,21 +6,9 @@ import { requireAdmin } from '@/server/authz'
 import { ForbiddenError, TwoFactorRequiredError } from '@/server/errors'
 import { listAuditLogs } from '@/server/services/admin-audit'
 import { AUDIT_ACTIONS } from '@/server/lib/audit-actions'
+import { formatKLDateTime } from '@/lib/format-date'
 
 export const dynamic = 'force-dynamic'
-
-function formatKL(date: Date): string {
-  return date.toLocaleString('zh-CN', {
-    timeZone: 'Asia/Kuala_Lumpur',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-}
 
 function str(v: unknown): string | undefined {
   if (typeof v === 'string' && v.length > 0) return v
@@ -165,7 +153,7 @@ export default async function AdminAuditPage({
               items.map((item) => (
                 <tr key={item.id}>
                   <td className="whitespace-nowrap px-5 py-3 text-gray-600 text-xs">
-                    {formatKL(item.createdAt)}
+                    {formatKLDateTime(item.createdAt, locale)}
                   </td>
                   <td className="px-3 py-3">
                     <div className="text-sm font-medium text-gray-800">{item.actorName ?? '—'}</div>

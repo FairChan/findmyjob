@@ -34,6 +34,7 @@ export default async function PrivacyPage() {
     companyName: u.companyName,
     unlockedAt: formatKLDate(u.unlockedAt, locale),
     unlockedAtKey: u.unlockedAt.toISOString(),
+    source: u.source,
   }))
 
   return (

@@ -1,4 +1,3 @@
-import 'server-only'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { alert } from '../lib/alert'

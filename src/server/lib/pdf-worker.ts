@@ -96,7 +96,7 @@ parentPort.once('message', async ({ input, params, maxInflatedBytes, script }) =
 
 export type CappedPdfResult<T> =
   | { ok: true; result: T }
-  | { ok: false; reason: 'too_large' | 'timeout' | 'failed' }
+  | { ok: false; reason: 'too_large' | 'timeout' | 'failed' | 'aborted' }
 
 /**
  * Run `script` in an isolated Worker with a decompression budget cap.
@@ -113,12 +113,15 @@ export async function runCappedPdfWorker<T>(
   script: string,
   input: Buffer,
   params?: unknown,
-  opts?: { maxInflatedBytes?: number; timeoutMs?: number },
+  opts?: { maxInflatedBytes?: number; timeoutMs?: number; signal?: AbortSignal },
 ): Promise<CappedPdfResult<T>> {
+  const signal = opts?.signal
+  if (signal?.aborted) return { ok: false, reason: 'aborted' }
   const maxInflatedBytes =
     opts?.maxInflatedBytes ??
     (await getSetting('upload.pdfMaxInflatedBytes', 50 * 1024 * 1024))
   const timeoutMs = opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS
+  if (signal?.aborted) return { ok: false, reason: 'aborted' }
 
   return new Promise<CappedPdfResult<T>>((resolve) => {
     const worker = new Worker(CAPPED_WORKER_BOOTSTRAP, {
@@ -129,19 +132,42 @@ export async function runCappedPdfWorker<T>(
       },
     })
 
+    let settling = false
+    const exited = new Promise<void>((resolveExit) => {
+      worker.once('exit', () => {
+        resolveExit()
+        void finish({ ok: false, reason: 'failed' })
+      })
+    })
+
+    // A lease may be released only after the underlying thread has exited.
+    // Merely racing a worker promise against cancellation leaves work running.
+    async function finish(result: CappedPdfResult<T>): Promise<void> {
+      if (settling) return
+      settling = true
+      clearTimeout(timer)
+      signal?.removeEventListener('abort', onAbort)
+      try {
+        await worker.terminate()
+      } catch {
+        // Even if termination reports an error, wait for the actual exit.
+      }
+      await exited
+      resolve(signal?.aborted ? { ok: false, reason: 'aborted' } : result)
+    }
+
+    const onAbort = () => { void finish({ ok: false, reason: 'aborted' }) }
     const timer = setTimeout(() => {
-      worker.terminate()
-      resolve({ ok: false, reason: 'timeout' })
+      void finish({ ok: false, reason: 'timeout' })
     }, timeoutMs)
+    signal?.addEventListener('abort', onAbort, { once: true })
 
     worker.once('message', (msg: { ok: boolean; result?: T; reason?: string }) => {
-      clearTimeout(timer)
-      worker.terminate()
       if (msg.ok) {
-        resolve({ ok: true, result: msg.result as T })
+        void finish({ ok: true, result: msg.result as T })
       } else {
         const r = msg.reason
-        resolve({
+        void finish({
           ok: false,
           reason: r === 'too_large' ? 'too_large' : 'failed',
         })
@@ -149,15 +175,17 @@ export async function runCappedPdfWorker<T>(
     })
 
     worker.on('error', () => {
-      clearTimeout(timer)
-      resolve({ ok: false, reason: 'failed' })
+      void finish({ ok: false, reason: 'failed' })
     })
 
-    worker.on('exit', (code) => {
-      clearTimeout(timer)
-      if (code !== 0) resolve({ ok: false, reason: 'failed' })
-    })
-
-    worker.postMessage({ input, params, maxInflatedBytes, script })
+    if (signal?.aborted) {
+      onAbort()
+    } else {
+      try {
+        worker.postMessage({ input, params, maxInflatedBytes, script })
+      } catch {
+        void finish({ ok: false, reason: 'failed' })
+      }
+    }
   })
 }

@@ -5,6 +5,7 @@ import { z } from 'zod'
 import { VerificationStatus } from '@prisma/client'
 import { requireAdmin } from '@/server/authz'
 import { searchCompanies } from '@/server/services/admin-companies'
+import { formatKLDate } from '@/lib/format-date'
 
 const VALID_VERIFICATION_STATUSES = Object.values(VerificationStatus) as string[]
 
@@ -153,7 +154,7 @@ export default async function AdminCompaniesPage({
                     {company.walletBalance !== null ? company.walletBalance : '—'}
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(company.createdAt).toLocaleDateString(locale)}
+                    {formatKLDate(company.createdAt, locale)}
                   </td>
                   <td className="p-3 text-right">
                     <Link

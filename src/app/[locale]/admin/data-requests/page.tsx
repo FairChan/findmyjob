@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireAdmin } from '@/server/authz'
 import { listDataRequestsForAdmin } from '@/server/services/data-rights'
 import { DataRequestActions } from '@/components/admin/data-request-actions'
+import { formatKLDate } from '@/lib/format-date'
 
 const searchParamsSchema = z.object({
   status: z.enum(['OPEN', 'DONE', 'REJECTED']).optional(),
@@ -86,7 +87,7 @@ export default async function AdminDataRequestsPage({
                     </span>
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(req.createdAt).toLocaleDateString(locale)}
+                    {formatKLDate(req.createdAt, locale)}
                   </td>
                   <td className="p-3 text-right">
                     {req.type === 'CORRECT' && req.status === 'OPEN' && (

@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { z } from 'zod'
 import { requireAdmin } from '@/server/authz'
 import { searchStudents, searchStudentsSchema } from '@/server/services/admin-users'
+import { formatKLDate } from '@/lib/format-date'
 
 const listParamsSchema = z.object({
   q: z.string().max(200).optional(),
@@ -98,7 +99,7 @@ export default async function AdminStudentsPage({
                   </td>
                   <td className="p-3 text-muted-foreground">
                     {s.schoolVerifiedAt
-                      ? new Date(s.schoolVerifiedAt).toLocaleDateString(locale)
+                      ? formatKLDate(s.schoolVerifiedAt, locale)
                       : '—'}
                   </td>
                   <td className="p-3">{s.completeness}%</td>

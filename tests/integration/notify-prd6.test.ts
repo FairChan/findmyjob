@@ -584,7 +584,7 @@ describe('PRD §6 — credits granted', () => {
     await testDb.creditWallet.create({ data: { companyId: emp.companyId, balance: 0 } })
     await testDb.user.update({ where: { id: emp.userId }, data: { locale: 'zh' } })
 
-    const { grantPilotCreditsOnVerification } = await import('@/server/jobs/pilot-monthly-credits')
+    const { grantPilotCreditsOnVerification } = await import('@/server/services/pilot-credits')
     await grantPilotCreditsOnVerification(emp.companyId)
 
     const notif = await testDb.notification.findFirst({

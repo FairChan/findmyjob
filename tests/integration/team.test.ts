@@ -264,7 +264,11 @@ describe('acceptInvite', () => {
     await acceptInvite({ userId: invitedUser.id }, token)
 
     // Second accept with same token → already used
-    await expect(acceptInvite({ userId: invitedUser.id }, token)).rejects.toBeInstanceOf(ValidationError)
+    // Remove membership so the separate membership guard cannot mask a missing
+    // acceptedAt guard: a used invitation must never allow the user to rejoin.
+    await testDb.companyMember.deleteMany({ where: { userId: invitedUser.id } })
+    await expect(acceptInvite({ userId: invitedUser.id }, token)).rejects.toThrow('Invite already used')
+    expect(await testDb.companyMember.count({ where: { userId: invitedUser.id } })).toBe(0)
   })
 
   it('rejects when user email does not match invite email', async () => {

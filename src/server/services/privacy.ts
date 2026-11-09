@@ -1,6 +1,6 @@
 import 'server-only'
 import { z } from 'zod'
-import { Visibility, Prisma } from '@prisma/client'
+import { Visibility, Prisma, type UnlockSource } from '@prisma/client'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { logAudit } from './audit'
@@ -232,7 +232,7 @@ export async function getProfileViews(ctx: { userId: string }): Promise<
 }
 
 export async function getUnlocks(ctx: { userId: string }): Promise<
-  Array<{ companyId: string; companyName: string; unlockedAt: Date }>
+  Array<{ companyId: string; companyName: string; unlockedAt: Date; source: UnlockSource }>
 > {
   const profile = await db.studentProfile.findUnique({
     where: { userId: ctx.userId },
@@ -253,5 +253,6 @@ export async function getUnlocks(ctx: { userId: string }): Promise<
     companyName:
       r.company.displayNameZh ?? r.company.displayNameEn ?? r.company.legalName,
     unlockedAt: r.createdAt,
+    source: r.source,
   }))
 }

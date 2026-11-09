@@ -1,4 +1,5 @@
 import 'server-only'
+import type { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { getSetting } from './settings'
 
@@ -11,11 +12,16 @@ import { getSetting } from './settings'
 export async function isStudentVisibleToCompany(
   studentId: string,
   companyId: string,
+  tx?: Prisma.TransactionClient,
 ): Promise<boolean> {
-  const minCompleteness = await getSetting<number>('talentPool.minCompleteness', 60)
+  const client = tx ?? db
+  // Transaction callers keep all visibility reads on their own connection.
+  const minCompleteness = tx
+    ? ((await tx.systemSetting.findUnique({ where: { key: 'talentPool.minCompleteness' } }))?.value as number | undefined) ?? 60
+    : await getSetting<number>('talentPool.minCompleteness', 60)
 
   const [student, blocked] = await Promise.all([
-    db.studentProfile.findUnique({
+    client.studentProfile.findUnique({
       where: { id: studentId },
       select: {
         visibility: true,
@@ -24,7 +30,7 @@ export async function isStudentVisibleToCompany(
         user: { select: { status: true } },
       },
     }),
-    db.blockedCompany.findUnique({
+    client.blockedCompany.findUnique({
       where: { studentId_companyId: { studentId, companyId } },
       select: { studentId: true },
     }),

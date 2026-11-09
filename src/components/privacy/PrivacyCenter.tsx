@@ -2,6 +2,7 @@
 import { useState, useTransition, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import type { UnlockSource } from '@prisma/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -46,6 +47,7 @@ interface UnlockEntry {
   companyName: string
   unlockedAt: string
   unlockedAtKey: string
+  source: UnlockSource
 }
 
 interface Props {
@@ -342,7 +344,14 @@ export default function PrivacyCenter({
           <ul className="divide-y rounded-md border">
             {unlocks.map((u) => (
               <li key={`${u.companyId}-${u.unlockedAtKey}`} className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm">{u.companyName}</span>
+                <div className="min-w-0 text-sm">
+                  <span>{u.companyName}</span>
+                  {u.source === 'APPLICATION' && (
+                    <span className="mt-1 block text-xs text-muted-foreground">
+                      {t('unlockSourceApplication')}
+                    </span>
+                  )}
+                </div>
                 <span className="text-xs text-muted-foreground">
                   {u.unlockedAt}
                 </span>

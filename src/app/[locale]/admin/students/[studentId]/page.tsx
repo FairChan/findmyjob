@@ -7,6 +7,7 @@ import { getQuota } from '@/server/services/job-view-quota'
 import { NotFoundError } from '@/server/errors'
 import { notFound } from 'next/navigation'
 import { AdminStudentActions } from './admin-student-actions'
+import { formatKLDate } from '@/lib/format-date'
 
 export default async function AdminStudentDetailPage({
   params,
@@ -80,7 +81,7 @@ export default async function AdminStudentDetailPage({
               <dt className="text-muted-foreground">{t('fieldSchoolVerified')}</dt>
               <dd>
                 {detail.schoolVerifiedAt
-                  ? new Date(detail.schoolVerifiedAt).toLocaleDateString(locale)
+                  ? formatKLDate(detail.schoolVerifiedAt, locale)
                   : t('no')}
               </dd>
             </div>

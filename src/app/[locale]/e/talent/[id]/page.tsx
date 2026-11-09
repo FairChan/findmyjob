@@ -9,6 +9,7 @@ import { ForbiddenError, NotFoundError, RateLimitedError } from '@/server/errors
 import { db } from '@/server/db'
 import { viewTalentProfile } from '@/server/services/talent-view'
 import { getSetting } from '@/server/services/settings'
+import { getValidatedUnlockSettings } from '@/server/services/unlock'
 import type { TalentDetail, TalentEducation, TalentExperience } from '@/server/serializers/talent-card'
 import { Button } from '@/components/ui/button'
 import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
@@ -143,6 +144,8 @@ function TalentDetailBody({
   tLabel,
   tFolders,
   costCredits,
+  unlockEnabled,
+  billingEnabled,
   inviteJobs,
   inviteUsed,
   inviteQuota,
@@ -152,6 +155,8 @@ function TalentDetailBody({
   tLabel: (key: string, values?: Record<string, string | number>) => string
   tFolders: (key: string) => string
   costCredits: number
+  unlockEnabled: boolean
+  billingEnabled: boolean
   inviteJobs: InviteJob[]
   inviteUsed: number
   inviteQuota: number
@@ -211,18 +216,17 @@ function TalentDetailBody({
                 errorOccurred: tFolders('errorOccurred'),
               }}
             />
-            {!detail.unlocked && (
+            {!detail.unlocked && unlockEnabled && (
               <UnlockButton
                 studentId={detail.id}
-                costCredits={costCredits}
                 labels={{
-                  button: tLabel('unlockButton'),
+                  button: tLabel('unlockButton', { cost: costCredits }),
                   confirmTitle: tLabel('unlockConfirmTitle'),
                   confirmDesc: tLabel('unlockConfirmDesc'),
                   confirmCost: tLabel('unlockConfirmCost', { cost: costCredits }),
                   confirmOk: tLabel('unlockConfirmOk'),
                   confirmCancel: tLabel('unlockConfirmCancel'),
-                  errorInsufficient: tLabel('unlockErrorInsufficient'),
+                  errorInsufficient: tLabel(billingEnabled ? 'unlockErrorInsufficient' : 'unlockErrorInsufficientPilot'),
                   errorRateLimit: tLabel('unlockErrorRateLimit'),
                   errorGeneric: tLabel('unlockErrorGeneric'),
                 }}
@@ -395,8 +399,10 @@ export default async function TalentDetailPage({
     )
   }
 
-  const [costCredits, inviteUsage] = await Promise.all([
-    getSetting<number>('unlock.costCredits', 1),
+  const [unlockSettings, unlockEnabled, billingEnabled, inviteUsage] = await Promise.all([
+    getValidatedUnlockSettings(),
+    getSetting<boolean>('unlock.enabled', true),
+    getSetting<boolean>('billing.enabled', false),
     getMonthlyInvitationUsage(ctx.companyId),
   ])
 
@@ -451,7 +457,9 @@ export default async function TalentDetailPage({
         locale={locale}
         tLabel={tLabel}
         tFolders={tFolders}
-        costCredits={costCredits}
+        costCredits={unlockSettings.costCredits}
+        unlockEnabled={unlockEnabled}
+        billingEnabled={billingEnabled}
         inviteJobs={publishedJobs}
         inviteUsed={inviteUsage.used}
         inviteQuota={inviteUsage.quota}

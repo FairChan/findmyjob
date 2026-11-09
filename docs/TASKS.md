@@ -1710,7 +1710,7 @@
 - （原来的第 3 条「proxy 对 /admin 匹配太宽」已经在 M7-T05 里改成按路径段匹配，不用再做。）
 > 完成 2026-11-09：已有非撤回投递拒绝再邀，历史双邀请顺序／并发接受共用投递且不再触发 applicationId 唯一冲突；补齐后台投递、解锁、发布职位的 12 周 KL 趋势和中英文提示，修复手机图表裁切及日期省略。新增集成测试先红 8 条、修复后相关 35/35；全量 Vitest 2030 passed / 4 skipped（默认关闭的性能基准）。lint、typecheck、build 通过；db:check 通过并以容器 psql 补查外键索引（0 缺失）。全量 E2E 296 passed / 1 failed，失败为新增 spec 使用固定种子邮箱冲突；改为独立邮箱后仅重跑该 spec，6/6 通过（含 3 项登录 setup）。报告与截图：`../findmyjob-plan/.reports/2026-11-09-codex-takeover/summary.md`；决策 D-INV-03、D-DASH-01。未推送或部署。
 
-#### [ ] M4-T17 点数与解锁加固（P1，收费前，即 M8 之前）
+#### [x] M4-T17 点数与解锁加固（P1，收费前，即 M8 之前）
 依赖：M4-T16
 > 总控 2026-11-07 加入：来自 M4-T06/T07 复查的 Medium 和 Low，按收尾规则不挡 GATE-M4。
 做 / 验收：
@@ -1728,6 +1728,8 @@
 12. 来自 M4-T12 复查（Low）：「被解锁」邮件通知（PRD §6，若 M5-T08 没覆盖就在这里做）；隐私中心里 APPLICATION 来源的解锁单独标注；学生屏蔽企业后它以前的查看记录是否隐藏（先保留，DECISIONS 记一行）。
 13. 来自 M4 修复任务的最终核对（Low）：`credits.adjust` 审计写入失败时整笔回滚的测试；解锁后查学生 userId 的那次 `studentProfile.findUnique` 也放进通知的 try/catch；global-setup 里补账本行和改余额放进同一个事务；水印考虑页面 /Rotate；format-date 的断言改成完整字符串比较，admin 页面的日期也走 format-date；mark-as-read action 加「传别人的通知 id 不生效」的测试；解锁通知 payload 断言完整形状；StudentNav 的 aria-label 改成导航用途的名字。
 14. 来自 GATE-M4 取证（2026-11-08）：「列表悬停 3 秒 ProfileView 不变」的 E2E 跑在 next dev 上（dev 不做 prefetch），也不数 ProfileView 行数，去掉 `prefetch={false}` 时没有测试会失败；改用 next start 跑这一条，或者加一条断言 Link 带 `prefetch={false}` 的组件测试。上传拒绝补路由级测试（断言 putObject 没被调用），`resumeFile.create` 失败时删掉已上传的对象；补「被移除的成员下一次请求被拒」的测试，以及只删掉 team.ts 里已用邀请检查时会失败的测试；补 `student.visibility.change` 审计的断言；pii-leak 断言响应里没有 `/api/resumes/`。另外，sanitizePdf 的 Dest/Rect 尾部元素现在只要求不是 PDFRef，按 M4-T25 原规格收紧为只能是 PDFName、PDFNumber、PDFNull（处理好 CJS 导出下的 instanceof）。
+
+> 完成 2026-11-09：14 项实现/既有功能核销完成；资金原子更新、事务内可见性、精确唯一冲突恢复、只读解密降级、PDF 跨实例租约/取消/旋转/白名单、上传失败补偿、隐私来源与 KL 日期均有守护。全量 Vitest 2268 通过、4 个既有性能基准跳过，另补跑隐私 UI 2/2；lint/typecheck/build/db:check 通过，容器补查外键索引 0 缺失。首轮全量 E2E 302/302；截图复核修复 Tailwind 4 语义颜色缺失后全量 284 通过、2 失败、16 未执行，随后修正对比度并完成全部相关页面复验：最终 a11y+中英375px流程 22/22、后台审计页 8/8（不将分次结果冒充新一轮全量）。10 张最终截图与逐项证据见 `../findmyjob-plan/.reports/2026-11-09-m4-t17/summary.md`。PDF 仍有有界完整缓冲；未 push、部署或代签闸门。
 
 #### [x] M6-T11 运营后台加固（P1，首次使用之后）
 依赖：M6-T04、M6-T10

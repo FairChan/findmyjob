@@ -5,7 +5,7 @@ import { logAudit } from './audit'
 import { createWallet } from './credits'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createNotification } from './notifications'
-import { grantPilotCreditsOnVerification } from '../jobs/pilot-monthly-credits'
+import { grantPilotCreditsOnVerification } from './pilot-credits'
 import { logger } from '../lib/logger'
 import type { UserCtx } from '../authz'
 

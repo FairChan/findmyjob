@@ -1,7 +1,7 @@
 import 'server-only'
-import { LedgerReason, type Prisma } from '@prisma/client'
+import { LedgerReason, Prisma } from '@prisma/client'
 import { db } from '../db'
-import { InsufficientCreditsError } from '../errors'
+import { ForbiddenError, InsufficientCreditsError, ValidationError } from '../errors'
 import { logAudit } from './audit'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 
@@ -31,23 +31,33 @@ export async function applyLedgerEntry(
 
   const wallet = await tx.creditWallet.findUnique({
     where: { companyId: params.companyId },
-    select: { id: true, balance: true },
+    select: { id: true },
   })
 
   if (!wallet) {
     throw new Error(`No wallet found for company ${params.companyId}`)
   }
 
-  const newBalance = wallet.balance + params.delta
-  if (newBalance < 0) {
+  // Check and increment the current database value in the same statement,
+  // including when another writer does not take the cooperative advisory lock.
+  const updated = await tx.creditWallet.updateMany({
+    where: { id: wallet.id, balance: { gte: -params.delta } },
+    data: { balance: { increment: params.delta } },
+  })
+  if (updated.count !== 1) {
     throw new InsufficientCreditsError()
   }
+
+  const { balance: balanceAfter } = await tx.creditWallet.findUniqueOrThrow({
+    where: { id: wallet.id },
+    select: { balance: true },
+  })
 
   await tx.creditLedger.create({
     data: {
       walletId: wallet.id,
       delta: params.delta,
-      balanceAfter: newBalance,
+      balanceAfter,
       reason: params.reason,
       refType: params.refType ?? null,
       refId: params.refId ?? null,
@@ -56,12 +66,7 @@ export async function applyLedgerEntry(
     },
   })
 
-  await tx.creditWallet.update({
-    where: { id: wallet.id },
-    data: { balance: newBalance },
-  })
-
-  return { balanceAfter: newBalance }
+  return { balanceAfter }
 }
 
 export async function getBalance(ctx: { userId: string; companyId: string }): Promise<number | null> {
@@ -79,13 +84,27 @@ export async function adminAdjust(
   ctx: { actorId: string },
   params: { companyId: string; delta: number; note: string }
 ): Promise<{ balanceAfter: number }> {
+  if (!Number.isSafeInteger(params.delta) || params.delta === 0) {
+    throw new ValidationError('Adjustment must be a non-zero integer')
+  }
+  const note = typeof params.note === 'string' ? params.note.trim() : ''
+  if (!note) throw new ValidationError('Adjustment note is required')
+
   return db.$transaction(async (tx) => {
+    const actor = await tx.user.findUnique({
+      where: { id: ctx.actorId },
+      select: { role: true, status: true },
+    })
+    if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') {
+      throw new ForbiddenError()
+    }
+
     const result = await applyLedgerEntry(tx, {
       companyId: params.companyId,
       delta: params.delta,
       reason: LedgerReason.ADMIN_ADJUST,
       actorId: ctx.actorId,
-      note: params.note,
+      note,
     })
 
     // Audit inside the transaction so a write failure rolls back the ledger entry
@@ -94,7 +113,7 @@ export async function adminAdjust(
       action: 'credits.adjust',
       targetType: 'CreditWallet',
       targetId: params.companyId,
-      metadata: { delta: params.delta, note: params.note, balanceAfter: result.balanceAfter },
+      metadata: { delta: params.delta, noteLength: note.length, balanceAfter: result.balanceAfter },
     }, tx)
 
     return result
@@ -117,7 +136,7 @@ export interface GrantPilotCreditsResult {
 
 /**
  * Returns the KL month string "YYYY-MM" for a given KL month-start UTC date
- * (as produced by klMonthStartUtc in pilot-monthly-credits.ts).
+ * (as produced by klMonthStartUtc in services/pilot-credits.ts).
  */
 function klMonthRefId(monthStart: Date): string {
   // monthStart is UTC midnight of KL 1st minus 8h; add 8h to get KL midnight
@@ -192,20 +211,22 @@ export async function reconcileWallet(ctx: { companyId: string }): Promise<{
   expected: number
   actual: number
 }> {
-  const wallet = await db.creditWallet.findUnique({
-    where: { companyId: ctx.companyId },
-    select: {
-      balance: true,
-      ledger: { select: { delta: true } },
-    },
-  })
+  // A single statement observes balance and ledger at the same MVCC snapshot.
+  const [wallet] = await db.$queryRaw<Array<{ expected: bigint; actual: number }>>(Prisma.sql`
+    SELECT COALESCE(SUM(l."delta"), 0) AS expected,
+           w."balance" AS actual
+    FROM "CreditWallet" w
+    LEFT JOIN "CreditLedger" l ON l."walletId" = w."id"
+    WHERE w."companyId" = ${ctx.companyId}
+    GROUP BY w."id", w."balance"
+  `)
 
   if (!wallet) {
     return { ok: true, expected: 0, actual: 0 }
   }
 
-  const expected = wallet.ledger.reduce((sum, entry) => sum + entry.delta, 0)
-  const actual = wallet.balance
+  const expected = Number(wallet.expected)
+  const actual = wallet.actual
 
   return { ok: expected === actual, expected, actual }
 }

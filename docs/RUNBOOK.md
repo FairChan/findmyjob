@@ -469,8 +469,10 @@ unset RESTORE_S3_ACCESS_KEY_ID RESTORE_S3_SECRET_ACCESS_KEY RESTORE_ADMIN_DATABA
    GROUP BY w.id, w."companyId", w.balance
    HAVING w.balance <> COALESCE(SUM(l.delta), 0);
    ```
-2. **不要直接修改 CreditWallet.balance**；只通过 `adminAdjust`（填原因）补差值，所有操作写 AuditLog。
-3. 追查不一致的来源（并发 bug、事务意外回滚等），记录事故并安排代码修复。
+2. **先停止相关扣点入口并保留证据，不要直接改余额或追加猜测的补差值。** `adminAdjust` 同时改变余额和账本总和，二者的差不会改变，因此不能用它修平对账差异。
+3. 追查不一致来源，核对原始订单、解锁、账本及审计，确定真实应有余额和缺失或重复的业务事件。已提交账本保持只追加，不更新或删除历史行。
+4. 技术负责人和财务/运营复核具体修复方案，先在隔离副本验证，并批准带来源凭据、预期差值及前置断言的专项修复。涉及余额投影重建或补记历史事实的修复工具须单独审查；本手册不授权临时 SQL 改账。
+5. 执行获批方案后，再以同一条对账 SQL 验证差值为零、相关业务幂等及审计完整，记录事故和代码修复后恢复入口。正常业务的人工加减点仍走 `adminAdjust`，不把它用作历史差额修复。
 
 #### 场景 4：整站不可用
 

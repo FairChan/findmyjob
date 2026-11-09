@@ -479,6 +479,20 @@ describe('talent.view: viewTalentProfile authz', () => {
 // ---------------------------------------------------------------------------
 
 describe('team management authz (M3-T04)', () => {
+  it('removed member is denied on the next action even with the same valid session', async () => {
+    const { userId: ownerId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const { userId } = await createEmployerWithoutCompany(testDb)
+    const member = await testDb.companyMember.create({ data: { userId, companyId, role: 'RECRUITER' } })
+    const { createFolderAction } = await import('@/server/actions/folders')
+    const { removeMember } = await import('@/server/services/team')
+    mockSession(userId)
+    expect((await createFolderAction({ name: 'Before removal' })).ok).toBe(true)
+    await removeMember({ userId: ownerId, companyId, role: 'OWNER' }, { memberId: member.id })
+    expect(await createFolderAction({ name: 'After removal' })).toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.talentFolder.count({ where: { companyId, name: 'After removal' } })).toBe(0)
+  })
+
   async function seedTeamSettings() {
     for (const [key, val] of [['team.maxMembers', 3], ['team.maxInvitesPerDay', 3]] as const) {
       await testDb.systemSetting.upsert({
@@ -1613,10 +1627,14 @@ describe('resume.download (M4-T09)', () => {
     mockSession(emp.userId)
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
     const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toBe('application/pdf')
-    expect(res.headers.get('cache-control')).toContain('no-store')
-    expect(res.headers.get('x-robots-tag')).toBe('noindex')
+    try {
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('application/pdf')
+      expect(res.headers.get('cache-control')).toContain('no-store')
+      expect(res.headers.get('x-robots-tag')).toBe('noindex')
+    } finally {
+      await res.body?.cancel()
+    }
   }, 30_000)
 
   it('resume not in DB → 404', async () => {

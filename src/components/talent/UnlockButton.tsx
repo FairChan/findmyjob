@@ -27,10 +27,9 @@ export interface UnlockButtonLabels {
 interface Props {
   studentId: string
   labels: UnlockButtonLabels
-  costCredits: number
 }
 
-export function UnlockButton({ studentId, labels, costCredits }: Props) {
+export function UnlockButton({ studentId, labels }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -72,7 +71,7 @@ export function UnlockButton({ studentId, labels, costCredits }: Props) {
             <DialogDescription>{labels.confirmDesc}</DialogDescription>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            {labels.confirmCost.replace('{cost}', String(costCredits))}
+            {labels.confirmCost}
           </p>
           {error && (
             <p role="alert" className="text-sm text-destructive">

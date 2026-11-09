@@ -4,7 +4,8 @@ import { checkRateLimit } from '@/server/lib/rate-limit'
 import { logAudit } from '@/server/services/audit'
 import { getSetting } from '@/server/services/settings'
 import { assertUploadsEnabled } from '@/server/services/feature-flags'
-import { putObject } from '@/lib/storage'
+import { putObject, deleteAllVersions } from '@/lib/storage'
+import { logger } from '@/server/lib/logger'
 import { detectFileType, checkPdf, MIME_TYPES } from '@/server/lib/pdf'
 import { db } from '@/server/db'
 import { purposeSchema, validateFileName } from '@/server/lib/upload-input'
@@ -216,6 +217,14 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
         pageCount: pageCount ?? null,
         isPrimary: false,
       },
+    }).catch(async (error: unknown) => {
+      // The key is unique to this successful upload; compensate a failed DB insert.
+      try {
+        await deleteAllVersions(key)
+      } catch (cleanupError) {
+        logger.error({ key, err: cleanupError }, 'Failed to clean up an unrecorded resume upload')
+      }
+      throw error
     })
 
     return Response.json({ ok: true, key, resumeId: resume.id })

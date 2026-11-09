@@ -21,7 +21,7 @@ export default async function StudentNav({ userId, locale }: Props) {
 
   return (
     <nav
-      aria-label={t('notifications')}
+      aria-label={t('studentNavigation')}
       className="border-b bg-muted/40"
     >
       <div className="container mx-auto flex max-w-5xl items-center gap-4 overflow-x-auto px-4 py-1 text-sm">

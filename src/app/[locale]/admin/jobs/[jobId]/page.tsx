@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { requireAdmin } from '@/server/authz'
 import { getJobForReview } from '@/server/services/review-jobs'
 import { ReviewJobForm } from './review-job-form'
+import { formatKLDate } from '@/lib/format-date'
 
 export default async function AdminJobReviewPage({
   params,
@@ -80,7 +81,7 @@ export default async function AdminJobReviewPage({
           {job.deadline && (
             <>
               <dt className="text-muted-foreground">{t('deadlineLabel')}</dt>
-              <dd>{job.deadline.toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' })}</dd>
+              <dd>{formatKLDate(job.deadline, locale)}</dd>
             </>
           )}
 
