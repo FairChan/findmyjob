@@ -268,8 +268,24 @@
     "navNotifications": "消息通知",
     "navSettings": "系统设置",
     "navDataRequests": "数据请求",
+    "navAudit": "审计日志",
     "bellLabel": "消息通知",
     "bellLabelWithCount": "消息通知（{count} 条未读）"
+  },
+  "adminAudit": {
+    "title": "审计日志",
+    "description": "查看档案、解锁、下载简历、审核、改设置等敏感操作都会记录",
+    "filterAction": "全部动作",
+    "filterActorEmail": "操作人邮箱",
+    "filterDateFrom": "开始日期",
+    "filterDateTo": "结束日期",
+    "filterSubmit": "筛选",
+    "colTime": "时间",
+    "colActor": "操作人",
+    "colAction": "动作",
+    "colTarget": "对象",
+    "nextPage": "下一页",
+    "noResults": "暂无记录"
   },
   "adminSettings": {
     "title": "系统设置",

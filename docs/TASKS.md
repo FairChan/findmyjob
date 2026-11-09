@@ -1201,10 +1201,11 @@
 - 完成说明：写出相关 vitest 文件和 E2E spec 的通过、失败、跳过数（全量由总控跑）。
 > 完成 2026-11-08：(1) parseSettingValue 提取到 parse-value.ts，空字符串返回空串而非 0，8 条 parseValue 单元测试全绿；(2) setSetting 改为 $transaction（upsert+logAudit 原子性），metadata 记 from/to，新增 audit 和 getSetting 测试；(3) toBeDefined() → not.toBeNull()；(4) 高影响开关加 shadcn Dialog 确认（5 个 key，zh/en 文案各 9 条新增），取消不提交；(5) E2E smoke-m6-t13 3 条全绿，smoke-m6-t05 10 条无回归。vitest 33/33，E2E 13/13，0 失败，0 跳过。失败输出见提交说明。
 
-#### [ ] M6-T06 审计日志
+#### [x] M6-T06 审计日志
 依赖：M6-T01
 做：`/admin/audit`：按动作、操作人、对象、时间范围筛选；分页。
 验收：能查到 ARCHITECTURE §5.7 列出的所有动作
+> 完成 2026-11-09：/admin/audit 按动作（AUDIT_ACTIONS 下拉，也可精确输入）、操作人邮箱、对象、吉隆坡日期范围筛选，游标分页 50 条；AUDIT_ACTIONS 用单元测试和 ARCHITECTURE §5.7 保持同步（27 个）；metadata 展示前递归打码（键名含 phone/email/wechat/whatsapp/otp/token/password/secret、键名等于 code，以及像邮箱、手机号的字符串值）。测试：audit-actions.test.ts 5/5、admin-audit.test.ts 17/17（逐个动作可查；屏蔽/取消屏蔽、contact.read、setting.update 带 from/to 由真实业务函数触发后能查回；筛选、KL 日期边界、分页、哨兵打码、非运营被拒）、authz-matrix 审计行、smoke-m6-t06 E2E（含 375px a11y）通过。job.report.resolve 和 order.confirm 要等 M7-T09、M8-T02 才会有数据。轮次在 02:26 被机器重启打断，未提交的部分由线 B 收尾并修了嵌套打码和 a11y（对比度、标题、可聚焦滚动区、select 标签）。全量 vitest 和 E2E 由 lane-verify 跑。
 
 #### [x] M6-T07 代管企业与公司名单导入
 依赖：M3-T03、M3-T04、M5-T01
