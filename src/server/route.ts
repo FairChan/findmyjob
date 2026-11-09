@@ -79,8 +79,8 @@ export function route(
     auth: AuthOption
     input?: z.ZodType<unknown>
     /**
-     * Only honoured with auth 'public'. For unauthenticated sinks that change no state, such as
-     * /api/csp-report: browsers may send violation reports without an Origin header (or "null").
+     * Only honoured with auth 'public': browser report sinks and server webhooks
+     * that authenticate the original body themselves before changing any state.
      */
     skipOriginCheck?: boolean
   },

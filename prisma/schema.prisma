@@ -183,6 +183,16 @@ enum PaymentProviderKind {
   STRIPE
 }
 
+enum StripeCheckoutAttemptState {
+  CREATING
+  OPEN
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+  RECONCILIATION_REQUIRED
+}
+
 enum SubscriptionStatus {
   ACTIVE
   EXPIRED
@@ -852,12 +862,28 @@ model Order {
   createdAt          DateTime             @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime             @updatedAt @db.Timestamptz(3)
 
-  subscription Subscription?
-  invoice      Invoice?
+  subscription          Subscription?
+  invoice               Invoice?
+  stripeCheckoutAttempt StripeCheckoutAttempt?
 
   @@index([companyId, createdAt])
   @@index([status])
   @@index([planId])
+}
+
+model StripeCheckoutAttempt {
+  id              String                     @id @default(cuid())
+  orderId         String                     @unique
+  order           Order                      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  idempotencyKey  String                     @unique
+  sessionId       String?                    @unique
+  paymentIntentId String?                    @unique
+  requestedAt     DateTime                   @default(now()) @db.Timestamptz(3)
+  requestSnapshot Json
+  state           StripeCheckoutAttemptState @default(CREATING)
+  fpxReceipt      Json?
+  createdAt       DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                   @updatedAt @db.Timestamptz(3)
 }
 
 model PaymentProofUpload {

@@ -2,10 +2,11 @@ import 'server-only'
 import { randomInt } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { z } from 'zod'
-import { Prisma, type Order, type OrderKind, type OrderStatus, type PaymentMethod } from '@prisma/client'
+import { env } from '@/env'
+import { Prisma, type Order, type OrderKind, type OrderStatus, type PaymentMethod, type StripeCheckoutAttempt } from '@prisma/client'
 import type { CompanyCtx, UserCtx } from '../authz'
 import { db } from '../db'
-import { ConflictError, FeatureDisabledError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { AppError, ConflictError, FeatureDisabledError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import {
   bankTransferSettingsSchema, EMPTY_BANK_TRANSFER,
@@ -19,6 +20,9 @@ import { createPlanSchema } from './admin-plans'
 import { createWallet, applyLedgerEntry } from './credits'
 import { logAudit } from './audit'
 import { notifyOrderConfirmed } from './notify'
+import type {
+  CheckoutObservation, FpxReceipt, FpxReceiptSnapshotV1, PaymentObservation, StripePaymentView,
+} from '../payments/types'
 
 const nonnegativeInt = z.number().int().min(0).max(2_147_483_647)
 const positiveInt = z.number().int().min(1).max(2_147_483_647)
@@ -90,7 +94,7 @@ export type CommercialSnapshotV1 = z.infer<typeof commercialSnapshotSchema>
 export const quoteOrderSchema = z.object({ planId: idSchema })
 export const createOrderSchema = z.object({
   planId: idSchema,
-  method: z.literal('BANK_TRANSFER'),
+  method: z.enum(['BANK_TRANSFER', 'STRIPE']),
   acceptedQuote: orderQuoteSchema,
 })
 export const listMyOrdersSchema = z.object({
@@ -145,6 +149,7 @@ export interface OrderSummary {
 export interface OrderDetail extends OrderSummary {
   commercialSnapshot: CommercialSnapshotV1 | null
   bankTransfer: BankTransferDetails | null
+  stripePayment: StripePaymentView | null
 }
 export interface MyOrdersPage { items: OrderSummary[]; nextCursor: string | null }
 export interface AdminOrderRow extends OrderSummary { company: { id: string; displayName: string } }
@@ -194,6 +199,41 @@ function requireSnapshot(order: Order): CommercialSnapshotV1 {
   const snapshot = snapshotOf(order)
   if (!snapshot) throw new ConflictError('Order commercial snapshot is unavailable')
   return snapshot
+}
+
+const stripeAttemptSnapshotSchema = z.object({
+  version: z.literal(1), locale: z.enum(['zh', 'en']), mode: z.enum(['test', 'live']),
+  request: z.object({
+    orderId: idSchema, companyId: idSchema, amountSen: positiveInt, currency: z.literal('MYR'),
+    productName: z.string().min(1).max(100),
+    successUrl: z.string().url().max(2000), cancelUrl: z.string().url().max(2000),
+    idempotencyKey: z.string().min(1).max(255),
+  }).strict(),
+}).strict()
+
+/** Internal services only: validate immutable payment facts after taking CREDIT. */
+export function readStripeAttemptSnapshot(order: Order, attempt: StripeCheckoutAttempt, mode: 'test' | 'live') {
+  const rejected = () => new AppError('Stored payment facts rejected', 'PAYMENT_REJECTED', 400)
+  const commercial = snapshotOf(order)
+  const result = stripeAttemptSnapshotSchema.safeParse(attempt.requestSnapshot)
+  if (!commercial || !result.success || order.paymentProvider !== 'STRIPE'
+    || attempt.orderId !== order.id || result.data.mode !== mode) throw rejected()
+  const frozen = result.data
+  const request = frozen.request
+  if (request.orderId !== order.id || request.companyId !== order.companyId
+    || request.amountSen !== order.amountSen || request.currency !== order.currency
+    || request.idempotencyKey !== attempt.idempotencyKey
+    || request.productName !== (frozen.locale === 'zh' ? commercial.plan.nameZh : commercial.plan.nameEn)) throw rejected()
+  const success = new URL(request.successUrl)
+  const cancel = new URL(request.cancelUrl)
+  const pathname = '/' + frozen.locale + '/e/billing/' + encodeURIComponent(order.id)
+  for (const [url, state] of [[success, 'success'], [cancel, 'cancel']] as const) {
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash
+      || url.pathname !== pathname || url.search !== '?checkout=' + state) throw rejected()
+  }
+  if (success.origin !== cancel.origin) throw rejected()
+  if (attempt.sessionId !== order.externalRef) throw rejected()
+  return frozen
 }
 
 async function bankDetails(tx?: Prisma.TransactionClient): Promise<BankTransferDetails | null> {
@@ -320,7 +360,9 @@ export async function createOrder(ctx: CompanyCtx, input: CreateOrderInput): Pro
         const now = new Date()
         const quote = await calculateQuote(tx, ctx, data.planId, company, now)
         if (!isDeepStrictEqual(quote, data.acceptedQuote)) throw new ConflictError('Quote changed; request a new quote')
-        if (!await bankDetails(tx)) throw new FeatureDisabledError('Bank transfer is not configured')
+        if (data.method === 'BANK_TRANSFER' && !await bankDetails(tx)) {
+          throw new FeatureDisabledError('Bank transfer is not configured')
+        }
         if (quote.plan.kind === 'PLAN' && await tx.order.findFirst({
           where: { companyId: ctx.companyId, kind: 'PLAN', status: { in: UNPAID } },
           select: { id: true },
@@ -331,7 +373,8 @@ export async function createOrder(ctx: CompanyCtx, input: CreateOrderInput): Pro
             orderNo: newOrderNo(now), companyId: ctx.companyId, createdById: ctx.userId,
             planId: quote.plan.id, kind: quote.plan.kind, amountSen: quote.money.payableSen,
             discountSen: quote.money.discountSen, currency: 'MYR',
-            status: 'PENDING', paymentProvider: 'BANK_TRANSFER', paymentMethod: 'BANK_TRANSFER',
+            status: 'PENDING', paymentProvider: data.method,
+            paymentMethod: data.method === 'BANK_TRANSFER' ? 'BANK_TRANSFER' : null,
             commercialSnapshot: snapshot,
           },
           select: { id: true, orderNo: true },
@@ -354,6 +397,45 @@ export async function createOrder(ctx: CompanyCtx, input: CreateOrderInput): Pro
 }
 
 const cursorSchema = z.object({ createdAt: isoDate, id: idSchema })
+const receiptText = z.string().min(1).max(128).regex(/^[^\u0000-\u001f\u007f]+$/u)
+  .refine(value => value.trim().length > 0)
+const fpxReceiptSchema = z.object({
+  version: z.literal(1), createdAt: isoDate, amountSen: positiveInt, currency: z.literal('MYR'),
+  orderNo: idSchema, sellerOrderNo: receiptText.nullable(), transactionId: receiptText.nullable(),
+  bankCode: receiptText, status: z.literal('succeeded'),
+})
+const FPX_BANK_NAMES: Readonly<Record<string, string>> = {
+  affin_bank: 'Affin Bank', agrobank: 'Agrobank', alliance_bank: 'Alliance Bank', ambank: 'AmBank',
+  bank_islam: 'Bank Islam', bank_muamalat: 'Bank Muamalat', bank_of_china: 'Bank of China',
+  bank_rakyat: 'Bank Rakyat', bnp_paribas: 'BNP Paribas', bsn: 'BSN', cimb: 'CIMB Bank',
+  citibank: 'Citibank', deutsche_bank: 'Deutsche Bank', hong_leong_bank: 'Hong Leong Bank',
+  hsbc: 'HSBC Bank', kfh: 'Kuwait Finance House', maybank2e: 'Maybank2E', maybank2u: 'Maybank2U',
+  mbsb_bank: 'MBSB Bank', ocbc: 'OCBC Bank', pb_enterprise: 'Public Bank (PB enterprise)',
+  public_bank: 'Public Bank', rhb: 'RHB Bank', standard_chartered: 'Standard Chartered Bank', uob: 'UOB Bank',
+}
+function validFpxReceipt(value: unknown, order: Order): FpxReceiptSnapshotV1 | null {
+  const parsed = fpxReceiptSchema.safeParse(value)
+  if (!parsed.success || parsed.data.orderNo !== order.orderNo || parsed.data.amountSen !== order.amountSen
+    || parsed.data.currency !== order.currency || !Number.isFinite(new Date(parsed.data.createdAt).getTime())) return null
+  return parsed.data
+}
+function readFpxReceipt(
+  order: Order, attempt: Pick<StripeCheckoutAttempt, 'id' | 'state' | 'fpxReceipt'> | null,
+): FpxReceipt | null {
+  if (order.status !== 'PAID' || order.paymentProvider !== 'STRIPE' || order.paymentMethod !== 'FPX'
+    || !attempt || attempt.state !== 'SUCCEEDED' || attempt.fpxReceipt === null) return null
+  const receipt = validFpxReceipt(attempt.fpxReceipt, order)
+  if (!receipt) {
+    logger.error({ orderId: order.id, attemptId: attempt.id }, 'Stored payment receipt rejected')
+    return null
+  }
+  return {
+    createdAt: receipt.createdAt, amountSen: receipt.amountSen, currency: receipt.currency,
+    orderNo: receipt.orderNo, sellerOrderNo: receipt.sellerOrderNo, transactionId: receipt.transactionId,
+    bankName: Object.hasOwn(FPX_BANK_NAMES, receipt.bankCode) ? FPX_BANK_NAMES[receipt.bankCode] : null,
+    status: receipt.status,
+  }
+}
 function cursorWhere(raw?: string): Prisma.OrderWhereInput {
   if (!raw) return {}
   let value: z.infer<typeof cursorSchema>
@@ -393,8 +475,13 @@ export async function getMyOrder(ctx: CompanyCtx, input: GetMyOrderInput): Promi
   await assertOwner(ctx)
   const { orderId } = parse(getMyOrderSchema, input)
   const order = await ownOrder(ctx, orderId)
+  const attempt = order.paymentProvider === 'STRIPE'
+    ? await db.stripeCheckoutAttempt.findUnique({ where: { orderId }, select: { id: true, state: true, fpxReceipt: true } })
+    : null
   return {
     ...summary(order), commercialSnapshot: snapshotOf(order),
+    stripePayment: order.paymentProvider === 'STRIPE'
+      ? { state: attempt?.state ?? 'NOT_STARTED', fpxReceipt: readFpxReceipt(order, attempt) } : null,
     bankTransfer: order.paymentProvider === 'BANK_TRANSFER' && UNPAID.includes(order.status)
       ? await bankDetails() : null,
   }
@@ -484,51 +571,205 @@ export async function cancelPendingOrder(ctx: CompanyCtx, input: CancelPendingOr
   }, TRANSACTION_OPTIONS)
 }
 
-type BankEvidence = { source: 'bank'; actorId: string; amountSen: number; noteLength: number }
+type SettlementChannel =
+  | { source: 'bank'; actorId: string; noteLength: number; paymentMethod: 'BANK_TRANSFER' }
+  | { source: 'stripe'; attemptId: string; sessionId: string; paymentMethod: 'CARD' | 'FPX' }
 
 /** Private delivery core: caller holds CREDIT, re-reads and verifies its channel.
- * T03 must add persisted Session/PI checks inside this transaction before using
- * this core; externally verified evidence alone cannot authorize settlement.
+ * Externally verified evidence alone cannot authorize settlement.
  */
 async function settleOrder(
-  tx: Prisma.TransactionClient, order: Order, snapshot: CommercialSnapshotV1, evidence: BankEvidence,
+  tx: Prisma.TransactionClient, order: Order, snapshot: CommercialSnapshotV1, evidence: SettlementChannel,
 ): Promise<SettlementResult> {
   if (order.status === 'PAID') {
     const subscription = await tx.subscription.findUnique({ where: { orderId: order.id }, select: { id: true } })
     return { orderId: order.id, alreadyPaid: true, subscriptionId: subscription?.id ?? null }
   }
   const paidAt = new Date()
+  const actorId = evidence.source === 'bank' ? evidence.actorId : undefined
   const terms = snapshot.delivery.subscription
   const startsAt = terms ? await subscriptionTail(tx, order.companyId, order.planId, paidAt) : null
   const endsAt = startsAt && terms ? subscriptionEnd(startsAt, terms.durationDays) : null
   const updated = await tx.order.updateMany({
     where: {
-      id: order.id, status: 'AWAITING_CONFIRMATION', paymentProvider: 'BANK_TRANSFER',
-      updatedAt: order.updatedAt, amountSen: evidence.amountSen,
+      id: order.id, companyId: order.companyId, currency: order.currency,
+      status: evidence.source === 'bank' ? 'AWAITING_CONFIRMATION' : 'PENDING',
+      paymentProvider: evidence.source === 'bank' ? 'BANK_TRANSFER' : 'STRIPE',
+      ...(evidence.source === 'stripe' ? { externalRef: evidence.sessionId } : {}),
+      updatedAt: order.updatedAt, amountSen: order.amountSen,
     },
-    data: { status: 'PAID', paidAt, confirmedById: evidence.actorId, paymentMethod: 'BANK_TRANSFER' },
+    data: { status: 'PAID', paidAt, confirmedById: actorId ?? null, paymentMethod: evidence.paymentMethod },
   })
   if (updated.count !== 1) throw new ConflictError('Order changed; retry')
   await createWallet(tx, order.companyId)
   if (snapshot.delivery.credits > 0) await applyLedgerEntry(tx, {
     companyId: order.companyId, delta: snapshot.delivery.credits,
     reason: order.kind === 'PLAN' ? 'PLAN_GRANT' : 'PURCHASE',
-    refType: 'Order', refId: order.id, actorId: evidence.actorId,
+    refType: 'Order', refId: order.id, actorId,
   })
   const subscription = startsAt && endsAt ? await tx.subscription.create({
     data: { companyId: order.companyId, planId: order.planId, orderId: order.id, startsAt, endsAt, status: 'ACTIVE' },
     select: { id: true },
   }) : null
   await logAudit({
-    actorId: evidence.actorId, action: 'order.confirm', targetType: 'Order', targetId: order.id,
+    actorId, action: 'order.confirm', targetType: 'Order', targetId: order.id,
     metadata: {
       source: evidence.source, fromStatus: order.status, toStatus: 'PAID',
       amountSen: order.amountSen, discountSen: order.discountSen, currency: order.currency,
       creditsGranted: snapshot.delivery.credits, subscriptionId: subscription?.id ?? null,
-      noteLength: evidence.noteLength,
+      ...(evidence.source === 'bank' ? { noteLength: evidence.noteLength } : { attemptId: evidence.attemptId }),
     },
   }, tx)
   return { orderId: order.id, alreadyPaid: false, subscriptionId: subscription?.id ?? null }
+}
+
+async function notifySettlementCommitted(companyId: string, amountSen: number, result: SettlementResult): Promise<void> {
+  if (result.alreadyPaid) return
+  try {
+    await notifyOrderConfirmed(companyId, { orderId: result.orderId, amountSen })
+  } catch {
+    logger.error({ orderId: result.orderId, companyId }, 'Order confirmation notification failed')
+  }
+}
+
+export interface VerifiedStripePayment {
+  orderId: string
+  companyId: string
+  attemptId: string
+  event: {
+    id: string
+    type: 'checkout.session.completed' | 'checkout.session.async_payment_succeeded'
+    livemode: boolean
+  }
+  checkout: CheckoutObservation
+  payment: PaymentObservation
+}
+
+const stripeRef = (prefix: string) => z.string().max(255).regex(new RegExp('^' + prefix + '[a-zA-Z0-9_]+$'))
+const verifiedStripePaymentSchema = z.object({
+  orderId: idSchema, companyId: idSchema, attemptId: idSchema,
+  event: z.object({
+    id: stripeRef('evt_'), type: z.enum(['checkout.session.completed', 'checkout.session.async_payment_succeeded']),
+    livemode: z.boolean(),
+  }),
+  checkout: z.object({
+    sessionId: stripeRef('cs_'), mode: z.literal('payment'),
+    status: z.enum(['open', 'complete', 'expired']).nullable(),
+    paymentStatus: z.enum(['paid', 'unpaid', 'no_payment_required']),
+    amountTotalSen: positiveInt.nullable(), currency: z.string().nullable(),
+    clientReferenceId: idSchema.nullable(), orderId: idSchema.nullable(), companyId: idSchema.nullable(),
+    paymentIntentId: stripeRef('pi_').nullable(), livemode: z.boolean(),
+  }),
+  payment: z.object({
+    paymentIntentId: stripeRef('pi_'),
+    status: z.enum(['requires_payment_method', 'requires_confirmation', 'requires_action', 'processing', 'requires_capture', 'canceled', 'succeeded']),
+    amountSen: positiveInt, amountReceivedSen: nonnegativeInt, currency: z.string(),
+    orderId: idSchema.nullable(), companyId: idSchema.nullable(), livemode: z.boolean(),
+    latestCharge: z.object({
+      chargeId: stripeRef('ch_'), paymentIntentId: stripeRef('pi_').nullable(),
+      createdAt: isoDate, statementDescriptor: receiptText.nullable(),
+      fpx: z.object({ transactionId: receiptText.nullable(), bankCode: receiptText }).nullable(),
+      status: z.enum(['succeeded', 'pending', 'failed']), paid: z.boolean(),
+      amountSen: positiveInt, currency: z.string(), livemode: z.boolean(),
+      refunded: z.boolean(), amountRefundedSen: nonnegativeInt,
+      paymentMethod: z.enum(['card', 'fpx']).nullable(),
+    }).nullable(),
+  }),
+})
+function stripeRejected(): AppError {
+  return new AppError('Payment facts rejected', 'PAYMENT_REJECTED', 400)
+}
+function stripeUnavailable(): AppError {
+  return new AppError('Payment temporarily unavailable', 'PAYMENT_UNAVAILABLE', 503)
+}
+
+/** Server-only entry; SDK reads happen before this function, never in its transaction. */
+export async function settleStripeOrder(evidence: VerifiedStripePayment): Promise<SettlementResult> {
+  try {
+    const parsed = verifiedStripePaymentSchema.safeParse(evidence)
+    if (!parsed.success) throw stripeRejected()
+    const facts = parsed.data
+    const settled = await db.$transaction(async tx => {
+      await lockXact(tx, LOCK_NS.CREDIT, facts.companyId)
+      const order = await tx.order.findUnique({ where: { id: facts.orderId } })
+      if (!order || order.companyId !== facts.companyId || order.paymentProvider !== 'STRIPE'
+        || !['PENDING', 'PAID'].includes(order.status)) throw stripeRejected()
+      const snapshot = snapshotOf(order)
+      if (!snapshot) throw stripeRejected()
+      const attempt = await tx.stripeCheckoutAttempt.findUnique({ where: { orderId: order.id } })
+      if (!attempt || attempt.id !== facts.attemptId) throw stripeRejected()
+      const mode = env.STRIPE_MODE ?? 'test'
+      if (mode !== 'test' && mode !== 'live') throw stripeUnavailable()
+      readStripeAttemptSnapshot(order, attempt, mode)
+      if (attempt.sessionId === null) throw stripeUnavailable()
+      const checkout = facts.checkout
+      const payment = facts.payment
+      const live = mode === 'live'
+      if (facts.event.livemode !== live || checkout.livemode !== live || payment.livemode !== live
+        || checkout.sessionId !== attempt.sessionId || order.externalRef !== checkout.sessionId
+        || checkout.orderId !== order.id || checkout.clientReferenceId !== order.id
+        || checkout.companyId !== order.companyId || checkout.amountTotalSen !== order.amountSen
+        || checkout.currency?.toLowerCase() !== 'myr' || checkout.paymentStatus === 'no_payment_required'
+        || payment.orderId !== order.id || payment.companyId !== order.companyId
+        || payment.currency.toLowerCase() !== 'myr' || payment.amountSen !== order.amountSen) throw stripeRejected()
+      if (checkout.paymentStatus !== 'paid' || checkout.paymentIntentId === null) throw stripeUnavailable()
+      if (checkout.status === 'expired') throw stripeRejected()
+      if (checkout.status !== 'complete') throw stripeUnavailable()
+      if (payment.paymentIntentId !== checkout.paymentIntentId
+        || (attempt.paymentIntentId !== null && attempt.paymentIntentId !== payment.paymentIntentId)) throw stripeRejected()
+      if (payment.status === 'canceled' || payment.status === 'requires_payment_method') throw stripeRejected()
+      if (payment.status !== 'succeeded' || payment.latestCharge === null) throw stripeUnavailable()
+      if (payment.amountReceivedSen !== order.amountSen) throw stripeRejected()
+      const charge = payment.latestCharge
+      if (charge.paymentIntentId !== payment.paymentIntentId || charge.livemode !== live
+        || !charge.paid || charge.status !== 'succeeded' || charge.refunded || charge.amountRefundedSen !== 0
+        || charge.amountSen !== order.amountSen || charge.currency.toLowerCase() !== 'myr'
+        || charge.paymentMethod === null || !Number.isFinite(new Date(charge.createdAt).getTime())) throw stripeRejected()
+      const paymentMethod = charge.paymentMethod === 'card' ? 'CARD' : 'FPX'
+      if ((order.status === 'PAID' && order.paymentMethod !== paymentMethod)
+        || (order.paymentMethod !== null && order.paymentMethod !== paymentMethod)) throw stripeRejected()
+      if (charge.paymentMethod === 'fpx' && charge.fpx === null) throw stripeRejected()
+      const receipt: FpxReceiptSnapshotV1 | null = charge.paymentMethod === 'fpx' && charge.fpx ? {
+        version: 1, createdAt: charge.createdAt, amountSen: order.amountSen, currency: 'MYR',
+        orderNo: order.orderNo, sellerOrderNo: charge.statementDescriptor,
+        transactionId: charge.fpx.transactionId, bankCode: charge.fpx.bankCode, status: 'succeeded',
+      } : null
+      if (attempt.fpxReceipt !== null && (order.status !== 'PAID' || receipt === null
+        || !validFpxReceipt(attempt.fpxReceipt, order))) throw stripeRejected()
+      if (attempt.paymentIntentId === null) {
+        const attached = await tx.stripeCheckoutAttempt.updateMany({
+          where: { id: attempt.id, orderId: order.id, sessionId: checkout.sessionId, paymentIntentId: null },
+          data: { paymentIntentId: payment.paymentIntentId },
+        })
+        if (attached.count !== 1) throw stripeUnavailable()
+      }
+      const result = await settleOrder(tx, order, snapshot, {
+        source: 'stripe', attemptId: attempt.id, sessionId: checkout.sessionId, paymentMethod,
+      })
+      // A duplicate validates the payment but never replaces its first receipt.
+      const needsReceipt = receipt !== null && attempt.fpxReceipt === null
+      if (attempt.state !== 'SUCCEEDED' || needsReceipt) {
+        const updated = await tx.stripeCheckoutAttempt.updateMany({
+          where: {
+            id: attempt.id, orderId: order.id, sessionId: checkout.sessionId,
+            paymentIntentId: payment.paymentIntentId, state: attempt.state,
+          },
+          data: { state: 'SUCCEEDED', ...(needsReceipt ? { fpxReceipt: { ...receipt! } } : {}) },
+        })
+        if (updated.count !== 1) throw stripeUnavailable()
+      }
+      return { result, companyId: order.companyId, amountSen: order.amountSen }
+    }, TRANSACTION_OPTIONS)
+    await notifySettlementCommitted(settled.companyId, settled.amountSen, settled.result)
+    return settled.result
+  } catch (error) {
+    if (error instanceof AppError && error.code === 'PAYMENT_REJECTED') throw stripeRejected()
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      const target = error.meta?.target
+      if (Array.isArray(target) && target.includes('paymentIntentId')) throw stripeRejected()
+    }
+    throw stripeUnavailable()
+  }
 }
 
 export async function confirmBankOrder(ctx: UserCtx, input: ConfirmBankOrderInput): Promise<SettlementResult> {
@@ -551,17 +792,11 @@ export async function confirmBankOrder(ctx: UserCtx, input: ConfirmBankOrderInpu
     await proofRecord(order.proofKey, order.companyId, tx)
     if (order.status === 'PAID' && order.paymentMethod !== 'BANK_TRANSFER') throw new ConflictError('Conflicting payment channel')
     const result = await settleOrder(tx, order, snapshot, {
-      source: 'bank', actorId: ctx.userId, amountSen: data.receivedAmountSen, noteLength: data.note.length,
+      source: 'bank', actorId: ctx.userId, paymentMethod: 'BANK_TRANSFER', noteLength: data.note.length,
     })
     return { result, amountSen: order.amountSen }
   }, TRANSACTION_OPTIONS)
-  if (!settled.result.alreadyPaid) {
-    try {
-      await notifyOrderConfirmed(located.companyId, { orderId: data.orderId, amountSen: settled.amountSen })
-    } catch {
-      logger.error({ orderId: data.orderId, companyId: located.companyId }, 'Order confirmation notification failed')
-    }
-  }
+  await notifySettlementCommitted(located.companyId, settled.amountSen, settled.result)
   return settled.result
 }
 

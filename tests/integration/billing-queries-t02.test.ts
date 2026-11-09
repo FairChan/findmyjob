@@ -53,13 +53,14 @@ describe('M8-T02 query DTO boundaries', () => {
     expect(own.items).toHaveLength(1)
     expect(admin.items).toHaveLength(1)
     expectSummary(own.items[0])
-    expectSummary(detail, ['commercialSnapshot', 'bankTransfer'])
+    expectSummary(detail, ['commercialSnapshot', 'bankTransfer', 'stripePayment'])
     expectSummary(admin.items[0], ['company'])
     expect(Object.keys(admin.items[0].company).sort()).toEqual(['displayName', 'id'])
     expect(Object.keys(detail.commercialSnapshot!).sort()).toEqual(['version', 'plan', 'money', 'delivery', 'promotion', 'capturedAt'].sort())
     expect(detail.plan?.nameEn).toBe(f.plan.nameEn)
     expect(detail.hasProof).toBe(true)
     expect(detail.bankTransfer).toEqual(SYNTHETIC_BANK)
+    expect(detail.stripePayment).toBeNull()
     const json = JSON.stringify([own, detail, admin])
     for (const value of [PRIVATE_REFERENCE, PRIVATE_METADATA, proofKey, f.adminCtx.userId,
       'externalRef', 'proofKey', 'createdById', 'confirmedById', 'updatedAt', 'Later catalog name']) {

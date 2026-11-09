@@ -1761,10 +1761,11 @@
 > M5-T08 已备好：确认到账、事务提交之后，调用 `src/server/services/notify.ts` 的 `notifyOrderConfirmed(companyId, { orderId, amountSen })`（站内 order.confirmed + 邮件）。
 > 完成 2026-11-10：OWNER 报价确认/下单/持久回单归属及安全预览，近期二因素管理员核款；冻结净额和权益，订单/账本/连续订阅/审计同事务且重放幂等，通知失败不撤销到账。2817 全量 Vitest 通过（4 个既有性能基准跳过），八个业务 E2E、既有定价导航回归、375px 中英页面、lint/typecheck/build/db:check/FK 索引检查及独立复核通过。仅合成数据，真实收款信息、正式价格和开启收费另行确认。
 
-#### [ ] M8-T03 在线支付
+#### [x] M8-T03 在线支付
 依赖：M8-T02
 做：`PaymentProvider` 接口；Stripe Checkout 实现（卡 + FPX）；webhook 验签 + 按 externalRef 幂等；用测试模式密钥验证。
 验收：同一个 webhook 重放多次只入账一次；验签失败返回 400
+> 完成 2026-11-10（代码）：托管卡/FPX Checkout、持久尝试与原键恢复、原始请求验签、锁内完整付款核验和一次交付、白名单 FPX 回执及双语重试界面。3056 全量 Vitest 通过（4 个既有性能基准跳过），支付相关 E2E 14/14、lint/typecheck/build/db:check/FK 索引检查及独立审查通过。只用合成数据与隔离的 SDK；真实商户测试模式卡/FPX 联调、外部账号及上线闸门按用户要求另行确认。未知结果超窗或终态年单按 RUNBOOK 人工核对恢复，不自动重新收费。
 
 #### [ ] M8-T04 套餐权益执行
 依赖：M8-T02

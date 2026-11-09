@@ -45,6 +45,7 @@
     "remark-gfm": "^4.0.1",
     "resend": "^6.37.0",
     "server-only": "^0.0.1",
+    "stripe": "23.1.0",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.7"
   },

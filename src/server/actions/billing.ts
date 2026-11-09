@@ -1,6 +1,7 @@
 'use server'
 
 import { action } from '@/server/action'
+import { startStripeCheckout, startStripeCheckoutSchema } from '@/server/services/stripe-payments'
 import {
   quoteOrder, quoteOrderSchema, createOrder, createOrderSchema,
   attachBankProof, attachBankProofSchema, cancelPendingOrder, cancelPendingOrderSchema,
@@ -10,6 +11,11 @@ import {
 export const quoteOrderAction = action(
   { auth: { type: 'company', minRole: 'OWNER' }, input: quoteOrderSchema },
   async ctx => quoteOrder({ userId: ctx.userId!, companyId: ctx.companyId!, role: ctx.companyRole! }, ctx.input),
+)
+
+export const startStripeCheckoutAction = action(
+  { auth: { type: 'company', minRole: 'OWNER' }, input: startStripeCheckoutSchema },
+  async ctx => startStripeCheckout({ userId: ctx.userId!, companyId: ctx.companyId!, role: ctx.companyRole! }, ctx.input),
 )
 
 export const createOrderAction = action(

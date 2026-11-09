@@ -77,6 +77,7 @@ const schema = z
 
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),
+    STRIPE_MODE: z.enum(['test', 'live']).default('test'),
 
     // Worker job healthcheck ping URLs (M7-T14); one per scheduled job
     // env.example stores these as empty strings; coerce '' → undefined before URL validation

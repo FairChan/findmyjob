@@ -2875,6 +2875,71 @@ describe('plan management actions (M8-T01)', () => {
   })
 })
 
+describe('Stripe checkout action (M8-T03)', () => {
+  it.each(['guest', 'student', 'recruiter', 'company-admin', 'suspended', 'deleted', 'inactive-company'] as const)(
+    'rejects %s before checkout service dispatch', async actor => {
+      const employer = await createEmployer(testDb)
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else {
+        mockSession(employer.userId)
+        if (actor === 'recruiter' || actor === 'company-admin') {
+          await testDb.companyMember.updateMany({ where: { userId: employer.userId }, data: {
+            role: actor === 'recruiter' ? 'RECRUITER' : 'ADMIN',
+          } })
+        } else if (actor === 'inactive-company') {
+          await testDb.company.update({ where: { id: employer.companyId }, data: { isActive: false } })
+        } else {
+          await testDb.user.update({ where: { id: employer.userId }, data: {
+            status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+          } })
+        }
+      }
+      const service = await import('@/server/services/stripe-payments')
+      const start = vi.spyOn(service, 'startStripeCheckout')
+      try {
+        const { startStripeCheckoutAction } = await import('@/server/actions/billing')
+        expect(await startStripeCheckoutAction({ orderId: 'synthetic-order', locale: 'en' }))
+          .toEqual({ ok: false, code: 'FORBIDDEN' })
+        expect(start).not.toHaveBeenCalled()
+        expect(await testDb.stripeCheckoutAttempt.count()).toBe(0)
+      } finally { start.mockRestore() }
+    },
+  )
+
+  it('dispatches only the current OWNER identity and the narrow validated input', async () => {
+    const employer = await createEmployer(testDb)
+    mockSession(employer.userId)
+    const service = await import('@/server/services/stripe-payments')
+    const result = { orderId: 'synthetic-order', checkoutUrl: 'https://checkout.stripe.com/c/pay/synthetic' }
+    const start = vi.spyOn(service, 'startStripeCheckout').mockResolvedValue(result)
+    try {
+      const { startStripeCheckoutAction } = await import('@/server/actions/billing')
+      expect(await startStripeCheckoutAction({ orderId: result.orderId, locale: 'zh' }))
+        .toEqual({ ok: true, data: result })
+      expect(start).toHaveBeenCalledExactlyOnceWith(
+        { userId: employer.userId, companyId: employer.companyId, role: 'OWNER' },
+        { orderId: result.orderId, locale: 'zh' },
+      )
+    } finally { start.mockRestore() }
+  })
+
+  it('rejects client identity, amount and return-url fields before checkout dispatch', async () => {
+    const employer = await createEmployer(testDb)
+    mockSession(employer.userId)
+    const service = await import('@/server/services/stripe-payments')
+    const start = vi.spyOn(service, 'startStripeCheckout')
+    try {
+      const { startStripeCheckoutAction } = await import('@/server/actions/billing')
+      expect(await startStripeCheckoutAction({
+        orderId: 'synthetic-order', locale: 'en', companyId: 'forged', userId: 'forged',
+        amountSen: 1, successUrl: 'https://external.example.test',
+      })).toMatchObject({ ok: false, code: 'VALIDATION_ERROR' })
+      expect(start).not.toHaveBeenCalled()
+    } finally { start.mockRestore() }
+  })
+})
+
 describe('billing actions (M8-T02)', () => {
   it.each(['guest', 'student', 'recruiter', 'company-admin', 'suspended', 'deleted', 'inactive-company'] as const)(
     '%s cannot quote, create, attach or cancel company orders', async actor => {

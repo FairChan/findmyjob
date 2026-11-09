@@ -17,7 +17,7 @@ export const BANK = {
 export const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64')
 export const COPY = {
   zh: {
-    create: '创建银行转账订单', refreshQuote: '重新获取报价', quoteChanged: '报价已更新，请重新获取报价并确认。',
+    create: '创建订单', refreshQuote: '重新获取报价', quoteChanged: '报价已更新，请重新获取报价并确认。',
     bankName: '银行名称', accountName: '收款户名', accountNumber: '收款账号', instructions: '转账说明',
     saveBank: '保存收款信息', bankSaved: '收款信息已保存。',
     bankUnavailable: '银行转账暂不可用。收款信息尚未配置，请稍后再试。',
@@ -31,7 +31,7 @@ export const COPY = {
     pending: '待付款', awaiting: '待核款', paid: '已确认到账', cancelledStatus: '已取消',
   },
   en: {
-    create: 'Create bank transfer order', refreshQuote: 'Get a new quote', quoteChanged: 'The quote has changed. Get a new quote and confirm it again.',
+    create: 'Create order', refreshQuote: 'Get a new quote', quoteChanged: 'The quote has changed. Get a new quote and confirm it again.',
     bankName: 'Bank name', accountName: 'Account name', accountNumber: 'Account number', instructions: 'Transfer instructions',
     saveBank: 'Save payment details', bankSaved: 'Payment details saved.',
     bankUnavailable: 'Bank transfers are unavailable. Payment details have not been configured. Please try again later.',
@@ -263,6 +263,10 @@ export async function evidence(page: Page, info: TestInfo, label: string, scope?
       const result = await new AxeBuilder({ page }).include(scope).analyze()
       expect(result.violations.filter((item) => item.impact === 'serious' || item.impact === 'critical')).toHaveLength(0)
     } else await checkA11y(page)
+    await page.evaluate(async () => {
+      window.scrollTo({ top: 0, left: 0, behavior: 'instant' })
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    })
     const path = info.outputPath(label + '-' + width + '.png')
     await page.screenshot({ path, fullPage: true })
     await info.attach(label + '-' + width, { path, contentType: 'image/png' })

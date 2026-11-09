@@ -314,6 +314,7 @@ ANTHROPIC_API_KEY=           # M9
 AI_MODEL_PARSE=claude-haiku-5-5      # M9，可换 claude-sonnet-5-5
 STRIPE_SECRET_KEY=           # M8
 STRIPE_WEBHOOK_SECRET=       # M8
+STRIPE_MODE=test             # test/live；与密钥、事件、Session/PI/Charge模式一致
 ```
 
 ## 7. 部署
