@@ -24,6 +24,7 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
   const raw = await searchParams
   const parsed = pageParamsSchema.safeParse(raw)
   const hasFilters = !!(parsed.success && parsed.data.tag)
+  const cursor = parsed.success ? parsed.data.cursor : undefined
   const t = await getTranslations({ locale, namespace: 'publicCompanies' })
   const baseUrl = (process.env.APP_URL ?? '').replace(/\/$/, '')
   return {
@@ -31,7 +32,8 @@ export async function generateMetadata({ params, searchParams }: PageProps): Pro
     description: t('description'),
     robots: hasFilters ? 'noindex,follow' : undefined,
     alternates: hasFilters ? undefined : {
-      canonical: `${baseUrl}/${locale}/companies`,
+      // A paginated page is its own canonical; pointing it at page 1 would drop it from the index.
+      canonical: `${baseUrl}/${locale}/companies${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
       languages: {
         'zh-Hans': `${baseUrl}/zh/companies`,
         'en': `${baseUrl}/en/companies`,
