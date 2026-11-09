@@ -138,7 +138,7 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
             name="agreeTerms"
             type="checkbox"
             required
-            className="mt-0.5 h-4 w-4 rounded border-input accent-brand"
+            className="mt-0.5 h-6 w-6 rounded border-input accent-brand shrink-0"
           />
           <span className="text-sm">{t('agreeTerms')}</span>
         </label>
@@ -149,7 +149,7 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
             name="agreePrivacy"
             type="checkbox"
             required
-            className="mt-0.5 h-4 w-4 rounded border-input accent-brand"
+            className="mt-0.5 h-6 w-6 rounded border-input accent-brand shrink-0"
           />
           <span className="text-sm">{t('agreePrivacy')}</span>
         </label>
@@ -159,7 +159,7 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
             id="joinTalentPool"
             name="joinTalentPool"
             type="checkbox"
-            className="mt-0.5 h-4 w-4 rounded border-input accent-brand"
+            className="mt-0.5 h-6 w-6 rounded border-input accent-brand shrink-0"
           />
           <span className="text-sm text-muted-foreground">{t('joinTalentPool')}</span>
         </label>

@@ -460,7 +460,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                     type="checkbox"
                     checked={intents.includes(v)}
                     onChange={() => setIntents(toggleArray(intents, v))}
-                    className="h-4 w-4"
+                    className="h-6 w-6 shrink-0"
                   />
                   <span className="text-sm">
                     {v === 'INTERNSHIP'
@@ -492,7 +492,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                     type="checkbox"
                     checked={preferredStates.includes(s.code)}
                     onChange={() => setPreferredStates(toggleArray(preferredStates, s.code))}
-                    className="h-4 w-4"
+                    className="h-6 w-6 shrink-0"
                   />
                   <span className="text-sm">{locale === 'zh' ? s.nameZh : s.nameEn}</span>
                 </label>
@@ -508,7 +508,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                     type="checkbox"
                     checked={preferredIndustries.includes(ind.code)}
                     onChange={() => setPreferredIndustries(toggleArray(preferredIndustries, ind.code))}
-                    className="h-4 w-4"
+                    className="h-6 w-6 shrink-0"
                   />
                   <span className="text-sm">{locale === 'zh' ? ind.nameZh : ind.nameEn}</span>
                 </label>

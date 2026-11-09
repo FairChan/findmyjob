@@ -37,7 +37,7 @@ export default async function AdminDataRequestsPage({
       <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
 
       {/* Status filter */}
-      <div className="flex gap-2 mb-6">
+      <div className="flex flex-wrap gap-2 mb-6">
         {[undefined, 'OPEN', 'DONE', 'REJECTED'].map((s) => (
           <a
             key={s ?? 'all'}

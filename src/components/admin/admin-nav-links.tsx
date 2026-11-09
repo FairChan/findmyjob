@@ -62,7 +62,7 @@ export function AdminNavLinks({
   }
 
   return (
-    <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col" aria-label="Admin navigation">
+    <nav className="flex flex-wrap gap-1 px-3 pb-3 lg:flex-col lg:flex-nowrap" aria-label="Admin navigation">
       {NAV_ITEMS.map(({ key, href, icon: Icon, end }) => {
         const to = href(locale)
         const isActive = end ? pathname === to || pathname === `${to}/` : pathname.startsWith(`${to}/`) || pathname === to

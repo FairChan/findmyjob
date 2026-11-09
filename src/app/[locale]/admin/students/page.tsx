@@ -34,7 +34,7 @@ export default async function AdminStudentsPage({
       <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
 
       {/* Search bar */}
-      <form method="GET" className="flex gap-2 mb-6">
+      <form method="GET" className="flex flex-wrap gap-2 mb-6">
         <input
           type="text"
           name="q"
