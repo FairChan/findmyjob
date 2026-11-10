@@ -81,8 +81,8 @@ services:
     command:
       - node
       - --conditions=react-server
-      - -r
-      - tsx/cjs
+      - --import
+      - tsx
       - src/worker.ts
     env_file: /opt/findmyjob/env/app.env
     environment:
@@ -150,6 +150,7 @@ services:
 
   tools:
     image: ghcr.io/fairchan/findmyjob-tools:${APP_TAG:?}
+    entrypoint: ["node", "--conditions=react-server", "--import", "tsx"]
     env_file: /opt/findmyjob/env/app.env
     networks:
       - backend
@@ -161,7 +162,7 @@ services:
     profiles:
       - ops
     # usage: docker compose run --rm tools scripts/backfill/xxx.ts
-    # entrypoint: node --conditions=react-server -r tsx/cjs <script>
+    # entrypoint: node --conditions=react-server --import tsx <script>
 
   backup:
     image: ghcr.io/fairchan/findmyjob-backup:${APP_TAG:?}

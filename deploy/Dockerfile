@@ -51,7 +51,7 @@ COPY --chown=node:node tsconfig.json ./tsconfig.json
 COPY --chown=node:node package.json ./package.json
 ENV NODE_ENV=production
 USER node
-ENTRYPOINT ["node", "--conditions=react-server", "-r", "tsx/cjs"]
+ENTRYPOINT ["node", "--conditions=react-server", "--import", "tsx"]
 
 # ── backup ────────────────────────────────────────────────────────────────────
 # pushed as ghcr.io/fairchan/findmyjob-backup:<sha>
@@ -81,7 +81,7 @@ ENTRYPOINT ["/opt/findmyjob/bin/findmyjob-backup"]
 
 # ── runner (default) ──────────────────────────────────────────────────────────
 # Serves the Next.js app (CMD) and also supports the worker service
-# (docker-compose overrides CMD to: node --conditions=react-server -r tsx/cjs src/worker.ts)
+# (docker-compose overrides CMD to: node --conditions=react-server --import tsx src/worker.ts)
 FROM base AS runner
 ENV NODE_ENV=production \
     PORT=3000 \
