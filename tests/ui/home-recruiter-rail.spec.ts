@@ -62,7 +62,7 @@ test('English copy and recruitment links stay in the current locale', async ({ p
   await expect(page).toHaveURL(/\/en\/jobs$/)
 })
 
-test('normal motion supports pointer pull, spring return and click to flip', async ({ page }) => {
+test('badges ignore dragging and still flip on click', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/zh')
@@ -79,15 +79,21 @@ test('normal motion supports pointer pull, spring return and click to flip', asy
   await page.mouse.down()
   await page.mouse.move(x, y + 55, { steps: 12 })
   const cord = rail.locator('[data-lanyard="0"] [data-hang]')
-  await expect
-    .poll(() => cord.evaluate((node) => new DOMMatrix(getComputedStyle(node).transform).m42))
-    .toBeGreaterThan(20)
+  // Pulling down must not stretch the cord: the rail answers to hover and click only.
+  await page.waitForTimeout(400)
+  expect(
+    await cord.evaluate((node) => Math.abs(new DOMMatrix(getComputedStyle(node).transform).m42)),
+  ).toBeLessThan(6)
   await page.mouse.up()
-  await expect
-    .poll(() =>
-      cord.evaluate((node) => Math.abs(new DOMMatrix(getComputedStyle(node).transform).m42)),
-    )
-    .toBeLessThan(6)
+  // Nor can a badge be dragged sideways along the rail.
+  const before = (await badge.boundingBox())!.x
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x + 120, y, { steps: 12 })
+  await page.waitForTimeout(400)
+  await page.mouse.up()
+  await page.waitForTimeout(900)
+  expect(Math.abs((await badge.boundingBox())!.x - before)).toBeLessThan(12)
   await badge.click()
   await expect(badge).toHaveAttribute('aria-pressed', 'true')
   expect(errors).toEqual([])

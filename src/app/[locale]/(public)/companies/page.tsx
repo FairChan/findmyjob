@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { listPublicCompanies } from '@/server/services/company'
+import { CompanyShowcase } from '@/components/company/company-showcase'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/empty-state'
 import { PageHeader } from '@/components/ui/page-header'
@@ -72,6 +73,29 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
   return (
     <div className="page-shell pb-20 pt-10 md:pt-14">
       <PageHeader title={t('title')} lead={t('subtitle')} />
+
+      {/* Showcase: needs a few companies to read as a row. */}
+      {companies.length >= 3 && (
+        <div className="mt-8">
+          <CompanyShowcase
+            companies={companies.map((company) => ({
+              id: company.id,
+              name: locale === 'zh' ? (company.displayNameZh ?? company.legalName) : (company.displayNameEn ?? company.legalName),
+              logoSrc: company.logoKey ? `/api/logos/${company.id}` : null,
+              description: company.description,
+              jobCount: company.publishedJobCount,
+            }))}
+            labels={{
+              region: t('showcase.region'),
+              hint: t('showcase.hint'),
+              jobs: t('showcase.jobs', { count: '{count}' }),
+              noDescription: t('showcase.noDescription'),
+              viewCompany: t('showcase.viewCompany'),
+              close: t('showcase.close'),
+            }}
+          />
+        </div>
+      )}
 
       {/* Tag filters */}
       <div className="mt-8 flex flex-wrap gap-2">

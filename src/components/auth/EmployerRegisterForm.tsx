@@ -88,7 +88,7 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
           required
           autoComplete="name"
           placeholder={t('namePlaceholder')}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
@@ -103,7 +103,7 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
           required
           autoComplete="email"
           placeholder={t('emailPlaceholder')}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
@@ -120,7 +120,7 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
           autoComplete="new-password"
           placeholder={t('passwordPlaceholder')}
           onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
@@ -162,7 +162,7 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
         </p>
       )}
 
-      <Button type="submit" className="w-full" disabled={isPending || !turnstileToken}>
+      <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !turnstileToken}>
         {isPending ? '...' : t('submitEmployer')}
       </Button>
     </form>

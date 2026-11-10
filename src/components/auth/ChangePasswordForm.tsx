@@ -59,7 +59,7 @@ export default function ChangePasswordForm() {
           required
           autoComplete="current-password"
           onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
@@ -75,7 +75,7 @@ export default function ChangePasswordForm() {
           minLength={8}
           autoComplete="new-password"
           onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
@@ -91,7 +91,7 @@ export default function ChangePasswordForm() {
           minLength={8}
           autoComplete="new-password"
           onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 

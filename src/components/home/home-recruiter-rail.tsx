@@ -44,6 +44,7 @@ export function HomeRecruiterRail() {
           autoplay={autoplay}
           onAutoplayStop={stopAutoplay}
           interval={3500}
+          draggable={false}
           labels={{ flip: t('flip'), back: t('back'), show: t('show') }}
           className="sm:rounded-tile"
           action={

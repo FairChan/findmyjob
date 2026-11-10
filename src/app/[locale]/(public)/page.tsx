@@ -1,11 +1,12 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
-import { BadgeCheck, Eye, FileText, Search, Users } from 'lucide-react'
+import { BadgeCheck, Eye, FileText, Quote, Search, Users } from 'lucide-react'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { getHomePartners } from '@/server/services/admin-schools-partners'
 import { getHomeStats, getLatestJobs } from '@/server/services/home'
 import { safeWebsiteHref } from '@/lib/url-utils'
+import { HeroFloating } from '@/components/home/hero-floating'
 import { HeroWord } from '@/components/home/hero-word'
 import { HomeRecruiterRail } from '@/components/home/home-recruiter-rail'
 import { JobCard } from '@/components/jobs/job-card'
@@ -44,6 +45,8 @@ const STUDENT_VALUES = [
   { key: 'studentValue4', Icon: Users, wide: false },
 ] as const
 
+const TESTIMONIALS = ['a', 'b', 'c'] as const
+
 // The first word is the resting one and matches the sentence read to assistive tech.
 const HERO_WORD_KEYS = ['w1', 'w2', 'w3', 'w4'] as const
 
@@ -67,8 +70,9 @@ export default async function HomePage({ params }: Props) {
   return (
     <>
       {/* Hero */}
-      <section className="bg-background pb-16 pt-16 md:pb-24 md:pt-28">
-        <div className="page-shell text-center">
+      <section className="relative isolate overflow-hidden bg-background pb-16 pt-16 md:pb-24 md:pt-28">
+        <HeroFloating />
+        <div className="page-shell relative z-10 text-center">
           <h1 className="text-display text-balance">
             <span className="sr-only">{t('heroTitle')}</span>
             <span aria-hidden="true">
@@ -203,8 +207,27 @@ export default async function HomePage({ params }: Props) {
 
       <HomeRecruiterRail />
 
-      {/* For employers */}
+      {/* What students say: sample content until real feedback is collected. */}
       <Section>
+        <SectionHeader title={t('testimonials.title')} lead={t('testimonials.demoNotice')} />
+        <ul className="grid gap-4 md:grid-cols-3">
+          {TESTIMONIALS.map((key) => (
+            <li key={key}>
+              <Card size="tile" className="flex h-full flex-col">
+                <Quote aria-hidden="true" className="size-7 text-brand" strokeWidth={1.75} />
+                <blockquote className="mt-6 text-title text-pretty">{t(`testimonials.items.${key}.quote`)}</blockquote>
+                <p className="mt-auto pt-8 text-sm">
+                  <span className="font-semibold">{t(`testimonials.items.${key}.name`)}</span>
+                  <span className="text-muted-foreground"> · {t(`testimonials.items.${key}.meta`)}</span>
+                </p>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      </Section>
+
+      {/* For employers */}
+      <Section className="pt-0 md:pt-0">
         <Card surface="inverse" size="tile" className="grid gap-10 md:grid-cols-[1fr_1.15fr] md:gap-14 md:p-14">
           <div className="flex flex-col items-start justify-between gap-8">
             <h2 className="text-headline text-balance">{t('employerValueTitle')}</h2>

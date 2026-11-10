@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server'
+import { AuthCard } from '@/components/auth/auth-card'
 import { env } from '@/env'
 import LoginForm from '@/components/auth/LoginForm'
 
@@ -13,11 +14,8 @@ export default async function LoginPage({ params, searchParams }: Props) {
   const t = await getTranslations('login')
 
   return (
-    <div className="container mx-auto max-w-md px-4 py-12">
-      <div className="rounded-tile bg-card p-8">
-        <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
+    <AuthCard title={t('title')} social>
         <LoginForm locale={locale} redirect={redirect} siteKey={env.TURNSTILE_SITE_KEY} />
-      </div>
-    </div>
+    </AuthCard>
   )
 }

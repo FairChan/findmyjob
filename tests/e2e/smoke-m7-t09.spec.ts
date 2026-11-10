@@ -1,7 +1,7 @@
 /**
  * M7-T09 browser acceptance. Apply after the M6 commit; run with --workers=1.
  * UI contract: /[locale]/safety accepts category/cursor, uses labeled native
- * category select and article[data-testid="safety-article-{id}"] containers.
+ * category select and [data-testid="safety-article-{id}"] accordion rows.
  * ReportJobDialog({jobId}) appears on full and locked job pages; native reason
  * select/note textarea, role=alert for errors, outside role=status for success.
  * Real M6 services/renderer and real loginAs ADMIN 2FA; no action/network mocks.
@@ -204,7 +204,7 @@ test.describe('M7-T09 safety content and reporting', () => {
       })).toString('base64url')
       await page.goto('/' + locale + '/safety?category=GUIDE&cursor=' + emptyCursor)
       await expect(main.getByText(c.empty, { exact: true })).toBeVisible()
-      await expect(main.locator('article[data-testid^="safety-article-"]')).toHaveCount(0)
+      await expect(main.locator('[data-testid^="safety-article-"]')).toHaveCount(0)
       await expect(main.getByRole('alert')).toHaveCount(0)
       await expect(main.getByRole('link', { name: c.next, exact: true })).toHaveCount(0)
       await page.goto('/' + locale + '/safety')
@@ -225,7 +225,7 @@ test.describe('M7-T09 safety content and reporting', () => {
       for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
         await expect(page.getByRole('heading', { level: 1, name: c.safety, exact: true })).toBeVisible()
         payloads.push(...await readPagePayloads(page))
-        const visibleIds = await page.locator('article[data-testid^="safety-article-"]').evaluateAll((elements) =>
+        const visibleIds = await page.locator('[data-testid^="safety-article-"]').evaluateAll((elements) =>
           elements.map((element) => element.getAttribute('data-testid')!.slice('safety-article-'.length)),
         )
         seen.push(...visibleIds.filter((id) => guideIds.includes(id)))
@@ -233,6 +233,10 @@ test.describe('M7-T09 safety content and reporting', () => {
         await expect(page.getByText(draftMarker, { exact: true })).toHaveCount(0)
         if (pageNumber === 0) {
           const article = page.getByTestId('safety-article-' + guideIds[0])
+          // Articles sit in an accordion; open this one if another row is expanded.
+          const toggle = article.getByRole('button').first()
+          if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+          await expect(toggle).toHaveAttribute('aria-expanded', 'true')
           await expect(article.locator('strong')).toContainText(prefix + ' safe guidance')
           await expect(article.locator('script, iframe, img, a[href^="javascript:"]')).toHaveCount(0)
           expect(await page.evaluate(() => '__m7Unsafe' in globalThis)).toBe(false)

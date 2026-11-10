@@ -75,21 +75,27 @@ test.describe('redesign: home', () => {
     await page.goto('/zh')
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(/在马来西亚读书，找到我的第一份工作/)
     await expect(page.getByTestId('hero-word')).toHaveAttribute('data-word', '第一份')
+    // Reduced motion: the word stays put.
+    await page.waitForTimeout(2500)
+    await expect(page.getByTestId('hero-word')).toHaveAttribute('data-typed', '第一份')
     await expectNoSeriousA11y(page)
     await shot(page, 'home-zh-1440')
   })
 
-  test('en headline rolls through the adjectives once and returns to the first', async ({ page }) => {
+  test('en headline types the adjectives one after another', async ({ page }) => {
     await page.goto('/en')
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(
       /Finding my first Job While Studying in Malaysia/,
     )
     const word = page.getByTestId('hero-word')
-    await expect(word).toHaveAttribute('data-word', 'dream', { timeout: 4000 })
-    await expect(word).toHaveAttribute('data-word', 'first', { timeout: 8000 })
-    // Rests: no further change once the single pass is over.
-    await page.waitForTimeout(2000)
-    await expect(word).toHaveAttribute('data-word', 'first')
+    // Starts on the full first word, then backspaces it and types the next ones.
+    await expect(word).toHaveAttribute('data-typed', 'first')
+    await expect(word).toHaveAttribute('data-typed', 'dream', { timeout: 6000 })
+    await expect(word).toHaveAttribute('data-typed', 'right', { timeout: 6000 })
+    // The collage is decoration only.
+    await expect(page.locator('main img[src*="malaysia"]').first()).toHaveAttribute('alt', '')
+    await expect(page.getByRole('heading', { level: 2, name: 'What students say' })).toBeVisible()
+    await expect(page.getByText('Sample quotes, shown for preview only.')).toBeVisible()
     await shot(page, 'home-en-1440')
   })
 

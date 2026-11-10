@@ -62,6 +62,11 @@ export interface TeamLanyardRailProps extends React.ComponentProps<'section'> {
   flipped?: number | null
   onFlippedChange?: (index: number | null) => void
   labels?: TeamLanyardRailLabels
+  /**
+   * Lets the visitor drag badges along the rail and pull them down. Off, badges respond to
+   * hover, click and keyboard only; the narrow-screen carousel can still be swiped.
+   */
+  draggable?: boolean
 }
 
 const RATIO = 96 / 62
@@ -590,6 +595,7 @@ export function TeamLanyardRail({
   flipped: flippedProp,
   onFlippedChange,
   labels = DEFAULT_LABELS,
+  draggable = true,
   className,
   ...rest
 }: TeamLanyardRailProps) {
@@ -651,6 +657,7 @@ export function TeamLanyardRail({
     cyclic: false,
     activeControlled: false,
     flippedControlled: false,
+    draggable: true,
   })
   const callbacks = React.useRef({ onActiveChange, onFlippedChange })
   React.useLayoutEffect(() => {
@@ -664,6 +671,7 @@ export function TeamLanyardRail({
       count,
       activeControlled: activeProp !== undefined,
       flippedControlled: flippedProp !== undefined,
+      draggable,
     }
     callbacks.current = { onActiveChange, onFlippedChange }
   })
@@ -1235,8 +1243,13 @@ export function TeamLanyardRail({
       const dx = event.clientX - p.x
       const dy = event.clientY - p.y
       if (!p.mode && Math.hypot(dx, dy) > 8) {
-        if (Math.abs(dy) > Math.abs(dx)) p.mode = dy > 0 && p.index >= 0 ? 'pull' : 'none'
-        else p.mode = L.size.carousel ? 'swipe' : p.index >= 0 && !L.reduced ? 'drag' : 'none'
+        if (Math.abs(dy) > Math.abs(dx)) p.mode = L.draggable && dy > 0 && p.index >= 0 ? 'pull' : 'none'
+        else
+          p.mode = L.size.carousel
+            ? 'swipe'
+            : L.draggable && p.index >= 0 && !L.reduced
+              ? 'drag'
+              : 'none'
         if (p.mode !== 'none') {
           stop()
           if (stage.isConnected) stage.setPointerCapture(event.pointerId)

@@ -56,6 +56,12 @@
     "folders": "收藏夹",
     "sentInvitations": "邀请记录"
   },
+  "authCard": {
+    "google": "使用 Google 账号继续",
+    "microsoft": "使用 Microsoft 账号继续",
+    "soon": "即将开放",
+    "or": "或使用邮箱"
+  },
   "brandLine": {
     "lead": "找到我的",
     "tail": "工作",
@@ -122,6 +128,27 @@
     "latestJobsTitle": "最新职位",
     "latestJobsMore": "查看更多职位",
     "latestJobsEmpty": "暂无在招职位",
+    "testimonials": {
+      "title": "同学们怎么说",
+      "demoNotice": "示例评价，仅供效果预览，上线后替换为真实反馈。",
+      "items": {
+        "a": {
+          "quote": "按“接受学生准证”筛一遍，剩下的职位都能投，不用一家家去问。",
+          "name": "林同学",
+          "meta": "计算机硕士在读 · 示例"
+        },
+        "b": {
+          "quote": "一份简历投了六家，谁看过、谁解锁了联系方式，一眼就能看到。",
+          "name": "陈同学",
+          "meta": "市场营销大三 · 示例"
+        },
+        "c": {
+          "quote": "企业都审核过注册证书，我第一次放心把电话留在求职网站上。",
+          "name": "Aisha",
+          "meta": "商科大四 · 示例"
+        }
+      }
+    },
     "latestJobsEmptyHint": "有新职位发布后，会出现在这里。",
     "browseCompanies": "先看看入驻企业",
     "partnersTitle": "背书与合作伙伴",
@@ -1590,7 +1617,15 @@
     "tagCHINESE_MY": "华资",
     "loadMore": "加载更多",
     "empty": "暂无合作企业",
-    "openPositions": "个在招职位"
+    "openPositions": "个在招职位",
+    "showcase": {
+      "region": "合作企业展示",
+      "hint": "左右拖动或用方向键浏览，点击中间的企业查看合作详情。",
+      "jobs": "{count} 个在招职位",
+      "noDescription": "该企业暂未填写合作简介。",
+      "viewCompany": "查看企业主页",
+      "close": "关闭"
+    }
   },
   "registerLanding": {
     "title": "注册 FindMYJob",

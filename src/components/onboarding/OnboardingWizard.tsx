@@ -1,5 +1,6 @@
 'use client'
 import { useState, useTransition, KeyboardEvent } from 'react'
+import Stepper, { Step } from '@/components/ui/stepper/Stepper'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
@@ -298,35 +299,36 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
   const stepTitles = [t('step1Title'), t('step2Title'), t('step3Title'), t('step4Title')]
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="bg-background">
+      <div className="page-shell max-w-2xl py-8 md:py-12">
         {/* Progress header */}
-        <div className="mb-8">
-          <p className="text-sm text-muted-foreground mb-2">
+        <div className="mb-6">
+          <p className="text-sm text-muted-foreground">
             {t('stepProgress', { current: currentStep, total: TOTAL_STEPS })}
           </p>
-          <div className="flex gap-1">
-            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-1.5 flex-1 rounded-full transition-colors ${
-                  i + 1 <= currentStep ? 'bg-primary' : 'bg-muted'
-                }`}
-              />
-            ))}
-          </div>
-          <h1 className="text-xl font-semibold mt-4">{stepTitles[currentStep - 1]}</h1>
+          <h1 className="mt-1 text-title">{stepTitles[currentStep - 1]}</h1>
         </div>
 
         {/* Error message */}
         {error && (
-          <div role="alert" className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <div role="alert" className="mb-4 rounded-control bg-destructive-muted p-3 text-sm text-destructive">
             {error}
           </div>
         )}
 
+        <Stepper
+          step={currentStep}
+          linear
+          disableStepIndicators
+          showFooter={false}
+          theme="light"
+          frame={false}
+          width="100%"
+          accentColor="hsl(210 100% 40%)"
+          contentClassName="px-1 pb-1 pt-6"
+        >
         {/* Step 1 */}
-        {currentStep === 1 && (
+        <Step title={stepTitles[0]}>
           <div className="space-y-5">
             <div>
               <Label htmlFor="fullName">{t('fullNameLabel')} *</Label>
@@ -346,7 +348,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 id="school"
                 value={schoolId}
                 onChange={(e) => setSchoolId(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               >
                 <option value="">{t('schoolPlaceholder')}</option>
                 {schools.map((s) => (
@@ -365,7 +367,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                   id="degreeLevel"
                   value={degreeLevel}
                   onChange={(e) => setDegreeLevel(e.target.value)}
-                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                 >
                   <option value="">{t('degreeLevelPlaceholder')}</option>
                   <option value="FOUNDATION">{t('degreeLevelFoundation')}</option>
@@ -448,7 +450,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 id="workAuth"
                 value={workAuth}
                 onChange={(e) => setWorkAuth(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               >
                 <option value="">{t('workAuthPlaceholder')}</option>
                 <option value="MY_CITIZEN">{t('workAuthMyCitizen')}</option>
@@ -460,10 +462,10 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               </select>
             </div>
           </div>
-        )}
+        </Step>
 
         {/* Step 2 */}
-        {currentStep === 2 && (
+        <Step title={stepTitles[1]}>
           <div className="space-y-5">
             <div>
               <Label>{t('intentsLabel')} *</Label>
@@ -555,10 +557,10 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               </div>
             </div>
           </div>
-        )}
+        </Step>
 
         {/* Step 3 */}
-        {currentStep === 3 && (
+        <Step title={stepTitles[2]}>
           <div className="space-y-5">
             <div>
               <Label>{t('languagesLabel')}</Label>
@@ -574,7 +576,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                     <select
                       value={lang.level}
                       onChange={(e) => updateLanguage(i, 'level', e.target.value)}
-                      className="h-10 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="h-10 rounded-control border border-input bg-background px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                     >
                       <option value="BASIC">{t('langLevelBasic')}</option>
                       <option value="CONVERSATIONAL">{t('langLevelConversational')}</option>
@@ -649,14 +651,14 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 placeholder={t('summaryPlaceholder')}
                 maxLength={2000}
                 rows={5}
-                className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="mt-1 flex w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               />
             </div>
           </div>
-        )}
+        </Step>
 
         {/* Step 4 */}
-        {currentStep === 4 && (
+        <Step title={stepTitles[3]}>
           <div className="space-y-6">
             <p className="text-sm text-muted-foreground">{t('skipStep4Hint')}</p>
 
@@ -694,7 +696,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         <select
                           value={edu.degreeLevel}
                           onChange={(e) => updateEducation(i, 'degreeLevel', e.target.value)}
-                          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                         >
                           <option value=""></option>
                           <option value="FOUNDATION">{t('degreeLevelFoundation')}</option>
@@ -749,7 +751,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         onChange={(e) => updateEducation(i, 'description', e.target.value)}
                         rows={2}
                         maxLength={1000}
-                        className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="mt-1 flex w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                       />
                     </div>
                   </div>
@@ -783,7 +785,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         <select
                           value={exp.kind}
                           onChange={(e) => updateExperience(i, 'kind', e.target.value)}
-                          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                         >
                           <option value="INTERNSHIP">{t('kindInternship')}</option>
                           <option value="WORK">{t('kindWork')}</option>
@@ -837,7 +839,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         onChange={(e) => updateExperience(i, 'description', e.target.value)}
                         rows={2}
                         maxLength={1000}
-                        className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="mt-1 flex w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                       />
                     </div>
                   </div>
@@ -848,7 +850,8 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               </div>
             </div>
           </div>
-        )}
+        </Step>
+        </Stepper>
 
         {/* Navigation */}
         <div className="mt-8 flex items-center justify-between gap-3">
@@ -872,7 +875,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 {t('previous')}
               </Button>
             )}
-            <Button type="button" onClick={handleNext} disabled={isPending}>
+            <Button type="button" variant="brand" onClick={handleNext} disabled={isPending}>
               {isPending
                 ? t('saving')
                 : currentStep < TOTAL_STEPS

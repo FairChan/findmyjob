@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
+import { BouncyAccordion } from '@/components/ui/bouncy-accordion'
+import { ShieldCheck } from 'lucide-react'
 import { FIELD_CLASS } from '@/components/ui/field'
 import { PageHeader } from '@/components/ui/page-header'
 import { BrandLine } from '@/components/layout/brand-line'
@@ -91,22 +93,40 @@ export default async function SafetyPage({ params, searchParams }: Props) {
             <p role="alert" className="rounded-card bg-destructive-muted p-5 text-sm text-destructive">{t('errorQuery')}</p>
           ) : page.items.length === 0 ? (
             <p className="rounded-card bg-muted p-6 text-sm text-muted-foreground">{t('empty')}</p>
-          ) : page.items.map((article) => (
-            <article
-              key={article.id}
-              data-testid={`safety-article-${article.id}`}
-              className="min-w-0 space-y-4 rounded-card border p-5 sm:p-7"
-            >
-              <div className="space-y-2">
-                <p className="text-xs font-medium text-brand-muted-foreground">{t(`categories.${article.category}`)}</p>
-                <h2 className="break-words text-title [overflow-wrap:anywhere]">{article.title}</h2>
-                <p className="text-xs text-muted-foreground">
-                  <time dateTime={article.updatedAt.toISOString()}>{t('updatedAt', { date: dateFormat.format(article.updatedAt) })}</time>
-                </p>
-              </div>
-              <SafetyArticleContent body={article.body} videoUrl={article.videoUrl} videoLinkLabel={t('video')} />
-            </article>
-          ))}
+          ) : (
+            // One article open at a time keeps a long list scannable.
+            <BouncyAccordion
+              key={page.items.map((article) => article.id).join()}
+              defaultValue={page.items[0]?.id ?? null}
+              classNames={{
+                item: 'bg-muted',
+                trigger: 'min-h-16',
+                title: 'text-body font-semibold',
+                description: 'text-foreground',
+              }}
+              items={page.items.map((article) => ({
+                id: article.id,
+                testId: `safety-article-${article.id}`,
+                icon: <ShieldCheck aria-hidden="true" className="size-5" strokeWidth={1.75} />,
+                title: (
+                  <>
+                    <span className="block text-xs font-medium text-brand-muted-foreground">
+                      {t(`categories.${article.category}`)}
+                    </span>
+                    <span className="mt-0.5 block [overflow-wrap:anywhere]">{article.title}</span>
+                  </>
+                ),
+                description: (
+                  <div className="space-y-4">
+                    <p className="text-xs text-muted-foreground">
+                      <time dateTime={article.updatedAt.toISOString()}>{t('updatedAt', { date: dateFormat.format(article.updatedAt) })}</time>
+                    </p>
+                    <SafetyArticleContent body={article.body} videoUrl={article.videoUrl} videoLinkLabel={t('video')} />
+                  </div>
+                ),
+              }))}
+            />
+          )}
           {page.nextCursor && (
             <div className="flex justify-end">
               <Button asChild variant="secondary">

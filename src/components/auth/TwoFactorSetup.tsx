@@ -153,10 +153,10 @@ export default function TwoFactorSetup({ locale, alreadyEnabled }: Props) {
               autoComplete="current-password"
               required
               disabled={isPending || requiresLogin}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
             />
           </div>
-          <Button type="submit" className="h-auto min-h-10 w-full whitespace-normal bg-brand text-brand-foreground hover:bg-brand/90" disabled={isPending || requiresLogin}>
+          <Button type="submit" variant="brand" className="h-auto min-h-11 w-full whitespace-normal" disabled={isPending || requiresLogin}>
             {isPending ? t('generating') : t('enableSubmit')}
           </Button>
         </form>
@@ -175,7 +175,7 @@ export default function TwoFactorSetup({ locale, alreadyEnabled }: Props) {
                 autoComplete="off"
                 spellCheck={false}
                 onFocus={(e) => e.currentTarget.select()}
-                className="w-full rounded-md border border-input bg-muted px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-muted px-3 py-2 font-mono text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               />
             </div>
             <Button type="button" variant="outline" className="h-auto min-h-10 whitespace-normal" onClick={() => copyValue(setup.secret)}>
@@ -224,10 +224,10 @@ export default function TwoFactorSetup({ locale, alreadyEnabled }: Props) {
                 required
                 disabled={isPending || requiresLogin}
                 aria-invalid={!!error}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               />
             </div>
-            <Button type="submit" className="h-auto min-h-10 w-full whitespace-normal bg-brand text-brand-foreground hover:bg-brand/90" disabled={isPending || requiresLogin || !savedBackupCodes || !code.trim()}>
+            <Button type="submit" variant="brand" className="h-auto min-h-11 w-full whitespace-normal" disabled={isPending || requiresLogin || !savedBackupCodes || !code.trim()}>
               {isPending ? t('verifying') : t('verifySubmit')}
             </Button>
           </form>

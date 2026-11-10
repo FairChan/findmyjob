@@ -1,4 +1,5 @@
 import { getTranslations } from 'next-intl/server'
+import { AuthCard } from '@/components/auth/auth-card'
 import { Link } from '@/i18n/navigation'
 import { env } from '@/env'
 import StudentRegisterForm from '@/components/auth/StudentRegisterForm'
@@ -27,11 +28,9 @@ export default async function StudentRegisterPage({ params, searchParams }: Prop
   }
 
   return (
-    <div className="container mx-auto max-w-md px-4 py-12">
-      <div className="rounded-tile bg-card p-8">
-        <h1 className="text-2xl font-bold mb-6">{t('studentTitle')}</h1>
+    <AuthCard title={t('studentTitle')} social>
         {signupClosed ? (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-center text-sm text-destructive">
+          <div className="rounded-control bg-destructive-muted p-4 text-center text-sm text-destructive">
             {t('signupClosed')}
           </div>
         ) : (
@@ -40,7 +39,7 @@ export default async function StudentRegisterPage({ params, searchParams }: Prop
         <div className="mt-4 flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
             {t('loginHint')}{' '}
-            <Link href="/login" className="text-brand underline-offset-4 hover:underline">
+            <Link href="/login" className="text-brand underline underline-offset-4">
               {t('loginLink')}
             </Link>
           </span>
@@ -51,7 +50,6 @@ export default async function StudentRegisterPage({ params, searchParams }: Prop
             {t('switchToEmployer')}
           </Link>
         </div>
-      </div>
-    </div>
+    </AuthCard>
   )
 }

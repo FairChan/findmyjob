@@ -154,11 +154,11 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
             aria-invalid={!!error}
             required
             disabled={isPending}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
           />
         </div>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-        <Button type="submit" className="w-full bg-brand text-brand-foreground hover:bg-brand/90" disabled={isPending || !code.trim()}>
+        <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !code.trim()}>
           {isPending ? t('verifying') : t('verifySubmit')}
         </Button>
         <Button
@@ -194,7 +194,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
           required
           autoComplete="email"
           placeholder={t('emailPlaceholder')}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
@@ -210,14 +210,14 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
           autoComplete="current-password"
           placeholder={t('passwordPlaceholder')}
           onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
       <div className="text-right">
         <Link
           href="/forgot-password"
-          className="text-sm text-brand underline-offset-4 hover:underline"
+          className="text-sm text-brand underline underline-offset-4"
         >
           {t('forgotPassword')}
         </Link>
@@ -237,13 +237,13 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
         </p>
       )}
 
-      <Button type="submit" className="w-full" disabled={isPending || !turnstileToken}>
+      <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !turnstileToken}>
         {isPending ? '...' : t('submit')}
       </Button>
 
       <div className="text-center text-sm text-muted-foreground">
         {t('registerHint')}{' '}
-        <Link href="/register/student" className="text-brand underline-offset-4 hover:underline">
+        <Link href="/register/student" className="text-brand underline underline-offset-4">
           {t('registerLink')}
         </Link>
       </div>

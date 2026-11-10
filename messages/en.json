@@ -56,6 +56,12 @@
     "folders": "Folders",
     "sentInvitations": "Sent invitations"
   },
+  "authCard": {
+    "google": "Continue with Google",
+    "microsoft": "Continue with Microsoft",
+    "soon": "Coming soon",
+    "or": "or use email"
+  },
   "brandLine": {
     "lead": "Finding my",
     "tail": "Job",
@@ -122,6 +128,27 @@
     "latestJobsTitle": "Latest Jobs",
     "latestJobsMore": "View More Jobs",
     "latestJobsEmpty": "No active jobs at the moment",
+    "testimonials": {
+      "title": "What students say",
+      "demoNotice": "Sample quotes, shown for preview only. Real feedback replaces them at launch.",
+      "items": {
+        "a": {
+          "quote": "I filter by “accepts student pass” once, and every job left is one I can actually apply for.",
+          "name": "Lin",
+          "meta": "MSc Computer Science · sample"
+        },
+        "b": {
+          "quote": "One resume, six applications, and I can see who viewed it and who unlocked my contact details.",
+          "name": "Chen",
+          "meta": "Year 3, Marketing · sample"
+        },
+        "c": {
+          "quote": "Every company has had its registration checked. It is the first job site I felt safe leaving my number on.",
+          "name": "Aisha",
+          "meta": "Year 4, Business · sample"
+        }
+      }
+    },
     "latestJobsEmptyHint": "New jobs appear here as soon as they are published.",
     "browseCompanies": "Browse companies",
     "partnersTitle": "Partners & Endorsers",
@@ -1590,7 +1617,15 @@
     "tagCHINESE_MY": "Chinese-Malaysian",
     "loadMore": "Load more",
     "empty": "No partner companies yet",
-    "openPositions": " open positions"
+    "openPositions": " open positions",
+    "showcase": {
+      "region": "Partner company showcase",
+      "hint": "Drag or use the arrow keys to browse; select the centred company for details.",
+      "jobs": "{count} open positions",
+      "noDescription": "This company has not added a description yet.",
+      "viewCompany": "View company page",
+      "close": "Close"
+    }
   },
   "registerLanding": {
     "title": "Sign Up for FindMYJob",
