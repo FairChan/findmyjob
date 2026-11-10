@@ -753,3 +753,15 @@ SIGINT/SIGTERM 首次进入关闭流程时立即停止新 T01 admission 并取�
 ### 排障与记录边界
 
 只记录固定失败码、内部 ID、代次和必要计数；查看 `resume.parse.consent`、`resume.parse.confirm`、`resume.parse.discard` 及受控 `setting.update` 的最小元数据，不复制 PDF 文本、建议正文、provider 原始响应/错误正文或对象路径到日志/Sentry/工单。保留 UNKNOWN 清理和失败重试记录，先查当前授权、来源、版本与租约，不用直接 SQL 改 READY、复用旧 token/key 或抹除账本来绕过失败。普通源简历删除仍沿既有 postcommit 存储失败策略；本次导出 artifact 协议不意味着所有源 PDF 删除也已具备同样的持久恢复能力。
+
+## M9-T02 JD 助手的启用与停用
+
+默认不创建或启用 `ai.jdAssistant`。真实外发前核对 Anthropic 项目账号、明确的 `AI_MODEL_JD`、成本限额、数据区域/保留条款与 SUBPROCESSORS；完成法律审阅及披露版本发布，让相关用户重新接受当前 TERMS/PRIVACY。不得用本地合成 SDK/E2E 通过替代这些步骤。
+
+专用 `saveJdAssistantSettingsAction` 只接受 `{enabled,legalVersion}`，要求近期二因素管理员身份，启用时核对最新 `legal.currentVersion`；每次保存由服务器生成新的 UUID epoch。通用设置写入不允许写此 gate。关闭时保存 `enabled:false`，旧页面之后的请求仍由服务 fresh 检查拒绝；已被外部提供方接受的请求不能因此被召回，不能承诺零处理/零费用。关闭后原手工职位编辑、保存草稿和审核继续使用。
+
+`limits.aiJdPerUserPerHour` / `limits.aiJdPerCompanyPerHour` 默认 10 / 30，受控整数 1..1000，采用持久固定小时窗口。预检失败不占额；通过预检后预占，提供方失败/超时仍计次，不自动退款或重试。公司额度拒绝前用户预占可能已经成功。该计数是本地请求控制，不是外部账单计费证明。
+
+只传经 redact 的 title/points；redact 不能保证匿名化。单次 SDK 请求使用明确模型、固定系统提示、结构化输出、20 秒预算和零自动重试；原始请求、输出与错误正文不进入日志/Sentry/审计。`ai.jd.generate` 只含内部 companyId、固定结果类别和 schema/prompt 版本。排障按固定错误码、当前成员状态、最新法律 grant、gate epoch 和模型配置检查，不复制岗位正文或 API 原始错误到工单。
+
+生成结果仍需人工核对事实及中英文一致性。应用只替换本地正文，关闭页面会丢失未保存编辑；替换已有内容须确认，若内容在确认期间变化会要求重新确认。只有原有保存/提交审核动作会持久化；助手不直接发布职位。浏览器关闭弹窗会丢弃迟到结果，并不证明服务端或远端已停止处理。

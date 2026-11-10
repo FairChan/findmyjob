@@ -2,7 +2,8 @@
 
 import { z } from 'zod'
 import { action } from '@/server/action'
-import { updateSettingAdmin } from '@/server/services/admin-settings'
+import { updateJdAssistantSettingsAdmin, updateSettingAdmin } from '@/server/services/admin-settings'
+import { resumeParseGateSchema } from '@/server/schemas/resume-parsing'
 import { bankTransferSettingsSchema } from '@/server/lib/billing-settings'
 import { invoiceIssuerSettingsSchema } from '@/server/lib/invoice-settings'
 
@@ -29,4 +30,9 @@ export const saveBankTransferSettingsAction = action(
 export const saveInvoiceIssuerSettingsAction = action(
   { auth: 'admin', input: invoiceIssuerSettingsSchema },
   async ctx => updateSettingAdmin({ userId: ctx.userId! }, 'billing.invoiceIssuer', ctx.input),
+)
+
+export const saveJdAssistantSettingsAction = action(
+  { auth: 'admin-fresh', input: resumeParseGateSchema.omit({ epoch: true }).strict() },
+  async ctx => updateJdAssistantSettingsAdmin({ userId: ctx.userId! }, ctx.input),
 )

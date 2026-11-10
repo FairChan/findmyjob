@@ -44,6 +44,8 @@ export const SETTINGS: SettingMeta[] = [
   { key: 'limits.otpSendsPerEmailPerDay', defaultValue: 5, schema: z.number().int().min(1).max(100), group: 'limits' },
   { key: 'limits.uploadsPerHour', defaultValue: 20, schema: z.number().int().min(1).max(1000), group: 'limits' },
   { key: 'limits.jobReportsPerDay', defaultValue: 10, schema: z.number().int().min(1).max(1000), group: 'limits' },
+  { key: 'limits.aiJdPerUserPerHour', defaultValue: 10, schema: z.number().int().min(1).max(1000), group: 'limits' },
+  { key: 'limits.aiJdPerCompanyPerHour', defaultValue: 30, schema: z.number().int().min(1).max(1000), group: 'limits' },
   { key: 'talentSearch.maxPage', defaultValue: 25, schema: z.number().int().min(1).max(1000), group: 'talentSearch' },
   { key: 'talentPool.minCompleteness', defaultValue: 60, schema: z.number().int().min(0).max(100), group: 'talentPool' },
   { key: 'talentPool.searchEnabled', defaultValue: true, schema: z.boolean(), group: 'talentPool', p1: true },
@@ -121,6 +123,21 @@ export async function updateSettingAdmin(
 }
 
 export { getSetting }
+
+const jdAssistantGateInputSchema = resumeParseGateSchema.omit({ epoch: true }).strict()
+
+export async function updateJdAssistantSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = jdAssistantGateInputSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid JD assistant configuration')
+  if (parsed.data.enabled) {
+    const version = await getSetting<unknown>('legal.currentVersion', '2026-11-draft', { fresh: true })
+    if (!parsed.data.legalVersion || typeof version !== 'string' || parsed.data.legalVersion !== version) {
+      throw new VersionMismatchError()
+    }
+  }
+  await setSetting('ai.jdAssistant', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
+}
 
 const resumeParseGateInputSchema = resumeParseGateSchema.omit({ epoch: true }).strict()
 

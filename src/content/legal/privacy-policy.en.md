@@ -120,6 +120,14 @@ This feature remains off by default. Once the provider, transfer arrangements an
 - We do not persist the full extracted text or the provider's raw reply in drafts, logs or notifications. Suggestion content is cleared after confirmation, discard or withdrawal, while necessary status and consent/audit records remain; see section 10 for retention. An export package already created may contain a snapshot from before withdrawal. Copies already downloaded, or download links already issued, cannot be recalled by withdrawing consent.
 - Anthropic's actual processing locations, retention, deletion arrangements, training use and transfer conditions still require verification; see sections 8 and 9. This feature is not a guarantee of zero retention or complete anonymity. This section covers optional resume parsing only; other AI uses would be disclosed separately.
 
+### 4.2 Optional AI job description assistant (off by default)
+
+Company members can choose this assistant when creating or editing a job. Disclosure and activation review must be completed first. Before each generation, you must read the notice and confirm that request. This confirmation applies only to that generation; it does not create continuing AI consent or use a student's resume-parsing consent. Declining or a generation failure does not affect manual job editing and saving.
+
+- The request sends only the current job title and the role notes you enter. Our server masks common contact details and URLs, then calls the Anthropic API directly without the development-time AI relay. Do not enter personal information, customer details or confidential material; automatic masking does not guarantee anonymity. Existing job-description text, student profiles, resumes and contact-table data are not sent automatically.
+- The Chinese and English text is a suggestion for human review, and you can edit each language. It fills the job description only after you click Apply, and you must still use the existing save or review-submission action. Generation and application never publish a job automatically. Unapplied suggestions remain only in this page's memory; the platform does not store a separate AI draft. A saved job follows the ordinary job-record rules.
+- Cancelling or closing the assistant discards the response from an unfinished request, but cannot recall text already sent to the provider or guarantee that its processing stops. Provider locations, retention, deletion, training use and transfer arrangements remain subject to verification under sections 8 and 9, 【TO VERIFY V9】. We do not promise zero retention or anonymity.
+
 ## 5. Legal basis and your consent
 
 - We mainly process your data on the basis of your consent. At sign-up you must tick to agree to the Terms of Use and this policy.
@@ -228,13 +236,13 @@ We give service providers only the data they need for their task, without data d
 | Provider | Planned use | Before enabling |
 |---|---|---|
 | Stripe | Online payments in the paid phase; employers enter payment details on Stripe's page | Update this policy |
-| Anthropic API | Optional private resume parsing: processes the career-related text described in section 4.1 and returns suggestions | Review and publish this policy and request separate parsing consent; 【TO VERIFY V9: the project's actual processing/storage locations, retention and deletion, training use, logging exceptions and transfer arrangements】. The official [API data-retention documentation](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention.md) is a verification reference, not a conclusion about this project's contract |
+| Anthropic API | Optional private resume parsing (section 4.1); optional Chinese and English job-description suggestions using only the current job title and role notes (section 4.2) | Review and publish this policy; parsing needs separate consent and the job assistant needs confirmation for each generation; 【TO VERIFY V9: the project's actual processing/storage locations, retention and deletion, training use, logging exceptions and transfer arrangements】. The official [API data-retention documentation](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention.md) is a verification reference, not a conclusion about this project's contract |
 
 ## 9. Cross-border transfers
 
 - The database, files and backups are all kept in a Malaysia region.
 - The following data goes outside Malaysia: error reports sent to Sentry (European Union); for Resend and Cloudflare, it depends on where they actually process data (【TO VERIFY V1】【TO VERIFY V2】). GitHub and the development-time AI service only handle code and fictional data.
-- If optional AI resume parsing is approved for activation, text sent to Anthropic may be processed outside Malaysia. Complete 【TO VERIFY V9】 and 【TBD T16】 for the actual locations, transfer basis and safeguards before activation, then update this disclosure; the API domain does not establish a processing location.
+- If optional AI resume parsing or the job description assistant is approved for activation, text sent to Anthropic may be processed outside Malaysia. Complete 【TO VERIFY V9】 and 【TBD T16】 for the actual locations, transfer basis and safeguards before activating each feature, then update this disclosure; the API domain does not establish a processing location.
 - Basis for transfer: 【TBD T16: which ground under section 129 of the PDPA (as amended in 2024) the transfers rely on, and whether your separate consent is needed】.
 - Our safeguards: we send only what is needed; error reports are stripped of personal data before sending; we do not attach contact-table data for service providers. Automatic masking of resume text does not guarantee removal of all personal information (see 4.1).
 

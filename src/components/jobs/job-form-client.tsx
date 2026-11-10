@@ -1,10 +1,11 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useId, useRef, useState, useTransition } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { isImeComposing } from '@/lib/ime'
 import { MY_STATES } from '@/lib/my-states'
 import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
+import { JdAssistant } from './jd-assistant'
 
 export interface JobFormData {
   jobId?: string
@@ -34,6 +35,7 @@ type ActionResult =
   | { ok: false; code: string }
 
 interface Props {
+  jdAssistant?: { submittedVersion: string }
   canPurchase?: boolean
   mode: 'create' | 'edit'
   isVerified: boolean
@@ -96,6 +98,7 @@ export default function JobFormClient({
   initialData,
   onSaveOrSubmit,
   canPurchase = false,
+  jdAssistant,
   backHref,
   t,
 }: Props) {
@@ -111,6 +114,10 @@ export default function JobFormClient({
   )
   const [category, setCategory] = useState(initialData?.category ?? '')
   const [description, setDescription] = useState(initialData?.description ?? '')
+  const descriptionId = useId()
+  const descriptionElement = useRef<HTMLTextAreaElement>(null)
+  const revisionRef = useRef(0)
+  const [descriptionRevision, setDescriptionRevision] = useState(0)
   const [requirements, setRequirements] = useState(initialData?.requirements ?? '')
   const [benefits, setBenefits] = useState(initialData?.benefits ?? '')
   const [workMode, setWorkMode] = useState<'ONSITE' | 'HYBRID' | 'REMOTE'>(
@@ -138,6 +145,19 @@ export default function JobFormClient({
   const [titleError, setTitleError] = useState('')
   const [descError, setDescError] = useState('')
   const [formUpdatedAt, setFormUpdatedAt] = useState(initialData?.updatedAt)
+
+  function updateDescription(value: string) {
+    revisionRef.current += 1
+    setDescriptionRevision(revisionRef.current)
+    setDescription(value)
+  }
+
+  function applyJdDescription(value: string, expectedRevision: number): boolean {
+    if (!isEditable || isPending || expectedRevision !== revisionRef.current || value.length > 10000) return false
+    updateDescription(value)
+    setDescError('')
+    return true
+  }
 
   function addTag(
     input: string,
@@ -269,10 +289,12 @@ export default function JobFormClient({
 
       {/* Description */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.descriptionLabel}</label>
+        <label htmlFor={descriptionId} className="mb-1 block text-sm font-medium">{t.descriptionLabel}</label>
         <textarea
+          id={descriptionId}
+          ref={descriptionElement}
           value={description}
-          onChange={e => setDescription(e.target.value)}
+          onChange={e => updateDescription(e.target.value)}
           placeholder={t.descriptionPlaceholder}
           disabled={disabled}
           rows={6}
@@ -280,6 +302,18 @@ export default function JobFormClient({
           className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
         />
         {descError && <p className="mt-1 text-xs text-destructive">{descError}</p>}
+        {jdAssistant && isEditable && (
+          <JdAssistant
+            title={title}
+            currentDescription={description}
+            descriptionRevision={descriptionRevision}
+            contextKey={JSON.stringify([mode, initialData?.jobId ?? 'new'])}
+            submittedVersion={jdAssistant.submittedVersion}
+            disabled={disabled}
+            onApply={applyJdDescription}
+            onAppliedFocus={() => descriptionElement.current?.focus()}
+          />
+        )}
       </div>
 
       {/* Requirements */}

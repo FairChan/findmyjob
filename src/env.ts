@@ -74,6 +74,7 @@ const schema = z
 
     ANTHROPIC_API_KEY: z.string().optional(),
     AI_MODEL_PARSE: z.string().optional(),
+    AI_MODEL_JD: z.string().optional(),
 
     STRIPE_SECRET_KEY: z.string().optional(),
     STRIPE_WEBHOOK_SECRET: z.string().optional(),

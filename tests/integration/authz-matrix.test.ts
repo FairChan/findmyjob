@@ -3132,3 +3132,81 @@ describe('invoice routes and issuer settings (M8-T05)', () => {
     expect(JSON.stringify(audits[0].metadata)).not.toContain(issuer.legalName)
   })
 })
+
+// Append to tests/integration/authz-matrix.test.ts after T01 is committed.
+describe('JD assistant action authorization (M9-T02)', () => {
+  const input = { title: 'SYNTHETIC analyst', points: 'Prepare synthetic reports', acknowledged: true, submittedVersion: '2026-11-draft' }
+
+  it.each(['guest', 'student', 'without-company', 'removed', 'suspended', 'inactive-company'] as const)(
+    '%s cannot dispatch generation', async actor => {
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else if (actor === 'without-company') mockSession((await createEmployerWithoutCompany(testDb)).userId)
+      else {
+        const employer = await createEmployer(testDb)
+        if (actor === 'removed') await testDb.companyMember.delete({ where: { userId: employer.userId } })
+        if (actor === 'suspended') await testDb.user.update({ where: { id: employer.userId }, data: { status: 'SUSPENDED' } })
+        if (actor === 'inactive-company') await testDb.company.update({ where: { id: employer.companyId }, data: { isActive: false } })
+        mockSession(employer.userId)
+      }
+      const service = await import('@/server/services/jd-assistant')
+      const generate = vi.spyOn(service, 'generateJobDescription')
+      try {
+        const { generateJobDescriptionAction } = await import('@/server/actions/jd-assistant')
+        expect(await generateJobDescriptionAction(input)).toEqual({ ok: false, code: 'FORBIDDEN' })
+        expect(generate).not.toHaveBeenCalled()
+      } finally { generate.mockRestore() }
+    },
+  )
+
+  it.each(['OWNER', 'ADMIN', 'RECRUITER'] as const)('%s dispatches only the live company context', async role => {
+    const employer = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: employer.companyId }, data: { verificationStatus: 'UNSUBMITTED' } })
+    await testDb.companyMember.update({ where: { userId: employer.userId }, data: { role } })
+    mockSession(employer.userId)
+    const service = await import('@/server/services/jd-assistant')
+    const output = { zh: 'SYNTHETIC 中文职责', en: 'SYNTHETIC English duties' }
+    const generate = vi.spyOn(service, 'generateJobDescription').mockResolvedValue(output)
+    try {
+      const { generateJobDescriptionAction } = await import('@/server/actions/jd-assistant')
+      expect(await generateJobDescriptionAction(input)).toEqual({ ok: true, data: output })
+      expect(generate).toHaveBeenCalledExactlyOnceWith({ userId: employer.userId, companyId: employer.companyId, role }, input)
+      expect(await generateJobDescriptionAction({ ...input, companyId: 'forged' })).toMatchObject({ ok: false, code: 'VALIDATION_ERROR' })
+      expect(generate).toHaveBeenCalledTimes(1)
+      expect(await testDb.job.count()).toBe(0)
+    } finally { generate.mockRestore() }
+  })
+
+  it.each(['guest', 'student', 'employer'] as const)('%s cannot save the JD gate', async actor => {
+    if (actor === 'guest') mockSession(null)
+    else mockSession((actor === 'student' ? await createStudent(testDb) : await createEmployer(testDb)).userId)
+    const { saveJdAssistantSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveJdAssistantSettingsAction({ enabled: false, legalVersion: null })).toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'ai.jdAssistant' } })).toBeNull()
+  })
+
+  it.each([
+    { label: 'no 2FA', enabled: false, verified: true, age: 0, code: 'TWO_FACTOR_REQUIRED' },
+    { label: 'unverified 2FA', enabled: true, verified: false, age: 0, code: 'FORBIDDEN' },
+    { label: 'expired session', enabled: true, verified: true, age: 721, code: 'FORBIDDEN' },
+    { label: 'stale verification', enabled: true, verified: true, age: 11, code: 'FRESH_SESSION_REQUIRED' },
+  ])('$label cannot save the JD gate', async scenario => {
+    const admin = await createTwoFactorAdmin(scenario.enabled)
+    const at = new Date(Date.now() - scenario.age * 60_000)
+    mockSession(admin.id, { createdAt: at, twoFactorVerifiedAt: scenario.verified ? at : null })
+    const { saveJdAssistantSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveJdAssistantSettingsAction({ enabled: false, legalVersion: null })).toEqual({ ok: false, code: scenario.code })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'ai.jdAssistant' } })).toBeNull()
+  })
+
+  it('fresh ADMIN saves a disabled gate with a server-owned epoch', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { saveJdAssistantSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveJdAssistantSettingsAction({ enabled: false, legalVersion: null })).toMatchObject({ ok: true })
+    const setting = await testDb.systemSetting.findUniqueOrThrow({ where: { key: 'ai.jdAssistant' } })
+    expect(setting).toMatchObject({ updatedById: admin.id, value: { enabled: false, legalVersion: null, epoch: expect.any(String) } })
+    expect(await saveJdAssistantSettingsAction({ enabled: true, legalVersion: '2026-11-draft', epoch: 'forged' })).toMatchObject({ ok: false, code: 'VALIDATION_ERROR' })
+    expect(await testDb.systemSetting.findUniqueOrThrow({ where: { key: 'ai.jdAssistant' } })).toEqual(setting)
+  })
+})

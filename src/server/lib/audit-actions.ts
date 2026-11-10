@@ -18,6 +18,7 @@ export const AUDIT_ACTIONS = [
   'resume.parse.consent',
   'resume.parse.confirm',
   'resume.parse.discard',
+  'ai.jd.generate',
   'upload.reject',
   'credits.adjust',
   'company.verify',

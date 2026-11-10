@@ -6,6 +6,7 @@ import JobFormClient from '@/components/jobs/job-form-client'
 import { createJobAction } from '../actions'
 import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
+import { getJdAssistantAvailability } from '@/server/services/jd-assistant'
 
 export default async function NewJobPage({ params }: { params: Promise<{ locale: string }> }) {
   await params
@@ -19,6 +20,7 @@ export default async function NewJobPage({ params }: { params: Promise<{ locale:
   })
   const isVerified = company?.verificationStatus === 'VERIFIED'
   const usage = await getCompanyEntitlementUsage(ctx)
+  const jdAssistant = await getJdAssistantAvailability(ctx)
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-8">
@@ -26,6 +28,7 @@ export default async function NewJobPage({ params }: { params: Promise<{ locale:
       <CompanyEntitlementSummary usage={usage} resource="jobs" />
       <JobFormClient
         canPurchase={usage.canPurchase}
+        jdAssistant={jdAssistant ?? undefined}
         mode="create"
         isVerified={isVerified}
         onSaveOrSubmit={createJobAction}
