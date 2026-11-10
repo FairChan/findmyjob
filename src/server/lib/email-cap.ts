@@ -8,6 +8,8 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 /** Closed registry of all valid email template names. Add new templates here. */
 export const EMAIL_TEMPLATES = {
+  'weekly-jobs': 'weekly recommended jobs',
+  'weekly-talents': 'weekly recommended talent',
   'otp': 'one-time password',
   'email-verify': 'email verification',
   'password-reset': 'password reset',

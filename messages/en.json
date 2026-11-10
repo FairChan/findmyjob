@@ -2290,5 +2290,31 @@
       "invalid": "This request could not be accepted. Reload the page and try again.",
       "generic": "The action could not be completed. Please try again or use ordinary search."
     }
+  },
+  "marketing": {
+    "preferencesLink": "Email preferences",
+    "preferencesTitle": "Your email preferences",
+    "preferencesDescription": "Choose whether this account receives weekly recommendation emails.",
+    "title": "Weekly recommendation emails",
+    "studentDescription": "Choose to receive at most one weekly email of job recommendations at your verified account email. Recommendations use your saved profile and require a separate current matching consent. No email is sent when there are no eligible recommendations.",
+    "employerDescription": "Choose to receive a weekly talent summary at your verified account email. Summaries are sent only to owners of active, verified companies with an eligible published job. They show anonymous talent information and use the existing talent search quota.",
+    "independent": "This choice is separate from profile visibility, resume parsing and AI matching. Saving it does not change those choices or send an email now. Essential account and application emails are unaffected.",
+    "privacyPolicy": "Read the privacy policy",
+    "recorded": "A choice to receive these emails is recorded. Sending still requires the current policy and eligibility checks. You can withdraw it below or explicitly confirm the current choice again.",
+    "consentLabel": "I choose to receive weekly recommendation emails under the current privacy policy. I can withdraw this choice at any time.",
+    "save": "Save my email choice",
+    "withdraw": "Stop weekly recommendation emails",
+    "unavailable": "New subscriptions are unavailable right now. You can still withdraw an existing choice.",
+    "withdrawalNote": "Withdrawal stops future eligible sends. An email already accepted by the email service or being sent cannot be recalled.",
+    "saving": "Saving your email choice…",
+    "saved": "Your email choice was saved.",
+    "withdrawn": "Your choice to receive weekly recommendation emails was withdrawn.",
+    "error": {
+      "version": "The policy has changed. Review the current policy and choose again.",
+      "denied": "This account cannot update the preference right now. Sign in again and retry.",
+      "unavailable": "New subscriptions are unavailable right now. Existing choices can still be withdrawn.",
+      "rateLimited": "Too many changes. Please wait a moment and retry.",
+      "generic": "We could not save your choice. Please try again."
+    }
   }
 }

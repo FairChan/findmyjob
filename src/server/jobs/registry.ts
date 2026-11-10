@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/node'
+import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import type { PgBoss } from 'pg-boss'
 import type { Job } from 'pg-boss'
@@ -309,6 +310,43 @@ export async function registerJobs(boss: PgBoss, lifecycle = createJobLifecycle(
       }
     })
   })
+
+  // Weekly callbacks retain ownership through actual settlement, including timeout tails.
+  const weeklyPayload = z.object({ deliveryId: z.string().cuid() }).strict()
+  const emptyPayload = z.object({}).strict()
+  await boss.createQueue('weekly-digest')
+  await boss.work<{ deliveryId: string }>('weekly-digest', { localConcurrency: 1, batchSize: 1 }, async jobs => {
+    for (const job of jobs) await lifecycle.run(async shutdownSignal => {
+      const signal = AbortSignal.any([shutdownSignal, job.signal])
+      if (signal.aborted) return
+      const payload = weeklyPayload.safeParse(job.data)
+      if (!payload.success) throw new Error('WEEKLY_DIGEST_PAYLOAD_INVALID')
+      const { runWeeklyDigest, drainWeeklyDigestWork } = await import('./weekly-digest')
+      try { if (!signal.aborted) await runWeeklyDigest(payload.data, { signal }) }
+      catch { throw new Error('WEEKLY_DIGEST_JOB_FAILED') }
+      finally { await drainWeeklyDigestWork() }
+    })
+  })
+  for (const [name, cron] of [['schedule-weekly-digests', '0 8 * * 1'], ['recover-weekly-digests', '0 * * * *']] as const) {
+    await boss.createQueue(name)
+    await boss.schedule(name, cron, {}, { tz: 'Asia/Kuala_Lumpur', missed: 'once' })
+    await boss.work(name, { localConcurrency: 1, batchSize: 1 }, async jobs => {
+      for (const job of jobs) await lifecycle.run(async shutdownSignal => {
+        const signal = AbortSignal.any([shutdownSignal, job.signal])
+        if (signal.aborted) return
+        if (!emptyPayload.safeParse(job.data).success) throw new Error('WEEKLY_DIGEST_PAYLOAD_INVALID')
+        const weekly = await import('./weekly-digest')
+        try {
+          if (signal.aborted) return
+          const options = { signal, send: (payload: { deliveryId: string }) => boss.send('weekly-digest', payload) }
+          if (name === 'schedule-weekly-digests') await weekly.scheduleWeeklyDigests(options)
+          else await weekly.recoverWeeklyDigests(options)
+          if (!signal.aborted) pingHealthcheck(name)
+        } catch { throw new Error('WEEKLY_DIGEST_SCHEDULER_FAILED') }
+        finally { await weekly.drainWeeklyDigestWork() }
+      })
+    })
+  }
 
   logger.info('jobs registered')
 }

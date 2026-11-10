@@ -20,6 +20,8 @@ vi.mock('next-intl/server', () => ({ getLocale: async () => io.locale, getTransl
 vi.mock('@/server/authz', () => ({ requireStudent: io.auth, requireCompanyMember: io.auth, requireVerifiedCompany: io.verified }))
 vi.mock('@/server/services/student-profile', () => ({ getDashboardData: async () => null }))
 vi.mock('@/server/services/semantic-matching', () => ({ getStudentMatchingUiState: io.bootstrap }))
+vi.mock('@/server/services/marketing-consent', () => ({ getMarketingUiState: async () => ({ available: false, consentGranted: false, legalVersion: null }) }))
+vi.mock('@/server/actions/marketing-consent', () => ({ setMarketingConsentAction: vi.fn() }))
 vi.mock('@/server/services/privacy', () => ({ getLatestTalentPoolConsent: async () => false, listBlockedCompanies: async () => [], getProfileViews: async () => [], getUnlocks: async () => [] }))
 vi.mock('@/server/services/jobs', () => ({ getCompanyJob: io.job, listCompanyJobs: io.jobs }))
 vi.mock('@/server/services/subscription-entitlements', () => ({ getCompanyEntitlementUsage: async () => ({}) }))

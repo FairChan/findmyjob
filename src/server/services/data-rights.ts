@@ -97,6 +97,9 @@ export async function requestDeletion(ctx: { userId: string }): Promise<void> {
     await invalidateLifecycleExportsTx(tx, ctx.userId)
     await cancelResumeParseDraftsTx(tx, ctx.userId)
     await invalidateStudentMatchingIndexTx(tx, ctx.userId)
+    await lockXact(tx, LOCK_NS.MARKETING, ctx.userId)
+    await tx.weeklyDigestDelivery.updateMany({ where: { userId: ctx.userId, state: { in: ['QUEUED', 'PREPARING', 'RETRYABLE'] } },
+      data: { state: 'SKIPPED', failureCode: 'AUTHORIZATION_CHANGED', nextAttemptAt: null, leaseToken: null, leaseExpiresAt: null, candidateIds: [] } })
     // Repeated deletion still repairs pending invalidation, but never renews the 30-day clock.
     if (user.status === 'DELETED') return false
     await tx.user.update({ where: { id: ctx.userId }, data: { status: 'DELETED', deletedAt: now } })

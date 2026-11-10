@@ -292,7 +292,6 @@ No system can guarantee perfect security. If a data breach happens, we will noti
 | Withdraw consent to the Terms of Use and this policy | You can no longer use your account; please request account deletion |
 | Limit which employers can see you | Block companies, or turn off the talent pool |
 | See who viewed or unlocked you | "Who viewed me" and "Who unlocked me" in your Privacy Centre |
-| Refuse marketing | We do not currently send marketing emails; when we do, you can unsubscribe at any time |
 | Complain | Contact us first (【TO FILL F4】); you can also complain to Malaysia's Personal Data Protection Commissioner |
 
 - Self-service actions in the Privacy Centre are free.
@@ -348,3 +347,11 @@ If you are a parent or guardian and find that a child under 18 has signed up, pl
 - Address: 【TO FILL F3: registered address】
 - Privacy matters: 【TO FILL F4: privacy contact email】
 - Data Protection Officer: 【TBD T2】
+
+### Optional weekly recommendation emails (M9-T04 release draft)
+
+Weekly emails are disabled until a separately approved release publishes this bilingual disclosure. Students may separately opt in to up to five current job recommendations per Kuala Lumpur week; employers may separately opt in to an anonymous talent digest as the OWNER of a verified active company with an eligible published job. Current legal and AI matching consent and the existing employer search quota also apply. Marketing consent does not grant AI matching, resume parsing, talent visibility or contact access.
+
+We use the configured email service already listed below, with one recipient per message. Student emails omit salary and job descriptions. Employer emails omit name, school, CGPA, contacts and resumes, including for previously unlocked students. Links return to authenticated platform views and their current permissions. We store minimal weekly delivery state and permission/source fingerprints to prevent duplicates and recover known failures; no rendered body, email address or unsubscribe token is stored in the delivery record. Your own data export includes kind, week, state and acceptance time. Delivery metadata is removed when account deletion is completed after the existing 30-day period.
+
+Each message contains a signed unsubscribe link in both formats. Opening it shows confirmation; only submitting the form withdraws marketing consent. Personal preferences remain accessible when the feature is disabled or policies change. Withdrawal stops eligible unsent attempts and does not change other permissions. A message already accepted or in flight cannot be recalled. SENT means acceptance by the configured provider, not inbox delivery; uncertain outcomes are not automatically resent.

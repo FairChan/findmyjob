@@ -12,7 +12,8 @@ export type { TemplateVars }
 /** Distributive Omit that works with discriminated union types. */
 type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never
 
-export type TemplateVarsWithoutLocale = DistributiveOmit<TemplateVars, 'locale'>
+// Weekly mail must pass the final authorization/acknowledgement seam below.
+export type TemplateVarsWithoutLocale = DistributiveOmit<Exclude<TemplateVars, { template: 'weekly-jobs' | 'weekly-talents' }>, 'locale'>
 
 /**
  * Send an email notification to a user post-commit.
@@ -134,3 +135,6 @@ export async function notifyNewReport(reportId: string): Promise<void> {
     await createNotification(db, a.id, 'report.new', { reportId })
   }
 }
+
+// Acknowledged weekly delivery has its own final authorization and outcome seam.
+export { sendWeeklyDigestEmail } from './weekly-digest-send'

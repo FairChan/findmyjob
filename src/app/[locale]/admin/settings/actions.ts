@@ -1,9 +1,10 @@
 'use server'
 
 import { z } from 'zod'
+import { marketingGateInputSchema } from '@/schemas/marketing-settings'
 import { action } from '@/server/action'
 import { matchingGateInputSchema } from '@/schemas/semantic-matching'
-import { updateMatchingSettingsAdmin, updateJdAssistantSettingsAdmin, updateSettingAdmin } from '@/server/services/admin-settings'
+import { updateMarketingSettingsAdmin, updateMatchingSettingsAdmin, updateJdAssistantSettingsAdmin, updateSettingAdmin } from '@/server/services/admin-settings'
 import { resumeParseGateSchema } from '@/server/schemas/resume-parsing'
 import { bankTransferSettingsSchema } from '@/server/lib/billing-settings'
 import { invoiceIssuerSettingsSchema } from '@/server/lib/invoice-settings'
@@ -41,4 +42,9 @@ export const saveJdAssistantSettingsAction = action(
 export const saveMatchingSettingsAction = action(
   { auth: 'admin-fresh', input: matchingGateInputSchema },
   async ctx => updateMatchingSettingsAdmin({ userId: ctx.userId! }, ctx.input),
+)
+
+export const saveMarketingSettingsAction = action(
+  { auth: 'admin-fresh', input: marketingGateInputSchema },
+  async ctx => updateMarketingSettingsAdmin({ userId: ctx.userId! }, ctx.input),
 )

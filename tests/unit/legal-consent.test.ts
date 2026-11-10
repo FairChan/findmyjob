@@ -1,13 +1,16 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest'
 
-vi.mock('@/server/db', () => ({
-  db: {
-    systemSetting: { findUnique: vi.fn() },
-    consent: { findFirst: vi.fn(), create: vi.fn() },
-    auditLog: { create: vi.fn() },
-    $transaction: vi.fn((ops: unknown[]) => Promise.all(ops)),
-  },
+const mockTx = vi.hoisted(() => ({
+  $executeRaw: vi.fn(),
+  $queryRaw: vi.fn(),
+  systemSetting: { findUnique: vi.fn() },
+  consent: { findFirst: vi.fn(), create: vi.fn() },
+  auditLog: { create: vi.fn() },
 }))
+vi.mock('@/server/db', () => ({ db: {
+  ...mockTx,
+  $transaction: vi.fn(async (work: (tx: typeof mockTx) => Promise<void>) => work(mockTx)),
+} }))
 
 const { needsReconsent, recordLegalConsent } = await import(
   '@/server/services/legal-consent'
@@ -20,9 +23,13 @@ const mockConsentCreate = vi.mocked(db.consent.create)
 const mockAuditCreate = vi.mocked(db.auditLog.create)
 
 const CURRENT_VERSION = '2026-11-draft'
+const DB_CLOCK = new Date('2001-02-03T04:05:06.007Z')
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockTx.$executeRaw.mockResolvedValue(1)
+  mockTx.$queryRaw.mockResolvedValue([{ now: DB_CLOCK }])
+  mockConsentFindFirst.mockReset().mockResolvedValue(null)
   mockSettingFindUnique.mockResolvedValue({
     key: 'legal.currentVersion',
     value: CURRENT_VERSION,
@@ -178,6 +185,8 @@ describe('needsReconsent', () => {
 
 describe('recordLegalConsent', () => {
   it('creates TERMS and PRIVACY consent records and an audit log', async () => {
+    const latestConsentAt = new Date(DB_CLOCK.getTime() + 1000)
+    mockTx.consent.findFirst.mockResolvedValueOnce({ createdAt: latestConsentAt })
     mockConsentCreate.mockResolvedValue({} as never)
     mockAuditCreate.mockResolvedValue({} as never)
 
@@ -188,6 +197,19 @@ describe('recordLegalConsent', () => {
     })
 
     expect(db.$transaction).toHaveBeenCalledOnce()
+    expect(mockTx.$executeRaw).toHaveBeenCalledExactlyOnceWith(expect.any(Array), 1008, 'u1')
+    expect(mockSettingFindUnique).toHaveBeenCalledExactlyOnceWith({ where: { key: 'legal.currentVersion' } })
+    expect(mockConsentFindFirst).toHaveBeenCalledExactlyOnceWith({
+      where: { userId: 'u1', type: { in: ['TERMS', 'PRIVACY'] } },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { createdAt: true },
+    })
+    expect(mockConsentCreate.mock.calls.map(([input]) => input.data.createdAt)).toEqual([
+      new Date(latestConsentAt.getTime() + 1), new Date(latestConsentAt.getTime() + 1),
+    ])
+    for (const [input] of mockConsentCreate.mock.calls) {
+      expect(input.data).toMatchObject({ userId: 'u1', version: CURRENT_VERSION, granted: true,
+        ip: '1.2.3.4', userAgent: 'TestBrowser/1.0' })
+    }
     expect(mockAuditCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
@@ -204,6 +226,7 @@ describe('recordLegalConsent', () => {
       recordLegalConsent('u1', { submittedVersion: 'stale-version' }),
     ).rejects.toMatchObject({ code: 'VERSION_MISMATCH' })
     expect(mockConsentCreate).not.toHaveBeenCalled()
+    expect(mockAuditCreate).not.toHaveBeenCalled()
   })
 
   it('creates two consent records when submitted version matches current', async () => {

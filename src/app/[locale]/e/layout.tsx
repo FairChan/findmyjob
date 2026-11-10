@@ -32,6 +32,7 @@ export default async function EmployerLayout({
   }
 
   const t = await getTranslations('employerLayout')
+  const marketing = await getTranslations('marketing')
   const unreadCount = await db.notification.count({ where: { userId, readAt: null } })
   const bellLabel = unreadCount > 0
     ? t('bellLabelWithCount', { count: unreadCount > 99 ? '99+' : unreadCount })
@@ -40,7 +41,11 @@ export default async function EmployerLayout({
   return (
     <>
       <header className="border-b bg-white">
-        <div className="container mx-auto flex h-12 max-w-5xl items-center justify-end px-4">
+        <div className="container mx-auto flex min-h-12 max-w-5xl flex-wrap items-center justify-end gap-3 px-4">
+          <Link href={`/${locale}/e/preferences`} prefetch={false}
+            className="inline-flex min-h-11 items-center rounded-md px-2 py-1 text-sm text-muted-foreground underline underline-offset-4 hover:bg-muted hover:text-foreground">
+            {marketing('preferencesLink')}
+          </Link>
           <Link
             href={`/${locale}/e/notifications`}
             aria-label={bellLabel}

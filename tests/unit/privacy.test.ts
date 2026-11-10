@@ -68,7 +68,9 @@ beforeEach(() => {
   mockDb.$executeRaw.mockResolvedValue(0)
   mockDb.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
   mockDb.semanticIndex.updateMany.mockResolvedValue({ count: 0 })
-  mockDb.studentProfile.findUnique.mockResolvedValue({ id: PROFILE_ID, visibility: 'HIDDEN' })
+  mockDb.studentProfile.findUnique.mockResolvedValue({
+    id: PROFILE_ID, visibility: 'HIDDEN', user: { role: 'STUDENT', status: 'ACTIVE' },
+  })
   mockDb.studentProfile.update.mockResolvedValue({})
   mockDb.consent.create.mockResolvedValue({})
   mockDb.auditLog.create.mockResolvedValue({})
@@ -100,6 +102,10 @@ describe('getLatestTalentPoolConsent', () => {
 
 describe('setVisibility', () => {
   it('sets PUBLIC visibility and writes granted consent', async () => {
+    const legalGrant = async ({ where }: { where: { userId: string; type: string } }) =>
+      where.userId === USER_ID && (where.type === 'TERMS' || where.type === 'PRIVACY')
+        ? { granted: true, version: '1.0' } : null
+    mockDb.consent.findFirst.mockImplementationOnce(legalGrant).mockImplementationOnce(legalGrant)
     await setVisibility(ctx, { granted: true })
 
     expect(mockDb.$transaction).toHaveBeenCalled()

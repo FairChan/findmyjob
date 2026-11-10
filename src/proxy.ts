@@ -97,6 +97,7 @@ function isProtectedPage(pathname: string): boolean {
 // send CSP violation reports without cookies.
 function isProtectedApi(pathname: string): boolean {
   if (!pathname.startsWith('/api/')) return false
+  if (pathname === '/api/marketing/unsubscribe') return false
   if (pathname.startsWith('/api/auth/')) return false
   if (pathname === '/api/health') return false
   if (pathname === '/api/csp-report') return false
@@ -124,6 +125,12 @@ async function checkReconsent(
   if (!hasSessionCookie(request)) return null
 
   const pathname = request.nextUrl.pathname
+  // Keep personal withdrawal reachable without first granting new legal consent.
+  // Page/action role checks still apply; opt-in services require current consent.
+  const withdrawalPage = routing.locales.some(locale =>
+    pathname === `/${locale}/s/privacy` || pathname === `/${locale}/e/preferences`,
+  )
+  if (withdrawalPage) return null
   // Don't redirect away from the reconsent page itself
   if (pathname.includes('/legal/reconsent')) return null
 

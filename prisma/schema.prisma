@@ -297,6 +297,7 @@ model User {
   consents       Consent[]
   notifications  Notification[]
   dataRequests   DataRequest[]
+  weeklyDigestDeliveries WeeklyDigestDelivery[]
 }
 
 model Session {
@@ -581,6 +582,7 @@ model Company {
   paymentProofUploads PaymentProofUpload[]
 
   @@index([industryCode])
+  weeklyDigestDeliveries WeeklyDigestDelivery[]
 }
 
 model CompanyMember {
@@ -1296,4 +1298,48 @@ model MatchingCorpusCursor {
   kind      SemanticIndexKind @unique
   afterId   String?
   updatedAt DateTime          @updatedAt @db.Timestamptz(3)
+}
+
+enum WeeklyDigestKind {
+  STUDENT_JOBS
+  EMPLOYER_TALENTS
+}
+enum WeeklyDigestState {
+  QUEUED
+  PREPARING
+  SENDING
+  SENT
+  RETRYABLE
+  SKIPPED
+  UNKNOWN
+}
+model WeeklyDigestDelivery {
+  id               String @id @default(cuid())
+  dedupeKey        String @unique
+  kind             WeeklyDigestKind
+  userId           String
+  user             User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId        String?
+  company          Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  weekKey          String
+  expiresAt        DateTime @db.Timestamptz(3)
+  state            WeeklyDigestState @default(QUEUED)
+  marketingGrantId String
+  matchingGrantId  String?
+  gateEpoch        String
+  matchingEpoch    String
+  sourceId         String
+  sourceHash       String
+  candidateIds     Json @default("[]")
+  attempts         Int @default(0)
+  nextAttemptAt    DateTime? @db.Timestamptz(3)
+  leaseToken       String?
+  leaseExpiresAt   DateTime? @db.Timestamptz(3)
+  sentAt           DateTime? @db.Timestamptz(3)
+  failureCode      String?
+  createdAt        DateTime @db.Timestamptz(3) @default(now())
+  updatedAt        DateTime @db.Timestamptz(3) @updatedAt
+  @@index([state, nextAttemptAt, expiresAt])
+  @@index([userId, weekKey])
+  @@index([companyId])
 }

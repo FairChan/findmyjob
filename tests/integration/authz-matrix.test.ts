@@ -3240,3 +3240,39 @@ describe('semantic matching actions (M9-T03)', () => {
     expect(await recommendTalentsAction({ jobId: 'c' + '1'.repeat(24) })).toEqual({ ok: false, code: 'FORBIDDEN' })
   })
 })
+
+
+describe('M9-T04 marketing sensitive action matrix', () => {
+  it.each(['anonymous', 'student', 'employer', 'suspended-admin'] as const)('marketing admin gate denies %s', async actor => {
+    if (actor === 'anonymous') mockSession(null)
+    else {
+      const user = actor === 'employer' ? await createEmployer(testDb) : await createStudent(testDb)
+      if (actor === 'suspended-admin') await testDb.user.update({ where: { id: user.userId }, data: { role: 'ADMIN', status: 'SUSPENDED' } })
+      mockSession(user.userId)
+    }
+    const { saveMarketingSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    await expect(saveMarketingSettingsAction({ enabled: false, legalVersion: '' })).resolves.toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.systemSetting.count({ where: { key: 'marketing.weekly' } })).toBe(0)
+  })
+  it.each(['missing', 'stale'] as const)('marketing admin gate rejects %s two-factor verification', async freshness => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: freshness === 'missing' ? null : new Date(Date.now() - 600_001) })
+    const { saveMarketingSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    await expect(saveMarketingSettingsAction({ enabled: false, legalVersion: '' })).resolves.toEqual({ ok: false, code: freshness === 'missing' ? 'FORBIDDEN' : 'FRESH_SESSION_REQUIRED' })
+    expect(await testDb.systemSetting.count({ where: { key: 'marketing.weekly' } })).toBe(0)
+  })
+  it('lets a recently verified administrator disable without publication or secret', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { saveMarketingSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    await expect(saveMarketingSettingsAction({ enabled: false, legalVersion: '' })).resolves.toEqual({ ok: true, data: undefined })
+    const row = await testDb.systemSetting.findUniqueOrThrow({ where: { key: 'marketing.weekly' } })
+    expect(row.value).toMatchObject({ enabled: false, legalVersion: '', epoch: expect.any(String) })
+  })
+  it.each(['anonymous', 'suspended-student'] as const)('personal marketing withdrawal denies %s', async actor => {
+    if (actor === 'anonymous') mockSession(null)
+    else { const user = await createStudent(testDb); await testDb.user.update({ where: { id: user.userId }, data: { status: 'SUSPENDED' } }); mockSession(user.userId) }
+    const { setMarketingConsentAction } = await import('@/server/actions/marketing-consent')
+    await expect(setMarketingConsentAction({ granted: false })).resolves.toEqual({ ok: false, code: 'FORBIDDEN' })
+  })
+})

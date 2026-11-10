@@ -4,6 +4,7 @@ import { db } from '../db'
 import { logAudit } from './audit'
 import { bankTransferSettingsSchema, EMPTY_BANK_TRANSFER } from '../lib/billing-settings'
 import { configuredInvoiceIssuerSchema, EMPTY_INVOICE_ISSUER } from '../lib/invoice-settings'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 
 const TTL_MS = 60_000
 
@@ -47,6 +48,11 @@ export async function setSetting(
 ): Promise<void> {
   const jsonValue = value as Prisma.InputJsonValue
   await db.$transaction(async (tx) => {
+    // Weekly talent preparation uses the same key lock, including when the
+    // setting is absent and this upsert would create its first row.
+    if (key === 'talentPool.searchEnabled' || key === 'talentPool.minCompleteness') {
+      await lockXact(tx, LOCK_NS.SYSTEM_SETTING, key)
+    }
     const existing = await tx.systemSetting.findUnique({ where: { key }, select: { value: true } })
     const from = existing?.value ?? null
     await tx.systemSetting.upsert({

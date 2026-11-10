@@ -3,6 +3,9 @@ import { z } from 'zod'
 import { randomUUID } from 'node:crypto'
 import { matchingGateInputSchema } from '@/schemas/semantic-matching'
 import { env } from '@/env'
+import { marketingGateInputSchema } from '@/schemas/marketing-settings'
+import { marketingUnsubscribeConfigured } from '../lib/marketing-unsubscribe'
+import { isMarketingDisclosurePublished } from '../lib/marketing-disclosure'
 import { resumeParseGateSchema } from '../schemas/resume-parsing'
 import { db } from '../db'
 import { VersionMismatchError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
@@ -116,6 +119,7 @@ export async function updateSettingAdmin(
   rawValue: unknown,
 ): Promise<void> {
   await assertAdmin(ctx.userId)
+  if (key === 'marketing.weekly') throw new NotFoundError('Dedicated marketing settings writer required')
   if (key === 'ai.matching') throw new NotFoundError('Dedicated matching settings writer required')
   const meta = SETTINGS_BY_KEY.get(key)
   if (!meta) throw new NotFoundError(`Unknown setting key: ${key}`)
@@ -170,4 +174,16 @@ export async function updateMatchingSettingsAdmin(ctx: UserCtx, rawValue: unknow
     if (!env.VOYAGE_API_KEY?.trim() || !model.success) throw new ValidationError('Matching provider configuration unavailable')
   }
   await setSetting('ai.matching', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
+}
+
+export async function updateMarketingSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = marketingGateInputSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid marketing configuration')
+  if (parsed.data.enabled) {
+    const current = await getSetting<unknown>('legal.currentVersion', null, { fresh: true })
+    if (!parsed.data.legalVersion || typeof current !== 'string' || parsed.data.legalVersion !== current) throw new VersionMismatchError()
+    if (!marketingUnsubscribeConfigured() || !await isMarketingDisclosurePublished(current)) throw new ValidationError('Marketing publication or signing configuration unavailable')
+  }
+  await setSetting('marketing.weekly', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
 }

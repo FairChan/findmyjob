@@ -139,6 +139,9 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
         await tx.resumeFile.deleteMany({ where: { studentId: profileId } })
       }
 
+      await lockXact(tx, LOCK_NS.MARKETING, user.id)
+      await tx.weeklyDigestDelivery.deleteMany({ where: { userId: user.id } })
+
       // Anonymize User
       await tx.user.update({
         where: { id: user.id },

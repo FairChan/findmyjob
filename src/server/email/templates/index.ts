@@ -1,4 +1,5 @@
 import 'server-only'
+import { renderWeeklyTemplate, type WeeklyTemplateVars } from './weekly'
 
 export interface EmailContent {
   subject: string
@@ -7,6 +8,8 @@ export interface EmailContent {
 }
 
 export type EmailTemplateName =
+  | 'weekly-jobs'
+  | 'weekly-talents'
   | 'company-verification'
   | 'job-review'
   | 'application-status'
@@ -341,6 +344,7 @@ function signupAttemptEn(): EmailContent {
 // ---- Public render function ----------------------------------------------
 
 export type TemplateVars =
+  | WeeklyTemplateVars
   | { template: 'company-verification'; locale: string; approved: boolean; reviewNote?: string }
   | { template: 'job-review'; locale: string; approved: boolean; jobTitle: string; reviewNote?: string }
   | { template: 'application-status'; locale: string; jobTitle: string; toStatus: string }
@@ -358,6 +362,9 @@ export type TemplateVars =
 export function renderEmailTemplate(vars: TemplateVars): EmailContent {
   const zh = vars.locale === 'zh'
   switch (vars.template) {
+    case 'weekly-jobs':
+    case 'weekly-talents':
+      return renderWeeklyTemplate(vars)
     case 'company-verification':
       return zh ? companyVerificationZh(vars) : companyVerificationEn(vars)
     case 'job-review':

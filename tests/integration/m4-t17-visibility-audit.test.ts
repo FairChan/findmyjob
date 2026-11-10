@@ -39,6 +39,13 @@ describe('M4-T17: visibility action writes a real audit for its authenticated ow
     await testDb.systemSetting.create({
       data: { key: 'legal.currentVersion', value: 'm4-t17-audit-test' },
     })
+    if (granted) {
+      await testDb.consent.createMany({
+        data: (['TERMS', 'PRIVACY'] as const).map(type => ({
+          userId: student.userId, type, granted: true, version: 'm4-t17-audit-test',
+        })),
+      })
+    }
     mocks.getSession.mockResolvedValue({
       user: { id: student.userId },
       session: { createdAt: new Date(), twoFactorVerifiedAt: null },
