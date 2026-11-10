@@ -178,16 +178,18 @@
   }
 }
 
-/* The MY of the wordmark: Malaysian flag colours, yellow through white and blue to red.
-   The hairline stroke keeps the white stretch readable on a white bar. */
+/* The MY of the wordmark, in the colours of the Malaysian flag: a blue M and a red Y,
+   each with the yellow of the crescent as an offset shadow; the white is the bar behind.
+   Solid colours rather than a gradient, which turns muddy across two small letters. */
 @utility text-my-flag {
-  padding-inline: 0.02em 0.1em;
+  padding-inline: 0.03em 0.09em;
   font-style: italic;
-  color: transparent;
-  background-image: linear-gradient(100deg, #f0b000 0%, #ffcc00 26%, #fff6cf 37%, #ffffff 42%, #3247c4 50%, #010066 66%, #cc0001 88%, #cc0001 100%);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-stroke: 0.6px rgb(1 0 102 / 0.72);
+  font-weight: 700;
+  color: #010066;
+  text-shadow: 0.055em 0.055em 0 #ffcc00;
+  & > :last-child {
+    color: #cc0001;
+  }
 }
 
 /* Auth cards rise into place once; skipped for reduced motion. */

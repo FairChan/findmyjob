@@ -40,7 +40,12 @@ export function Wordmark({ className, symbol = true, collapse = false, prominent
         />
       )}
       <span className={collapse ? 'sr-only sm:not-sr-only' : undefined}>
-        Find<span className="text-my-flag">MY</span>Job
+        Find
+        <span className="text-my-flag">
+          <span>M</span>
+          <span>Y</span>
+        </span>
+        Job
       </span>
     </span>
   )
