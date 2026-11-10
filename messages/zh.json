@@ -59,8 +59,20 @@
   "home": {
     "title": "FindMYJob — 在马来西亚找实习和工作",
     "description": "助力在马来西亚的留学生找到理想的实习和工作。学生完全免费，查看职位详情有额度，邀请同学可解锁更多。",
-    "heroTitle": "在马来西亚找实习，从 FindMYJob 开始",
+    "heroTitle": "在马来西亚读书，找到我的第一份工作",
+    "heroLead": "找到我的",
+    "heroTail": "工作",
+    "heroContext": "在马来西亚读书，",
+    "heroWords": {
+      "w1": "第一份",
+      "w2": "理想",
+      "w3": "对口",
+      "w4": "下一份"
+    },
     "heroSubtitle": "面向在马留学生的求职平台。学生完全免费，查看职位详情有额度，邀请同学还能解锁更多。",
+    "searchLabel": "搜索职位",
+    "searchPlaceholder": "搜索职位关键词",
+    "searchSubmit": "搜索",
     "ctaJobs": "浏览职位",
     "ctaRegister": "学生免费注册",
     "ctaForEmployers": "企业免费入驻",
@@ -81,6 +93,8 @@
     "latestJobsTitle": "最新职位",
     "latestJobsMore": "查看更多职位",
     "latestJobsEmpty": "暂无在招职位",
+    "latestJobsEmptyHint": "有新职位发布后，会出现在这里。",
+    "browseCompanies": "先看看入驻企业",
     "partnersTitle": "背书与合作伙伴",
     "partnersSubtitle": "由校友组织、高校就业中心和行业机构共同支持",
     "partnersMore": "查看所有合作伙伴",
@@ -92,7 +106,67 @@
     "workModeHYBRID": "混合",
     "workModeREMOTE": "远程",
     "acceptsStudentPass": "接受学生准证",
-    "noSalary": "薪资面议"
+    "noSalary": "薪资面议",
+    "recruiters": {
+      "sectionLabel": "热门 HR 工牌墙",
+      "eyebrow": "热门 HR · 线上沟通",
+      "heading": "下一份机会，从认识一位 HR 开始。",
+      "caption": "轻拨工牌，认识正在招聘的人。点击翻面，看看他们在找谁。",
+      "flip": "点击或按 Enter 翻面，查看招聘方向",
+      "back": "再次点击或按 Esc，返回工牌正面",
+      "show": "查看",
+      "onlineDemo": "在线 · 演示",
+      "languageTag": "中文沟通",
+      "rolesLink": "浏览职位",
+      "cta": "发现适合我的职位",
+      "demoNotice": "演示人物与在线状态，仅供效果预览。",
+      "pause": "暂停自动翻牌",
+      "play": "自动翻牌",
+      "people": {
+        "lin": {
+          "name": "林悦",
+          "role": "校园招聘经理",
+          "team": "星屿科技 · 吉隆坡",
+          "bio": "正在寻找对产品和技术充满好奇的你。欢迎在马留学生了解实习机会。",
+          "tag": "产品与技术"
+        },
+        "aisha": {
+          "name": "Aisha",
+          "role": "人才招聘顾问",
+          "team": "南风创意 · 雪兰莪",
+          "bio": "关注设计、内容和品牌方向。带上你的作品，一起聊聊创意如何落地。",
+          "tag": "设计与品牌"
+        },
+        "chen": {
+          "name": "陈宇",
+          "role": "技术招聘伙伴",
+          "team": "云杉数科 · 槟城",
+          "bio": "招募软件开发与数据分析实习生。看重解决问题的思路，也欢迎第一份实习。",
+          "tag": "开发与数据"
+        },
+        "daniel": {
+          "name": "Daniel",
+          "role": "区域招聘经理",
+          "team": "远帆贸易 · 吉隆坡",
+          "bio": "寻找熟悉中马文化的沟通者。市场、商务与运营岗位，欢迎来了解。",
+          "tag": "市场与商务"
+        },
+        "mei": {
+          "name": "Mei",
+          "role": "人力资源伙伴",
+          "team": "晴川咨询 · 柔佛",
+          "bio": "为财务与商业分析团队寻找新伙伴。细心、主动，和我们一起从项目中成长。",
+          "tag": "财务与咨询"
+        },
+        "arif": {
+          "name": "Arif",
+          "role": "实习项目负责人",
+          "team": "青岸物流 · 雪兰莪",
+          "bio": "从供应链到运营管理，让课堂知识走进真实业务。欢迎了解我们的实习项目。",
+          "tag": "供应链与运营"
+        }
+      }
+    }
   },
   "forEmployers": {
     "title": "招聘合作 — FindMYJob",
@@ -569,6 +643,11 @@
     "group_resume": "简历",
     "group_legal": "法律",
     "group_uploads": "上传",
+    "group_upload": "上传",
+    "group_ai": "AI 功能",
+    "group_marketing": "营销邮件",
+    "group_credits": "点数",
+    "group_email": "邮件",
     "confirmTitle": "确认修改",
     "confirmCancel": "取消",
     "confirmOk": "确认",
@@ -1499,6 +1578,21 @@
     "descriptionLabel": "职位描述",
     "requirementsLabel": "任职要求",
     "benefitsLabel": "薪资福利",
+    "facts": {
+      "label": "职位要点",
+      "salary": "薪资",
+      "salaryNegotiable": "薪资面议",
+      "type": "类型",
+      "workMode": "工作方式",
+      "location": "地点",
+      "deadline": "截止日期",
+      "headcount": "招聘人数",
+      "headcountValue": "{count} 人",
+      "languages": "语言",
+      "skills": "技能",
+      "studentPass": "接受学生准证",
+      "workPass": "可担保工作准证"
+    },
     "lockedTitle": "查看额度已用完",
     "lockedDesc": "邀请同学注册 FindMYJob 即可解锁更多职位详情",
     "inviteButton": "邀请同学解锁",

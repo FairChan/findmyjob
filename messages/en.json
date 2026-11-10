@@ -59,8 +59,20 @@
   "home": {
     "title": "FindMYJob — Find Internships & Jobs in Malaysia",
     "description": "Helping international students in Malaysia find their ideal internships and jobs. Free for students, with job view credits and referral bonuses.",
-    "heroTitle": "Find Internships in Malaysia with FindMYJob",
+    "heroTitle": "Finding my first Job While Studying in Malaysia",
+    "heroLead": "Finding my",
+    "heroTail": "Job",
+    "heroContext": "While Studying in Malaysia",
+    "heroWords": {
+      "w1": "first",
+      "w2": "dream",
+      "w3": "right",
+      "w4": "next"
+    },
     "heroSubtitle": "A job platform for international students in Malaysia. Free for students, with job view credits and referral bonuses.",
+    "searchLabel": "Search jobs",
+    "searchPlaceholder": "Search by job title or keyword",
+    "searchSubmit": "Search",
     "ctaJobs": "Browse Jobs",
     "ctaRegister": "Register Free",
     "ctaForEmployers": "Post Jobs Free",
@@ -81,6 +93,8 @@
     "latestJobsTitle": "Latest Jobs",
     "latestJobsMore": "View More Jobs",
     "latestJobsEmpty": "No active jobs at the moment",
+    "latestJobsEmptyHint": "New jobs appear here as soon as they are published.",
+    "browseCompanies": "Browse companies",
     "partnersTitle": "Partners & Endorsers",
     "partnersSubtitle": "Supported by alumni associations, university career centres, and industry organisations",
     "partnersMore": "View All Partners",
@@ -92,7 +106,67 @@
     "workModeHYBRID": "Hybrid",
     "workModeREMOTE": "Remote",
     "acceptsStudentPass": "Accepts Student Pass",
-    "noSalary": "Salary negotiable"
+    "noSalary": "Salary negotiable",
+    "recruiters": {
+      "sectionLabel": "Featured recruiter badge rail",
+      "eyebrow": "Featured HR · Connect online",
+      "heading": "Meet the people behind your next opportunity.",
+      "caption": "Brush along the rail. Pick a badge. Discover who they are looking for.",
+      "flip": "Click or press Enter to explore their hiring interests",
+      "back": "Click again or press Esc to turn the badge back",
+      "show": "Show",
+      "onlineDemo": "Online · Demo",
+      "languageTag": "Chinese spoken",
+      "rolesLink": "Explore roles",
+      "cta": "Find my next opportunity",
+      "demoNotice": "Demo profiles and online status, shown for preview only.",
+      "pause": "Pause automatic flips",
+      "play": "Play automatic flips",
+      "people": {
+        "lin": {
+          "name": "Lin Yue",
+          "role": "Campus Hiring Manager",
+          "team": "Star Isle · Kuala Lumpur",
+          "bio": "Looking for curious product and technology interns. International students in Malaysia are welcome.",
+          "tag": "Product & tech"
+        },
+        "aisha": {
+          "name": "Aisha",
+          "role": "Talent Partner",
+          "team": "Southwind · Selangor",
+          "bio": "Hiring for design, content and branding. Bring your portfolio and ideas to the conversation.",
+          "tag": "Design & brand"
+        },
+        "chen": {
+          "name": "Chen Yu",
+          "role": "Technical Recruiter",
+          "team": "Spruce Data · Penang",
+          "bio": "Exploring talent in software and data. Your approach to a problem matters, even on your first internship.",
+          "tag": "Software & data"
+        },
+        "daniel": {
+          "name": "Daniel",
+          "role": "Regional Hiring Lead",
+          "team": "Far Sail · Kuala Lumpur",
+          "bio": "Looking for people who connect cultures, with opportunities in marketing and business operations.",
+          "tag": "Business & sales"
+        },
+        "mei": {
+          "name": "Mei",
+          "role": "People Partner",
+          "team": "Clear River · Johor",
+          "bio": "Helping finance and business analysis teams grow. Learn through projects with a team that supports you.",
+          "tag": "Finance"
+        },
+        "arif": {
+          "name": "Arif",
+          "role": "Internship Lead",
+          "team": "Green Shore · Selangor",
+          "bio": "Bring classroom knowledge into supply chain and operations. Explore a practical first step into work.",
+          "tag": "Operations"
+        }
+      }
+    }
   },
   "forEmployers": {
     "title": "For Employers — FindMYJob",
@@ -569,6 +643,11 @@
     "group_resume": "Resume",
     "group_legal": "Legal",
     "group_uploads": "Uploads",
+    "group_upload": "Uploads",
+    "group_ai": "AI features",
+    "group_marketing": "Marketing emails",
+    "group_credits": "Credits",
+    "group_email": "Email",
     "confirmTitle": "Confirm Change",
     "confirmCancel": "Cancel",
     "confirmOk": "Confirm",
@@ -1499,6 +1578,21 @@
     "descriptionLabel": "Job Description",
     "requirementsLabel": "Requirements",
     "benefitsLabel": "Benefits",
+    "facts": {
+      "label": "Key facts",
+      "salary": "Salary",
+      "salaryNegotiable": "Salary negotiable",
+      "type": "Type",
+      "workMode": "Work mode",
+      "location": "Location",
+      "deadline": "Apply by",
+      "headcount": "Openings",
+      "headcountValue": "{count}",
+      "languages": "Languages",
+      "skills": "Skills",
+      "studentPass": "Accepts Student Pass",
+      "workPass": "Sponsors work pass"
+    },
     "lockedTitle": "Job view quota exhausted",
     "lockedDesc": "Invite friends to sign up for FindMYJob to unlock more job details",
     "inviteButton": "Invite to Unlock",

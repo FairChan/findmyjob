@@ -1,5 +1,9 @@
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
+import { Wordmark } from './wordmark'
+
+const FOOTER_LINK =
+  'inline-flex min-h-6 items-center text-xs text-muted-foreground transition-colors hover:text-foreground'
 
 export default async function Footer() {
   const t = await getTranslations('footer')
@@ -7,35 +11,37 @@ export default async function Footer() {
   const year = new Date().getFullYear()
 
   return (
-    <footer className="border-t bg-muted/40">
-      <div className="container mx-auto max-w-5xl px-4 py-8">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-brand">FindMYJob</p>
-            <p className="mt-1 text-xs text-muted-foreground">{t('tagline')}</p>
+    <footer className="border-t bg-muted">
+      <div className="page-shell py-10">
+        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+          <div className="max-w-xs">
+            <p className="text-base">
+              <Wordmark />
+            </p>
+            <p className="mt-1.5 text-xs text-muted-foreground">{t('tagline')}</p>
           </div>
-          <nav className="flex flex-wrap gap-x-6 gap-y-1" aria-label="footer">
-            <Link href="/for-employers" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+          <nav className="flex flex-wrap gap-x-6 gap-y-2" aria-label="footer">
+            <Link href="/for-employers" className={FOOTER_LINK}>
               {t('forEmployers')}
             </Link>
-            <Link href="/partners" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/partners" className={FOOTER_LINK}>
               {t('partners')}
             </Link>
-            <Link href="/safety" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/safety" className={FOOTER_LINK}>
               {t('safety')}
             </Link>
-            <Link href="/pricing" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/pricing" className={FOOTER_LINK}>
               {nav('pricing')}
             </Link>
-            <Link href="/legal/privacy" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/legal/privacy" className={FOOTER_LINK}>
               {t('privacy')}
             </Link>
-            <Link href="/legal/terms" className="py-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
+            <Link href="/legal/terms" className={FOOTER_LINK}>
               {t('terms')}
             </Link>
           </nav>
-          <p className="text-xs text-muted-foreground">{t('copyright', { year })}</p>
         </div>
+        <p className="mt-8 border-t pt-5 text-xs text-muted-foreground">{t('copyright', { year })}</p>
       </div>
     </footer>
   )

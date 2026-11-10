@@ -39,7 +39,7 @@ function criticalOrSerious(violations: AxeViolation[]): AxeViolation[] {
 // ---------------------------------------------------------------------------
 test.describe('a11y: public pages', () => {
   const publicPages: { path: string; h1Pattern?: RegExp }[] = [
-    { path: '/zh', h1Pattern: /FindMYJob/ },
+    { path: '/zh', h1Pattern: /找到我的第一份工作/ },
     { path: '/zh/for-employers' },
     { path: '/zh/partners' },
     { path: '/zh/jobs' },

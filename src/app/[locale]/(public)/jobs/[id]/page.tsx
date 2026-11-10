@@ -14,6 +14,11 @@ import { ShareJobButton } from './ShareJobButton'
 import { ReportJobDialog } from '@/components/jobs/report-job-dialog'
 import { ApplyModal, AppliedStatus, WithdrawnStatus } from '@/components/apply/ApplyModal'
 import { getSetting } from '@/server/services/settings'
+import { ChevronLeft, LockKeyhole } from 'lucide-react'
+import { formatKLDate } from '@/lib/format-date'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 
 const jobIdSchema = z.string().cuid()
 
@@ -121,7 +126,7 @@ export default async function JobDetailPage({ params }: PageProps) {
     })
     const isOwnCompany = member?.companyId === job.companyId
     if (!isOwnCompany) {
-      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} t={t} jobId={id} />
+      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} locale={locale} t={t} jobId={id} />
     }
   }
 
@@ -147,7 +152,7 @@ export default async function JobDetailPage({ params }: PageProps) {
     const { allowed, isNewView } = await openJob(studentProfile.id, id)
 
     if (!allowed) {
-      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} t={t} jobId={id} />
+      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} locale={locale} t={t} jobId={id} />
     }
 
     // Only increment viewCount on first open — not on repeat visits
@@ -189,71 +194,121 @@ export default async function JobDetailPage({ params }: PageProps) {
 
   const detail = toJobDetail(job)
 
+  const salary =
+    detail.salaryMin != null && detail.salaryMax != null
+      ? `MYR ${detail.salaryMin.toLocaleString()} – ${detail.salaryMax.toLocaleString()}`
+      : detail.salaryMin != null
+        ? `MYR ${detail.salaryMin.toLocaleString()}+`
+        : detail.salaryMax != null
+          ? `≤ MYR ${detail.salaryMax.toLocaleString()}`
+          : null
+  const location = [detail.city, detail.state ? stateLabel(detail.state, locale) : null]
+    .filter(Boolean)
+    .join(', ')
+
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-4">
-        <Link href="/jobs" className="text-sm text-muted-foreground hover:text-foreground">
-          ← {t('backToList')}
-        </Link>
-      </div>
+    <div className="page-shell pb-20 pt-8 md:pt-12">
+      <BackToJobs label={t('backToList')} />
 
-      <article>
-        <h1 className="text-2xl font-bold mb-1">{detail.title}</h1>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mb-4">
-          <span>{companyName}</span>
-          {detail.state && <span>· {stateLabel(detail.state, locale)}</span>}
-          {detail.city && <span>· {detail.city}</span>}
-          <span>· {t(`type.${detail.type}`)}</span>
-          <span>· {t(`workMode.${detail.workMode}`)}</span>
-        </div>
+      <article className="mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-x-14">
+        <header className="lg:col-start-1">
+          <p className="text-body text-muted-foreground">{companyName}</p>
+          <h1 className="mt-2 text-headline text-balance">{detail.title}</h1>
+          {(detail.acceptsStudentPass || detail.sponsorsWorkPass) && (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {detail.acceptsStudentPass && <Badge tone="success">{t('facts.studentPass')}</Badge>}
+              {detail.sponsorsWorkPass && <Badge tone="brand">{t('facts.workPass')}</Badge>}
+            </div>
+          )}
+        </header>
 
-        {applySection && (
-          <div className="mb-6">
-            {applySection}
-          </div>
-        )}
+        {/* On small screens the action sits right under the title; on large ones it stays in view while reading. */}
+        <aside className="mt-8 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0">
+          <Card className="lg:sticky lg:top-20">
+            <p className="text-xs text-muted-foreground">{t('facts.salary')}</p>
+            <p className="mt-1 text-title">{salary ?? t('facts.salaryNegotiable')}</p>
+            {detail.deadline && (
+              <p className="mt-3 text-sm text-muted-foreground">
+                {t('facts.deadline')} · {formatKLDate(detail.deadline, locale)}
+              </p>
+            )}
+            {applySection && <div className="mt-6">{applySection}</div>}
+            <div className="mt-2 flex flex-wrap items-start gap-x-3 border-t pt-2">
+              <ShareJobButton jobId={id} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
+              <ReportJobDialog jobId={id} />
+            </div>
+          </Card>
+        </aside>
 
-        {(detail.salaryMin != null || detail.salaryMax != null) && (
-          <p className="font-medium text-brand mb-4">
-            {detail.salaryMin != null && detail.salaryMax != null
-              ? `MYR ${detail.salaryMin.toLocaleString()} – ${detail.salaryMax.toLocaleString()}`
-              : detail.salaryMin != null
-                ? `MYR ${detail.salaryMin.toLocaleString()}+`
-                : `≤ MYR ${detail.salaryMax!.toLocaleString()}`}
-          </p>
-        )}
+        <div className="mt-10 lg:col-start-1">
+          <dl
+            aria-label={t('facts.label')}
+            className="grid grid-cols-2 gap-x-8 border-y sm:grid-cols-3"
+          >
+            <Fact label={t('facts.type')}>{t(`type.${detail.type}`)}</Fact>
+            <Fact label={t('facts.workMode')}>{t(`workMode.${detail.workMode}`)}</Fact>
+            {location && <Fact label={t('facts.location')}>{location}</Fact>}
+            {detail.headcount != null && (
+              <Fact label={t('facts.headcount')}>
+                {t('facts.headcountValue', { count: detail.headcount })}
+              </Fact>
+            )}
+            {detail.languages.length > 0 && (
+              <Fact label={t('facts.languages')}>{detail.languages.join(' · ')}</Fact>
+            )}
+          </dl>
 
-        <div className="flex flex-wrap gap-1.5 mb-6">
-          {detail.skills.map((s) => (
-            <span key={s} className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
-              {s}
-            </span>
-          ))}
-        </div>
+          {detail.skills.length > 0 && (
+            <ul aria-label={t('facts.skills')} className="mt-6 flex flex-wrap gap-2">
+              {detail.skills.map((s) => (
+                <li key={s}>
+                  <Badge>{s}</Badge>
+                </li>
+              ))}
+            </ul>
+          )}
 
-        <section className="mb-6">
-          <h2 className="text-base font-semibold mb-2">{t('descriptionLabel')}</h2>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">{detail.description}</p>
-        </section>
-
-        {detail.requirements && (
-          <section className="mb-6">
-            <h2 className="text-base font-semibold mb-2">{t('requirementsLabel')}</h2>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{detail.requirements}</p>
+          <section className="mt-12">
+            <h2 className="text-title">{t('descriptionLabel')}</h2>
+            <p className="mt-4 whitespace-pre-wrap text-body">{detail.description}</p>
           </section>
-        )}
 
-        {detail.benefits && (
-          <section className="mb-6">
-            <h2 className="text-base font-semibold mb-2">{t('benefitsLabel')}</h2>
-            <p className="text-sm leading-relaxed whitespace-pre-wrap">{detail.benefits}</p>
-          </section>
-        )}
+          {detail.requirements && (
+            <section className="mt-12">
+              <h2 className="text-title">{t('requirementsLabel')}</h2>
+              <p className="mt-4 whitespace-pre-wrap text-body">{detail.requirements}</p>
+            </section>
+          )}
+
+          {detail.benefits && (
+            <section className="mt-12">
+              <h2 className="text-title">{t('benefitsLabel')}</h2>
+              <p className="mt-4 whitespace-pre-wrap text-body">{detail.benefits}</p>
+            </section>
+          )}
+        </div>
       </article>
-      <div className="flex flex-wrap items-start gap-x-3">
-        <ShareJobButton jobId={id} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
-        <ReportJobDialog jobId={id} />
-      </div>
+    </div>
+  )
+}
+
+function BackToJobs({ label }: { label: string }) {
+  return (
+    <Link
+      href="/jobs"
+      className="-ml-1 inline-flex min-h-8 items-center gap-0.5 rounded-full pr-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+    >
+      <ChevronLeft aria-hidden="true" className="size-4" />
+      {label}
+    </Link>
+  )
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="py-4">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="mt-1 text-body font-medium">{children}</dd>
     </div>
   )
 }
@@ -262,44 +317,39 @@ function LockedJobCard({
   title,
   companyName,
   state,
+  locale,
   t,
   jobId,
 }: {
   title: string
   companyName: string
   state: string | null
+  locale: string
   t: Awaited<ReturnType<typeof getTranslations<'publicJobs'>>>
   jobId: string
 }) {
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-4">
-        <Link href="/jobs" className="text-sm text-muted-foreground hover:text-foreground">
-          ← {t('backToList')}
-        </Link>
-      </div>
-      <div className="rounded-lg border bg-card p-6">
-        <h1 className="text-2xl font-bold mb-1">{title}</h1>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground mb-6">
-          <span>{companyName}</span>
-          {state && <span>· {state}</span>}
-        </div>
-        <div className="rounded-md bg-muted/60 border border-dashed p-6 text-center">
-          <p className="text-sm font-medium mb-1">{t('lockedTitle')}</p>
-          <p className="text-sm text-muted-foreground mb-4">{t('lockedDesc')}</p>
-          <Link
-            href="/s/invite"
-            className="inline-flex items-center rounded-md bg-brand px-4 py-2 text-sm font-semibold text-brand-foreground hover:bg-brand/90 transition-colors min-h-[24px]"
-          >
-            {t('inviteButton')}
-          </Link>
-        </div>
-        <div className="flex flex-wrap items-start gap-x-3">
-          <ShareJobButton jobId={jobId} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
-          <ReportJobDialog jobId={jobId} />
-        </div>
+    <div className="page-shell max-w-3xl pb-20 pt-8 md:pt-12">
+      <BackToJobs label={t('backToList')} />
+      <header className="mt-6">
+        <p className="text-body text-muted-foreground">
+          {companyName}
+          {state && <span> · {stateLabel(state, locale)}</span>}
+        </p>
+        <h1 className="mt-2 text-headline text-balance">{title}</h1>
+      </header>
+      <Card size="tile" className="mt-10 flex flex-col items-center text-center">
+        <LockKeyhole aria-hidden="true" className="size-7 text-muted-foreground" strokeWidth={1.75} />
+        <p className="mt-4 text-title">{t('lockedTitle')}</p>
+        <p className="mt-2 max-w-md text-sm text-muted-foreground text-pretty">{t('lockedDesc')}</p>
+        <Button asChild variant="brand" size="lg" className="mt-6">
+          <Link href="/s/invite">{t('inviteButton')}</Link>
+        </Button>
+      </Card>
+      <div className="flex flex-wrap items-start gap-x-3">
+        <ShareJobButton jobId={jobId} label={t('shareJobLabel')} copiedLabel={t('shareJobCopied')} />
+        <ReportJobDialog jobId={jobId} />
       </div>
     </div>
   )
 }
-

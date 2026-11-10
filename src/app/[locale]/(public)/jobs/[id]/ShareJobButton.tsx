@@ -30,7 +30,7 @@ export function ShareJobButton({ jobId, label, copiedLabel }: { jobId: string; l
     <button
       type="button"
       onClick={handleCopy}
-      className="mt-4 inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors min-h-[24px] min-w-[24px]"
+      className="mt-4 inline-flex h-10 min-w-6 items-center rounded-full border border-input bg-background px-5 text-sm font-medium transition-colors hover:bg-accent"
     >
       {error ? '✗' : copied ? `✓ ${copiedLabel}` : label}
     </button>

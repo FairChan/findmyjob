@@ -41,7 +41,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
     return (
       <a
         href={incompleteStepPath}
-        className="inline-flex items-center rounded-md bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground border hover:bg-muted/80 transition-colors min-h-[36px]"
+        className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/85"
       >
         {t('completeProfileButton')}
       </a>
@@ -50,7 +50,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
 
   if (applied) {
     return (
-      <span className="inline-flex items-center rounded-md bg-green-100 text-green-800 px-4 py-2 text-sm font-semibold min-h-[36px]">
+      <span className="inline-flex min-h-9 items-center rounded-full bg-success-muted px-4 text-sm font-semibold text-success">
         ✓ {t('appliedBadge')}
       </span>
     )
@@ -86,8 +86,10 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
   return (
     <>
       <Button
+        variant="brand"
+        size="lg"
         onClick={() => { setOpen(true); setError(null) }}
-        className="min-h-[36px]"
+        className="w-full"
       >
         {t('applyButton')}
       </Button>
@@ -154,7 +156,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
 export function WithdrawnStatus() {
   const t = useTranslations('publicJobs')
   return (
-    <span className="inline-flex items-center rounded-md bg-muted text-muted-foreground px-4 py-2 text-sm font-semibold min-h-[36px]">
+    <span className="inline-flex min-h-9 items-center rounded-full bg-background px-4 text-sm font-semibold text-muted-foreground">
       {t('withdrawnBadge')}
     </span>
   )
@@ -193,7 +195,7 @@ export function AppliedStatus({ applicationId }: AppliedStatusProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className="inline-flex items-center rounded-md bg-green-100 text-green-800 px-4 py-2 text-sm font-semibold min-h-[36px]">
+      <span className="inline-flex min-h-9 items-center rounded-full bg-success-muted px-4 text-sm font-semibold text-success">
         ✓ {t('appliedBadge')}
       </span>
       <Button
