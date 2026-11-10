@@ -59,6 +59,35 @@ describe('HEALTHCHECKS_* env vars — empty-string coercion', () => {
   })
 })
 
+describe('dedicated registration verification email configuration', () => {
+  const verificationConfig = {
+    EMAIL_VERIFICATION_PROVIDER: 'resend',
+    EMAIL_VERIFICATION_RESEND_API_KEY: ['verification', 'only', 'api', 'key'].join('-'),
+    EMAIL_VERIFICATION_FROM: 'FindMYJob <no-reply@findmyjob.asia>',
+  }
+
+  it('accepts a dedicated Resend provider, key and sender', () => {
+    const result = _envSchema.safeParse({ ...BASE, ...verificationConfig })
+    expect(result.success).toBe(true)
+  })
+
+  it('requires a dedicated Resend key and verified-domain sender when enabled', () => {
+    const missingKey = _envSchema.safeParse({ ...BASE, ...verificationConfig, EMAIL_VERIFICATION_RESEND_API_KEY: undefined })
+    const missingSender = _envSchema.safeParse({ ...BASE, ...verificationConfig, EMAIL_VERIFICATION_FROM: undefined })
+
+    expect(missingKey.success).toBe(false)
+    expect(missingKey.error?.issues.map(issue => issue.path.join('.'))).toContain('EMAIL_VERIFICATION_RESEND_API_KEY')
+    expect(missingSender.success).toBe(false)
+    expect(missingSender.error?.issues.map(issue => issue.path.join('.'))).toContain('EMAIL_VERIFICATION_FROM')
+  })
+
+  it('keeps SMTP as the default for registrations until Resend is explicitly enabled', () => {
+    const result = _envSchema.safeParse({ ...BASE })
+    expect(result.success).toBe(true)
+    expect(result.data?.EMAIL_VERIFICATION_PROVIDER).toBe('smtp')
+  })
+})
+
 describe('APP_ENV NODE_ENV fallback (M1-T07)', () => {
   const BASE_NO_APP_ENV = (() => {
     const { APP_ENV: _removed, ...rest } = BASE as typeof BASE & { APP_ENV?: string }

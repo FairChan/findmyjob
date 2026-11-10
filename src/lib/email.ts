@@ -3,6 +3,11 @@ import { env } from '@/env'
 
 export interface SendEmailOptions { to: string; subject: string; html: string; text?: string }
 export interface EmailProvider { sendEmail(opts: SendEmailOptions): Promise<void>; settle?(): Promise<void> }
+export interface EmailProviderOverrides {
+  provider?: 'smtp' | 'resend'
+  apiKey?: string
+  from?: string
+}
 export class EmailDeliveryError extends Error {
   constructor(public readonly outcome: 'not-accepted' | 'unknown') {
     super(outcome === 'not-accepted' ? 'Email was not accepted' : 'Email outcome is unknown')
@@ -32,6 +37,7 @@ function isRejectedSmtpRecipient(error: unknown, recipient: string): boolean {
     (failure.accepted === undefined || (Array.isArray(failure.accepted) && failure.accepted.length === 0))
 }
 class SmtpEmailProvider implements EmailProvider {
+  constructor(private readonly from = env.EMAIL_FROM) {}
   private readonly pending = new Set<Promise<unknown>>()
   async settle(): Promise<void> { await settlePending(this.pending) }
   async sendEmail(opts: SendEmailOptions): Promise<void> {
@@ -40,7 +46,7 @@ class SmtpEmailProvider implements EmailProvider {
       const nodemailer = await import('nodemailer')
       const transport = nodemailer.createTransport({ url: env.SMTP_URL!, connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 15_000 })
       close = () => transport.close()
-      const result = await deadline(transport.sendMail({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text }), this.pending)
+      const result = await deadline(transport.sendMail({ from: this.from, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text }), this.pending)
       const accepted = result.accepted ?? []
       if (accepted.length === 1 && typeof accepted[0] === 'string' && accepted[0].toLowerCase() === opts.to.toLowerCase()) return
       throw new EmailDeliveryError(accepted.length === 0 && (result.rejected?.length ?? 0) > 0 ? 'not-accepted' : 'unknown')
@@ -55,12 +61,13 @@ class SmtpEmailProvider implements EmailProvider {
 }
 class ResendEmailProvider implements EmailProvider {
   private readonly pending = new Set<Promise<unknown>>()
+  constructor(private readonly apiKey = env.RESEND_API_KEY!, private readonly from = env.EMAIL_FROM) {}
   async settle(): Promise<void> { await settlePending(this.pending) }
   async sendEmail(opts: SendEmailOptions): Promise<void> {
     try {
       const { Resend } = await import('resend')
-      const resend = new Resend(env.RESEND_API_KEY!)
-      const result = await deadline(resend.emails.send({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text }), this.pending)
+      const resend = new Resend(this.apiKey)
+      const result = await deadline(resend.emails.send({ from: this.from, to: opts.to, subject: opts.subject, html: opts.html, text: opts.text }), this.pending)
       if (result.error) {
         const definiteRejection = new Set(['validation_error', 'missing_required_field', 'invalid_access', 'invalid_api_key',
           'restricted_api_key', 'invalid_from_address', 'rate_limit_exceeded', 'daily_quota_exceeded', 'monthly_quota_exceeded'])
@@ -72,9 +79,10 @@ class ResendEmailProvider implements EmailProvider {
     }
   }
 }
-export function createEmailProvider(): EmailProvider {
-  switch (env.EMAIL_PROVIDER) {
-    case 'resend': return new ResendEmailProvider()
-    case 'smtp': default: return new SmtpEmailProvider()
+export function createEmailProvider(overrides: EmailProviderOverrides = {}): EmailProvider {
+  const provider = overrides.provider ?? env.EMAIL_PROVIDER
+  switch (provider) {
+    case 'resend': return new ResendEmailProvider(overrides.apiKey, overrides.from)
+    case 'smtp': default: return new SmtpEmailProvider(overrides.from)
   }
 }

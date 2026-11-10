@@ -55,6 +55,9 @@ const schema = z
     EMAIL_FROM: z.string().min(1),
     SMTP_URL: z.string().optional(),
     RESEND_API_KEY: z.string().optional(),
+    EMAIL_VERIFICATION_PROVIDER: z.enum(["smtp", "resend"]).default("smtp"),
+    EMAIL_VERIFICATION_RESEND_API_KEY: z.string().optional(),
+    EMAIL_VERIFICATION_FROM: z.string().optional(),
 
     SENTRY_DSN: z.string().optional(),
     NEXT_PUBLIC_SENTRY_DSN: z.string().optional(),
@@ -178,6 +181,20 @@ const schema = z
         code: z.ZodIssueCode.custom,
         path: ["RESEND_API_KEY"],
         message: "RESEND_API_KEY is required when EMAIL_PROVIDER=resend",
+      });
+    }
+    if (data.EMAIL_VERIFICATION_PROVIDER === "resend" && !data.EMAIL_VERIFICATION_RESEND_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_VERIFICATION_RESEND_API_KEY"],
+        message: "EMAIL_VERIFICATION_RESEND_API_KEY is required when EMAIL_VERIFICATION_PROVIDER=resend",
+      });
+    }
+    if (data.EMAIL_VERIFICATION_PROVIDER === "resend" && !data.EMAIL_VERIFICATION_FROM) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["EMAIL_VERIFICATION_FROM"],
+        message: "EMAIL_VERIFICATION_FROM is required when EMAIL_VERIFICATION_PROVIDER=resend",
       });
     }
   });

@@ -20,6 +20,11 @@ import { logger } from './lib/logger'
 import { alert } from './lib/alert'
 
 const emailProvider = createEmailProvider()
+const emailVerificationProvider = createEmailProvider({
+  provider: env.EMAIL_VERIFICATION_PROVIDER,
+  apiKey: env.EMAIL_VERIFICATION_RESEND_API_KEY,
+  from: env.EMAIL_VERIFICATION_FROM,
+})
 
 // Wraps after() with a fallback for non-request contexts (worker, scripts, tests that don't mock next/server).
 function sendEmailAfterResponse(fn: () => Promise<void>): void {
@@ -253,7 +258,7 @@ export const auth = betterAuth({
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
       sendEmailAfterResponse(async () => {
-        await emailProvider
+        await emailVerificationProvider
           .sendEmail({
             to: user.email,
             subject: 'Verify your FindMYJob account',
