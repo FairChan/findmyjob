@@ -4,6 +4,10 @@ import { getTranslations } from 'next-intl/server'
 import { z } from 'zod'
 import { getPublicCompany } from '@/server/services/company'
 import { safeWebsiteHref } from '@/lib/url-utils'
+import { ArrowUpRight } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+import { TextLink } from '@/components/ui/text-link'
 
 const companyIdSchema = z.string().cuid()
 
@@ -57,68 +61,80 @@ export default async function CompanyPublicPage({ params }: PageProps) {
   const locationParts = [company.city, company.state].filter(Boolean)
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-12">
+    <div className="page-shell max-w-3xl pb-20 pt-10 md:pt-14">
       {/* Company header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 mb-8">
+      <header className="flex flex-col items-start gap-6 sm:flex-row sm:items-center">
         {hasLogo ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={`/api/logos/${company.id}`}
             alt={displayName}
-            className="w-20 h-20 rounded-lg object-contain border bg-white flex-shrink-0"
+            className="size-20 shrink-0 rounded-card border bg-white object-contain"
           />
         ) : (
-          <div className="w-20 h-20 rounded-lg border bg-muted flex items-center justify-center text-2xl font-bold text-muted-foreground flex-shrink-0">
+          <div className="flex size-20 shrink-0 items-center justify-center rounded-card bg-muted text-2xl font-semibold text-muted-foreground">
             {displayName.charAt(0)}
           </div>
         )}
 
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-2xl font-bold break-words">{displayName}</h1>
-            {company.isFoundingPartner && (
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-3 py-0.5 text-xs font-semibold text-amber-800 border border-amber-200 whitespace-nowrap">
-                {t('foundingPartner')}
-              </span>
-            )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="break-words text-headline">{displayName}</h1>
+            {company.isFoundingPartner && <Badge tone="warning">{t('foundingPartner')}</Badge>}
           </div>
 
           {displayName !== company.legalName && (
-            <p className="text-sm text-muted-foreground mt-0.5">{company.legalName}</p>
-          )}
-
-          {locationParts.length > 0 && (
-            <p className="text-sm text-muted-foreground mt-1">
-              {t('location')}: {locationParts.join(', ')}
-            </p>
-          )}
-
-          {websiteHref && (
-            <a
-              href={websiteHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-sm text-primary underline underline-offset-2 hover:text-primary/80 mt-1 inline-block"
-            >
-              {t('website')}
-            </a>
+            <p className="mt-1 text-sm text-muted-foreground">{company.legalName}</p>
           )}
         </div>
-      </div>
+      </header>
+
+      {(locationParts.length > 0 || websiteHref) && (
+        <dl className="mt-8 grid grid-cols-2 gap-x-8 border-y">
+          {locationParts.length > 0 && (
+            <div className="py-4">
+              <dt className="text-xs text-muted-foreground">{t('location')}</dt>
+              <dd className="mt-1 text-body font-medium">{locationParts.join(', ')}</dd>
+            </div>
+          )}
+          {websiteHref && (
+            <div className="py-4">
+              <dt className="text-xs text-muted-foreground">{t('website')}</dt>
+              <dd className="mt-1 min-w-0 text-body font-medium">
+                <a
+                  href={websiteHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex min-h-6 max-w-full items-center gap-1 text-brand underline-offset-4 hover:underline"
+                >
+                  <span className="truncate">{new URL(websiteHref).hostname}</span>
+                  <ArrowUpRight aria-hidden="true" className="size-4 shrink-0" />
+                </a>
+              </dd>
+            </div>
+          )}
+        </dl>
+      )}
 
       {/* Description */}
       {company.description && (
-        <section className="mb-8">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-foreground">
-            {company.description}
-          </p>
+        <section className="mt-10">
+          <p className="whitespace-pre-wrap text-body">{company.description}</p>
         </section>
       )}
 
       {/* Open positions */}
-      <section>
-        <h2 className="text-lg font-semibold mb-4">{t('openPositions')}</h2>
-        <p className="text-sm text-muted-foreground">{t('noJobs')}</p>
+      <section className="mt-12">
+        <h2 className="text-title">{t('openPositions')}</h2>
+        <EmptyState
+          className="mt-4"
+          title={<span className="text-body font-medium">{t('noJobs')}</span>}
+          action={
+            <TextLink href="/jobs" prefetch={false}>
+              {t('browseJobs')}
+            </TextLink>
+          }
+        />
       </section>
     </div>
   )

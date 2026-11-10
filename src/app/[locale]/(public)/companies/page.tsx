@@ -3,6 +3,9 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { listPublicCompanies } from '@/server/services/company'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHeader } from '@/components/ui/page-header'
 import type { CompanyTag } from '@prisma/client'
 
 const COMPANY_TAGS: CompanyTag[] = [
@@ -58,38 +61,29 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
     if (params.tag) p.set('tag', params.tag)
     if (params.cursor) p.set('cursor', params.cursor)
     const qs = p.toString()
-    return `/${locale}/companies${qs ? `?${qs}` : ''}`
+    return `/companies${qs ? `?${qs}` : ''}`
   }
 
+  const tagClass = (selected: boolean) =>
+    `inline-flex min-h-9 items-center rounded-full px-4 text-sm font-medium transition-colors ${
+      selected ? 'bg-foreground text-background' : 'bg-muted text-foreground/80 hover:bg-border'
+    }`
+
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-10">
-      <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold">{t('title')}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t('subtitle')}</p>
-      </div>
+    <div className="page-shell pb-20 pt-10 md:pt-14">
+      <PageHeader title={t('title')} lead={t('subtitle')} />
 
       {/* Tag filters */}
-      <div className="mb-6 flex flex-wrap gap-2">
-        <Link
-          href={buildUrl({})}
-          className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium border transition-colors ${
-            !tag
-              ? 'bg-brand text-brand-foreground border-brand'
-              : 'bg-background text-muted-foreground border-border hover:bg-muted'
-          }`}
-          prefetch={false}
-        >
+      <div className="mt-8 flex flex-wrap gap-2">
+        <Link href={buildUrl({})} aria-current={!tag ? 'true' : undefined} className={tagClass(!tag)} prefetch={false}>
           {t('tagAll')}
         </Link>
         {COMPANY_TAGS.map((ct) => (
           <Link
             key={ct}
             href={buildUrl({ tag: ct })}
-            className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-medium border transition-colors ${
-              tag === ct
-                ? 'bg-brand text-brand-foreground border-brand'
-                : 'bg-background text-muted-foreground border-border hover:bg-muted'
-            }`}
+            aria-current={tag === ct ? 'true' : undefined}
+            className={tagClass(tag === ct)}
             prefetch={false}
           >
             {t(`tag${ct}` as Parameters<typeof t>[0])}
@@ -99,10 +93,10 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
 
       {/* Company cards */}
       {companies.length === 0 ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">{t('empty')}</p>
+        <EmptyState className="mt-8" title={t('empty')} />
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {companies.map((company) => {
               const displayName =
                 locale === 'zh'
@@ -114,21 +108,21 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
                   key={company.id}
                   href={`/companies/${company.id}`}
                   prefetch={false}
-                  className="group flex flex-col items-center rounded-lg border bg-card p-4 text-center hover:border-primary/50 transition-colors"
+                  className="group flex flex-col items-center rounded-card bg-muted p-5 text-center transition-[background-color,box-shadow] hover:bg-card hover:shadow-float motion-reduce:transition-none"
                 >
                   {hasLogo ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={`/api/logos/${company.id}`}
                       alt={displayName}
-                      className="h-14 w-14 rounded-md object-contain border bg-white"
+                      className="size-14 rounded-control bg-white object-contain"
                     />
                   ) : (
-                    <div className="flex h-14 w-14 items-center justify-center rounded-md border bg-muted text-xl font-bold text-muted-foreground">
+                    <div className="flex size-14 items-center justify-center rounded-control bg-background text-xl font-semibold text-muted-foreground">
                       {displayName.charAt(0)}
                     </div>
                   )}
-                  <p className="mt-3 line-clamp-2 text-sm font-medium leading-snug">{displayName}</p>
+                  <p className="mt-4 line-clamp-2 text-sm font-semibold leading-snug">{displayName}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
                     {company.publishedJobCount}{t('openPositions')}
                   </p>
@@ -137,14 +131,12 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
             })}
           </div>
           {nextCursor && (
-            <div className="mt-8 text-center">
-              <Link
-                href={buildUrl({ tag, cursor: nextCursor })}
-                className="inline-flex items-center rounded-md bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/80 transition-colors"
-                prefetch={false}
-              >
-                {t('loadMore')}
-              </Link>
+            <div className="mt-10 text-center">
+              <Button asChild variant="secondary">
+                <Link href={buildUrl({ tag, cursor: nextCursor })} prefetch={false}>
+                  {t('loadMore')}
+                </Link>
+              </Button>
             </div>
           )}
         </>

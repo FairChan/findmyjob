@@ -2,6 +2,9 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
+import { FIELD_CLASS } from '@/components/ui/field'
+import { PageHeader } from '@/components/ui/page-header'
+import { BrandLine } from '@/components/layout/brand-line'
 import { SafetyArticleContent } from '@/components/safety/safety-article'
 import { ValidationError } from '@/server/errors'
 import {
@@ -52,13 +55,14 @@ export default async function SafetyPage({ params, searchParams }: Props) {
   })
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-8 sm:py-12">
-      <div className="mb-8 max-w-2xl">
-        <h1 className="text-3xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="mt-3 text-sm leading-7 text-muted-foreground">{t('description')}</p>
-      </div>
+    <div className="page-shell pb-20 pt-10 md:pt-14">
+      <PageHeader eyebrow={<BrandLine word="safe" />} title={t('title')} lead={t('description')} />
 
-      <form action={`/${locale}/safety`} method="get" className="mb-6 flex flex-wrap items-end gap-3 rounded-lg border bg-card p-4">
+      <form
+        action={`/${locale}/safety`}
+        method="get"
+        className="mt-8 flex flex-wrap items-end gap-3 rounded-card bg-muted p-4"
+      >
         <div className="w-full space-y-2 sm:w-auto sm:min-w-60">
           <label htmlFor="safety-category" className="block text-sm font-medium">{t('category')}</label>
           <select
@@ -66,29 +70,36 @@ export default async function SafetyPage({ params, searchParams }: Props) {
             id="safety-category"
             name="category"
             defaultValue={category ?? ''}
-            className="min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className={FIELD_CLASS}
           >
             <option value="">{t('all')}</option>
             {categories.map((value) => <option key={value} value={value}>{t(`categories.${value}`)}</option>)}
           </select>
         </div>
-        <Button type="submit">{t('filter')}</Button>
-        <Link href="/safety" className="inline-flex min-h-10 items-center rounded-md px-3 text-sm font-medium text-brand hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+        <Button type="submit" className="h-11">{t('filter')}</Button>
+        <Link
+          href="/safety"
+          className="inline-flex min-h-11 items-center rounded-full px-3 text-sm text-brand underline-offset-4 hover:underline"
+        >
           {t('reset')}
         </Link>
       </form>
 
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_16rem]">
-        <div className="min-w-0 space-y-5">
+      <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="min-w-0 space-y-4">
           {invalidQuery ? (
-            <p role="alert" className="rounded-lg border border-destructive/40 bg-card p-5 text-sm text-destructive">{t('errorQuery')}</p>
+            <p role="alert" className="rounded-card bg-destructive-muted p-5 text-sm text-destructive">{t('errorQuery')}</p>
           ) : page.items.length === 0 ? (
-            <p className="rounded-lg border bg-muted/30 p-6 text-sm text-muted-foreground">{t('empty')}</p>
+            <p className="rounded-card bg-muted p-6 text-sm text-muted-foreground">{t('empty')}</p>
           ) : page.items.map((article) => (
-            <article key={article.id} data-testid={`safety-article-${article.id}`} className="min-w-0 space-y-4 rounded-lg border bg-card p-5 sm:p-6">
+            <article
+              key={article.id}
+              data-testid={`safety-article-${article.id}`}
+              className="min-w-0 space-y-4 rounded-card border p-5 sm:p-7"
+            >
               <div className="space-y-2">
                 <p className="text-xs font-medium text-brand-muted-foreground">{t(`categories.${article.category}`)}</p>
-                <h2 className="break-words text-xl font-semibold [overflow-wrap:anywhere]">{article.title}</h2>
+                <h2 className="break-words text-title [overflow-wrap:anywhere]">{article.title}</h2>
                 <p className="text-xs text-muted-foreground">
                   <time dateTime={article.updatedAt.toISOString()}>{t('updatedAt', { date: dateFormat.format(article.updatedAt) })}</time>
                 </p>
@@ -98,14 +109,14 @@ export default async function SafetyPage({ params, searchParams }: Props) {
           ))}
           {page.nextCursor && (
             <div className="flex justify-end">
-              <Button asChild variant="outline">
+              <Button asChild variant="secondary">
                 <Link href={`/safety?${nextQuery.toString()}`}>{t('next')}</Link>
               </Button>
             </div>
           )}
         </div>
-        <aside className="rounded-lg border border-brand/20 bg-brand-muted p-5 lg:sticky lg:top-20">
-          <h2 className="text-base font-semibold text-brand-muted-foreground">{t('emergencyTitle')}</h2>
+        <aside className="rounded-card bg-brand-muted p-6 lg:sticky lg:top-20">
+          <h2 className="text-body font-semibold text-brand-muted-foreground">{t('emergencyTitle')}</h2>
           <p className="mt-2 text-sm leading-6 text-brand-muted-foreground">{t('emergency')}</p>
           <p className="mt-4 border-t border-brand/20 pt-4 text-sm leading-6 text-brand-muted-foreground">{t('verifiedContacts')}</p>
         </aside>

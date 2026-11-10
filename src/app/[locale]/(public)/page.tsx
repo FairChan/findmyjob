@@ -8,7 +8,7 @@ import { getHomeStats, getLatestJobs } from '@/server/services/home'
 import { safeWebsiteHref } from '@/lib/url-utils'
 import { HeroWord } from '@/components/home/hero-word'
 import { HomeRecruiterRail } from '@/components/home/home-recruiter-rail'
-import { Badge } from '@/components/ui/badge'
+import { JobCard } from '@/components/jobs/job-card'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -181,24 +181,19 @@ export default async function HomePage({ params }: Props) {
                   : t('noSalary')
               return (
                 <li key={job.id}>
-                  <Link
-                    href={`/jobs/${job.id}`}
-                    prefetch={false}
-                    className="group block h-full rounded-card"
-                  >
-                    <Card className="flex h-full flex-col transition-[background-color,box-shadow] group-hover:bg-card group-hover:shadow-float motion-reduce:transition-none">
-                      <p className="text-xs text-muted-foreground">{companyName}</p>
-                      <p className="mt-1.5 line-clamp-2 text-body font-semibold leading-snug">{job.title}</p>
-                      <div className="mt-4 flex flex-wrap gap-1.5">
-                        <Badge tone="plain">{t(`jobType${job.type}`)}</Badge>
-                        {job.state && <Badge tone="plain">{job.state}</Badge>}
-                        {job.acceptsStudentPass && (
-                          <Badge tone="success">{t('acceptsStudentPass')}</Badge>
-                        )}
-                      </div>
-                      <p className="mt-auto pt-5 text-sm font-medium">{salary}</p>
-                    </Card>
-                  </Link>
+                  <JobCard
+                    jobId={job.id}
+                    title={job.title}
+                    company={companyName}
+                    salary={salary}
+                    badges={[
+                      { label: t(`jobType${job.type}`) },
+                      ...(job.state ? [{ label: job.state }] : []),
+                      ...(job.acceptsStudentPass
+                        ? [{ label: t('acceptsStudentPass'), tone: 'success' as const }]
+                        : []),
+                    ]}
+                  />
                 </li>
               )
             })}

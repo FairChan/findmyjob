@@ -56,6 +56,14 @@
     "folders": "收藏夹",
     "sentInvitations": "邀请记录"
   },
+  "brandLine": {
+    "lead": "找到我的",
+    "tail": "工作",
+    "words": {
+      "right": "对口",
+      "safe": "靠谱"
+    }
+  },
   "notFound": {
     "title": "没有找到这个页面",
     "description": "链接可能已经失效，或者这个职位已经下线。",
@@ -1360,7 +1368,8 @@
     "location": "地点",
     "website": "官网",
     "openPositions": "在招职位",
-    "noJobs": "暂无在招职位"
+    "noJobs": "暂无在招职位",
+    "browseJobs": "浏览全部职位"
   },
   "jobs": {
     "listTitle": "职位管理",
@@ -1646,7 +1655,21 @@
     "applyErrorGeneral": "投递失败，请稍后重试",
     "withdrawSuccess": "已撤回投递",
     "withdrawErrorGeneral": "撤回失败，请稍后重试",
-    "withdrawnBadge": "已撤回"
+    "withdrawnBadge": "已撤回",
+    "filters": {
+      "label": "筛选职位",
+      "keyword": "关键词",
+      "keywordPlaceholder": "搜索职位关键词",
+      "type": "职位类型",
+      "workMode": "工作方式",
+      "state": "地点",
+      "allTypes": "全部类型",
+      "allWorkModes": "全部方式",
+      "allStates": "全部地点",
+      "submit": "搜索",
+      "reset": "清除筛选",
+      "emptyHint": "换个关键词，或清除筛选再试。"
+    }
   },
   "invitations": {
     "inviteDialogQuotaUnlimited": "本月已发送 {used} 次邀请，配额不限",
