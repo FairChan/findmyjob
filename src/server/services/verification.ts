@@ -4,6 +4,8 @@ import { db } from '../db'
 import { logAudit } from './audit'
 import { ForbiddenError, ValidationError } from '../errors'
 import type { CompanyCtx } from '../authz'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateCompanyMatchingIndexesTx } from './matching-lifecycle'
 
 export const submitVerificationSchema = z.object({
   documentKeys: z.array(z.string().min(1).max(500)).min(1).max(5),
@@ -33,6 +35,7 @@ export async function submitVerification(ctx: CompanyCtx, input: SubmitVerificat
   }
 
   await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, companyId)
     // Atomic status check: only update if not already PENDING or VERIFIED
     const result = await tx.company.updateMany({
       where: {
@@ -53,6 +56,7 @@ export async function submitVerification(ctx: CompanyCtx, input: SubmitVerificat
       }
       throw new ValidationError('Verification already pending')
     }
+    await invalidateCompanyMatchingIndexesTx(tx, companyId)
 
     await tx.companyVerification.create({
       data: {

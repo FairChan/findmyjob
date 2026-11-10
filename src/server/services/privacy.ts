@@ -4,7 +4,9 @@ import { Visibility, Prisma, type UnlockSource } from '@prisma/client'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { logAudit } from './audit'
-import { NotFoundError } from '../errors'
+import { NotFoundError, ForbiddenError } from '../errors'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 
 export const setVisibilitySchema = z.object({
   granted: z.boolean(),
@@ -40,21 +42,19 @@ export async function setVisibility(
   input: z.infer<typeof setVisibilitySchema>,
   meta: { ip?: string | null } = {},
 ): Promise<void> {
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true },
-  })
-  if (!profile) throw new NotFoundError('Student profile not found')
-
-  const version = await getSetting<string>('legal.currentVersion', '1.0')
   const newVisibility = input.granted ? Visibility.PUBLIC : Visibility.HIDDEN
-
-  await db.$transaction([
-    db.studentProfile.update({
-      where: { id: profile.id },
-      data: { visibility: newVisibility },
-    }),
-    db.consent.create({
+  await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+    const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { role: true, status: true } })
+    if (user?.role !== 'STUDENT' || user.status !== 'ACTIVE') throw new ForbiddenError()
+    const profile = await tx.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true, visibility: true } })
+    if (!profile) throw new NotFoundError('Student profile not found')
+    const version = await getSetting<string>('legal.currentVersion', '1.0', { tx, fresh: true })
+    if (profile.visibility !== newVisibility) {
+      await tx.studentProfile.update({ where: { id: profile.id }, data: { visibility: newVisibility, editRevision: { increment: 1 } } })
+      await invalidateStudentMatchingIndexTx(tx, ctx.userId)
+    }
+    await tx.consent.create({
       data: {
         userId: ctx.userId,
         type: 'TALENT_POOL',
@@ -62,16 +62,15 @@ export async function setVisibility(
         granted: input.granted,
         ip: meta.ip ?? null,
       },
-    }),
-  ])
-
-  await logAudit({
-    actorId: ctx.userId,
-    action: 'student.visibility.change',
-    targetType: 'StudentProfile',
-    targetId: profile.id,
-    metadata: { granted: input.granted, visibility: newVisibility },
-    ip: meta.ip ?? undefined,
+    })
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'student.visibility.change',
+      targetType: 'StudentProfile',
+      targetId: profile.id,
+      metadata: { granted: input.granted, visibility: newVisibility },
+      ip: meta.ip ?? undefined,
+    }, tx)
   })
 }
 

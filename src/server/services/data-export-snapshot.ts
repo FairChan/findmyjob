@@ -83,6 +83,9 @@ export async function readDataExportSnapshot(tx: Prisma.TransactionClient, userI
           'consents', COALESCE((SELECT jsonb_agg(jsonb_build_object('type', c.type, 'version', c.version,
             'granted', c.granted, 'createdAt', c."createdAt") ORDER BY c."createdAt", c.id)
             FROM "Consent" c WHERE c."userId" = u.id), '[]'::jsonb)),
+        'matching.json', COALESCE((SELECT jsonb_build_object('kind', m.kind, 'state', m.state,
+          'generation', m.generation, 'sourceRevision', m."sourceRevision", 'requestedAt', m."requestedAt",
+          'completedAt', m."completedAt", 'updatedAt', m."updatedAt") FROM "SemanticIndex" m WHERE m."studentId" = p.id), 'null'::jsonb),
         'notifications.json', COALESCE((SELECT jsonb_agg(jsonb_build_object('id', n.id, 'type', n.type,
           'createdAt', n."createdAt", 'readAt', n."readAt") ORDER BY n."createdAt" DESC, n.id)
           FROM (SELECT id, type, "createdAt", "readAt" FROM "Notification" WHERE "userId" = u.id

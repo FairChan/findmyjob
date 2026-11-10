@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   committed: vi.fn(),
   lockXact: vi.fn(),
   requestResumeParse: vi.fn(),
+  recalcMatchingEligibilityTx: vi.fn(),
   warn: vi.fn(),
 }))
 
@@ -37,6 +38,7 @@ vi.mock('@/server/lib/advisory-locks', () => ({
   LOCK_NS: { STUDENT_DATA: 1008 }, lockXact: mocks.lockXact,
 }))
 vi.mock('@/server/services/resume-parsing', () => ({ requestResumeParse: mocks.requestResumeParse }))
+vi.mock('@/server/services/student-profile', () => ({ recalcMatchingEligibilityTx: mocks.recalcMatchingEligibilityTx }))
 vi.mock('@/server/authz', () => ({
   requireUser: mocks.requireUser,
   requireStudent: mocks.requireStudent,
@@ -63,7 +65,7 @@ vi.mock('@/server/lib/logger', () => ({
 }))
 
 // Exercise the real route wrapper, including its error response and Origin check.
-// Only infrastructure and the PDF validation boundary are mocked in this file.
+// Infrastructure, PDF validation and the eligibility recalculation boundary are mocked here.
 import { POST } from '@/app/api/uploads/[purpose]/route'
 
 const ORIGIN = 'https://uploads.example.test'
@@ -98,6 +100,7 @@ beforeEach(() => {
   mocks.findCurrentUser.mockReset().mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
   mocks.findCurrentStudent.mockReset().mockResolvedValue({ id: 'student-profile-01', userId: 'student-user-01' })
   mocks.lockXact.mockReset().mockResolvedValue(undefined)
+  mocks.recalcMatchingEligibilityTx.mockReset().mockResolvedValue(undefined)
   mocks.requestResumeParse.mockReset().mockResolvedValue({
     resumeId: 'resume-01', generation: 1, state: 'QUEUED', dispatch: 'submitted',
   })
@@ -132,6 +135,10 @@ describe('M9-T01 upload lifecycle and explicit parse intent', () => {
     expect(mocks.lockXact.mock.invocationCallOrder[0]).toBeLessThan(mocks.findCurrentUser.mock.invocationCallOrder[0])
     expect(mocks.lockXact.mock.invocationCallOrder[0]).toBeLessThan(mocks.findCurrentStudent.mock.invocationCallOrder[0])
     expect(mocks.findCurrentStudent.mock.invocationCallOrder[0]).toBeLessThan(mocks.createResume.mock.invocationCallOrder[0])
+    expect(mocks.recalcMatchingEligibilityTx).toHaveBeenCalledExactlyOnceWith(expect.anything(), 'student-profile-01')
+    expect(mocks.recalcMatchingEligibilityTx.mock.calls[0][0]).toBe(mocks.lockXact.mock.calls[0][0])
+    expect(mocks.createResume.mock.invocationCallOrder[0]).toBeLessThan(mocks.recalcMatchingEligibilityTx.mock.invocationCallOrder[0])
+    expect(mocks.recalcMatchingEligibilityTx.mock.invocationCallOrder[0]).toBeLessThan(mocks.committed.mock.invocationCallOrder[0])
   })
 
   it.each([undefined, 'false', 'TRUE', '1', ''])('does not request parsing for nonexplicit intent %s', async intent => {

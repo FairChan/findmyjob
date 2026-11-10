@@ -309,6 +309,12 @@ If a data breach happens that may cause you significant harm, we will:
 
 【TBD T26: these deadlines are subject to the lawyer's advice (D10 ③)】
 
+### Optional career recommendations (disabled by default)
+
+After your separate AI_MATCHING consent, FindMYJob may send a minimal career projection from your confirmed profile directly to Voyage AI for embeddings and job recommendations: headline, major, degree level, skills, job intents and preferred states, with local redaction of common identity and contact details. Only public profiles meeting talent-pool eligibility can be indexed for verified employers. This consent does not publish your profile or unlock your identity or contact details. We do not attach school identity, resumes, private drafts, contact records, education/experience bodies or platform IDs. Published jobs use only title, type, category, work mode, state/city, skills and languages; job bodies and salary are excluded.
+
+Career free text can still contain personal data. The actual model, account, processing/storage regions, retention, logs, training use and deletion terms must be verified and disclosed before activation; this draft does not authorize external transfer. Recommendations show no embeddings, similarity scores or inferred explanations and do not change detail quotas or contact permissions. Ordinary search remains available. You may withdraw this separate consent; platform indexes become invalid and cleanup is scheduled, but withdrawal cannot guarantee recall of requests already accepted remotely, immediate backup deletion or cancellation of charges. A later grant cannot resume old work.
+
 ## 14. Cookies and similar technologies
 
 We use only what is needed to run the website. We do not use advertising or analytics cookies and do not track you across websites.

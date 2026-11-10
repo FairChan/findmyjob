@@ -15,6 +15,7 @@ const mockTx = vi.hoisted(() => ({
   resumeFile: { count: vi.fn().mockResolvedValue(0) },
   studentContact: { findUnique: vi.fn().mockResolvedValue(null) },
   school: { findFirst: vi.fn() },
+  semanticIndex: { updateMany: vi.fn() },
 }))
 
 const mockDb = vi.hoisted(() => ({
@@ -289,6 +290,7 @@ describe('saveStep1 — school validation (M2-T11)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mockTx.$executeRaw.mockResolvedValue(1)
+    mockTx.semanticIndex.updateMany.mockResolvedValue({ count: 0 })
     mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
     // First call: saveStep1 fetches id+onboardingStep+schoolId+schoolVerifiedAt; second call: recalcCompleteness
@@ -308,6 +310,9 @@ describe('saveStep1 — school validation (M2-T11)', () => {
     await expect(
       saveStep1({ userId: 'user1' }, { fullName: 'Alice', workAuth: 'STUDENT_PASS', schoolId: 'school-xmum' }),
     ).resolves.not.toThrow()
+    expect(mockTx.semanticIndex.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { student: { userId: 'user1' } }, data: expect.objectContaining({ state: 'CANCELLED', generation: { increment: 1 } }),
+    })
   })
 
   it('throws ValidationError when schoolId does not exist', async () => {
@@ -330,6 +335,7 @@ describe('saveStep1 — school change clears verification (M2-T12)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mockTx.$executeRaw.mockResolvedValue(1)
+    mockTx.semanticIndex.updateMany.mockResolvedValue({ count: 0 })
     mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
     mockTx.studentProfile.update.mockResolvedValue({})
@@ -401,19 +407,18 @@ describe('recalcOwnCompleteness (M2-T11)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
     mockTx.$executeRaw.mockResolvedValue(1)
+    mockTx.semanticIndex.updateMany.mockResolvedValue({ count: 0 })
     mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
   })
 
   it('recalculates completeness to 90 when contact is added to an 85-score profile', async () => {
     // Profile: workAuth(30) + intents(15) + skills(20) + edu/exp(20) = 85, no PDF, no contact
-    mockTx.studentProfile.findUnique.mockResolvedValueOnce({ id: 'sp1' }).mockResolvedValueOnce({
-      workAuth: 'STUDENT_PASS',
-      intents: ['INTERNSHIP'],
-      skills: ['React'],
-      headline: null,
-      summary: null,
-    })
+    mockTx.studentProfile.findUnique
+      .mockResolvedValueOnce({ id: 'sp1' })
+      .mockResolvedValueOnce({ userId: 'user1', completeness: 85 })
+      .mockResolvedValueOnce({ workAuth: 'STUDENT_PASS', intents: ['INTERNSHIP'], skills: ['React'], headline: null, summary: null })
+      .mockResolvedValueOnce({ completeness: 90 })
     mockTx.studentLanguage.count.mockResolvedValue(0)
     mockTx.education.count.mockResolvedValue(1)
     mockTx.experience.count.mockResolvedValue(0)
@@ -427,5 +432,10 @@ describe('recalcOwnCompleteness (M2-T11)', () => {
     expect(mockTx.studentProfile.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { completeness: 90 } }),
     )
+    expect(mockTx.studentProfile.update).toHaveBeenCalledTimes(2)
+    expect(mockTx.studentProfile.update).toHaveBeenCalledWith({ where: { id: 'sp1' }, data: { editRevision: { increment: 1 } } })
+    expect(mockTx.semanticIndex.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { student: { userId: 'user1' } }, data: expect.objectContaining({ state: 'CANCELLED', generation: { increment: 1 } }),
+    })
   })
 })

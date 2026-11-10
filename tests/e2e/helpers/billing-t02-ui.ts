@@ -261,6 +261,7 @@ export async function evidence(page: Page, info: TestInfo, label: string, scope?
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true)
     if (scope) {
       const result = await new AxeBuilder({ page }).include(scope).analyze()
+      await info.attach(label + '-' + width + '-axe', { body: JSON.stringify(result), contentType: 'application/json' })
       expect(result.violations.filter((item) => item.impact === 'serious' || item.impact === 'critical')).toHaveLength(0)
     } else await checkA11y(page)
     await page.evaluate(async () => {

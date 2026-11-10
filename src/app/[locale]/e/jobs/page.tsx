@@ -31,9 +31,13 @@ export default async function JobsPage({ params }: { params: Promise<{ locale: s
   const { locale } = await params
   const h = await headers()
   const t = await getTranslations('jobs')
+  const matching = await getTranslations('matching')
 
   const ctx = await requireCompanyMember('RECRUITER', h)
   const [jobs, usage] = await Promise.all([listCompanyJobs(ctx), getCompanyEntitlementUsage(ctx)])
+  // eslint-disable-next-line react-hooks/purity -- Authenticated Server Component takes one request-time deadline snapshot; the action rechecks eligibility.
+  const requestedAt = Date.now()
+  const publishedJobs = jobs.filter(job => job.status === 'PUBLISHED' && (!job.deadline || job.deadline.getTime() > requestedAt))
 
   return (
     <div className="container mx-auto max-w-5xl px-4 py-8">
@@ -48,6 +52,14 @@ export default async function JobsPage({ params }: { params: Promise<{ locale: s
       </div>
 
       <CompanyEntitlementSummary usage={usage} resource="jobs" />
+      {publishedJobs.length > 0 && <section className="mb-6 space-y-2 rounded-lg border p-4" aria-labelledby="matching-jobs-title">
+        <h2 id="matching-jobs-title" className="text-lg font-semibold">{matching('jobLinksTitle')}</h2>
+        <p className="text-sm text-muted-foreground">{matching('jobLinksHint')}</p>
+        <ul className="space-y-1">{publishedJobs.map(job => <li key={job.id}>
+          <Link href={'/e/jobs/' + job.id + '/recommendations'} prefetch={false}
+            className="inline-flex min-h-11 items-center text-sm text-primary underline [overflow-wrap:anywhere]">{job.title}</Link>
+        </li>)}</ul>
+      </section>}
       <JobListClient
         jobs={jobs as JobListItem[]}
         locale={locale}

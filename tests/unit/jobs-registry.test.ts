@@ -1,3 +1,4 @@
+vi.mock('@/server/services/settings', () => ({ getSetting: vi.fn().mockResolvedValue(5) }))
 /**
  * Unit tests for job registry schedule options (M4-T20 task 3).
  * Verifies pilot-monthly-credits and reconcile-wallets use KL timezone + missed:'once'.

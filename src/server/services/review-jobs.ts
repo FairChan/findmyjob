@@ -9,6 +9,7 @@ import { sendNotificationEmail } from './notify'
 import type { UserCtx } from '../authz'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { assertJobCapacity, consumesJobSlot } from './subscription-entitlements'
+import { invalidateJobMatchingIndexTx } from './semantic-matching'
 
 const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 15_000 }
 
@@ -69,6 +70,7 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
     await lockXact(tx, LOCK_NS.CREDIT, jobBase.companyId)
     const now = new Date()
     await assertAdminUser(userId, tx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${input.jobId} AND "companyId" = ${jobBase.companyId} FOR UPDATE`
     // Read current state only after taking the shared company growth lock
     const job = await tx.job.findUnique({
       where: { id: input.jobId },
@@ -99,6 +101,7 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
       where: { id: input.jobId, companyId: jobBase.companyId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
       data: {
         status: 'PUBLISHED',
+        matchingRevision: { increment: 1 },
         // Preserve original publishedAt if re-approving after edit; otherwise stamp now
         publishedAt: job.publishedAt ?? now,
         reviewNote: null,
@@ -108,6 +111,7 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
     if (result.count !== 1) {
       throw new ValidationError('职位已被修改或已处理，请刷新后再审')
     }
+    await invalidateJobMatchingIndexTx(tx, input.jobId)
 
     // Only increment approvedJobCount the first time the job is published
     if (job.publishedAt === null) {
@@ -152,10 +156,12 @@ export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<vo
   await db.$transaction(async tx => {
     await lockXact(tx, LOCK_NS.CREDIT, jobBase.companyId)
     await assertAdminUser(userId, tx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${input.jobId} AND "companyId" = ${jobBase.companyId} FOR UPDATE`
     const result = await tx.job.updateMany({
       where: { id: input.jobId, companyId: jobBase.companyId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
       data: {
         status: 'REJECTED',
+        matchingRevision: { increment: 1 },
         reviewNote: input.reviewNote,
       },
     })
@@ -163,6 +169,7 @@ export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<vo
     if (result.count !== 1) {
       throw new ValidationError('职位已被修改或已处理，请刷新后再审')
     }
+    await invalidateJobMatchingIndexTx(tx, input.jobId)
 
     await createNotification(tx, jobBase.createdById, 'job.rejected', {
       jobId: jobBase.id,

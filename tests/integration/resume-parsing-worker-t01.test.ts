@@ -266,8 +266,20 @@ describe('M9-T01 worker authorization and source', () => {
     const f = await queuedFixture()
     await asStudent(f.student.userId)
     if (failDelete) vi.mocked(deleteAllVersions).mockRejectedValueOnce(new Error('synthetic-object-delete-unavailable'))
+    let profileAfterDelete: Fixture['profile'] | undefined
     await heldAt('provider', f, async () => {
+      const beforeDelete = await snapshotT01Profile(f.student.profileId)
+      expect(beforeDelete).toEqual(f.profile)
+      const deletionStartedAt = Date.now()
       await deleteResume({ resumeId: f.resume.id })
+      const deletionFinishedAt = Date.now()
+      profileAfterDelete = await snapshotT01Profile(f.student.profileId)
+      // This fixture has work authorization (30) and existing ability text (20).
+      // Compare every other field and relation; updatedAt is Prisma-maintained.
+      expect(profileAfterDelete).toEqual({ ...beforeDelete, completeness: 50,
+        editRevision: beforeDelete.editRevision + 1, updatedAt: profileAfterDelete.updatedAt })
+      expect(profileAfterDelete.updatedAt.getTime()).toBeGreaterThanOrEqual(deletionStartedAt)
+      expect(profileAfterDelete.updatedAt.getTime()).toBeLessThanOrEqual(deletionFinishedAt)
       expect(await testDb.resumeFile.findUnique({ where: { id: f.resume.id } })).toBeNull()
       expect(await testDb.resumeParseDraft.findUnique({ where: { resumeId: f.resume.id } })).toBeNull()
     })
@@ -275,7 +287,7 @@ describe('M9-T01 worker authorization and source', () => {
     expect(await testDb.resumeFile.findUnique({ where: { id: f.resume.id } })).toBeNull()
     expect(await testDb.resumeParseDraft.findUnique({ where: { resumeId: f.resume.id } })).toBeNull()
     expect(generateResumeSuggestion).toHaveBeenCalledOnce()
-    await unchanged(f)
+    expect(await snapshotT01Profile(f.student.profileId)).toEqual(profileAfterDelete)
   })
 
   it.each(['bytes', 'current-file-hash'] as const)('W6 compares the read bytes against both hashes (%s mismatch)', async source => {

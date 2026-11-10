@@ -50,13 +50,13 @@ describe('AUDIT_ACTIONS matches ARCHITECTURE §5.7', () => {
     expect(dupes).toEqual([])
   })
 
-  it('§5.7 has exactly 42 actions', () => {
+  it('§5.7 has exactly 43 actions', () => {
     const archActions = parseArchitectureActions()
-    expect(archActions).toHaveLength(42)
+    expect(archActions).toHaveLength(43)
   })
 
-  it('AUDIT_ACTIONS has exactly 42 entries', () => {
-    expect(AUDIT_ACTIONS).toHaveLength(42)
+  it('AUDIT_ACTIONS has exactly 43 entries', () => {
+    expect(AUDIT_ACTIONS).toHaveLength(43)
   })
 
   it('includes content and synonym management actions', () => {

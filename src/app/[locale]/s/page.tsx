@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { getTranslations } from 'next-intl/server'
 import { requireStudent } from '@/server/authz'
 import { getDashboardData } from '@/server/services/student-profile'
+import { getStudentMatchingUiState } from '@/server/services/semantic-matching'
+import { StudentMatchingPanel } from '@/components/matching/StudentMatchingPanel'
 
 export default async function StudentDashboardPage({
   params,
@@ -13,6 +15,7 @@ export default async function StudentDashboardPage({
   const t = await getTranslations('studentDashboard')
   const ctx = await requireStudent(await headers())
   const data = await getDashboardData(ctx)
+  const matchingState = await getStudentMatchingUiState({ userId: ctx.userId })
 
   const todos: { key: string; href: string; show: boolean }[] = data
     ? [
@@ -95,6 +98,8 @@ export default async function StudentDashboardPage({
           </ul>
         </section>
       )}
+
+      <StudentMatchingPanel locale={locale} uiState={matchingState} />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <section aria-label={t('invitesTitle')}>

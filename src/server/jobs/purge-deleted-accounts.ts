@@ -4,6 +4,7 @@ import { deleteAllVersions } from '@/lib/storage'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { invalidateLifecycleExportsTx } from '../services/data-rights'
 import { cancelResumeParseDraftsTx } from '../services/resume-parsing'
+import { invalidateStudentMatchingIndexTx } from '../services/semantic-matching'
 import { S3Client, ListObjectVersionsCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { db } from '../db'
 import { logger } from '../lib/logger'
@@ -103,6 +104,7 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
       if (!current) return null
       await invalidateLifecycleExportsTx(tx, candidate.id)
       await cancelResumeParseDraftsTx(tx, candidate.id)
+      await invalidateStudentMatchingIndexTx(tx, candidate.id)
       return current
     })
     if (!prepared) continue
@@ -125,6 +127,7 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
         JSON.stringify(user.studentProfile?.resumes ?? []) !== JSON.stringify(prepared.studentProfile?.resumes ?? [])) return false
       await invalidateLifecycleExportsTx(tx, user.id)
       await cancelResumeParseDraftsTx(tx, user.id)
+      await invalidateStudentMatchingIndexTx(tx, user.id)
       const profileId = user.studentProfile?.id
       // Delete StudentContact
       if (user.studentProfile?.contact) {
@@ -152,6 +155,7 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
           where: { id: profileId },
           data: {
             fullName: anonName(user.id),
+            editRevision: { increment: 1 },
             headline: null,
             summary: null,
             nationality: null,

@@ -3,6 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/env', () => ({ env: {} }))
 
 const mockDb = vi.hoisted(() => ({
+  $executeRaw: vi.fn(),
+  user: {
+    findUnique: vi.fn(),
+  },
+  semanticIndex: {
+    updateMany: vi.fn(),
+  },
   studentProfile: {
     findUnique: vi.fn(),
     update: vi.fn(),
@@ -58,11 +65,14 @@ const ctx = { userId: USER_ID }
 beforeEach(() => {
   vi.clearAllMocks()
   mockGetSetting.mockResolvedValue('1.0')
-  mockDb.studentProfile.findUnique.mockResolvedValue({ id: PROFILE_ID })
+  mockDb.$executeRaw.mockResolvedValue(0)
+  mockDb.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
+  mockDb.semanticIndex.updateMany.mockResolvedValue({ count: 0 })
+  mockDb.studentProfile.findUnique.mockResolvedValue({ id: PROFILE_ID, visibility: 'HIDDEN' })
   mockDb.studentProfile.update.mockResolvedValue({})
   mockDb.consent.create.mockResolvedValue({})
   mockDb.auditLog.create.mockResolvedValue({})
-  // Support both array form (setVisibility) and callback form (addBlocked/removeBlocked)
+  // Support current callback transactions and legacy array callers.
   mockDb.$transaction.mockImplementation((ops: unknown) => {
     if (typeof ops === 'function') {
       return (ops as (tx: typeof mockDb) => Promise<unknown>)(mockDb) as Promise<unknown[]>
@@ -111,6 +121,7 @@ describe('setVisibility', () => {
   })
 
   it('sets HIDDEN visibility and writes revoked consent', async () => {
+    mockDb.studentProfile.findUnique.mockResolvedValue({ id: PROFILE_ID, visibility: 'PUBLIC' })
     await setVisibility(ctx, { granted: false })
 
     expect(mockDb.studentProfile.update).toHaveBeenCalledWith(

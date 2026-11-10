@@ -10,6 +10,7 @@ import { detectFileType, checkPdf, MIME_TYPES } from '@/server/lib/pdf'
 import { db } from '@/server/db'
 import { ForbiddenError, NotFoundError } from '@/server/errors'
 import { lockXact, LOCK_NS } from '@/server/lib/advisory-locks'
+import { recalcMatchingEligibilityTx } from '@/server/services/student-profile'
 import { purposeSchema, validateFileName } from '@/server/lib/upload-input'
 import { RESUME_MAX_BYTES } from '@/server/lib/upload-constants'
 import type { AllowedMimeKey } from '@/server/lib/pdf'
@@ -252,7 +253,7 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
       })
       if (!currentProfile) throw new NotFoundError()
       if (currentProfile.userId !== userId) throw new ForbiddenError()
-      return tx.resumeFile.create({
+      const created = await tx.resumeFile.create({
         data: {
           studentId: currentProfile.id,
           storageKey: key,
@@ -264,6 +265,8 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
           isPrimary: false,
         },
       })
+      await recalcMatchingEligibilityTx(tx, currentProfile.id)
+      return created
     }).catch(async (error: unknown) => {
       // The key is unique to this successful upload; compensate a failed DB insert.
       try {

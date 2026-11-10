@@ -10,6 +10,7 @@ import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { logger } from '../lib/logger'
 import { invalidateUserExportsTx } from './data-export-artifacts'
 import { cancelResumeParseDraftsTx } from './resume-parsing'
+import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 
 const EXPORT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
 
@@ -95,10 +96,11 @@ export async function requestDeletion(ctx: { userId: string }): Promise<void> {
     if (!user) throw new NotFoundError('User not found')
     await invalidateLifecycleExportsTx(tx, ctx.userId)
     await cancelResumeParseDraftsTx(tx, ctx.userId)
+    await invalidateStudentMatchingIndexTx(tx, ctx.userId)
     // Repeated deletion still repairs pending invalidation, but never renews the 30-day clock.
     if (user.status === 'DELETED') return false
     await tx.user.update({ where: { id: ctx.userId }, data: { status: 'DELETED', deletedAt: now } })
-    await tx.studentProfile.updateMany({ where: { userId: ctx.userId }, data: { visibility: 'HIDDEN' } })
+    await tx.studentProfile.updateMany({ where: { userId: ctx.userId }, data: { visibility: 'HIDDEN', editRevision: { increment: 1 } } })
     await tx.session.deleteMany({ where: { userId: ctx.userId } })
     const request = await tx.dataRequest.create({ data: {
       userId: ctx.userId, type: DataRequestType.DELETE, status: DataRequestStatus.DONE, resolvedAt: now,

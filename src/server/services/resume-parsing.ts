@@ -26,6 +26,7 @@ import { projectExistingResumeProfile, type ExistingResumeProfileSnapshot } from
 import { logAudit } from './audit'
 import { getSetting } from './settings'
 import { recalcCompletenessTx } from './student-profile'
+import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 import { qualifyReferral } from './referrals'
 
 const pendingStates: ResumeParseState[] = ['QUEUED', 'PROCESSING', 'READY']
@@ -475,6 +476,7 @@ export async function confirmResumeParse(
       },
     })
     if (confirmed.count !== 1) throw new ConflictError()
+    await invalidateStudentMatchingIndexTx(tx, ctx.userId)
     await logAudit({
       actorId: ctx.userId, action: 'resume.parse.confirm', targetType: 'ResumeFile', targetId: owned.id,
       metadata: {

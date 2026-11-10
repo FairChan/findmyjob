@@ -61,7 +61,8 @@ export async function setSetting(
         targetType: 'SystemSetting',
         targetId: key,
         metadata: key === 'billing.bankTransfer' ? bankAudit(from, value)
-          : key === 'billing.invoiceIssuer' ? invoiceIssuerAudit(from, value) : { key, from, to: value },
+          : key === 'billing.invoiceIssuer' ? invoiceIssuerAudit(from, value)
+          : key === 'ai.matching' ? matchingGateAudit(from, value) : { key, from, to: value },
       },
       tx,
     )
@@ -97,4 +98,9 @@ function invoiceIssuerAudit(from: unknown, to: unknown) {
     toConfigured: configuredInvoiceIssuerSchema.safeParse(to).success,
     changedFields: fields.filter(field => previous[field] !== next[field]),
   }
+}
+
+function matchingGateAudit(from: unknown, to: unknown) {
+  const enabled = (value: unknown) => value !== null && typeof value === 'object' && !Array.isArray(value) && 'enabled' in value && value.enabled === true
+  return { key: 'ai.matching', fromEnabled: enabled(from), toEnabled: enabled(to) }
 }

@@ -1,6 +1,6 @@
 /**
  * Unit tests for contact actions (M2-T13 item 1).
- * Verifies updateOwnContactAction calls updateOwnContact then recalcOwnCompleteness.
+ * Verifies delegation to the contact service, which owns atomic completeness and matching updates.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
@@ -39,32 +39,30 @@ const contactInput = {
   linkedin: null,
 }
 
-describe('updateOwnContactAction — calls recalcOwnCompleteness after updateOwnContact (M2-T13 item 1)', () => {
+describe('updateOwnContactAction — delegates atomic contact updates to the service (M2-T13 item 1)', () => {
   beforeEach(() => {
+    vi.resetAllMocks()
     mockRequireStudent.mockResolvedValue({ userId: 'u1' })
     mockSafeParse.mockImplementation((v: unknown) => ({ success: true, data: v }))
     mockUpdateOwnContact.mockResolvedValue(undefined)
     mockRecalcOwnCompleteness.mockResolvedValue(undefined)
   })
 
-  it('calls updateOwnContact then recalcOwnCompleteness in order', async () => {
-    const callOrder: string[] = []
-    mockUpdateOwnContact.mockImplementation(async () => {
-      callOrder.push('updateOwnContact')
-    })
-    mockRecalcOwnCompleteness.mockImplementation(async () => {
-      callOrder.push('recalcOwnCompleteness')
-    })
-
+  it('calls the contact service once without a second standalone completeness update', async () => {
     const result = await updateOwnContactAction(contactInput)
 
     expect(result).toEqual({ ok: true, data: {} })
-    expect(callOrder).toEqual(['updateOwnContact', 'recalcOwnCompleteness'])
+    expect(mockUpdateOwnContact).toHaveBeenCalledOnce()
+    expect(mockRecalcOwnCompleteness).not.toHaveBeenCalled()
   })
 
-  it('recalcOwnCompleteness is called with correct userId', async () => {
+  it('passes the authenticated student and parsed input to the contact service', async () => {
+    const parsedInput = { ...contactInput, phone: '+60120000420' }
+    mockSafeParse.mockReturnValueOnce({ success: true, data: parsedInput })
     await updateOwnContactAction(contactInput)
-    expect(mockRecalcOwnCompleteness).toHaveBeenCalledOnce()
-    expect(mockRecalcOwnCompleteness).toHaveBeenCalledWith({ userId: 'u1' })
+    expect(mockRequireStudent).toHaveBeenCalledOnce()
+    expect(mockSafeParse).toHaveBeenCalledExactlyOnceWith(contactInput)
+    expect(mockUpdateOwnContact).toHaveBeenCalledExactlyOnceWith({ userId: 'u1' }, parsedInput)
+    expect(mockRecalcOwnCompleteness).not.toHaveBeenCalled()
   })
 })

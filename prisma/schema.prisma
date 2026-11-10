@@ -205,6 +205,7 @@ enum ConsentType {
   TALENT_POOL
   MARKETING
   AI_RESUME_PARSE
+  AI_MATCHING
 }
 
 enum PartnerType {
@@ -428,6 +429,7 @@ model StudentProfile {
   createdAt           DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime     @updatedAt @db.Timestamptz(3)
 
+  semanticIndex    SemanticIndex?
   contact          StudentContact?
   languages        StudentLanguage[]
   educations       Education[]
@@ -659,10 +661,12 @@ model Job {
   publishedAt        DateTime? @db.Timestamptz(3)
   deadline           DateTime? @db.Timestamptz(3)
   closedAt           DateTime? @db.Timestamptz(3)
+  matchingRevision   Int       @default(0)
   viewCount          Int       @default(0)
   createdAt          DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
 
+  semanticIndex SemanticIndex?
   applications Application[]
   invitations  Invitation[]
   views        JobView[]
@@ -1243,4 +1247,53 @@ model DataExportArtifact {
   @@index([state, leaseExpiresAt])
   @@index([state, cleanupNextAt])
   @@index([state, expiresAt])
+}
+
+enum SemanticIndexKind {
+  STUDENT
+  JOB
+}
+
+enum SemanticIndexState {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+  CANCELLED
+}
+
+model SemanticIndex {
+  id              String             @id @default(cuid())
+  studentId       String?            @unique
+  student         StudentProfile?   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  jobId           String?            @unique
+  job             Job?              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  kind            SemanticIndexKind
+  generation      Int                @default(1)
+  state           SemanticIndexState @default(QUEUED)
+  sourceHash      String             @db.VarChar(64)
+  sourceRevision  Int
+  configurationId String
+  model           String
+  gateEpoch       String
+  legalVersion    String
+  consentGrantId  String?
+  leaseToken      String?
+  leaseExpiresAt  DateTime?         @db.Timestamptz(3)
+  attempts        Int                @default(0)
+  nextAttemptAt   DateTime?         @db.Timestamptz(3)
+  failureCode     String?
+  requestedAt     DateTime           @default(now()) @db.Timestamptz(3)
+  completedAt     DateTime?         @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@index([state, nextAttemptAt])
+  @@index([state, leaseExpiresAt])
+}
+
+model MatchingCorpusCursor {
+  id        String            @id @default(cuid())
+  kind      SemanticIndexKind @unique
+  afterId   String?
+  updatedAt DateTime          @updatedAt @db.Timestamptz(3)
 }

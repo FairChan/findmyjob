@@ -9,11 +9,14 @@ import {
 } from '@/server/services/privacy'
 import PrivacyCenter from '@/components/privacy/PrivacyCenter'
 import { formatKLDate } from '@/lib/format-date'
+import { getStudentMatchingUiState } from '@/server/services/semantic-matching'
+import { StudentMatchingPanel } from '@/components/matching/StudentMatchingPanel'
 
 export default async function PrivacyPage() {
   const t = await getTranslations('privacy')
   const locale = await getLocale()
   const { userId } = await requireStudent(await headers())
+  const matchingState = await getStudentMatchingUiState({ userId })
 
   const [consentGranted, blocked, views, unlocks] = await Promise.all([
     getLatestTalentPoolConsent(userId),
@@ -41,6 +44,7 @@ export default async function PrivacyPage() {
     <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
       <p className="mb-8 text-sm text-muted-foreground">{t('subtitle')}</p>
+      <StudentMatchingPanel locale={locale} uiState={matchingState} consentOnly />
       <PrivacyCenter
         initialVisible={consentGranted === true}
         initialBlocked={blocked}

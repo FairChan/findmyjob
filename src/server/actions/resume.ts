@@ -4,6 +4,7 @@ import { db } from '@/server/db'
 import { deleteAllVersions } from '@/lib/storage'
 import { NotFoundError, ForbiddenError } from '@/server/errors'
 import { lockXact, LOCK_NS } from '@/server/lib/advisory-locks'
+import { recalcMatchingEligibilityTx } from '@/server/services/student-profile'
 import { z } from 'zod'
 
 export const setPrimaryResume = action(
@@ -40,6 +41,7 @@ export const deleteResume = action(
       // The real ResumeFile -> ResumeParseDraft FK cascades in this transaction.
       // No worker may recreate either source or draft after this commit.
       await tx.resumeFile.delete({ where: { id: input.resumeId } })
+      await recalcMatchingEligibilityTx(tx, profile.id)
       return resume.storageKey
     })
     // Preserve the existing action error policy; storage failure cannot resurrect DB rows.

@@ -2,7 +2,9 @@ import 'server-only'
 import crypto from 'crypto'
 import { z } from 'zod'
 import { db } from '../db'
-import { NotFoundError, ValidationError, RateLimitedError } from '../errors'
+import { NotFoundError, ValidationError, RateLimitedError, ForbiddenError } from '../errors'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 import { getSetting } from './settings'
 import { checkRateLimit, clearRateLimit } from '../lib/rate-limit'
 import { hitBucket } from '../lib/db-rate-limit'
@@ -176,13 +178,20 @@ export async function verifySchoolOtp(ctx: UserCtx, input: VerifyOtpInput): Prom
 
   // Write schoolEmail and schoolVerifiedAt; unique constraint prevents two accounts from sharing the same email
   try {
-    await db.studentProfile.update({
-      where: { userId: ctx.userId },
-      data: {
-        schoolEmail: stored.schoolEmail,
-        schoolId: stored.schoolId,
-        schoolVerifiedAt: new Date(),
-      },
+    await db.$transaction(async tx => {
+      await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+      const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { role: true, status: true } })
+      if (user?.role !== 'STUDENT' || user.status !== 'ACTIVE') throw new ForbiddenError()
+      await tx.studentProfile.update({
+        where: { userId: ctx.userId },
+        data: {
+          schoolEmail: stored.schoolEmail,
+          schoolId: stored.schoolId,
+          schoolVerifiedAt: new Date(),
+          editRevision: { increment: 1 },
+        },
+      })
+      await invalidateStudentMatchingIndexTx(tx, ctx.userId)
     })
   } catch (err: unknown) {
     // P2002 = unique constraint violation: another account already verified this email

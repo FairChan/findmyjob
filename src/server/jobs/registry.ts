@@ -254,5 +254,61 @@ export async function registerJobs(boss: PgBoss, lifecycle = createJobLifecycle(
     }
   })
 
+  // Matching jobs share the T01 lifecycle: abort first, retain promises until settlement.
+  await boss.createQueue('matching-index')
+  await boss.work<{ indexId: string; generation: number }>('matching-index', { localConcurrency: 1, batchSize: 1 }, async jobs => {
+    for (const job of jobs) await lifecycle.run(async shutdownSignal => {
+      const signal = AbortSignal.any([shutdownSignal, job.signal])
+      if (signal.aborted) return
+      try {
+        const { runMatchingIndex } = await import('./index-matching')
+        if (!signal.aborted) await runMatchingIndex(job.data, { signal })
+      } catch {
+        const error = new Error('MATCHING_INDEX_JOB_FAILED')
+        Sentry.captureException(error)
+        throw error
+      }
+    })
+  })
+
+  await boss.createQueue('dispatch-matching-indexes')
+  await boss.schedule('dispatch-matching-indexes', '* * * * *', {}, { missed: 'once' })
+  await boss.work('dispatch-matching-indexes', { localConcurrency: 1, batchSize: 1 }, async jobs => {
+    for (const job of jobs) await lifecycle.run(async shutdownSignal => {
+      const signal = AbortSignal.any([shutdownSignal, job.signal])
+      if (signal.aborted) return
+      try {
+        const { dispatchPendingMatchingIndexes } = await import('../services/semantic-matching')
+        if (!signal.aborted) await dispatchPendingMatchingIndexes({ signal, send: payload => boss.send('matching-index', payload) })
+        if (!signal.aborted) pingHealthcheck('dispatch-matching-indexes')
+      } catch {
+        const error = new Error('MATCHING_INDEX_DISPATCH_FAILED')
+        Sentry.captureException(error)
+        throw error
+      }
+    })
+  })
+
+  const { getSetting } = await import('../services/settings')
+  const rawMinutes = await getSetting<unknown>('ai.matching.reconcileEveryMinutes', 5, { fresh: true })
+  const minutes = typeof rawMinutes === 'number' && Number.isInteger(rawMinutes) && rawMinutes >= 1 && rawMinutes <= 30 ? rawMinutes : 5
+  await boss.createQueue('reconcile-matching-corpus')
+  await boss.schedule('reconcile-matching-corpus', `*/${minutes} * * * *`, {}, { missed: 'once' })
+  await boss.work('reconcile-matching-corpus', { localConcurrency: 1, batchSize: 1 }, async jobs => {
+    for (const job of jobs) await lifecycle.run(async shutdownSignal => {
+      const signal = AbortSignal.any([shutdownSignal, job.signal])
+      if (signal.aborted) return
+      try {
+        const { reconcileMatchingCorpus } = await import('../services/semantic-matching')
+        if (!signal.aborted) await reconcileMatchingCorpus({ signal })
+        if (!signal.aborted) pingHealthcheck('reconcile-matching-corpus')
+      } catch {
+        const error = new Error('MATCHING_CORPUS_RECONCILE_FAILED')
+        Sentry.captureException(error)
+        throw error
+      }
+    })
+  })
+
   logger.info('jobs registered')
 }

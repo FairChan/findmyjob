@@ -6,6 +6,8 @@ import { encryptField, decryptField } from '../lib/crypto'
 import { alert } from '../lib/alert'
 import { logAudit } from './audit'
 import type { UserCtx } from '../authz'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { recalcMatchingEligibilityTx } from './student-profile'
 
 export type ContactData = {
   phone: string | null
@@ -312,18 +314,22 @@ export async function getContactForAdmin(
 
 /** Encrypts and upserts the student's own contact info. */
 export async function updateOwnContact(ctx: UserCtx, input: UpdateContactInput): Promise<void> {
-  const studentId = await getStudentId(ctx)
-  const data = {
-    phone: encryptIfPresent(input.phone, 'phone', studentId),
-    email: encryptIfPresent(input.email, 'email', studentId),
-    whatsapp: encryptIfPresent(input.whatsapp, 'whatsapp', studentId),
-    wechat: encryptIfPresent(input.wechat, 'wechat', studentId),
-    linkedinUrl: encryptIfPresent(input.linkedinUrl, 'linkedinUrl', studentId),
-  }
-  await db.studentContact.upsert({
-    where: { studentId },
-    create: { studentId, ...data },
-    update: data,
+  await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+    const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { role: true, status: true } })
+    if (user?.role !== 'STUDENT' || user.status !== 'ACTIVE') throw new ForbiddenError()
+    const profile = await tx.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true } })
+    if (!profile) throw new NotFoundError('StudentProfile not found')
+    const studentId = profile.id
+    const data = {
+      phone: encryptIfPresent(input.phone, 'phone', studentId),
+      email: encryptIfPresent(input.email, 'email', studentId),
+      whatsapp: encryptIfPresent(input.whatsapp, 'whatsapp', studentId),
+      wechat: encryptIfPresent(input.wechat, 'wechat', studentId),
+      linkedinUrl: encryptIfPresent(input.linkedinUrl, 'linkedinUrl', studentId),
+    }
+    await tx.studentContact.upsert({ where: { studentId }, create: { studentId, ...data }, update: data })
+    await recalcMatchingEligibilityTx(tx, studentId)
   })
 }
 

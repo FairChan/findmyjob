@@ -9,6 +9,7 @@ import { hasStudentContact, hasStudentContactTx } from './contact-access'
 import { qualifyReferral } from './referrals'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { logger } from '../lib/logger'
+import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 import {
   resumeDegreeLevelSchema as DegreeLevelEnum,
   resumeLanguageLevelSchema as LanguageLevelEnum,
@@ -177,12 +178,24 @@ export async function recalcCompletenessTx(tx: Prisma.TransactionClient, profile
   })
 }
 
-/** Recalculate and persist completeness for the calling student. Called from actions after contact upsert. */
+/** Caller holds STUDENT_DATA. Standalone eligibility changes own one revision; the pure recalc does not. */
+export async function recalcMatchingEligibilityTx(tx: Prisma.TransactionClient, profileId: string): Promise<void> {
+  const before = await tx.studentProfile.findUnique({ where: { id: profileId }, select: { userId: true, completeness: true } })
+  if (!before) return
+  await recalcCompletenessTx(tx, profileId)
+  const after = await tx.studentProfile.findUnique({ where: { id: profileId }, select: { completeness: true } })
+  if (after && after.completeness !== before.completeness) {
+    await tx.studentProfile.update({ where: { id: profileId }, data: { editRevision: { increment: 1 } } })
+    await invalidateStudentMatchingIndexTx(tx, before.userId)
+  }
+}
+
+/** Recalculate and persist completeness for the calling student under the lifecycle lock. */
 export async function recalcOwnCompleteness(ctx: UserCtx): Promise<void> {
   await db.$transaction(async (tx) => {
     await lockActiveStudentTx(tx, ctx.userId)
     const profile = await tx.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true } })
-    if (profile) await recalcCompletenessTx(tx, profile.id)
+    if (profile) await recalcMatchingEligibilityTx(tx, profile.id)
   })
 }
 
@@ -331,6 +344,7 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { adva
     })
 
     await recalcCompletenessTx(tx, profile.id)
+    await invalidateStudentMatchingIndexTx(tx, ctx.userId)
   })
   if (profileId) await qualifySavedProfile(profileId)
 }
@@ -363,6 +377,7 @@ export async function saveStep2(ctx: UserCtx, input: Step2Data, options?: { adva
     })
 
     await recalcCompletenessTx(tx, profile.id)
+    await invalidateStudentMatchingIndexTx(tx, ctx.userId)
   })
   if (profileId) await qualifySavedProfile(profileId)
 }
@@ -403,6 +418,7 @@ export async function saveStep3(ctx: UserCtx, input: Step3Data, options?: { adva
     })
 
     await recalcCompletenessTx(tx, profile.id)
+    await invalidateStudentMatchingIndexTx(tx, ctx.userId)
   })
   if (profileId) await qualifySavedProfile(profileId)
 }
@@ -461,6 +477,7 @@ export async function saveStep4(ctx: UserCtx, input: Step4Data, options?: { adva
     })
 
     await recalcCompletenessTx(tx, profile.id)
+    await invalidateStudentMatchingIndexTx(tx, ctx.userId)
   })
   if (profileId) await qualifySavedProfile(profileId)
 }

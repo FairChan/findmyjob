@@ -3210,3 +3210,33 @@ describe('JD assistant action authorization (M9-T02)', () => {
     expect(await testDb.systemSetting.findUniqueOrThrow({ where: { key: 'ai.jdAssistant' } })).toEqual(setting)
   })
 })
+
+describe('semantic matching actions (M9-T03)', () => {
+  for (const operation of ['recommendJobsAction', 'setMatchingConsentAction'] as const) {
+    it.each(['anonymous', 'employer', 'suspended-student', 'deleted-student'] as const)(operation + ' denies %s', async actor => {
+      if (actor === 'anonymous') mockSession(null)
+      else {
+        const user = actor === 'employer' ? await createEmployer(testDb) : await createStudent(testDb)
+        if (actor === 'suspended-student' || actor === 'deleted-student') {
+          await testDb.user.update({ where: { id: user.userId }, data: { status: actor === 'deleted-student' ? 'DELETED' : 'SUSPENDED' } })
+        }
+        mockSession(user.userId)
+      }
+      const before = await testDb.consent.count({ where: { type: 'AI_MATCHING' } })
+      const actions = await import('@/server/actions/semantic-matching')
+      expect(await actions[operation](operation === 'setMatchingConsentAction' ? { granted: false } : {})).toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.consent.count({ where: { type: 'AI_MATCHING' } })).toBe(before)
+    })
+  }
+  it.each(['anonymous', 'student', 'suspended-employer', 'unverified-company'] as const)('talent recommendation denies %s', async actor => {
+    if (actor === 'anonymous') mockSession(null)
+    else {
+      const user = actor === 'student' ? await createStudent(testDb) : await createEmployer(testDb)
+      if (actor === 'suspended-employer') await testDb.user.update({ where: { id: user.userId }, data: { status: 'SUSPENDED' } })
+      if (actor === 'unverified-company' && 'companyId' in user) await testDb.company.update({ where: { id: user.companyId }, data: { verificationStatus: 'PENDING' } })
+      mockSession(user.userId)
+    }
+    const { recommendTalentsAction } = await import('@/server/actions/semantic-matching')
+    expect(await recommendTalentsAction({ jobId: 'c' + '1'.repeat(24) })).toEqual({ ok: false, code: 'FORBIDDEN' })
+  })
+})

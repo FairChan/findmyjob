@@ -23,6 +23,9 @@ vi.mock('@/server/jobs/purge-deleted-accounts', () => ({ runPurgeDeletedAccounts
 vi.mock('@/server/db', () => ({
   db: {
     $executeRaw: mockExecuteRaw,
+    systemSetting: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
   },
 }))
 

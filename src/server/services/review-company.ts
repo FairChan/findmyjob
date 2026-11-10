@@ -8,6 +8,8 @@ import { createNotification } from './notifications'
 import { grantPilotCreditsOnVerification } from './pilot-credits'
 import { logger } from '../lib/logger'
 import type { UserCtx } from '../authz'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateCompanyMatchingIndexesTx } from './matching-lifecycle'
 
 async function assertAdminUser(userId: string): Promise<void> {
   const user = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
@@ -54,6 +56,9 @@ export async function approveCompany(ctx: UserCtx, input: ApproveCompanyInput): 
   })
 
   await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, cv.companyId)
+    const company = await tx.company.findUnique({ where: { id: cv.companyId }, select: { verificationStatus: true } })
+    if (!company) throw new NotFoundError()
     // Conditional update — only proceeds if the verification is still PENDING,
     // preventing concurrent approvals from both succeeding.
     const updated = await tx.companyVerification.updateMany({
@@ -74,6 +79,7 @@ export async function approveCompany(ctx: UserCtx, input: ApproveCompanyInput): 
         verifiedAt: new Date(),
       },
     })
+    if (company.verificationStatus !== 'VERIFIED') await invalidateCompanyMatchingIndexesTx(tx, cv.companyId)
 
     await createWallet(tx, cv.companyId)
 
@@ -123,6 +129,9 @@ export async function rejectCompany(ctx: UserCtx, input: RejectCompanyInput): Pr
   })
 
   await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, cv.companyId)
+    const company = await tx.company.findUnique({ where: { id: cv.companyId }, select: { verificationStatus: true } })
+    if (!company) throw new NotFoundError()
     // Conditional update — prevents concurrent approvals racing with this rejection.
     const updated = await tx.companyVerification.updateMany({
       where: { id: cv.id, status: 'PENDING' },
@@ -139,6 +148,7 @@ export async function rejectCompany(ctx: UserCtx, input: RejectCompanyInput): Pr
       where: { id: cv.companyId },
       data: { verificationStatus: 'REJECTED' },
     })
+    if (company.verificationStatus !== 'REJECTED') await invalidateCompanyMatchingIndexesTx(tx, cv.companyId)
 
     if (owner) {
       await createNotification(tx, owner.userId, 'company.rejected', {

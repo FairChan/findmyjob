@@ -765,3 +765,23 @@ SIGINT/SIGTERM 首次进入关闭流程时立即停止新 T01 admission 并取�
 只传经 redact 的 title/points；redact 不能保证匿名化。单次 SDK 请求使用明确模型、固定系统提示、结构化输出、20 秒预算和零自动重试；原始请求、输出与错误正文不进入日志/Sentry/审计。`ai.jd.generate` 只含内部 companyId、固定结果类别和 schema/prompt 版本。排障按固定错误码、当前成员状态、最新法律 grant、gate epoch 和模型配置检查，不复制岗位正文或 API 原始错误到工单。
 
 生成结果仍需人工核对事实及中英文一致性。应用只替换本地正文，关闭页面会丢失未保存编辑；替换已有内容须确认，若内容在确认期间变化会要求重新确认。只有原有保存/提交审核动作会持久化；助手不直接发布职位。浏览器关闭弹窗会丢弃迟到结果，并不证明服务端或远端已停止处理。
+
+## 语义推荐（M9-T03）
+
+ai.matching 缺失、禁用或格式非法时关闭。先完成独立法律披露、政策发布和重新同意，再由具有新鲜会话的管理员通过 saveMatchingSettingsAction 提交 enabled/legalVersion/configurationId；epoch 只由服务器生成，每次保存包括关闭均轮换。不得通过 generic setting writer 或直接复用 T01/T02 gate。VOYAGE_API_KEY 与 AI_MODEL_EMBED 仅由人工秘密管理配置；不在报告、日志、工单展示。当前交付不改 legal.currentVersion，不启用任何 gate。
+
+Prisma 先独立 enum create-only，再生成metadata扩展、审SQL、附加CHECK；使用真实生成client。普通PostgreSQL应可运行。vector能力另按 t03-pgvector-environment 的独立库和固定镜像digest审部署，单独建 side table；普通迁移、应用启动、测试setup不得安装extension。未具备vector不得调用provider。
+
+matching-index 每次处理单一 indexId/generation；dispatch-matching-indexes 每分钟恢复已有QUEUED、过期PROCESSING并清CANCELLED旧向量。reconcile-matching-corpus 默认每5分钟按独立student/job游标扫描每类25项；ai.matching.reconcileBatchSize 为1..50，reconcileEveryMinutes为1..30，后者需重启worker。scanner只做短DB事务、不调用provider/queue。关闭gate先停止新外发；旧epoch立即失效，但远端已经接受的请求不保证撤回或免计费。
+
+停止worker沿T01先abort→等待全部活动promise与boss.stop/startup结算→关闭telemetry→退出。dispatcher从registry接收当前已启动boss的send port和合成signal，逐条前检查signal；已发send真实await结算，abort后不发下一条，不启全局sendBoss，不用race判断settle。pg-boss grace结束仍不能宣称业务已停。send无公开AbortSignal，未结算操作继续等待；若连接始终不结算，需部署/基础设施处理，不把超时冒充完成。进程强杀会留下lease，待过期后由dispatcher恢复；不得清generation、attempts或重置grant来强行成功。检查固定failureCode与队列、metadata数量，不打印职业文本、vector、key或原始错误。回滚保持gate关闭，部署上个兼容镜像；metadata按前滚迁移保留，不删除既有迁移或数据库卷。
+
+导出privacy.json包含全部AI_MATCHING同意历史；matching.json只包含本人kind/state/generation/sourceRevision及时间，不含vector、sourceHash、model、epoch、grant/lease、provider文本。账户删除与purge的既有T03生命周期使metadata取消，源物理删除由外键cascade清除metadata和可选vector。完成普通库fallback、独立vector SQL/CAS/rollback/删除、provider synthetic、UI/a11y与shutdown回归后才能另行批准启用。
+
+### T03 review: cancelled-vector probes and real provider settlement
+
+CANCELLED nextAttemptAt is the next physical cleanup probe time, not a deletion-completion marker. Every dispatcher tick selects at most 50 due/null probes in nextAttemptAt NULLS FIRST / id order. A confirmed idempotent DELETE schedules a 24-hour repeat probe; a delete/transaction failure schedules a 5-minute retry in a separate short transaction with the same source→metadata order and exact CANCELLED generation. No embedding attempt/generation/completedAt/failureCode is reset. Cleaned rows remain CANCELLED and are probed again, so this trades up to one idempotent DELETE per retained row per day (plus retries) for a schema-free recovery mechanism. A finite backlog advances across ticks; overload and outages are not a cleanup SLA.
+
+Missing vector capability skips physical cleanup without a success stamp; loss between probes raises the existing controlled store-unavailable error and uses retry rotation. On capability recovery persistent CANCELLED/due rows resume. A DB outage can also prevent retry timestamp persistence; those rows remain pending and the next healthy tick retries. Regrant/new generation resets nextAttemptAt through the existing request helper; old cleanup cannot delete READY or a different generation. Logical eligibility still excludes CANCELLED immediately, independently of physical cleanup.
+
+The worker aborts promptly but now awaits the actual embedding adapter promise, including pending fetch/body cancellation cleanup, before returning to registry/lifecycle. A timeout sentinel is not proof of settlement. Unresponsive transport cleanup can exceed the attempt budget; local runner ownership is retained, while existing lease/generation fences still reject a late publication. No guarantee is made that an upstream request was recalled or not charged; another process can recover an expired lease under the existing at-least-once protocol. Do not reset leases/attempts or mark unknown outcomes as cancelled remotely.

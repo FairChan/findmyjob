@@ -42,6 +42,15 @@ vi.mock('@/server/actions/data-rights', () => ({
   requestExportAction: vi.fn(),
   requestDeletionAction: vi.fn(),
 }))
+vi.mock('@/server/services/semantic-matching', () => ({
+  getStudentMatchingUiState: async () => ({
+    available: false, consentGranted: false, consentCurrent: false, legalVersion: null,
+  }),
+}))
+vi.mock('@/server/actions/semantic-matching', () => ({
+  recommendJobsAction: vi.fn(),
+  setMatchingConsentAction: vi.fn(),
+}))
 
 import PrivacyPage from '@/app/[locale]/s/privacy/page'
 

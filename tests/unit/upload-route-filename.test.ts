@@ -12,6 +12,7 @@ vi.mock('@/lib/storage', () => ({ putObject: mockPutObject }))
 
 const mockLogAudit = vi.fn()
 vi.mock('@/server/services/audit', () => ({ logAudit: mockLogAudit }))
+vi.mock('@/server/services/student-profile', () => ({ recalcMatchingEligibilityTx: vi.fn().mockResolvedValue(undefined) }))
 
 vi.mock('@/server/services/settings', () => ({
   getSetting: vi.fn().mockResolvedValue(20),

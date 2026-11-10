@@ -7,6 +7,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import type { CompanyCtx } from '../authz'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { assertJobCapacity, consumesJobSlot } from './subscription-entitlements'
+import { invalidateJobMatchingIndexTx } from './semantic-matching'
 
 const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 15_000 }
 
@@ -183,6 +184,7 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
     await lockXact(tx, LOCK_NS.CREDIT, ctx.companyId)
     const now = new Date()
     await assertCompanyWriter(tx, ctx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${jobId} AND "companyId" = ${ctx.companyId} FOR UPDATE`
     const existing = await tx.job.findFirst({
       where: { id: jobId, companyId: ctx.companyId },
     })
@@ -264,6 +266,11 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
       publishedAt = existing.publishedAt
     }
 
+    const matchingChanged = newStatus !== existing.status ||
+      targetDeadline?.getTime() !== existing.deadline?.getTime() ||
+      (['title', 'type', 'category', 'workMode', 'state', 'city'] as const).some(key => fields[key] !== existing[key]) ||
+      JSON.stringify(fields.skills) !== JSON.stringify(existing.skills) ||
+      JSON.stringify(fields.languages) !== JSON.stringify(existing.languages)
     const updateResult = await tx.job.updateMany({
       where: {
         id: jobId,
@@ -275,6 +282,7 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
         status: newStatus,
         publishedAt,
         deadline: targetDeadline,
+        ...(matchingChanged ? { matchingRevision: { increment: 1 } } : {}),
         ...(existing.status === 'REJECTED' && newStatus !== 'REJECTED' ? { reviewNote: null } : {}),
       },
     })
@@ -282,6 +290,7 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
     if (updateResult.count !== 1) {
       throw new ValidationError('职位已被修改，请刷新后再改')
     }
+    if (matchingChanged) await invalidateJobMatchingIndexTx(tx, jobId)
 
     return tx.job.findUniqueOrThrow({ where: { id: jobId } })
   }, TRANSACTION_OPTIONS)
@@ -300,6 +309,7 @@ export async function copyJob(ctx: CompanyCtx, jobId: string, copySuffix = ' (�
     closedAt: _closedAt,
     reviewNote: _reviewNote,
     viewCount: _viewCount,
+    matchingRevision: _matchingRevision,
     createdAt: _createdAt,
     updatedAt: _updatedAt,
     ...rest
@@ -317,6 +327,7 @@ export async function copyJob(ctx: CompanyCtx, jobId: string, copySuffix = ' (�
       closedAt: null,
       reviewNote: null,
       viewCount: 0,
+      matchingRevision: 0,
       createdById: ctx.userId,
     },
   })
@@ -327,14 +338,17 @@ export async function closeJob(ctx: CompanyCtx, jobId: string) {
     await lockXact(tx, LOCK_NS.CREDIT, ctx.companyId)
     const now = new Date()
     await assertCompanyWriter(tx, ctx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${jobId} AND "companyId" = ${ctx.companyId} FOR UPDATE`
     const existing = await tx.job.findFirst({ where: { id: jobId, companyId: ctx.companyId } })
     if (!existing) throw new NotFoundError()
     if (existing.status === 'CLOSED') return existing
     if (existing.status === 'DRAFT' || existing.status === 'REJECTED') {
       throw new ValidationError('Cannot close a draft or rejected job')
     }
-    return tx.job.update({
-      where: { id: existing.id }, data: { status: 'CLOSED', closedAt: now },
+    const closed = await tx.job.update({
+      where: { id: existing.id }, data: { status: 'CLOSED', closedAt: now, matchingRevision: { increment: 1 } },
     })
+    await invalidateJobMatchingIndexTx(tx, existing.id)
+    return closed
   }, TRANSACTION_OPTIONS)
 }

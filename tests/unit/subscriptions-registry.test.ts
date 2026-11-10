@@ -1,3 +1,4 @@
+vi.mock('@/server/services/settings', () => ({ getSetting: vi.fn().mockResolvedValue(5) }))
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 const observed = vi.hoisted(() => ({ run: vi.fn(), ping: vi.fn(), capture: vi.fn() }))
 vi.mock('@sentry/node', () => ({ captureException: observed.capture }))
