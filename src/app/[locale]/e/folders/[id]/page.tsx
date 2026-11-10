@@ -142,7 +142,7 @@ export default async function FolderDetailPage({
 
   if (company?.verificationStatus !== 'VERIFIED') {
     return (
-      <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
+      <div className="container mx-auto max-w-2xl px-4 py-12">
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
@@ -153,7 +153,7 @@ export default async function FolderDetailPage({
             <Link href={`/${locale}/e/onboarding`}>{t('verifyAction')}</Link>
           </Button>
         </div>
-      </main>
+      </div>
     )
   }
 
@@ -168,7 +168,7 @@ export default async function FolderDetailPage({
   const { folder, items } = result
 
   return (
-    <main id="main-content" className="container mx-auto max-w-3xl px-4 py-6">
+    <div className="container mx-auto max-w-3xl px-4 py-6">
       <nav aria-label="breadcrumb" className="mb-4">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link href={`/${locale}/e/folders`} prefetch={false}>
@@ -201,6 +201,6 @@ export default async function FolderDetailPage({
           ))}
         </div>
       )}
-    </main>
+    </div>
   )
 }

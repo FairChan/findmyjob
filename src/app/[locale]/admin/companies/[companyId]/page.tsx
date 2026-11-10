@@ -46,7 +46,7 @@ export default async function AdminCompanyDetailPage({
   }
 
   return (
-    <main id="main-content" className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       <Link
         href={`/${locale}/admin/companies`}
         className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
@@ -149,6 +149,6 @@ export default async function AdminCompanyDetailPage({
           walletBalance={adminDetail.walletBalance}
         />
       </section>
-    </main>
+    </div>
   )
 }

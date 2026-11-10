@@ -52,7 +52,7 @@ export default async function GrowthPage({ params, searchParams }: {
   const progressMax = Math.max(1, summary.signupCap, summary.studentCount)
 
   return (
-    <main id="main-content" className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
       <AdminActionFeedback>
       <div><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="mt-2 text-sm text-gray-600">{t('description')}</p></div>
       <section aria-label={t('signupProgress')} className="space-y-3 rounded-xl border border-gray-200 bg-white p-5">
@@ -96,7 +96,7 @@ export default async function GrowthPage({ params, searchParams }: {
       )}
       {!invalid && result.nextCursor && <a href={path + '?' + next.toString()} className="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm">{t('next')}</a>}
       </AdminActionFeedback>
-    </main>
+    </div>
   )
 }
 

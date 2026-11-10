@@ -14,7 +14,7 @@ export default async function LoginPage({ params, searchParams }: Props) {
 
   return (
     <div className="container mx-auto max-w-md px-4 py-12">
-      <div className="rounded-lg border bg-card p-8 shadow-sm">
+      <div className="rounded-tile bg-card p-8">
         <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
         <LoginForm locale={locale} redirect={redirect} siteKey={env.TURNSTILE_SITE_KEY} />
       </div>

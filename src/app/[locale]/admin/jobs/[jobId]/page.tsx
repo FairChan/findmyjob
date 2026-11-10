@@ -21,7 +21,7 @@ export default async function AdminJobReviewPage({
   if (!job) return notFound()
 
   return (
-    <main id="main-content" className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       <Link
         href={`/${locale}/admin/jobs`}
         className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
@@ -133,6 +133,6 @@ export default async function AdminJobReviewPage({
       ) : (
         <p className="text-sm text-muted-foreground">{t('noJob')}</p>
       )}
-    </main>
+    </div>
   )
 }

@@ -7,7 +7,12 @@ import { getTranslations } from 'next-intl/server'
 import { requireAdmin } from '@/server/authz'
 import { ForbiddenError, TwoFactorRequiredError } from '@/server/errors'
 import { db } from '@/server/db'
+import { Bell } from 'lucide-react'
+import type { Locale } from '@/i18n/routing'
 import { AdminNavLinks } from '@/components/admin/admin-nav-links'
+import SignOutButton from '@/components/auth/SignOutButton'
+import LocaleSwitcher from '@/components/layout/locale-switcher'
+import { Wordmark } from '@/components/layout/wordmark'
 
 export const metadata: Metadata = {
   title: { default: 'Admin · FindMYJob', template: '%s · Admin · FindMYJob' },
@@ -48,10 +53,14 @@ export default async function AdminLayout({
     : t('bellLabel')
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#f5f6fa] lg:flex">
-      <aside className="shrink-0 bg-[#1f2433] text-white/75 lg:sticky lg:top-0 lg:h-screen lg:w-56 lg:overflow-y-auto">
-        <div className="flex h-14 items-center gap-2 px-5 font-semibold text-white">
-          {t('title')}
+    <div className="min-h-screen flex-1 overflow-x-hidden bg-background lg:flex">
+      <aside className="shrink-0 border-b bg-muted lg:w-60 lg:border-b-0 lg:border-r">
+        <div className="lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
+        <div className="flex h-12 items-center px-5 text-[19px]">
+          <span className="sr-only">{t('title')}</span>
+          <span aria-hidden="true">
+            <Wordmark />
+          </span>
         </div>
         <AdminNavLinks
           locale={locale}
@@ -73,32 +82,38 @@ export default async function AdminLayout({
           ordersLabel={t('navOrders')}
           pendingCount={pendingCount}
         />
+        </div>
       </aside>
       <div className="min-w-0 flex-1">
-        <header className="flex h-14 items-center justify-between border-b border-gray-200 bg-white px-4 md:px-6">
-          <span className="text-sm text-gray-500">{t('adminLabel')}</span>
-          <div className="flex items-center gap-4">
+        <header className="sticky top-0 z-30 flex h-12 items-center justify-between gap-3 border-b border-border/70 bg-background/80 px-4 backdrop-blur-xl backdrop-saturate-150 md:px-6">
+          <span className="truncate text-xs text-muted-foreground">{t('adminLabel')}</span>
+          <div className="flex shrink-0 items-center gap-2">
             <Link
               href={`/${locale}/admin/notifications`}
               aria-label={bellLabel}
-              className="relative flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+              className="relative inline-flex h-8 min-w-8 items-center justify-center gap-1 rounded-full px-2 text-foreground/80 transition-colors hover:bg-muted hover:text-foreground"
             >
-              <span aria-hidden="true">🔔</span>
+              <Bell aria-hidden="true" className="size-4" strokeWidth={1.75} />
               {unreadCount > 0 && (
                 <span
                   aria-hidden="true"
-                  className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground"
+                  className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand px-1.5 text-[11px] font-medium text-brand-foreground"
                 >
                   {unreadCount > 99 ? '99+' : unreadCount}
                 </span>
               )}
             </Link>
-            <Link href={`/${locale}`} className="text-sm text-gray-500 hover:text-[var(--color-brand-500,#3b82f6)]">
+            <Link
+              href={`/${locale}`}
+              className="hidden min-h-8 items-center rounded-full px-3 text-[13px] text-foreground/80 transition-colors hover:text-foreground sm:inline-flex"
+            >
               {t('returnToFront')}
             </Link>
+            <LocaleSwitcher currentLocale={locale as Locale} />
+            <SignOutButton compact />
           </div>
         </header>
-        {children}
+        <main id="main-content">{children}</main>
       </div>
     </div>
   )

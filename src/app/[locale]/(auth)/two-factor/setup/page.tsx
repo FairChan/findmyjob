@@ -35,7 +35,7 @@ export default async function TwoFactorSetupPage({ params }: { params: Promise<{
   const t = await getTranslations('twoFactorSetup')
   return (
     <div className="container mx-auto max-w-lg px-4 py-8 sm:py-12">
-      <div className="rounded-lg border bg-card p-5 shadow-sm sm:p-8">
+      <div className="rounded-tile bg-card p-5 sm:p-8">
         <h1 className="mb-4 text-2xl font-bold">{t(user.twoFactorEnabled ? 'alreadyEnabledTitle' : 'title')}</h1>
         <TwoFactorSetup locale={locale} alreadyEnabled={user.twoFactorEnabled} />
       </div>

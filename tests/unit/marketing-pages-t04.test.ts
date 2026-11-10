@@ -12,6 +12,7 @@ import { copy, state } from '../helpers/marketing-ui-t04'
 
 const io = vi.hoisted(() => ({ student: vi.fn(), employer: vi.fn(), bootstrap: vi.fn(), locale: 'en' as 'en' | 'zh' }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
+vi.mock('@/i18n/navigation', () => ({ Link: () => null, usePathname: () => '/e', useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }) }))
 vi.mock('next/navigation', () => ({ redirect: (path: string) => { throw new Error('REDIRECT:' + path) }, useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock('next-intl/server', () => ({ getLocale: async () => io.locale, getTranslations: async (namespace: string) => (key: string) => {
   const data = copy(io.locale) as unknown as Record<string, Record<string, string>>
@@ -30,7 +31,9 @@ vi.mock('@/server/actions/data-rights', () => ({ requestExportAction: vi.fn(), r
 function nodes(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap(nodes)
   if (!isValidElement<{ children?: ReactNode }>(node)) return []
-  return [node as ReactElement<Record<string, unknown>>, ...nodes(node.props.children)]
+  // The workspace shell takes its always-visible links through `actions`.
+  const slots = node.props as { children?: ReactNode; actions?: ReactNode }
+  return [node as ReactElement<Record<string, unknown>>, ...nodes(slots.children), ...nodes(slots.actions)]
 }
 beforeEach(() => {
   vi.clearAllMocks()

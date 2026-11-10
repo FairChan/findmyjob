@@ -58,7 +58,7 @@ export default async function AdminCompaniesPage({
   const currentPage = typeof page === 'number' ? page : 1
 
   return (
-    <main id="main-content" className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
 
       {/* Search bar */}
@@ -194,6 +194,6 @@ export default async function AdminCompaniesPage({
           ))}
         </div>
       )}
-    </main>
+    </div>
   )
 }

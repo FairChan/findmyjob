@@ -24,7 +24,7 @@ function EmptyState({ title, description, action, icon, className }: EmptyStateP
           {icon}
         </div>
       )}
-      <p className="text-title">{title}</p>
+      <div className="text-title">{title}</div>
       {description && (
         <p className="mt-2 max-w-md text-sm text-muted-foreground text-pretty">{description}</p>
       )}

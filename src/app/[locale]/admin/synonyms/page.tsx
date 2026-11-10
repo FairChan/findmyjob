@@ -36,7 +36,7 @@ export default async function SynonymsPage({ params, searchParams }: {
   const path = '/' + locale + '/admin/synonyms'
 
   return (
-    <main id="main-content" className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0"><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="mt-2 text-sm text-gray-600">{t('description')}</p></div>
         <SynonymForm />
@@ -57,7 +57,7 @@ export default async function SynonymsPage({ params, searchParams }: {
         </div>
       )}
       {!invalid && result.nextCursor && <a href={path + '?' + new URLSearchParams({ cursor: result.nextCursor }).toString()} className="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm">{t('next')}</a>}
-    </main>
+    </div>
   )
 }
 

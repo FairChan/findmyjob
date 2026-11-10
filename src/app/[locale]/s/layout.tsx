@@ -2,8 +2,11 @@ import type { ReactNode } from 'react'
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
+import { getTranslations } from 'next-intl/server'
 import { requireStudent } from '@/server/authz'
 import { ForbiddenError } from '@/server/errors'
+import type { Locale } from '@/i18n/routing'
+import { AppShell } from '@/components/layout/app-shell'
 import StudentNav from '@/components/layout/StudentNav'
 
 export const metadata: Metadata = {
@@ -28,10 +31,14 @@ export default async function StudentLayout({
     }
     throw err
   }
+  const t = await getTranslations('appNav')
   return (
-    <>
-      <StudentNav userId={userId} locale={locale} />
+    <AppShell
+      locale={locale as Locale}
+      area={t('studentArea')}
+      nav={<StudentNav userId={userId} locale={locale} />}
+    >
       {children}
-    </>
+    </AppShell>
   )
 }

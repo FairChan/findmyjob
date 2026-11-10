@@ -42,8 +42,7 @@ export default async function ExportDownloadPage({
   const t = await getTranslations('exportDownload')
 
   return (
-    <main
-      id="main-content"
+    <div
       className="container mx-auto max-w-xl px-4 py-10"
     >
       <h1 className="mb-4 text-2xl font-bold">{t('title')}</h1>
@@ -56,6 +55,6 @@ export default async function ExportDownloadPage({
           <p className="text-xs text-muted-foreground">{t('urlExpiry')}</p>
         </div>
       ) : null}
-    </main>
+    </div>
   )
 }

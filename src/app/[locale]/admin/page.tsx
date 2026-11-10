@@ -38,7 +38,7 @@ export default async function AdminDashboardPage({
   ]
 
   return (
-    <main id="main-content" className="p-4 md:p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-xl font-semibold">{t('title')}</h1>
       </div>
@@ -123,6 +123,6 @@ export default async function AdminDashboardPage({
           </div>
         )}
       </div>
-    </main>
+    </div>
   )
 }

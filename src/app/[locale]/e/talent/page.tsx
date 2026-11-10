@@ -297,7 +297,7 @@ export default async function TalentSearchPage({
 
   if (company?.verificationStatus !== 'VERIFIED') {
     return (
-      <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
+      <div className="container mx-auto max-w-2xl px-4 py-12">
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
@@ -308,7 +308,7 @@ export default async function TalentSearchPage({
             <Link href={`/${locale}/e/onboarding`}>{t('verifyAction')}</Link>
           </Button>
         </div>
-      </main>
+      </div>
     )
   }
 
@@ -369,7 +369,7 @@ export default async function TalentSearchPage({
   )
 
   return (
-    <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">
+    <div className="container mx-auto max-w-7xl px-4 py-6">
       <h1 className="mb-6 text-2xl font-bold">{t('title')}</h1>
 
       <div className="flex gap-6">
@@ -404,6 +404,6 @@ export default async function TalentSearchPage({
           )}
         </div>
       </div>
-    </main>
+    </div>
   )
 }

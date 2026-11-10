@@ -12,7 +12,7 @@ export default async function EmployerRegisterPage({ params: _ }: Props) {
 
   return (
     <div className="container mx-auto max-w-md px-4 py-12">
-      <div className="rounded-lg border bg-card p-8 shadow-sm">
+      <div className="rounded-tile bg-card p-8">
         <h1 className="text-2xl font-bold mb-6">{t('employerTitle')}</h1>
         <EmployerRegisterForm siteKey={env.TURNSTILE_SITE_KEY} />
         <div className="mt-4 flex items-center justify-between text-sm">

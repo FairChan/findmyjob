@@ -27,7 +27,7 @@ export default async function ReconsentPage({
 
   return (
     <section className="container mx-auto max-w-lg px-4 py-24">
-      <div className="rounded-lg border border-border bg-card p-8 shadow-sm">
+      <div className="rounded-tile bg-card p-8">
         <h1 className="text-xl font-bold text-foreground mb-3">
           {t('reconsentTitle')}
         </h1>

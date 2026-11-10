@@ -34,7 +34,7 @@ export default async function AdminDataRequestsPage({
   const t = await getTranslations('adminDataRequests')
 
   return (
-    <main id="main-content" className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
 
       {/* Status filter */}
@@ -111,6 +111,6 @@ export default async function AdminDataRequestsPage({
           </a>
         </div>
       )}
-    </main>
+    </div>
   )
 }

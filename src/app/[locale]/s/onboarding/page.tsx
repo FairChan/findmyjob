@@ -34,7 +34,7 @@ export default async function StudentOnboardingPage({ params }: Props) {
   const currentStep = Math.min(Math.max(profile.onboardingStep, 1), 4)
 
   return (
-    <main id="main-content">
+    <div>
       <div className="sr-only">
         <h1>{t('title')}</h1>
       </div>
@@ -44,6 +44,6 @@ export default async function StudentOnboardingPage({ params }: Props) {
         profile={profile}
         schools={schools}
       />
-    </main>
+    </div>
   )
 }

@@ -184,9 +184,9 @@ test.describe('M4-T17: mobile unlock and privacy guards', () => {
       // panel and primary button transparent despite passing functional checks.
       await expect(dialog).toHaveCSS('background-color', 'rgb(255, 255, 255)')
       await expect(dialog.getByRole('button', { name: copy.confirm, exact: true }))
-        .toHaveCSS('background-color', 'rgb(15, 23, 42)')
+        .toHaveCSS('background-color', 'rgb(30, 30, 32)')
       await expect(dialog.getByRole('button', { name: copy.confirm, exact: true }))
-        .toHaveCSS('color', 'rgb(248, 250, 252)')
+        .toHaveCSS('color', 'rgb(255, 255, 255)')
       await expect(dialog.getByText(copy.cost, { exact: true })).toBeVisible()
       await expect(dialog).not.toContainText('{cost}')
       await checkA11y(employerPage)

@@ -25,7 +25,7 @@ export default async function SchoolVerifyPage({ params }: Props) {
   const initiallyVerified = profile?.schoolVerifiedAt != null
 
   return (
-    <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="container mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
       <p className="mb-8 text-sm text-muted-foreground">{t('subtitle')}</p>
       <SchoolVerifyForm
@@ -34,6 +34,6 @@ export default async function SchoolVerifyPage({ params }: Props) {
         initiallyVerified={initiallyVerified}
         verifiedEmail={profile?.schoolEmail ?? null}
       />
-    </main>
+    </div>
   )
 }

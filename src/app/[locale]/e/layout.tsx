@@ -6,7 +6,9 @@ import { headers } from 'next/headers'
 import { getTranslations } from 'next-intl/server'
 import { requireEmployer } from '@/server/authz'
 import { ForbiddenError } from '@/server/errors'
-import { db } from '@/server/db'
+import type { Locale } from '@/i18n/routing'
+import { AppShell } from '@/components/layout/app-shell'
+import EmployerNav from '@/components/layout/EmployerNav'
 
 export const metadata: Metadata = {
   title: { default: 'FindMYJob', template: '%s · FindMYJob' },
@@ -31,39 +33,27 @@ export default async function EmployerLayout({
     throw err
   }
 
-  const t = await getTranslations('employerLayout')
+  const tApp = await getTranslations('appNav')
   const marketing = await getTranslations('marketing')
-  const unreadCount = await db.notification.count({ where: { userId, readAt: null } })
-  const bellLabel = unreadCount > 0
-    ? t('bellLabelWithCount', { count: unreadCount > 99 ? '99+' : unreadCount })
-    : t('bellLabel')
 
   return (
-    <>
-      <header className="border-b bg-white">
-        <div className="container mx-auto flex min-h-12 max-w-5xl flex-wrap items-center justify-end gap-3 px-4">
-          <Link href={`/${locale}/e/preferences`} prefetch={false}
-            className="inline-flex min-h-11 items-center rounded-md px-2 py-1 text-sm text-muted-foreground underline underline-offset-4 hover:bg-muted hover:text-foreground">
-            {marketing('preferencesLink')}
-          </Link>
-          <Link
-            href={`/${locale}/e/notifications`}
-            aria-label={bellLabel}
-            className="relative flex items-center gap-1 rounded-md px-2 py-1 text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <span aria-hidden="true">🔔</span>
-            {unreadCount > 0 && (
-              <span
-                aria-hidden="true"
-                className="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground"
-              >
-                {unreadCount > 99 ? '99+' : unreadCount}
-              </span>
-            )}
-          </Link>
-        </div>
-      </header>
+    <AppShell
+      locale={locale as Locale}
+      area={tApp('employerArea')}
+      nav={<EmployerNav userId={userId} />}
+      actions={
+        // Email preferences must stay reachable for every employer, whatever their company
+        // membership, so this link is built here and never depends on the role-aware nav.
+        <Link
+          href={`/${locale}/e/preferences`}
+          prefetch={false}
+          className="inline-flex min-h-8 items-center whitespace-nowrap rounded-full px-2 text-[13px] text-foreground/80 transition-colors hover:text-foreground sm:px-3"
+        >
+          {marketing('preferencesLink')}
+        </Link>
+      }
+    >
       {children}
-    </>
+    </AppShell>
   )
 }

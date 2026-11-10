@@ -36,6 +36,8 @@ vi.mock('next/link', () => ({
 vi.mock('@/i18n/navigation', () => ({
   Link: ({ href, children }: { href: string; children?: ReactNode }) =>
     createElement('a', { href }, children),
+  // The student navigation marks the current page.
+  usePathname: () => '/s',
 }))
 vi.mock('@/server/authz', () => ({
   requireCompanyMember: async () => ({ userId: 'employer-user', companyId: 'company-id' }),

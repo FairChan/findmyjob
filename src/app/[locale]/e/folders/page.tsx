@@ -33,7 +33,7 @@ export default async function FoldersPage({
 
   if (company?.verificationStatus !== 'VERIFIED') {
     return (
-      <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
+      <div className="container mx-auto max-w-2xl px-4 py-12">
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
@@ -44,14 +44,14 @@ export default async function FoldersPage({
             <Link href={`/${locale}/e/onboarding`}>{t('verifyAction')}</Link>
           </Button>
         </div>
-      </main>
+      </div>
     )
   }
 
   const folders = await listFolders({ userId: ctx.userId, companyId: ctx.companyId })
 
   return (
-    <main id="main-content" className="container mx-auto max-w-3xl px-4 py-6">
+    <div className="container mx-auto max-w-3xl px-4 py-6">
       <h1 className="mb-6 text-2xl font-bold">{t('title')}</h1>
 
       <FolderManager
@@ -71,6 +71,6 @@ export default async function FoldersPage({
           viewFolder: t('viewFolder'),
         }}
       />
-    </main>
+    </div>
   )
 }

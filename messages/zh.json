@@ -39,7 +39,28 @@
     "myProfile": "我的档案",
     "myApplications": "我的投递",
     "safety": "求职防骗",
-    "pricing": "套餐与价格"
+    "pricing": "套餐与价格",
+    "primaryNavigation": "主导航"
+  },
+  "appNav": {
+    "studentArea": "学生工作台",
+    "employerArea": "企业工作台",
+    "employerNavigation": "企业导航",
+    "dashboard": "工作台",
+    "findJobs": "找职位",
+    "resume": "简历",
+    "inviteFriends": "邀请同学",
+    "settings": "设置",
+    "jobs": "职位管理",
+    "talent": "人才库",
+    "folders": "收藏夹",
+    "sentInvitations": "邀请记录"
+  },
+  "notFound": {
+    "title": "没有找到这个页面",
+    "description": "链接可能已经失效，或者这个职位已经下线。",
+    "home": "回到首页",
+    "jobs": "浏览职位"
   },
   "localeSwitcher": {
     "label": "切换语言",

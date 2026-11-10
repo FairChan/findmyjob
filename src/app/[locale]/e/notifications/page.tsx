@@ -56,7 +56,7 @@ export default async function EmployerNotificationsPage() {
   }
 
   return (
-    <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="container mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="mb-1 text-2xl font-bold">{t('title')}</h1>
@@ -98,6 +98,6 @@ export default async function EmployerNotificationsPage() {
       )}
 
       <NotificationsClient ids={ids} />
-    </main>
+    </div>
   )
 }

@@ -17,7 +17,7 @@ export default async function AdminJobsPage({
   const jobs = await listPendingJobs(ctx)
 
   return (
-    <main id="main-content" className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
       <h2 className="text-lg font-semibold mb-4">{t('pendingList')}</h2>
 
@@ -60,6 +60,6 @@ export default async function AdminJobsPage({
           </table>
         </div>
       )}
-    </main>
+    </div>
   )
 }

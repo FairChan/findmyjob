@@ -16,10 +16,10 @@ export default async function StudentInvitationsPage({
   const invitations = await listStudentInvitations({ userId })
 
   return (
-    <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="container mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-1 text-2xl font-bold">{t('myInvitationsTitle')}</h1>
       <p className="mb-6 text-sm text-muted-foreground">{t('myInvitationsSubtitle')}</p>
       <InvitationList invitations={invitations} locale={locale} />
-    </main>
+    </div>
   )
 }

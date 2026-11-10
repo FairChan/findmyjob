@@ -16,7 +16,7 @@ export default async function AdminPartnersPage({
   const partners = await listPartners(ctx)
 
   return (
-    <main id="main-content" className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">{t('title')}</h1>
         <Link
@@ -79,6 +79,6 @@ export default async function AdminPartnersPage({
           </table>
         </div>
       )}
-    </main>
+    </div>
   )
 }

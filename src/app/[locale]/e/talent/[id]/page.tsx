@@ -390,7 +390,7 @@ export default async function TalentDetailPage({
 
   if (company?.verificationStatus !== 'VERIFIED') {
     return (
-      <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
+      <div className="container mx-auto max-w-2xl px-4 py-12">
         <div
           role="alert"
           className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
@@ -401,7 +401,7 @@ export default async function TalentDetailPage({
             <Link href={`/${locale}/e/onboarding`}>{tLabel('verifyAction')}</Link>
           </Button>
         </div>
-      </main>
+      </div>
     )
   }
 
@@ -437,7 +437,7 @@ export default async function TalentDetailPage({
     if (err instanceof NotFoundError) notFound()
     if (err instanceof RateLimitedError) {
       return (
-        <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
+        <div className="container mx-auto max-w-2xl px-4 py-12">
           <div
             role="alert"
             className="rounded-lg border p-8 text-center text-muted-foreground"
@@ -448,14 +448,14 @@ export default async function TalentDetailPage({
               <Link href={`/${locale}/e/talent`}>{tLabel('backToSearch')}</Link>
             </Button>
           </div>
-        </main>
+        </div>
       )
     }
     throw err
   }
 
   return (
-    <main id="main-content" className="container mx-auto max-w-3xl px-4 py-6">
+    <div className="container mx-auto max-w-3xl px-4 py-6">
       <nav aria-label="breadcrumb" className="mb-4">
         <Button asChild variant="ghost" size="sm" className="-ml-2">
           <Link href={`/${locale}/e/talent`} prefetch={false}>
@@ -478,6 +478,6 @@ export default async function TalentDetailPage({
         inviteQuota={inviteUsage.invitations.limit}
         canPurchase={inviteUsage.canPurchase}
       />
-    </main>
+    </div>
   )
 }

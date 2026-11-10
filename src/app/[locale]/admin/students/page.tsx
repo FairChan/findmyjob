@@ -31,7 +31,7 @@ export default async function AdminStudentsPage({
   const totalPages = Math.ceil(total / pageSize)
 
   return (
-    <main id="main-content" className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
 
       {/* Search bar */}
@@ -140,6 +140,6 @@ export default async function AdminStudentsPage({
           ))}
         </div>
       )}
-    </main>
+    </div>
   )
 }

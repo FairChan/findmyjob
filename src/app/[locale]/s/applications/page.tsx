@@ -40,7 +40,7 @@ export default async function MyApplicationsPage({
   const applications = await listStudentApplications({ userId })
 
   return (
-    <main id="main-content" className="container mx-auto max-w-3xl px-4 py-8">
+    <div className="container mx-auto max-w-3xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-bold">{t('title')}</h1>
 
       {applications.length === 0 ? (
@@ -110,6 +110,6 @@ export default async function MyApplicationsPage({
           ))}
         </ul>
       )}
-    </main>
+    </div>
   )
 }

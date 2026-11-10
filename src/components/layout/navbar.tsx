@@ -20,10 +20,7 @@ export default async function Navbar({ locale }: { locale: Locale }) {
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden lg:flex items-center gap-1" aria-label={t('home')}>
-          <Link href="/" className={NAV_LINK}>
-            {t('home')}
-          </Link>
+        <nav className="hidden lg:flex items-center gap-1" aria-label={t('primaryNavigation')}>
           <Link href="/jobs" className={NAV_LINK}>
             {t('jobs')}
           </Link>
@@ -32,9 +29,6 @@ export default async function Navbar({ locale }: { locale: Locale }) {
           </Link>
           <Link href="/for-employers" className={NAV_LINK}>
             {t('forEmployers')}
-          </Link>
-          <Link href="/partners" className={NAV_LINK}>
-            {t('partners')}
           </Link>
           <Link href="/safety" className={NAV_LINK}>
             {t('safety')}

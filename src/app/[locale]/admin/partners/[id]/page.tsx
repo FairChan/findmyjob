@@ -31,7 +31,7 @@ export default async function AdminPartnerDetailPage({
   }
 
   return (
-    <main id="main-content" className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto">
       <div className="mb-6">
         <Link
           href={`/${locale}/admin/partners`}
@@ -44,6 +44,6 @@ export default async function AdminPartnerDetailPage({
         {isNew ? t('newTitle') : t('editTitle')}
       </h1>
       <PartnerForm locale={locale} partner={partner} initialLogoUrl={logoUrl} />
-    </main>
+    </div>
   )
 }

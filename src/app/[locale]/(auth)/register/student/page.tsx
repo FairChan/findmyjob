@@ -28,7 +28,7 @@ export default async function StudentRegisterPage({ params, searchParams }: Prop
 
   return (
     <div className="container mx-auto max-w-md px-4 py-12">
-      <div className="rounded-lg border bg-card p-8 shadow-sm">
+      <div className="rounded-tile bg-card p-8">
         <h1 className="text-2xl font-bold mb-6">{t('studentTitle')}</h1>
         {signupClosed ? (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 p-4 text-center text-sm text-destructive">

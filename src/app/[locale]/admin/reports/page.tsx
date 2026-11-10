@@ -48,7 +48,7 @@ export default async function ReportsPage({ params, searchParams }: {
   const statuses = { OPEN: t('open'), RESOLVED: t('resolved'), DISMISSED: t('dismissed') }
 
   return (
-    <main id="main-content" className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
+    <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
       <AdminActionFeedback>
       <div><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="mt-2 text-sm text-gray-600">{t('description')}</p></div>
       <form method="GET" action={path} className="grid items-end gap-3 sm:grid-cols-[1fr_2fr_auto]">
@@ -85,7 +85,7 @@ export default async function ReportsPage({ params, searchParams }: {
       )}
       {!invalid && result.nextCursor && <a href={path + '?' + next.toString()} className="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm">{t('next')}</a>}
       </AdminActionFeedback>
-    </main>
+    </div>
   )
 }
 

@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#2463eb',
+  themeColor: '#ffffff',
 }
 
 // HTML structure is provided by src/app/[locale]/layout.tsx

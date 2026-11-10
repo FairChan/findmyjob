@@ -70,7 +70,7 @@ export default async function AdminAuditPage({
     : null
 
   return (
-    <main id="main-content" className="p-4 md:p-6 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 max-w-7xl mx-auto">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold">{t('title')}</h1>
@@ -191,6 +191,6 @@ export default async function AdminAuditPage({
           </a>
         </div>
       )}
-    </main>
+    </div>
   )
 }

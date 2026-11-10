@@ -15,7 +15,7 @@ export default async function ResetPasswordPage({ params, searchParams }: Props)
   if (!token) {
     return (
       <div className="container mx-auto max-w-md px-4 py-12">
-        <div className="rounded-lg border bg-card p-8 shadow-sm text-center">
+        <div className="rounded-tile bg-card p-8 text-center">
           <p className="text-sm text-destructive mb-4">{t('errorMissingToken')}</p>
           <Link href="/forgot-password" className="text-brand underline-offset-4 hover:underline text-sm">
             {t('requestNewLink')}
@@ -27,7 +27,7 @@ export default async function ResetPasswordPage({ params, searchParams }: Props)
 
   return (
     <div className="container mx-auto max-w-md px-4 py-12">
-      <div className="rounded-lg border bg-card p-8 shadow-sm">
+      <div className="rounded-tile bg-card p-8">
         <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
         <ResetPasswordForm token={token} locale={locale} />
         <div className="mt-4 text-center text-sm">

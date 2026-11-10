@@ -86,7 +86,7 @@ export function AdminNavLinks({
   }
 
   return (
-    <nav className="flex flex-wrap gap-1 px-3 pb-3 lg:flex-col lg:flex-nowrap" aria-label="Admin navigation">
+    <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-visible" aria-label="Admin navigation">
       {NAV_ITEMS.map(({ key, href, icon: Icon, end }) => {
         const to = href(locale)
         const isActive = end ? pathname === to || pathname === `${to}/` : pathname.startsWith(`${to}/`) || pathname === to
@@ -95,16 +95,16 @@ export function AdminNavLinks({
             key={key}
             href={to}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm ${
+            className={`flex min-h-10 shrink-0 items-center gap-2.5 rounded-control px-3 text-sm transition-colors ${
               isActive
-                ? 'bg-[var(--color-brand-600,#2563eb)] text-white'
-                : 'text-white/75 hover:bg-white/10 hover:text-white'
+                ? 'bg-background font-medium text-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
             }`}
           >
-            <Icon className="size-4 shrink-0" />
+            <Icon aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} />
             {labels[key]}
             {key === 'dashboard' && pendingCount > 0 && (
-              <span className="ml-auto rounded-full bg-red-700 px-1.5 text-xs text-white">
+              <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-medium text-destructive-foreground">
                 {pendingCount}
               </span>
             )}

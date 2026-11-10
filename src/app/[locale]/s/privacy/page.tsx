@@ -45,7 +45,7 @@ export default async function PrivacyPage() {
   }))
 
   return (
-    <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="container mx-auto max-w-2xl px-4 py-8">
       <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
       <p className="mb-8 text-sm text-muted-foreground">{t('subtitle')}</p>
       <StudentMatchingPanel locale={locale} uiState={matchingState} consentOnly />
@@ -57,6 +57,6 @@ export default async function PrivacyPage() {
         unlocks={formattedUnlocks}
         locale={locale}
       />
-    </main>
+    </div>
   )
 }

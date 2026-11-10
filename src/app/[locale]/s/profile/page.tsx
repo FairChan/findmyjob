@@ -23,9 +23,9 @@ export default async function StudentProfilePage({ params }: Props) {
   })
 
   return (
-    <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="container mx-auto max-w-2xl px-4 py-8">
       <h1 className="text-2xl font-bold mb-8">{t('title')}</h1>
       <ProfileEditor locale={locale} profile={profile} schools={schools} />
-    </main>
+    </div>
   )
 }

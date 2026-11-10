@@ -21,7 +21,7 @@ export default async function AdminSchoolDetailPage({
   if (!isNew && !school) return notFound()
 
   return (
-    <main id="main-content" className="p-6 max-w-2xl mx-auto">
+    <div className="p-6 max-w-2xl mx-auto">
       <div className="mb-6">
         <Link
           href={`/${locale}/admin/schools`}
@@ -34,6 +34,6 @@ export default async function AdminSchoolDetailPage({
         {isNew ? t('newTitle') : t('editTitle')}
       </h1>
       <SchoolForm locale={locale} school={school} />
-    </main>
+    </div>
   )
 }
