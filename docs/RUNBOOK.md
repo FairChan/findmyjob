@@ -796,3 +796,88 @@ Generate ordinary Prisma migration with create-only after merging T01–T04 meta
 UNKNOWN is terminal for automation. Do not reset attempts, requeue UNKNOWN, backfill old weeks or infer non-acceptance from silence. Manual reconciliation needs provider evidence and separate authorization. Withdrawal/deletion cannot recall an accepted/in-flight email. SIGTERM aborts admission and waits owned callbacks and timeout tails before exit; process termination remains the operator emergency boundary. Registry weekly schedules pass the current already-started boss.send port and combined shutdown/job signal, await real pending sends, and stop before the next recipient after abort. The existing worker owns and closes this boss. The default sendBoss port remains only for isolated/direct compatibility calls; that caller owns producer close and actual drain and must not treat a response timeout as cancellation. The production registry creates no second producer. No production smoke send or gate change is authorized by this candidate.
 
 Weekly sender also awaits the configured provider instance's optional settle() in finally. This waits for its actual send promise after the 20-second UNKNOWN deadline; late acceptance never converts UNKNOWN to automatic retry. SMTP close is invoked through the public API; promise settlement is not proof of remote cancellation or inbox delivery. An indefinitely pending provider can keep graceful shutdown pending; operators retain the explicit process-termination boundary and must not replay that row.
+
+## 本地隔离的解锁 / 投递负载验证（M7-T18 修复）
+
+本流程只运行本机合成数据与现有 UI，不连接 staging / production，不签署 M7-H02 的外部容量或人工演练。先读 [CAPACITY.md 的 M7-T18 记录](CAPACITY.md#本地解锁--投递验证m7-t18)：2026-11-10 的本地smoke、最终full和四类负例已完成，结论限于所记构建与环境。所有配置由操作者显式提供；不读取 `.env*`、旧 `load/*.local.json`、备份或真实用户资料。代码、依赖和待验证构建须保持稳定，不同时运行会改动相同构建或数据库的测试。
+
+### 独立数据库与迁移前置
+
+使用已有本地 `findmyjob_owner` / `findmyjob_app` 角色，在 loopback PostgreSQL 新建独立 `findmyjob_m7_mutations_20261110_test`，不得复用开发库、父线程测试库或恢复演练库。目标库必须由 `findmyjob_owner` 持有；以本机 postgres 管理连接，仅对这个新库执行 `docker/postgres/db-setup.sql`，设置 app 权限、owner 的默认权限及 pgboss schema。不要运行会修改其他数据库的 `scripts/db/apply-roles.sh`，也不重新应用会改动现有角色密码的 `roles.sql`。缺少本地角色时，先由负责人准备隔离实例及角色。
+
+以下 PowerShell 示例从仓库根目录执行。`$loadAdminMaintenanceUrl`、`$loadAdminTargetUrl`、`$loadOwnerDatabaseUrl`、`$loadAppDatabaseUrl` 与 `$loadParentDatabaseUrls` 由操作者在当前会话安全提供：分别是本机管理库、新目标库的管理/owner/app 连接，以及明确禁止使用的所有父线程/开发/其他测试库 URL 数组。当前 Prisma6 schema 没有配置 `shadowDatabaseUrl`；`migrate dev` 使用已有本地 owner 的 CREATEDB 权限自动创建独立临时 shadow，完成后由 Prisma 删除。单独设置 `SHADOW_DATABASE_URL` 不会绑定本命令的 shadow（它只在显式消费该参数的 db:check 等流程中生效）。不要把任何已有应用/父线程库指定为 shadow。示例只引用变量，不填入密码；不要将连接值写进文档、共享命令记录或提交。目标库已经创建时不重复执行 createdb；先核对隔离身份和状态，禁止 reset 修复漂移或清理已有数据。
+
+```powershell
+rtk createdb --maintenance-db $loadAdminMaintenanceUrl --owner=findmyjob_owner findmyjob_m7_mutations_20261110_test
+rtk psql --dbname $loadAdminTargetUrl --set ON_ERROR_STOP=1 --file docker/postgres/db-setup.sql
+```
+
+迁移仅应用仓库已有且已审阅的迁移，沿用受控的 `migrate dev --skip-seed`；不调用旧 seed、reset、db push、deploy 或 resolve。Prisma CLI 会自动寻找环境文件，因此使用现有 `isolated-process.cjs` preload 阻止 `.env*` 读取。为迁移单独创建一个私有临时目录；它必须已存在，且不能作为后续 load 的输出目录。preload 所需的 INTERNAL_BASE_URL / SMTP_URL 只是明确的 loopback 允许地址，不启动应用或 SMTP 服务。按本地凭据规则确认临时目录权限。
+
+```powershell
+$m7MigrationId = 'm7-migration-' + [guid]::NewGuid().ToString('N')
+$m7MigrationDir = Join-Path ([IO.Path]::GetTempPath()) $m7MigrationId
+New-Item -ItemType Directory -Path $m7MigrationDir | Out-Null
+$env:APP_ENV = 'ci'
+$env:LOAD_RUN_ID = $m7MigrationId
+$env:LOAD_RUN_DIR = $m7MigrationDir
+$env:DATABASE_URL = $loadOwnerDatabaseUrl
+$env:MIGRATE_DATABASE_URL = $loadOwnerDatabaseUrl
+$env:INTERNAL_BASE_URL = 'http://127.0.0.1:3991'
+$env:SMTP_URL = 'smtp://127.0.0.1:2525'
+$m7Preload = (Resolve-Path scripts/load/isolated-process.cjs).Path
+$m7PrismaCli = (Resolve-Path node_modules/prisma/build/index.js).Path
+rtk node --require $m7Preload $m7PrismaCli migrate dev --skip-seed
+if ($LASTEXITCODE -ne 0) { throw 'Isolated migration failed; inspect before continuing' }
+```
+
+若要求新建迁移、reset 或修复其他库则停止检查，不能用自动确认继续。普通 M7-T18 不安装可选 pgvector。迁移过程本身不产生 fixture；生成客户端须对应当前已审 schema。
+
+### 显式输入与 fresh smoke / full
+
+本机需有当前依赖、Docker Desktop 和可用的 Chromium 容器资源。runner 固定使用 `grafana/k6:0.54.0-with-browser@sha256:5c86c85ca978549352bdec7b8192adf0db2cdf6e942d1d19c87e077f90dd0c48`，不替换为 latest 或其他镜像。选择一个空闲应用端口，示例为 3991。fixture 使用 owner 连接，应用使用 app 连接；二者必须是同一个独立 loopback `_test` 库，用户名/密码不同不构成数据库隔离。禁止库比较忽略凭据并归一化 loopback 身份，`LOAD_DISALLOWED_DATABASE_URLS` 必须为非空 JSON 数组。
+
+```powershell
+$env:LOAD_DATABASE_URL = $loadAppDatabaseUrl
+$env:LOAD_FIXTURE_DATABASE_URL = $loadOwnerDatabaseUrl
+$env:LOAD_DISALLOWED_DATABASE_URLS = ConvertTo-Json -Compress -InputObject @($loadParentDatabaseUrls)
+$env:LOAD_BASE_URL = 'http://127.0.0.1:3991'
+$env:LOAD_RUN_ID = 'm7-' + [guid]::NewGuid().ToString()
+$env:LOAD_RUN_DIR = Join-Path ([IO.Path]::GetTempPath()) $env:LOAD_RUN_ID
+# 不创建 LOAD_RUN_DIR；runner 负责独占创建，已有路径会拒绝。
+rtk node --import tsx --conditions=react-server scripts/load/run-mutations.mjs --profile=smoke --build
+if ($LASTEXITCODE -ne 0) { throw 'Smoke failed; inspect the private run evidence' }
+```
+
+smoke 为 3 企业 / 32 学生 / 5 职位，20 个独立投递客户端各执行一次；另外执行两场各 10 客户端解锁与 2 客户端重复投递。成功后换新的 run ID 和不存在的输出目录运行 full。full 为 **100 企业 / 5,000 学生 / 500 职位**，投递采用 **20 VU、2 分钟**，每次迭代消耗一个新学生的固定排程；排程用尽直接失败，不循环使用。其余两个解锁场景和重复投递控制仍独立运行，投递允许最多 2 分钟 gracefulStop 排空已开始的迭代。
+
+```powershell
+$env:LOAD_RUN_ID = 'm7-' + [guid]::NewGuid().ToString()
+$env:LOAD_RUN_DIR = Join-Path ([IO.Path]::GetTempPath()) $env:LOAD_RUN_ID
+rtk node --import tsx --conditions=react-server scripts/load/run-mutations.mjs --profile=full
+if ($LASTEXITCODE -ne 0) { throw 'Full run failed; inspect the private run evidence' }
+```
+
+不带 `--build` 时，只接受同源码 hash / BUILD_ID 的 runner 自建构建；未知或变化的构建须在新的 run 上加 `--build`，不能跳过核对。原 runner 检查的两条不存在的旧 mutation API 必须仍是 404；真实变更通过现有页面、按钮、确认弹窗和 Server Action 完成，不补测试专用业务端点。
+
+runner 先强制验证 Docker Desktop 从 `host.docker.internal` 到宿主协调器的路由，再使用同别名和应用端口作为浏览器 origin，并给自建应用设置一致的 APP_URL / BETTER_AUTH_URL。`LOAD_BASE_URL` 仍须是 `http://127.0.0.1:<port>`；不要自行传外部 URL 或更改 CSRF、CSP、allowedOrigins。路由 probe 失败即停止，不将容器自身 localhost 当作宿主地址。runner 创建独立合成会话 secret、PII key 与本机 SMTP sink，清空外部 AI/支付/邮件 provider key；SMTP 只接受当前 run 的 `example.test` 收件人。不要启动后台 worker 或启用 AI / 营销 gate 来帮助本流程。
+
+### 初始数据、屏障与验收
+
+新 fixture 以 School 主键独占 run namespace；所有实体、会话、当前 TERMS/PRIVACY 与两笔公益 grant 一次事务创建，不授予 MARKETING / AI 同意。PUBLIC、学校已认证、完整度70的学生及 ACTIVE、已认证 OWNER 企业满足现有资格；所有职位已发布、未过期且不属于两家 race 企业。前11名学生仅用于解锁，最后一名用于重复投递，其余为唯一投递排程。初始 JobView 必须不存在，由真实职位详情导航创建。余额为3和100，两笔 grant 通过 credits 服务追加，其他钱包为0且没有账本历史。开启解锁、单价1、成员解锁限额至少10、档案查看限额足够、投递/人才池最低完整度不超过70、正常学生配额至少1次，均作为 prerequisite 检查，fixture 不修改这些设置。
+
+每个 burst 使用独立浏览器客户端。显式 `/api/auth/get-session` 预检在每个 VU 内只做一次，用于核对传输与签名；它不替代后续学生的鉴权。每个 fresh 页面仍带该次学生自己的 cookie，通过真实页面和 Server Action 独立鉴权，最终只读 SQL 核对精确的学生/职位/公司配对。全部 burst 客户端进入真实页面的确认就绪状态后，由仅处理 run/scenario/slot 的协调器发布共同的**未来 epoch**；客户端等待该时点，协调器核对确认落在有限窗口。屏障不持有 cookie，不调用业务变更。未就绪、错误页面、会话/法律版本不符、未完成尝试、排程耗尽或窗口错过均使整轮失败。HTTP 200、k6 进程退出或单个成功样本都不能单独证明业务成功。
+
+最终 verdict 由实际 UI 终态、完整 slot/时间记录及 `verify-mutations.ts` 的只读、参数化、全 run scope SQL 一同决定：余额竞争须为3成功/7余额不足、3笔一一对应扣点；同学生竞争10个客户端均到解锁态，但只有1条解锁/1笔扣点，余额99；每个完成投递对有且仅有 Application/初始 APPLIED event/真实 JobView，以及零扣点的 APPLICATION unlock。重复投递控制2个客户端最终只有1份申请；每笔扣点必须对应正确 wallet 和 unlock。缺失测量或孤立账本、额外申请、未完成尝试均失败。
+
+负例采用 `--profile=smoke --negative=unsigned`、`stale-consent`、`missing-target`、`unready`，**每个控制均换 fresh run ID / 不存在的目录**，并继续使用同一已核验构建。负例预期 runner 非零退出，须再检查私有 `negative-proof.json` 的 `proven:true`、10个失败尝试与零 unlock/application；任意非零退出不等于控制有效。最终full与四项负例的run ID、实测计数和限制已记入CAPACITY/TASKS；今后复测仍须独立满足全部条件。
+
+### 私有输出与失败处理
+
+浏览器驱动完整等待异步 HTTP 与计时器。协调器的 started/completed 记账事件，在 HTTP 0 的未知传输结果下可按同一报文最多发送3次、每次5秒；协调器按场景/slot核对完全相同证据，重传不新增行、不改原始时间，冲突永久使本轮失败。只读会话 GET 预检同样仅对 HTTP 0 重试，保持同一 cookie，最多3次、每次5秒，间隔100/200毫秒；任何非200响应（含429）、坏JSON或身份/角色不符立即失败。预检须成功核对身份后才在该 VU 内缓存。ready、clicked、明确HTTP拒绝及页面业务操作都不重试。协调器 keep-alive 为300秒；协调记账和会话预检的重传次数分别写入汇总。成功计数必须等到UI成功、context关闭和完成回执全部结束，并满足完成数=尝试数=迭代数=协调器唯一记录数；回执持续失败不能按数据库已有结果补算成功。
+
+`LOAD_RUN_DIR` 位于操作系统临时目录并独占创建；`manifest.json` 含有效合成 cookie，按私有文件处理，绝不提交或公开。`run-metadata.json` 保存构建、源码/工具/锁文件 hash 和 k6/Chromium/镜像身份，场景 summary、outcomes、transport/app/build 日志及最终 summary 留在同一私有目录。分享时仅提取 run ID、合成内部 ID、聚合结果与计时/资源数据，不复制 manifest、连接串、会话值或完整日志。
+
+失败 run 不重用；若 fixture 提交后发生输出/验收错误，也不删除旧数据、不重置钱包或账本来重跑。保留私有证据，按 scope 只读诊断后用新 run。runner 等待自己启动的 app、协调器、SMTP sink 与资源采样实际结束；不要因一个进程的超时自行宣称其他工作已结束。成功记录与待补项见 CAPACITY，外部 staging 压测及 M7-H02 人工演练仍需原有授权和现场证据。
+
+旧 browse/upload 脚本和其验收范围保持原状。`prisma/seed-load.ts` 仍是旧 staging CLI，现要求显式、匹配目标应用的 BETTER_AUTH_SECRET / BETTER_AUTH_URL 才能生成签名 cookie；它保留旧输出和历史重置行为，**不属于这个 fresh mutation 工作流，也不在此运行**。不要用旧 seed 或旧 `.local.json` 补齐新 manifest。

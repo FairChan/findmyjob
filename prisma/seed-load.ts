@@ -12,6 +12,7 @@ import { PDFDocument } from 'pdf-lib'
 import * as crypto from 'crypto'
 import * as fs from 'fs'
 import * as path from 'path'
+import { createLoadSessionCookie, requireLoadSessionOptions } from '../scripts/load/session-cookie'
 
 const APP_ENV = process.env.APP_ENV
 
@@ -19,6 +20,12 @@ if (APP_ENV !== 'staging') {
   console.error(`seed-load requires APP_ENV=staging (got: ${APP_ENV ?? 'undefined'})`)
   process.exit(1)
 }
+
+// Explicit settings must match the target app; validate before constructing Prisma.
+const sessionOptions = requireLoadSessionOptions({
+  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: process.env.BETTER_AUTH_URL,
+})
 
 const faker = new Faker({ locale: [zh_CN, en] })
 
@@ -47,7 +54,7 @@ async function createSession(userId: string): Promise<string> {
   const session = await db.session.create({
     data: { userId, token, expiresAt, ipAddress: '127.0.0.1', userAgent: 'k6/load-test' },
   })
-  return `better-auth.session_token=${session.token}`
+  return (await createLoadSessionCookie(session.token, sessionOptions)).header
 }
 
 async function createStudentRecord(

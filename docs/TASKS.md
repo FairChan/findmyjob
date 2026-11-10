@@ -1514,6 +1514,7 @@
 验收：跑完后用 SQL 核对：成功的解锁数等于 UNLOCK 账本条数，余额 ≥0
 > 完成 2026-11-07：load/k6/unlock.js（balance_race 10 VU 抢余额 3、idempotent_unlock 10 VU 解锁同一学生，含 SQL 核对查询注释）；load/k6/upload.js（20 VU，读 load/fixtures/minimal.pdf）；load/k6/apply.js（20 VU，读 jobs.local.json）；prisma/seed-load.ts 扩到 100 家企业、5000 名学生（批量并发 20）、500 个已发布职位，race 企业余额 reset 为 3、idempotent 企业 100；load/*.local.json 和 load/fixtures/ 加入 .gitignore；SQL 核对为在 staging 运行 k6 后的人工步骤（无法在 CI vitest 中自动化）；unlock/apply 端点为后续里程碑实现，当前脚本会收到 404，属预期。失败输出见提交说明。
 > 修复 2026-11-07（合并前复查）：load/k6/*.js 注释中的 `grafana/k6:latest` 改为固定版本 `grafana/k6:0.54.0`；prisma/seed-load.ts 会话有效期从 30 天缩短为 1 天（staging 负载测试会话无需长期存活）。需要第一次 CI 运行来验证。
+> 收尾完成 2026-11-10：以上“unlock/apply 404属预期”仅为历史未接线状态，不能作为验收。现已改为固定k6/browser镜像点击现有UI→Server Action，配套fresh隔离fixture、真实签名会话、未来epoch就绪屏障、完整结果计数及全scope只读SQL双向对账；无生产API或安全豁免，未执行旧seed。最终full `m7-6f36ec12-06f0-44f5-9869-d3df0cf07a91`：100企业/5000学生/500职位，20VU投递2分钟完成282次，加重复控制最终283份申请/初始事件/真实JobView；两场10VU解锁共4条付费解锁/4笔扣点，余额0/99，wrapper退出0。四类fresh负例unsigned/stale-consent/missing-target/unready均非零退出且proven:true、10失败/零解锁申请。专用Node52/52、scoped lint/typecheck和独立复核通过；性能/版本/资源/历史失败见CAPACITY。旧browse/upload未在本次重验，UI p95只作诊断；本地结果不代签M7-H02或外部容量/上线闸门。
 
 #### [x] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
 依赖：M7-T04、M7-T06、M7-T11、M7-T12、M7-T14
