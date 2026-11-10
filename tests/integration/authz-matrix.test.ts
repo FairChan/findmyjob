@@ -53,6 +53,32 @@ import {
 
 setupTestDb()
 
+describe('private resume parsing actions (M9-T01)', () => {
+  const operations = [
+    'setResumeParseConsentAction', 'requestResumeParseAction', 'getResumeParseDraftAction',
+    'confirmResumeParseAction', 'discardResumeParseDraftAction',
+  ] as const
+  const resumeId = 'c' + '1'.repeat(24)
+  for (const operation of operations) {
+    it.each(['anonymous', 'employer', 'suspended-student'] as const)(operation + ' denies %s', async actor => {
+      clearSettingsCache()
+      if (actor === 'anonymous') mockSession(null)
+      else {
+        const user = actor === 'employer' ? await createEmployer(testDb) : await createStudent(testDb)
+        if (actor === 'suspended-student') await testDb.user.update({ where: { id: user.userId }, data: { status: 'SUSPENDED' } })
+        mockSession(user.userId)
+      }
+      const actions = await import('@/server/actions/resume-parsing')
+      const input = operation === 'setResumeParseConsentAction'
+        ? { granted: false }
+        : { resumeId, generation: 1, expectedProfileRevision: 0, patch: { headline: 'Synthetic action' } }
+      await expect(actions[operation](input)).resolves.toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.resumeParseDraft.count()).toBe(0)
+      expect(await testDb.consent.count({ where: { type: 'AI_RESUME_PARSE' } })).toBe(0)
+    })
+  }
+})
+
 const noHeaders = new Headers()
 
 type MockSessionOptions = {

@@ -353,7 +353,7 @@ export async function getApplicantDetail(
             orderBy: { sortOrder: 'asc' },
           },
           resumes: {
-            select: { id: true, storageKey: true, isPrimary: true, parsedJson: true },
+            select: { id: true, storageKey: true, isPrimary: true },
             orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
           },
         },

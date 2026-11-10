@@ -204,6 +204,7 @@ enum ConsentType {
   PRIVACY
   TALENT_POOL
   MARKETING
+  AI_RESUME_PARSE
 }
 
 enum PartnerType {
@@ -419,6 +420,7 @@ model StudentProfile {
   expectedSalaryMax   Int?
   skills              String[]
   visibility          Visibility   @default(HIDDEN)
+  editRevision        Int          @default(0)
   completeness        Int          @default(0)
   onboardingStep      Int          @default(1) // 1–4 = 当前待完成的步骤，5 = 向导已完成
   referralCode        String?      @unique // 邀请码，首次打开邀请页时生成
@@ -515,7 +517,9 @@ model ResumeFile {
   sizeBytes  Int
   pageCount  Int? // 上传时用 getPageCount 写入，≤ resume.maxPages
   isPrimary  Boolean        @default(false)
-  parsedJson Json? // M9：AI 解析结果
+  contentSha256 String? @db.VarChar(64)
+  parseDraft ResumeParseDraft?
+  parsedJson Json? // Legacy only; never exposed to employers or used as confirmed AI data
   createdAt  DateTime       @default(now()) @db.Timestamptz(3)
 
   applications Application[]
@@ -1035,11 +1039,15 @@ model DataRequest {
   status     DataRequestStatus @default(OPEN)
   note       String?
   resultKey  String? // 导出文件
+  exportGeneration Int @default(0)
+  exportLeaseToken String?
+  exportLeaseExpiresAt DateTime? @db.Timestamptz(3)
   createdAt  DateTime          @default(now()) @db.Timestamptz(3)
   resolvedAt DateTime?         @db.Timestamptz(3)
 
   @@index([userId])
   @@index([status, createdAt])
+  @@index([type, status, exportLeaseExpiresAt])
 }
 
 // ==================== 查看额度 / 邀请 / 搜索 / 反诈（v0.2） ====================
@@ -1145,4 +1153,94 @@ model rateLimit {
   key         String @unique
   count       Int
   lastRequest BigInt
+}
+
+enum ResumeParseState {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+  CANCELLED
+  CONFIRMED
+}
+
+model ResumeParseDraft {
+  id                     String           @id @default(cuid())
+  resumeId               String           @unique
+  resume                 ResumeFile       @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  generation             Int              @default(1)
+  state                  ResumeParseState @default(QUEUED)
+  sourceStorageKey       String
+  sourceSha256           String           @db.VarChar(64)
+  consentGrantId         String
+  legalVersion           String
+  gateEpoch              String
+  schemaVersion          Int              @default(1)
+  promptVersion          String
+  requestedModel         String
+  responseModel          String?
+  payload                Json?
+  failureCode            String?
+  attempts               Int              @default(0)
+  nextAttemptAt          DateTime?        @db.Timestamptz(3)
+  leaseExpiresAt         DateTime?        @db.Timestamptz(3)
+  leaseToken             String?
+  confirmationHash       String?          @db.VarChar(64)
+  appliedProfileRevision Int?
+  requestedAt            DateTime         @default(now()) @db.Timestamptz(3)
+  completedAt            DateTime?        @db.Timestamptz(3)
+  confirmedAt            DateTime?        @db.Timestamptz(3)
+  updatedAt              DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([state, nextAttemptAt])
+  @@index([state, leaseExpiresAt])
+}
+
+enum DataExportArtifactState {
+  RESERVED
+  UPLOADING
+  UPLOADED
+  PUBLISHED
+  CLEANUP_REQUIRED
+  CLEANED
+}
+
+enum DataExportUploadOutcome {
+  NOT_STARTED
+  UNKNOWN
+  ACKNOWLEDGED
+}
+
+// Deliberately no foreign keys to User, Profile or DataRequest. Cleanup must survive
+// their hard deletion. These are opaque routing IDs, never email/name/source content.
+// Never prune UNKNOWN rows based only on elapsed time or a successful DELETE.
+model DataExportArtifact {
+  id                    String                    @id @default(uuid())
+  requestId             String
+  userId                String
+  generation            Int
+  leaseToken            String
+  leaseExpiresAt        DateTime                  @db.Timestamptz(3)
+  storageKey            String                    @unique
+  state                 DataExportArtifactState   @default(RESERVED)
+  uploadOutcome         DataExportUploadOutcome   @default(NOT_STARTED)
+  publishedAt           DateTime?                 @db.Timestamptz(3)
+  expiresAt             DateTime?                 @db.Timestamptz(3)
+  cleanupNextAt         DateTime?                 @db.Timestamptz(3)
+  cleanupLeaseToken     String?
+  cleanupLeaseExpiresAt DateTime?                 @db.Timestamptz(3)
+  lastDeleteAt          DateTime?                 @db.Timestamptz(3)
+  cleanedAt             DateTime?                 @db.Timestamptz(3)
+  // A notification reservation can lose mail on process death; it cannot produce
+  // duplicate sends from simultaneous job deliveries. No exactly-once guarantee.
+  notificationReservedAt DateTime?                @db.Timestamptz(3)
+  createdAt             DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                  @updatedAt @db.Timestamptz(3)
+
+  @@unique([requestId, generation])
+  @@index([userId, state])
+  @@index([requestId, state])
+  @@index([state, leaseExpiresAt])
+  @@index([state, cleanupNextAt])
+  @@index([state, expiresAt])
 }

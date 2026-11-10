@@ -72,9 +72,14 @@ describe('T05 bounded storage mutations', () => {
       .finally(() => { settled = true })
     try {
       await entered.promise
-      expect(mock.send.mock.calls[0][1]?.abortSignal).toBe(controller.signal)
+      const signal = mock.send.mock.calls[0][1]?.abortSignal as AbortSignal
+      expect(signal).toBeInstanceOf(AbortSignal)
+      expect(signal).toSatisfy((actual: AbortSignal) => kind === 'delete' || actual === controller.signal)
+      expect(signal.aborted).toBe(false)
       controller.abort()
       await stopped.promise
+      expect(signal.aborted).toBe(true)
+      expect(signal.reason).toBe(controller.signal.reason)
       await Promise.resolve()
       expect(settled).toBe(false)
       expect(mock.destroy).toHaveBeenCalled()
@@ -101,7 +106,13 @@ describe('T05 bounded storage mutations', () => {
     expect(mock.send.mock.calls[1][0].input.Delete.Objects).toEqual([
       { Key: key, VersionId: 'v1' }, { Key: key, VersionId: 'marker1' },
     ])
-    for (const call of mock.send.mock.calls) expect(call[1]?.abortSignal).toBe(controller.signal)
+    const signal = mock.send.mock.calls[0][1]?.abortSignal as AbortSignal
+    expect(signal).toBeInstanceOf(AbortSignal)
+    expect(signal.aborted).toBe(false)
+    for (const call of mock.send.mock.calls) expect(call[1]?.abortSignal).toBe(signal)
+    controller.abort()
+    expect(signal.aborted).toBe(true)
+    expect(signal.reason).toBe(controller.signal.reason)
     expect(mock.destroy).toHaveBeenCalledOnce()
   })
 

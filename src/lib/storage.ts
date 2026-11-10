@@ -9,8 +9,9 @@ import {
 import { getSignedUrl as awsGetSignedUrl } from '@aws-sdk/s3-request-presigner'
 import { env } from '@/env'
 
-function makeClient(): S3Client {
+function makeClient(options?: StorageMutationOptions): S3Client {
   return new S3Client({
+    ...(options?.maxAttempts === 1 ? { maxAttempts: 1 } : {}),
     endpoint: env.S3_ENDPOINT,
     region: env.S3_REGION,
     credentials: {
@@ -21,7 +22,7 @@ function makeClient(): S3Client {
   })
 }
 
-type StorageMutationOptions = { signal?: AbortSignal }
+type StorageMutationOptions = { signal?: AbortSignal; maxAttempts?: 1 }
 
 async function withMutationClient<T>(
   options: StorageMutationOptions | undefined,
@@ -29,7 +30,7 @@ async function withMutationClient<T>(
 ): Promise<T> {
   const signal = options?.signal
   if (signal?.aborted) throw downloadAborted()
-  const client = makeClient()
+  const client = makeClient(options)
   const onAbort = () => client.destroy?.()
   signal?.addEventListener('abort', onAbort, { once: true })
   try {
@@ -155,17 +156,46 @@ export async function getObjectBytes(
 }
 
 export async function deleteAllVersions(key: string, options?: StorageMutationOptions): Promise<void> {
-  await withMutationClient(options, async (client, signal) => {
+  const signal = AbortSignal.any([
+    AbortSignal.timeout(45_000), ...(options?.signal ? [options.signal] : []),
+  ])
+  await withMutationClient({ ...options, signal }, async client => {
     const bucket = env.S3_BUCKET
-    const listCommand = new ListObjectVersionsCommand({ Bucket: bucket, Prefix: key })
-    const list = signal ? await client.send(listCommand, { abortSignal: signal }) : await client.send(listCommand)
-    if (signal?.aborted) throw downloadAborted()
-    const toDelete = [...(list.Versions ?? []), ...(list.DeleteMarkers ?? [])]
-      .filter(v => v.Key === key)
-      .map(v => ({ Key: v.Key!, VersionId: v.VersionId }))
-    if (toDelete.length === 0) return
-    const command = new DeleteObjectsCommand({ Bucket: bucket, Delete: { Objects: toDelete } })
-    const result = signal ? await client.send(command, { abortSignal: signal }) : await client.send(command)
-    if (result.Errors?.length) throw new Error('Object deletion failed')
+    const objects: Array<{ Key: string; VersionId?: string }> = []
+    const seen = new Set<string>()
+    let keyMarker: string | undefined
+    let versionIdMarker: string | undefined
+    let complete = false
+    // First collect a bounded complete listing, then delete. Deleting a page before
+    // using its version marker can make provider-specific marker behavior ambiguous.
+    for (let page = 0; page < 100; page++) {
+      if (signal.aborted) throw downloadAborted()
+      const list = await client.send(new ListObjectVersionsCommand({
+        Bucket: bucket, Prefix: key, KeyMarker: keyMarker, VersionIdMarker: versionIdMarker,
+      }), { abortSignal: signal })
+      for (const version of [...(list.Versions ?? []), ...(list.DeleteMarkers ?? [])]) {
+        if (version.Key === key) objects.push({ Key: key, VersionId: version.VersionId })
+      }
+      if (objects.length > 100_000) throw new Error('Object deletion listing limit')
+      if (!list.IsTruncated) { complete = true; break }
+      if (!list.NextKeyMarker) throw new Error('Object deletion invalid pagination')
+      // Continuing within this key requires the version position; a key-only
+      // continuation could skip older target versions. Later prefix keys may
+      // legitimately continue without a version marker and stay allowed.
+      if (list.NextKeyMarker === key && !list.NextVersionIdMarker) throw new Error('Object deletion invalid pagination')
+      const marker = JSON.stringify([list.NextKeyMarker, list.NextVersionIdMarker ?? null])
+      if (seen.has(marker)) throw new Error('Object deletion repeated pagination')
+      seen.add(marker)
+      keyMarker = list.NextKeyMarker
+      versionIdMarker = list.NextVersionIdMarker
+    }
+    if (!complete) throw new Error('Object deletion listing limit')
+    for (let offset = 0; offset < objects.length; offset += 1000) {
+      if (signal.aborted) throw downloadAborted()
+      const result = await client.send(new DeleteObjectsCommand({
+        Bucket: bucket, Delete: { Objects: objects.slice(offset, offset + 1000) },
+      }), { abortSignal: signal })
+      if (result.Errors?.length) throw new Error('Object deletion failed')
+    }
   })
 }

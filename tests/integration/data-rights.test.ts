@@ -10,6 +10,7 @@
  * - Purge: sentinel values removed, idempotent
  */
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { randomUUID } from 'node:crypto'
 
 vi.mock('@/server/auth', () => ({
   getSession: vi.fn(),
@@ -181,18 +182,27 @@ describe('export email: no S3 domain', () => {
 // getExportDownloadRequest
 // ---------------------------------------------------------------------------
 
+async function publishedExportRequest(userId: string, publishedAt = new Date()) {
+  return testDb.$transaction(async tx => {
+    const request = await tx.dataRequest.create({ data: {
+      userId, type: 'EXPORT', status: 'DONE', exportGeneration: 1, resolvedAt: publishedAt,
+    } })
+    const artifactId = randomUUID()
+    const storageKey = `exports/${userId}/${request.id}/${artifactId}.zip`
+    await tx.dataExportArtifact.create({ data: {
+      id: artifactId, requestId: request.id, userId, generation: 1,
+      leaseToken: randomUUID(), leaseExpiresAt: new Date(publishedAt.getTime() + 60_000),
+      storageKey, state: 'PUBLISHED', uploadOutcome: 'ACKNOWLEDGED', publishedAt,
+      expiresAt: new Date(publishedAt.getTime() + 24 * 60 * 60 * 1000),
+    } })
+    return tx.dataRequest.update({ where: { id: request.id }, data: { resultKey: storageKey } })
+  })
+}
+
 describe('getExportDownloadRequest', () => {
   it('own DONE request within 24h returns the request', async () => {
     const { userId } = await createStudent(testDb)
-    const req = await testDb.dataRequest.create({
-      data: {
-        userId,
-        type: 'EXPORT',
-        status: 'DONE',
-        resultKey: `exports/${userId}/req.zip`,
-        resolvedAt: new Date(),
-      },
-    })
+    const req = await publishedExportRequest(userId)
 
     const result = await getExportDownloadRequest({ userId }, req.id)
     expect(result?.id).toBe(req.id)
@@ -202,15 +212,7 @@ describe('getExportDownloadRequest', () => {
   it("another user's export → NotFoundError", async () => {
     const a = await createStudent(testDb)
     const b = await createStudent(testDb)
-    const req = await testDb.dataRequest.create({
-      data: {
-        userId: b.userId,
-        type: 'EXPORT',
-        status: 'DONE',
-        resultKey: `exports/${b.userId}/req.zip`,
-        resolvedAt: new Date(),
-      },
-    })
+    const req = await publishedExportRequest(b.userId)
 
     await expect(getExportDownloadRequest({ userId: a.userId }, req.id)).rejects.toBeInstanceOf(NotFoundError)
   })
@@ -218,17 +220,18 @@ describe('getExportDownloadRequest', () => {
   it('export older than 24h → NotFoundError', async () => {
     const { userId } = await createStudent(testDb)
     const ago25h = new Date(Date.now() - 25 * 60 * 60 * 1000)
-    const req = await testDb.dataRequest.create({
-      data: {
-        userId,
-        type: 'EXPORT',
-        status: 'DONE',
-        resultKey: `exports/${userId}/req.zip`,
-        resolvedAt: ago25h,
-      },
-    })
+    const req = await publishedExportRequest(userId, ago25h)
 
     await expect(getExportDownloadRequest({ userId }, req.id)).rejects.toBeInstanceOf(NotFoundError)
+  })
+
+  it('own unexpired DONE request without an artifact returns null', async () => {
+    const { userId } = await createStudent(testDb)
+    const req = await publishedExportRequest(userId)
+    await testDb.dataExportArtifact.delete({ where: { storageKey: req.resultKey! } })
+
+    const result = await getExportDownloadRequest({ userId }, req.id)
+    expect(result).toBeNull()
   })
 
   it('still-OPEN export → returns null (pending state)', async () => {

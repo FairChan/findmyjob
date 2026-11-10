@@ -1,7 +1,9 @@
 import 'server-only'
 import { z } from 'zod'
+import { randomUUID } from 'node:crypto'
+import { resumeParseGateSchema } from '../schemas/resume-parsing'
 import { db } from '../db'
-import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { VersionMismatchError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { getSetting, setSetting } from './settings'
 import type { UserCtx } from '../authz'
 import { bankTransferSettingsSchema, EMPTY_BANK_TRANSFER, foundingOfferSettingsSchema, DEFAULT_FOUNDING_OFFER } from '../lib/billing-settings'
@@ -119,3 +121,18 @@ export async function updateSettingAdmin(
 }
 
 export { getSetting }
+
+const resumeParseGateInputSchema = resumeParseGateSchema.omit({ epoch: true }).strict()
+
+export async function updateResumeParseSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = resumeParseGateInputSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid resume parsing configuration')
+  if (parsed.data.enabled) {
+    const version = await getSetting<unknown>('legal.currentVersion', '2026-11-draft', { fresh: true })
+    if (!parsed.data.legalVersion || typeof version !== 'string' || parsed.data.legalVersion !== version) {
+      throw new VersionMismatchError()
+    }
+  }
+  await setSetting('ai.resumeParse', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
+}

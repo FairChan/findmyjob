@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { route } from '@/server/route'
 import { checkRateLimit } from '@/server/lib/rate-limit'
 import { logAudit } from '@/server/services/audit'
@@ -8,6 +8,8 @@ import { putObject, deleteAllVersions } from '@/lib/storage'
 import { logger } from '@/server/lib/logger'
 import { detectFileType, checkPdf, MIME_TYPES } from '@/server/lib/pdf'
 import { db } from '@/server/db'
+import { ForbiddenError, NotFoundError } from '@/server/errors'
+import { lockXact, LOCK_NS } from '@/server/lib/advisory-locks'
 import { purposeSchema, validateFileName } from '@/server/lib/upload-input'
 import { RESUME_MAX_BYTES } from '@/server/lib/upload-constants'
 import type { AllowedMimeKey } from '@/server/lib/pdf'
@@ -233,18 +235,35 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
     return Response.json({ ok: true, key })
   }
 
-  // For RESUME purpose: create ResumeFile record (studentProfileId already validated above)
+  // Storage stays outside the lifecycle transaction. The earlier profile lookup
+  // only determined the unique object key; it cannot authorize this later write.
   if (purpose === 'RESUME') {
-    const resume = await db.resumeFile.create({
-      data: {
-        studentId: studentProfileId!,
-        storageKey: key,
-        fileName: fileNameResult.name,
-        mimeType: MIME_TYPES[detectedType],
-        sizeBytes: file.size,
-        pageCount: pageCount ?? null,
-        isPrimary: false,
-      },
+    const contentSha256 = createHash('sha256').update(buf).digest('hex')
+    const resume = await db.$transaction(async tx => {
+      await lockXact(tx, LOCK_NS.STUDENT_DATA, userId)
+      const currentUser = await tx.user.findUnique({
+        where: { id: userId }, select: { role: true, status: true },
+      })
+      if (!currentUser || currentUser.role !== 'STUDENT' || currentUser.status !== 'ACTIVE') {
+        throw new ForbiddenError()
+      }
+      const currentProfile = await tx.studentProfile.findUnique({
+        where: { id: studentProfileId! }, select: { id: true, userId: true },
+      })
+      if (!currentProfile) throw new NotFoundError()
+      if (currentProfile.userId !== userId) throw new ForbiddenError()
+      return tx.resumeFile.create({
+        data: {
+          studentId: currentProfile.id,
+          storageKey: key,
+          contentSha256,
+          fileName: fileNameResult.name,
+          mimeType: MIME_TYPES[detectedType],
+          sizeBytes: file.size,
+          pageCount: pageCount ?? null,
+          isPrimary: false,
+        },
+      })
     }).catch(async (error: unknown) => {
       // The key is unique to this successful upload; compensate a failed DB insert.
       try {
@@ -254,6 +273,20 @@ export const POST = route({ auth: 'user' }, async (req, ctx) => {
       }
       throw error
     })
+
+    // This flag expresses only this upload's intent. The service independently
+    // checks current consent/gate/source and never grants consent implicitly.
+    // Its bounded queue dispatch does not wait for extraction or provider work.
+    if (formData.get('requestAiParse') === 'true') {
+      try {
+        const { requestResumeParse } = await import('@/server/services/resume-parsing')
+        const parseRequest = await requestResumeParse({ userId }, { resumeId: resume.id })
+        return Response.json({ ok: true, key, resumeId: resume.id, parseRequest })
+      } catch {
+        logger.warn({ event: 'resume_parse_request_unavailable', resumeId: resume.id }, 'Resume parse request unavailable')
+        return Response.json({ ok: true, key, resumeId: resume.id, parseRequest: { state: 'unavailable' } })
+      }
+    }
 
     return Response.json({ ok: true, key, resumeId: resume.id })
   }

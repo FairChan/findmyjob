@@ -37,7 +37,6 @@ export interface ResumeInput {
   id: string
   storageKey: string
   isPrimary: boolean
-  parsedJson: unknown
 }
 
 export interface ProfileCardInput {
@@ -116,6 +115,7 @@ export interface TalentDetail extends TalentCard {
   educations: TalentEducation[]
   experiences: TalentExperience[]
   resumeCount: number
+  /** Retained for DTO compatibility; employer views never expose parsing data. */
   resumePreview: unknown
   resumeIds: string[]
   contact: ContactInput | null
@@ -241,7 +241,8 @@ export function toTalentCard(
 /**
  * Serializes a student profile for the employer talent detail view.
  * When unlocked=false, additional fields (summary, education description, experience fields)
- * are also redacted; structured resume preview and contact are withheld.
+ * are also redacted; resume IDs and contact are withheld.
+ * Resume parsing data is private regardless of unlock state.
  */
 export function toTalentDetail(
   profile: ProfileDetailInput,
@@ -249,9 +250,6 @@ export function toTalentDetail(
 ): TalentDetail {
   const { unlocked, contact = null } = opts
   const card = toTalentCard(profile, { unlocked })
-
-  const primary =
-    profile.resumes.find((r) => r.isPrimary) ?? profile.resumes[0] ?? null
 
   return {
     ...card,
@@ -308,7 +306,7 @@ export function toTalentDetail(
         sortOrder: exp.sortOrder,
       })),
     resumeCount: profile.resumes.length,
-    resumePreview: unlocked && primary ? primary.parsedJson : null,
+    resumePreview: null,
     resumeIds: unlocked ? profile.resumes.map((r) => r.id) : [],
     contact: unlocked ? contact : null,
   }

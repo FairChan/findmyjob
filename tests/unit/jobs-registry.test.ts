@@ -18,6 +18,8 @@ vi.mock('@/server/jobs/pilot-monthly-credits', () => ({ runPilotMonthlyCredits: 
 vi.mock('@/server/jobs/reconcile-wallets', () => ({ runReconcileWallets: vi.fn() }))
 vi.mock('@/server/jobs/expire-subscriptions', () => ({ runExpireSubscriptions: vi.fn() }))
 vi.mock('@/server/jobs/invoice-tasks', () => ({ runInvoiceTasks: vi.fn() }))
+vi.mock('@/server/jobs/export-user-data', () => ({ runExportUserData: vi.fn() }))
+vi.mock('@/server/jobs/purge-deleted-accounts', () => ({ runPurgeDeletedAccounts: vi.fn() }))
 vi.mock('@/server/lib/healthchecks', () => ({ pingHealthcheck: vi.fn() }))
 
 import { registerJobs } from '@/server/jobs/registry'

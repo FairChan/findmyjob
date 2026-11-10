@@ -707,3 +707,49 @@ PDF 最多三次尝试，失败退避 1/5 分钟，崩溃由 60 秒租约恢复�
 验证现有余额不变、既有职位/成员保留，OWNER 余额不足时可进入账单购买，其他成员收到联系所有者提示。创始优惠必须同时满足已审名单、商品、时间窗和首次资格；净应付金额已经扣除折扣，核款和发票不得二次减扣。回单到账确认或 Stripe 合法到账后仅增加一次点数和订阅。
 
 `billing.enabled=false` 同时关闭新销售并恢复公益模式资格，不能作为独立的“只暂停收款”开关。回退前应明确是否恢复公益补发；若仅验证历史履约，保持公益任务暂停。关闭新销售后，旧订单仍可按原冻结净额结算、发行及下载发票，有效已付权益保持到期；不得改写订单、删除账本或撤销已交付点数。隔离演练覆盖旧余额 23、原价 299901 sen、折扣 149950 sen、净额 149951 sen、到账后余额 143，以及续年恢复原价。
+
+## 私有简历解析与导出切换（M9-T01）
+
+以下是 T01 合并后的配置与部署要求，不构成已部署、测试通过或真实外发获准的记录。代码、依赖和迁移验收与真实账户/法律/外发启用分开；默认保持关闭，不批量回填或发送历史简历。
+
+### 默认关闭、政策版本与 epoch
+
+- `ai.resumeParse` 是一个严格对象：`enabled` 为 boolean、`legalVersion` 为 null 或已批准版本、`epoch` 为服务器生成的 UUID。缺配置、对象无效或 `enabled` 非 true 均关闭，不在模块导入或 seed 时创建可用授权。初始关闭配置可使用 `enabled:false, legalVersion:null`；epoch 由受控 ADMIN 更新入口生成，不能从文档复制固定值。
+- 配置更新通过专用 ADMIN 服务校验并写 `setting.update`，每次更新都生成新 epoch，包括禁用和重新启用；不能从客户端传入或复用旧 epoch。启用要求 `legalVersion` 非空且等于 fresh 读取的 `legal.currentVersion`。更新法律正文不等于发布新版本；律师/负责人确认后，法律版本另走既有受审流程，不因合并本文自动改值。
+- `ANTHROPIC_API_KEY` 与明确的 `AI_MODEL_PARSE` 均由人工配置项目凭据和已核验模型；缺项失败关闭，不回退 Claude Code/CLI 登录、开发中转或任意 base URL。候选固定直连 `https://api.anthropic.com`。密钥按既有秘密管理要求保存，不进入日志、工单或 AI 会话。
+- 每次解析冻结模型、prompt/schema 版本、来源 hash、同意来源及 epoch。只修改环境模型不会自动废弃已冻结的旧任务；需要废弃旧代次时必须通过受控配置更新旋转 epoch，再由用户明确重新请求，不复用旧 grant/epoch。
+- 注册、普通条款、人才库同意和上传不代替 `AI_RESUME_PARSE` 独立同意；同意本身也不触发外发。只有本人明确解析请求才入队。关闭功能时保留普通上传、手工编辑、本人已有草稿读取、放弃和撤回，停止新解析和确认。撤回/关闭不能收回 provider 已接受的文本，也不能据取消结果断言对方未处理或未计费。
+
+### 发布前核验与任务关闭
+
+上线前核对 SUBPROCESSORS 和双语政策中 Anthropic 的实际地区、合同/DPA、保留/删除、日志例外、训练使用和跨境依据；未核实不以“脱敏”或“结构化输出可支持零保留”代替批准。确认专用同意、请求/确认、撤回、删除、导出和企业出口的实际验收记录，再另行批准受控启用。此手册不指定测试已经通过，也不授权用真实用户简历联调。
+
+部署包必须包含固定 PDF child 入口和同一已审 PDF.js 版本的本地 worker、CMaps、字体及 WASM 资源；页数使用当前 `resume.maxPages`（默认 20，合法范围 1–100）。只有取得资源槽后才读取 PDF。子进程 15 秒触发终止后仍须等实际 `close`；provider 45 秒取消后仍须等调用实际 settle；解析 attempt 总预算为 90 秒。这些预算不等于远端操作已撤销。V8 old-space 限额不是 RSS/ArrayBuffer/native 硬额度，独立 child 也不是文件系统/网络沙箱；OS/容器资源限制、父进程退出后的子进程清理和目标平台资源打包须在启用前实际验收。
+
+| T01 队列 | 运行要求 |
+| --- | --- |
+| `resume-parse` | 本进程 `localConcurrency:1,batchSize:1`；合并 shutdown 与 pg-boss job signal，沿 storage/extractor/provider 传递。无 cron。 |
+| `dispatch-resume-parses` | 每分钟、missed:once，并发/batch 均 1；恢复持久解析意图。 |
+| `recover-data-exports` | 每分钟、missed:once，并发/batch 均 1；独立于账户 purge 持续恢复 artifact。 |
+
+SIGINT/SIGTERM 首次进入关闭流程时立即停止新 T01 admission 并取消解析；重复信号复用同一个关闭 Promise。并行等待实际未 settle 的 T01 解析/dispatcher/export recovery、`boss.stop({graceful:true})` 和已开始的 startup/registry，三者 settle 后再等待 Sentry 收尾并退出。没有 abort port 的恢复服务继续 drain，不能看到 signal 已取消就假定远端 I/O 结束。pg-boss 默认 30 秒 graceful timeout 不能替代这条实际完成屏障。
+
+上述独立 drain 只覆盖新接线的 T01 三类任务；既有任务仍按原 pg-boss 关闭语义处理。进程管理器 SIGKILL 不在应用保证内。核对实际队列 expiry（新队列依赖默认 15 分钟，但旧部署可能覆盖），并给停止宽限留出 child close、已开始的恢复操作、数据库等待与遥测收尾时间；不要把 90 秒预算或 30 秒 grace 当成无条件安全的强杀时点。
+
+### 旧导出的人工切换闸门
+
+新导出 artifact 协议不能直接接管历史固定 key。在允许新导出请求/worker/recovery 消费旧队列之前，技术负责人须按以下顺序留存审批和执行记录；临时 legacy 清理队列默认不注册，不能仅因 AI 开关关闭而跳过这道与导出有关的闸门。
+
+1. 暂停旧 export 的入队入口和 worker，禁止旧二进制自动重启、重试或补发；核清已被远端接受的旧 PUT，并证明这些写入已静止。进程死亡、HTTP 超时、队列 ACK 或租约到期都不是远端不会迟到写入的证明。无法证明时保留全部旧 key 引用，不启用会最终清除引用的 legacy sweep，也不让新 worker 消费旧 OPEN 请求。
+2. 审阅并记录一个固定 UTC `cutoverAt`。在正常迁移审批记录下执行一次性旧请求清单：使旧未被 artifact 管理的请求过期为 REJECTED、推进 generation，并保留实际非空 key。对旧 null-resultKey 请求，按已确认的旧公式 `exports/<userId>/<requestId>.zip` 留下待清理引用，覆盖 PUT 成功但 DB 尚未确认的情形；不得伪造新 artifact UUID key，也不授予新 PUT 或下载权限。
+3. 在开始新导出前完成这次清单；清理成功后不重复执行清单，以免重新补回已清理引用。旧下载链接作废，用户须重新请求新导出；不绕过新 artifact 授权静默继续提供旧 key。
+4. 只有完成旧写入静止和清单核验后，才人工接入临时 `cleanup-legacy-data-exports`。其 `cleanupLegacyDataExports({cutoverAt,oldWritersQuiesced:true})` 参数是受审部署事实，不来自队列或用户，不在每次运行时用当前时间替代固定 cutoff。任务仅清理 cutoff 前、符合旧确定 key 规则且没有 artifact 的记录；失败保留引用，成功后再次校验请求/key/generation 才清除引用。
+5. 非规范旧 key 保留在清单中人工核实来源，不因带有 `exports/` 前缀就删除或改写。未解决旧引用前，不硬删承载引用的 DataRequest/User；需要硬删除时先另行设计持久迁移记录。清单耗尽且异常 key 全部解决后再移除临时队列，正常 `recover-data-exports` 继续保留。
+
+新导出每次应用级 PUT 使用独立 artifact/key，`DataRequest.resultKey` 只是发布指针；artifact 清理账本不随账户/请求级联删除。`UNKNOWN` 远端写入结果在成功 DELETE、租约到期或账户匿名化后仍不能标记终态 CLEANED，需保留并持续恢复。不要用任意年龄阈值删掉这些账本行，也不要把已静止的 legacy 清理规则套用到未知的新 PUT。
+
+本人导出只包含同一数据库快照里的正式资料和经校验的本人 READY 建议，非 READY 不含 payload；不包含旧 parsedJson、原模型响应、source key、grant/epoch/lease 等内部信息。AI 关闭不妨碍本人导出。撤回/放弃发生在快照前会反映在新快照中；已生成的导出副本不会仅因随后撤回就自动回溯修改，既已发送的邮件/下载链接或已下载文件不能召回。账号删除会另行使未来下载授权失效并安排对象清理；不要把 DB 权限失效当成远端文件已全部删除的证明。
+
+### 排障与记录边界
+
+只记录固定失败码、内部 ID、代次和必要计数；查看 `resume.parse.consent`、`resume.parse.confirm`、`resume.parse.discard` 及受控 `setting.update` 的最小元数据，不复制 PDF 文本、建议正文、provider 原始响应/错误正文或对象路径到日志/Sentry/工单。保留 UNKNOWN 清理和失败重试记录，先查当前授权、来源、版本与租约，不用直接 SQL 改 READY、复用旧 token/key 或抹除账本来绕过失败。普通源简历删除仍沿既有 postcommit 存储失败策略；本次导出 artifact 协议不意味着所有源 PDF 删除也已具备同样的持久恢复能力。

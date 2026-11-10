@@ -17,6 +17,14 @@ const S_WECHAT = 'wx_leak_test_account'
 const S_LINKEDIN = 'https://linkedin.com/in/leak-test'
 const S_STORAGE_KEY = 'resumes/leak-student/sentinel.pdf'
 
+// A variable retains the legacy payload after the employer input stops declaring it.
+const legacyPrimaryResume = {
+  id: 'res-1',
+  storageKey: S_STORAGE_KEY,
+  isPrimary: true,
+  parsedJson: null,
+}
+
 const piiProfile: ProfileDetailInput = {
   id: 'stu-leak-01',
   fullName: S_NAME,
@@ -55,14 +63,7 @@ const piiProfile: ProfileDetailInput = {
       sortOrder: 0,
     },
   ],
-  resumes: [
-    {
-      id: 'res-1',
-      storageKey: S_STORAGE_KEY,
-      isPrimary: true,
-      parsedJson: null,
-    },
-  ],
+  resumes: [legacyPrimaryResume],
 }
 
 const contact: ContactInput = {
@@ -463,6 +464,12 @@ const S_WA_LINK = 'wa.me/60129000001'
 const S_LI_LINK = 'https://linkedin.com/in/sentinel-li-test'
 
 describe('防泄漏 – 补充路径覆盖 (issue #3)', () => {
+  const legacyResumeWithPii = {
+    id: 'res-2',
+    storageKey: S_RESUME_KEY,
+    isPrimary: true,
+    parsedJson: { phone: S_RESUME_PHONE, email: S_RESUME_EMAIL, key: S_RESUME_KEY },
+  }
   const extraProfile: ProfileDetailInput = {
     ...piiProfile,
     headline: `WhatsApp ${S_WA_LINK} LinkedIn ${S_LI_LINK}`,
@@ -480,14 +487,7 @@ describe('防泄漏 – 补充路径覆盖 (issue #3)', () => {
         description: `经历 ${S_EXP_DESC_PHONE}`,
       },
     ],
-    resumes: [
-      {
-        id: 'res-2',
-        storageKey: S_RESUME_KEY,
-        isPrimary: true,
-        parsedJson: { phone: S_RESUME_PHONE, email: S_RESUME_EMAIL, key: S_RESUME_KEY },
-      },
-    ],
+    resumes: [legacyResumeWithPii],
   }
 
   const result = toTalentDetail(extraProfile, { unlocked: false, contact })

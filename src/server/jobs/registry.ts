@@ -16,7 +16,32 @@ import { runExportUserData } from './export-user-data'
 import { runPurgeDeletedAccounts } from './purge-deleted-accounts'
 import { pingHealthcheck } from '../lib/healthchecks'
 
-export async function registerJobs(boss: PgBoss): Promise<void> {
+// Retain ownership of T01 tasks through actual settlement. A pg-boss shutdown
+// grace ending proves neither child close nor recovery/storage completion.
+export function createJobLifecycle() {
+  const controller = new AbortController()
+  const active = new Set<Promise<void>>()
+  let stopping: Promise<void> | undefined
+  return {
+    signal: controller.signal,
+    async run(work: (signal: AbortSignal) => Promise<void>): Promise<void> {
+      if (controller.signal.aborted) return
+      const running = Promise.resolve().then(async () => {
+        if (!controller.signal.aborted) await work(controller.signal)
+      })
+      active.add(running)
+      try { await running } finally { active.delete(running) }
+    },
+    stop(): Promise<void> {
+      // Abort synchronously before starting any asynchronous drain or boss stop.
+      controller.abort()
+      stopping ??= Promise.allSettled([...active]).then(() => {})
+      return stopping
+    },
+  }
+}
+
+export async function registerJobs(boss: PgBoss, lifecycle = createJobLifecycle()): Promise<void> {
   // ── example ──────────────────────────────────────────────────────────────
   await boss.createQueue('example')
   await boss.work('example', async (jobs: Job[]) => {
@@ -152,6 +177,54 @@ export async function registerJobs(boss: PgBoss): Promise<void> {
       throw err
     }
   })
+
+  // ── resume-parse and durable recovery ─────────────────────────────────────
+  await boss.createQueue('resume-parse')
+  await boss.work<{ resumeId: string; generation: number }>('resume-parse', { localConcurrency: 1, batchSize: 1 }, async jobs => {
+    for (const job of jobs) await lifecycle.run(async shutdownSignal => {
+      const signal = AbortSignal.any([shutdownSignal, job.signal])
+      if (signal.aborted) return
+      try {
+        const { runResumeParse } = await import('./parse-resume')
+        if (!signal.aborted) await runResumeParse(job.data, { signal })
+      } catch {
+        const error = new Error('RESUME_PARSE_JOB_FAILED')
+        Sentry.captureException(error)
+        throw error
+      }
+    })
+  })
+
+  await boss.createQueue('dispatch-resume-parses')
+  await boss.schedule('dispatch-resume-parses', '* * * * *', {}, { missed: 'once' })
+  await boss.work('dispatch-resume-parses', { localConcurrency: 1, batchSize: 1 }, async () => lifecycle.run(async signal => {
+    try {
+      const { dispatchPendingResumeParses } = await import('../services/resume-parsing')
+      if (signal.aborted) return
+      await dispatchPendingResumeParses()
+      pingHealthcheck('dispatch-resume-parses')
+    } catch {
+      const error = new Error('RESUME_PARSE_DISPATCH_FAILED')
+      Sentry.captureException(error)
+      throw error
+    }
+  }))
+
+  // Independent of account purge: unresolved artifact records outlive accounts.
+  await boss.createQueue('recover-data-exports')
+  await boss.schedule('recover-data-exports', '* * * * *', {}, { missed: 'once' })
+  await boss.work('recover-data-exports', { localConcurrency: 1, batchSize: 1 }, async () => lifecycle.run(async signal => {
+    try {
+      const { recoverDataExports } = await import('../services/data-export-artifacts')
+      if (signal.aborted) return
+      await recoverDataExports()
+      pingHealthcheck('recover-data-exports')
+    } catch {
+      const error = new Error('DATA_EXPORT_RECOVERY_RETRY_REQUIRED')
+      Sentry.captureException(error)
+      throw error
+    }
+  }))
 
   // ── export-user-data ──────────────────────────────────────────────────────
   await boss.createQueue('export-user-data')

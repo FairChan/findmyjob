@@ -2,11 +2,18 @@ import 'server-only'
 import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
-import { NotFoundError, ValidationError } from '../errors'
+import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import type { UserCtx } from '../authz'
 import { computeCompleteness } from '../lib/completeness'
 import { hasStudentContact, hasStudentContactTx } from './contact-access'
 import { qualifyReferral } from './referrals'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { logger } from '../lib/logger'
+import {
+  resumeDegreeLevelSchema as DegreeLevelEnum,
+  resumeLanguageLevelSchema as LanguageLevelEnum,
+  resumeExperienceKindSchema as ExperienceKindEnum,
+} from '../schemas/resume-parsing'
 
 // ---- Enums (mirror Prisma enums for Zod) ----
 
@@ -19,10 +26,7 @@ const WorkAuthEnum = z.enum([
   'OTHER',
 ])
 
-const DegreeLevelEnum = z.enum(['FOUNDATION', 'DIPLOMA', 'BACHELOR', 'MASTER', 'PHD'])
 const JobTypeEnum = z.enum(['INTERNSHIP', 'FULL_TIME', 'PART_TIME'])
-const LanguageLevelEnum = z.enum(['BASIC', 'CONVERSATIONAL', 'FLUENT', 'NATIVE'])
-const ExperienceKindEnum = z.enum(['INTERNSHIP', 'WORK', 'PROJECT', 'CAMPUS', 'AWARD'])
 
 // ---- Step Schemas ----
 
@@ -94,6 +98,7 @@ export type Step4Data = z.infer<typeof step4Schema>
 
 export type ProfileForOnboarding = {
   id: string
+  editRevision: number
   fullName: string
   schoolId: string | null
   degreeLevel: string | null
@@ -139,7 +144,7 @@ export type ProfileForOnboarding = {
 
 // ---- Completeness helpers ----
 
-async function recalcCompleteness(tx: Prisma.TransactionClient, profileId: string): Promise<void> {
+export async function recalcCompletenessTx(tx: Prisma.TransactionClient, profileId: string): Promise<void> {
   const profile = await tx.studentProfile.findUnique({
     where: { id: profileId },
     select: { workAuth: true, intents: true, skills: true, headline: true, summary: true },
@@ -174,14 +179,22 @@ async function recalcCompleteness(tx: Prisma.TransactionClient, profileId: strin
 
 /** Recalculate and persist completeness for the calling student. Called from actions after contact upsert. */
 export async function recalcOwnCompleteness(ctx: UserCtx): Promise<void> {
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true },
-  })
-  if (!profile) return
   await db.$transaction(async (tx) => {
-    await recalcCompleteness(tx, profile.id)
+    await lockActiveStudentTx(tx, ctx.userId)
+    const profile = await tx.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true } })
+    if (profile) await recalcCompletenessTx(tx, profile.id)
   })
+}
+
+async function lockActiveStudentTx(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+  await lockXact(tx, LOCK_NS.STUDENT_DATA, userId)
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { role: true, status: true } })
+  if (!user || user.role !== 'STUDENT' || user.status !== 'ACTIVE') throw new ForbiddenError()
+}
+
+async function qualifySavedProfile(profileId: string): Promise<void> {
+  try { await qualifyReferral(profileId) }
+  catch { logger.error({ studentId: profileId, code: 'REFERRAL_RECALC_REQUIRED' }, 'Profile saved; referral qualification requires recovery') }
 }
 
 // ---- Dashboard ----
@@ -225,6 +238,7 @@ export async function getProfileForOnboarding(ctx: UserCtx): Promise<ProfileForO
     where: { userId: ctx.userId },
     select: {
       id: true,
+      editRevision: true,
       fullName: true,
       schoolId: true,
       degreeLevel: true,
@@ -280,6 +294,7 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { adva
   const advance = options?.advance ?? true
   let profileId: string | undefined
   await db.$transaction(async (tx) => {
+    await lockActiveStudentTx(tx, ctx.userId)
     const profile = await tx.studentProfile.findUnique({
       where: { userId: ctx.userId },
       select: { id: true, onboardingStep: true, schoolId: true, schoolVerifiedAt: true },
@@ -300,6 +315,7 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { adva
       where: { id: profile.id },
       data: {
         fullName: input.fullName,
+        editRevision: { increment: 1 },
         schoolId: newSchoolId,
         degreeLevel: input.degreeLevel ?? null,
         major: input.major ?? null,
@@ -314,15 +330,16 @@ export async function saveStep1(ctx: UserCtx, input: Step1Data, options?: { adva
       },
     })
 
-    await recalcCompleteness(tx, profile.id)
+    await recalcCompletenessTx(tx, profile.id)
   })
-  if (profileId) await qualifyReferral(profileId)
+  if (profileId) await qualifySavedProfile(profileId)
 }
 
 export async function saveStep2(ctx: UserCtx, input: Step2Data, options?: { advance?: boolean }): Promise<void> {
   const advance = options?.advance ?? true
   let profileId: string | undefined
   await db.$transaction(async (tx) => {
+    await lockActiveStudentTx(tx, ctx.userId)
     const profile = await tx.studentProfile.findUnique({
       where: { userId: ctx.userId },
       select: { id: true, onboardingStep: true },
@@ -334,6 +351,7 @@ export async function saveStep2(ctx: UserCtx, input: Step2Data, options?: { adva
       where: { id: profile.id },
       data: {
         intents: input.intents,
+        editRevision: { increment: 1 },
         availableFrom: input.availableFrom ? new Date(input.availableFrom) : null,
         preferredStates: input.preferredStates ?? [],
         preferredIndustries: input.preferredIndustries ?? [],
@@ -344,20 +362,21 @@ export async function saveStep2(ctx: UserCtx, input: Step2Data, options?: { adva
       },
     })
 
-    await recalcCompleteness(tx, profile.id)
+    await recalcCompletenessTx(tx, profile.id)
   })
-  if (profileId) await qualifyReferral(profileId)
+  if (profileId) await qualifySavedProfile(profileId)
 }
 
 export async function saveStep3(ctx: UserCtx, input: Step3Data, options?: { advance?: boolean }): Promise<void> {
   const advance = options?.advance ?? true
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true, onboardingStep: true },
-  })
-  if (!profile) throw new NotFoundError()
-
+  let profileId: string | undefined
   await db.$transaction(async (tx) => {
+    await lockActiveStudentTx(tx, ctx.userId)
+    const profile = await tx.studentProfile.findUnique({
+      where: { userId: ctx.userId }, select: { id: true, onboardingStep: true },
+    })
+    if (!profile) throw new NotFoundError()
+    profileId = profile.id
     await tx.studentLanguage.deleteMany({ where: { studentId: profile.id } })
 
     if (input.languages.length > 0) {
@@ -375,6 +394,7 @@ export async function saveStep3(ctx: UserCtx, input: Step3Data, options?: { adva
       where: { id: profile.id },
       data: {
         skills: input.skills,
+        editRevision: { increment: 1 },
         headline: input.headline ?? null,
         summary: input.summary ?? null,
         ...(advance ? { onboardingStep: Math.max(profile.onboardingStep, 4) } : {}),
@@ -382,20 +402,21 @@ export async function saveStep3(ctx: UserCtx, input: Step3Data, options?: { adva
       },
     })
 
-    await recalcCompleteness(tx, profile.id)
+    await recalcCompletenessTx(tx, profile.id)
   })
-  await qualifyReferral(profile.id)
+  if (profileId) await qualifySavedProfile(profileId)
 }
 
 export async function saveStep4(ctx: UserCtx, input: Step4Data, options?: { advance?: boolean }): Promise<void> {
   const advance = options?.advance ?? true
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true, onboardingStep: true },
-  })
-  if (!profile) throw new NotFoundError()
-
+  let profileId: string | undefined
   await db.$transaction(async (tx) => {
+    await lockActiveStudentTx(tx, ctx.userId)
+    const profile = await tx.studentProfile.findUnique({
+      where: { userId: ctx.userId }, select: { id: true, onboardingStep: true },
+    })
+    if (!profile) throw new NotFoundError()
+    profileId = profile.id
     await tx.education.deleteMany({ where: { studentId: profile.id } })
     await tx.experience.deleteMany({ where: { studentId: profile.id } })
 
@@ -434,11 +455,12 @@ export async function saveStep4(ctx: UserCtx, input: Step4Data, options?: { adva
       where: { id: profile.id },
       data: {
         ...(advance ? { onboardingStep: 5 } : {}),
+        editRevision: { increment: 1 },
         lastActiveAt: new Date(),
       },
     })
 
-    await recalcCompleteness(tx, profile.id)
+    await recalcCompletenessTx(tx, profile.id)
   })
-  await qualifyReferral(profile.id)
+  if (profileId) await qualifySavedProfile(profileId)
 }

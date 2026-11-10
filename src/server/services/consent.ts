@@ -1,6 +1,7 @@
 import 'server-only'
 import type { ConsentType } from '@prisma/client'
 import { db } from '../db'
+import { ValidationError } from '../errors'
 import { getSetting } from './settings'
 
 export interface ConsentEntry {
@@ -18,6 +19,10 @@ export async function recordConsents(
   consents: ConsentEntry[],
   meta: ConsentMeta,
 ): Promise<void> {
+  // Reject mixed batches before any settings read or consent insert.
+  if (consents.some(consent => ['AI_RESUME_PARSE', 'AI_MATCHING'].includes(consent.type))) {
+    throw new ValidationError('AI consent requires its dedicated consent service')
+  }
   const version = await getSetting<string>('legal.currentVersion', '1.0')
   await db.consent.createMany({
     data: consents.map((c) => ({

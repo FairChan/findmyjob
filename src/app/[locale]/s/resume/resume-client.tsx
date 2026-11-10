@@ -122,7 +122,7 @@ export function ResumeManager({ resumes, locale }: Props) {
       ) : (
         <ul className="divide-y rounded-lg border" aria-label={t('title')}>
           {resumes.map(resume => (
-            <li key={resume.id} className="flex flex-wrap items-center gap-3 p-4">
+            <li key={resume.id} className="flex flex-col items-stretch gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{resume.fileName}</span>

@@ -3,6 +3,8 @@ import { requireStudent } from '@/server/authz'
 import { headers } from 'next/headers'
 import { db } from '@/server/db'
 import { ResumeManager } from './resume-client'
+import { ResumeParsePanel } from '@/components/resume/ResumeParsePanel'
+import { getResumeParseUiState } from '@/server/services/resume-parsing'
 import type { Locale } from '@/i18n/routing'
 
 interface Props {
@@ -34,11 +36,14 @@ export default async function ResumePage({ params }: Props) {
   })
 
   const resumes = profile?.resumes ?? []
+  const uiState = await getResumeParseUiState({ userId })
 
   return (
     <div className="container mx-auto max-w-2xl px-4 py-10">
       <h1 className="mb-6 text-2xl font-bold">{t('title')}</h1>
       <ResumeManager resumes={resumes} locale={locale} />
+      <ResumeParsePanel locale={locale} uiState={uiState}
+        resumes={resumes.map(({ id, fileName, createdAt }) => ({ id, fileName, createdAt: createdAt.toISOString() }))} />
     </div>
   )
 }

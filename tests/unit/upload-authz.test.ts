@@ -3,6 +3,8 @@
  * Covers the authz-matrix gap for /api/uploads/[purpose].
  */
 import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { db } from '@/server/db'
+import { requestResumeParse } from '@/server/services/resume-parsing'
 
 // --- mocks ---
 
@@ -16,6 +18,7 @@ vi.mock('@/lib/storage', () => ({ putObject: mockPutObject }))
 
 const mockLogAudit = vi.fn()
 vi.mock('@/server/services/audit', () => ({ logAudit: mockLogAudit }))
+vi.mock('@/server/services/resume-parsing', () => ({ requestResumeParse: vi.fn() }))
 
 vi.mock('@/server/services/settings', () => ({
   getSetting: vi.fn().mockResolvedValue(20),
@@ -36,13 +39,16 @@ vi.mock('@/server/lib/pdf', () => ({
   MIME_TYPES: { pdf: 'application/pdf', png: 'image/png', jpeg: 'image/jpeg' },
 }))
 
-vi.mock('@/server/db', () => ({
-  db: {
-    studentProfile: { findUnique: vi.fn().mockResolvedValue({ id: 'sp-01' }) },
+vi.mock('@/server/db', () => {
+  const db = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
+    user: { findUnique: vi.fn().mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' }) },
+    studentProfile: { findUnique: vi.fn().mockResolvedValue({ id: 'sp-01', userId: 'user-01' }) },
     resumeFile: { create: vi.fn().mockResolvedValue({ id: 'rf-01' }) },
     paymentProofUpload: { create: vi.fn().mockResolvedValue({ id: 'proof-01' }) },
-  },
-}))
+  }
+  return { db: { ...db, $transaction: vi.fn(async (work: (tx: typeof db) => Promise<unknown>) => work(db)) } }
+})
 
 // requireStudent, requireCompanyMember, requireAdmin are set per-test below
 const mockRequireStudent = vi.fn()
@@ -74,10 +80,12 @@ function buildFormData(): FormData {
   return fd
 }
 
-function makeRequest(purpose: string): Request {
+function makeRequest(purpose: string, requestAiParse = false): Request {
+  const body = buildFormData()
+  if (requestAiParse) body.set('requestAiParse', 'true')
   return new Request(`http://localhost/api/uploads/${purpose}`, {
     method: 'POST',
-    body: buildFormData(),
+    body,
   })
 }
 
@@ -143,6 +151,18 @@ describe('upload route authz matrix (M2-T05)', () => {
     expect(res.status).toBe(400)
     const body = await res.json() as { code: string }
     expect(body.code).toBe('INVALID_PURPOSE')
+  })
+
+  it.each(['LOGO', 'PARTNER_LOGO', 'VERIFICATION', 'PAYMENT_PROOF'])('%s ignores resume parse intent and retains its original response', async purpose => {
+    mockRequireCompanyMember.mockResolvedValue({ companyId: 'co-01' })
+    mockRequireAdmin.mockResolvedValue(undefined)
+    mockDetectFileType.mockReturnValueOnce(purpose.includes('LOGO') ? 'png' : 'pdf')
+    const response = await POST(makeRequest(purpose, true))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true, key: mockPutObject.mock.calls[0][0] })
+    expect(db.$transaction).not.toHaveBeenCalled()
+    expect(db.resumeFile.create).not.toHaveBeenCalled()
+    expect(requestResumeParse).not.toHaveBeenCalled()
   })
 })
 

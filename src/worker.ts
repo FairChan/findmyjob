@@ -2,13 +2,14 @@ import * as Sentry from '@sentry/node'
 import { PgBoss } from 'pg-boss'
 import { env } from '@/env'
 import { logger } from '@/server/lib/logger'
-import { registerJobs } from '@/server/jobs/registry'
+import { createJobLifecycle, registerJobs } from '@/server/jobs/registry'
 import { sentryOptions } from '@/lib/sentry-options'
 
 Sentry.init(sentryOptions)
 
 async function main() {
   const connectionString = env.WORKER_DATABASE_URL ?? env.DATABASE_URL
+  const lifecycle = createJobLifecycle()
 
   const boss = new PgBoss({
     connectionString,
@@ -18,34 +19,56 @@ async function main() {
     createSchema: false,
   })
 
-  boss.on('error', (err: unknown) => {
-    const e = err as Record<string, unknown>
-    logger.error({ errName: typeof e?.name === 'string' ? e.name : undefined, code: e?.code }, 'pg-boss error')
+  boss.on('error', () => {
+    logger.error({ code: 'PG_BOSS_ERROR' }, 'pg-boss error')
   })
 
-  await boss.start()
-  logger.info('pg-boss started')
-
-  await registerJobs(boss)
-
-  let stopping = false
-
-  async function shutdown(signal: string): Promise<void> {
-    if (stopping) return
-    stopping = true
-    logger.info({ signal }, 'worker shutting down')
-    await boss.stop({ graceful: true })
-    logger.info('worker stopped')
-    process.exit(0)
+  let startup: Promise<void> | undefined
+  let stopping: Promise<void> | undefined
+  function shutdown(signal: string, startupFailed = false): Promise<void> {
+    if (stopping) return stopping
+    const drained = lifecycle.stop()
+    stopping = (async () => {
+      // allSettled prevents a rejected/early boss stop from bypassing real child
+      // close. Also wait for partial startup so it cannot register work after exit.
+      const results = await Promise.allSettled([
+        drained, Promise.resolve().then(() => boss.stop({ graceful: true })), startup,
+      ])
+      let failed = startupFailed || results.some(result => result.status === 'rejected')
+      if (startupFailed) {
+        Sentry.captureException(new Error('WORKER_STARTUP_FAILED'))
+        logger.error({ code: 'WORKER_STARTUP_FAILED' }, 'worker startup failed')
+      }
+      if (failed) {
+        Sentry.captureException(new Error('WORKER_SHUTDOWN_FAILED'))
+        logger.error({ code: 'WORKER_SHUTDOWN_FAILED' }, 'worker shutdown failed')
+      } else logger.info({ signal }, 'worker stopped')
+      try { await Sentry.close(2000) } catch {
+        failed = true
+        logger.error({ code: 'WORKER_TELEMETRY_CLOSE_FAILED' }, 'worker telemetry close failed')
+      }
+      process.exit(failed ? 1 : 0)
+    })()
+    return stopping
   }
 
-  process.once('SIGINT', () => void shutdown('SIGINT'))
-  process.once('SIGTERM', () => void shutdown('SIGTERM'))
+  process.once('SIGINT', () => shutdown('SIGINT'))
+  process.once('SIGTERM', () => shutdown('SIGTERM'))
+
+  startup = (async () => {
+    await boss.start()
+    if (lifecycle.signal.aborted) return
+    logger.info('pg-boss started')
+    await registerJobs(boss, lifecycle)
+  })()
+  try { await startup } catch {
+    await shutdown('startup', true)
+  }
 }
 
-main().catch((err: unknown) => {
-  Sentry.captureException(err)
-  const e = err as Record<string, unknown>
-  logger.error({ errName: typeof e?.name === 'string' ? e.name : undefined, code: e?.code }, 'worker startup failed')
-  void Sentry.close(2000).finally(() => process.exit(1))
+main().catch(async () => {
+  Sentry.captureException(new Error('WORKER_STARTUP_FAILED'))
+  logger.error({ code: 'WORKER_STARTUP_FAILED' }, 'worker startup failed')
+  try { await Sentry.close(2000) } catch { /* no work was admitted before startup setup failed */ }
+  process.exit(1)
 })

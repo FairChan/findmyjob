@@ -1,126 +1,134 @@
 import 'server-only'
-import { DataRequestStatus, DataRequestType } from '@prisma/client'
+import { DataRequestStatus, DataRequestType, type Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
 import { sendBoss } from '../jobs/boss'
 import { createNotification } from './notifications'
 import { sendNotificationEmail } from './notify'
-import { NotFoundError, ForbiddenError } from '../errors'
+import { AppError, NotFoundError, ForbiddenError } from '../errors'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { logger } from '../lib/logger'
+import { invalidateUserExportsTx } from './data-export-artifacts'
+import { cancelResumeParseDraftsTx } from './resume-parsing'
 
 const EXPORT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000
 
-/** Request a data export. If the user already has an OPEN or recently DONE export, return it. */
+async function lifecycleClockTx(tx: Prisma.TransactionClient, userId: string): Promise<Date> {
+  await lockXact(tx, LOCK_NS.STUDENT_DATA, userId)
+  await lockXact(tx, LOCK_NS.DATA_EXPORT, userId)
+  const [clock] = await tx.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS "now"`
+  if (!clock) throw new AppError('Data request clock unavailable', 'INTERNAL_ERROR', 500)
+  return clock.now
+}
+
+/** Caller holds STUDENT_DATA -> DATA_EXPORT. Preserve only pre-ledger cleanup references. */
+export async function invalidateLifecycleExportsTx(tx: Prisma.TransactionClient, userId: string): Promise<void> {
+  const candidates = await tx.dataRequest.findMany({
+    where: { userId, type: 'EXPORT', resultKey: { not: null } }, select: { id: true, resultKey: true, note: true },
+  })
+  const legacy = []
+  for (const request of candidates) {
+    if (!request.resultKey) continue
+    const artifact = await tx.dataExportArtifact.findUnique({ where: { storageKey: request.resultKey }, select: { id: true } })
+    if (!artifact) legacy.push({ id: request.id, resultKey: request.resultKey, note: request.note })
+  }
+  await invalidateUserExportsTx(tx, userId)
+  // These historical keys never authorize download/PUT. Keeping each original
+  // request reference prevents a pre-ledger object from disappearing from cleanup.
+  for (const request of legacy) await tx.dataRequest.updateMany({
+    where: { id: request.id, userId, type: 'EXPORT' }, data: { resultKey: request.resultKey, note: request.note },
+  })
+}
+
+/** Request a data export; only a live published artifact can satisfy a DONE dedupe hit. */
 export async function requestExport(ctx: { userId: string }): Promise<{ requestId: string; existing: boolean }> {
-  const since = new Date(Date.now() - EXPORT_DEDUP_WINDOW_MS)
-
-  const existing = await db.dataRequest.findFirst({
-    where: {
-      userId: ctx.userId,
-      type: DataRequestType.EXPORT,
-      OR: [
-        { status: DataRequestStatus.OPEN },
-        { status: DataRequestStatus.DONE, resolvedAt: { gte: since } },
-      ],
-    },
-    orderBy: { createdAt: 'desc' },
-  })
-
-  if (existing) {
-    return { requestId: existing.id, existing: true }
-  }
-
-  const req = await db.$transaction(async (tx) => {
-    const r = await tx.dataRequest.create({
-      data: { userId: ctx.userId, type: DataRequestType.EXPORT },
+  const result = await db.$transaction(async tx => {
+    const now = await lifecycleClockTx(tx, ctx.userId)
+    const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { status: true } })
+    if (!user) throw new NotFoundError('User not found')
+    if (user.status !== 'ACTIVE') throw new ForbiddenError()
+    const since = new Date(now.getTime() - EXPORT_DEDUP_WINDOW_MS)
+    const candidates = await tx.dataRequest.findMany({
+      where: { userId: ctx.userId, type: DataRequestType.EXPORT, OR: [
+        { status: DataRequestStatus.OPEN }, { status: DataRequestStatus.DONE, resolvedAt: { gte: since } },
+      ] }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
     })
-    await logAudit(
-      { actorId: ctx.userId, action: 'data.export', targetType: 'DataRequest', targetId: r.id },
-      tx,
-    )
-    return r
+    for (const existing of candidates) {
+      if (existing.status === 'OPEN' && !existing.resultKey) return { requestId: existing.id, existing: true }
+      if (!existing.resultKey) continue
+      const artifact = await tx.dataExportArtifact.findUnique({ where: { storageKey: existing.resultKey } })
+      if (existing.status === 'OPEN') {
+        if (artifact?.requestId === existing.id && artifact.userId === ctx.userId) return { requestId: existing.id, existing: true }
+        // Expire a pre-ledger fixed-key intent without losing its cleanup pointer.
+        await tx.dataRequest.update({ where: { id: existing.id }, data: {
+          status: 'REJECTED', exportGeneration: { increment: 1 }, exportLeaseToken: null, exportLeaseExpiresAt: null, resolvedAt: now,
+        } })
+        continue
+      }
+      if (artifact && artifact.requestId === existing.id && artifact.userId === ctx.userId &&
+        artifact.state === 'PUBLISHED' && artifact.uploadOutcome === 'ACKNOWLEDGED' &&
+        artifact.generation === existing.exportGeneration && artifact.expiresAt && artifact.expiresAt > now) {
+        return { requestId: existing.id, existing: true }
+      }
+    }
+    const request = await tx.dataRequest.create({ data: { userId: ctx.userId, type: DataRequestType.EXPORT } })
+    await logAudit({ actorId: ctx.userId, action: 'data.export', targetType: 'DataRequest', targetId: request.id }, tx)
+    return { requestId: request.id, existing: false }
   })
-
-  await sendBoss.start()
-  await sendBoss.send('export-user-data', { requestId: req.id, userId: ctx.userId })
-
-  return { requestId: req.id, existing: false }
+  if (!result.existing) {
+    try {
+      await sendBoss.start()
+      await sendBoss.send('export-user-data', { requestId: result.requestId, userId: ctx.userId })
+    } catch {
+      // Durable OPEN intent is recovered by the artifact protocol's independent scanner.
+      logger.warn({ code: 'DATA_EXPORT_DISPATCH_PENDING' }, 'Data export dispatch remains pending')
+    }
+  }
+  return result
 }
 
-/** Soft-delete the account. Immediately removes from talent pool, revokes sessions, creates DataRequest(DELETE). */
+/** Keep the existing retention and notification flow, with lifecycle invalidation committed atomically. */
 export async function requestDeletion(ctx: { userId: string }): Promise<void> {
-  const user = await db.user.findUnique({
-    where: { id: ctx.userId },
-    select: { id: true, status: true },
-  })
-  if (!user) throw new NotFoundError('User not found')
-  if (user.status === 'DELETED') return
-
-  const req = await db.$transaction(async (tx) => {
-    // Soft-delete
-    await tx.user.update({
-      where: { id: ctx.userId },
-      data: { status: 'DELETED', deletedAt: new Date() },
-    })
-
-    // Remove from talent pool immediately
-    await tx.studentProfile.updateMany({
-      where: { userId: ctx.userId },
-      data: { visibility: 'HIDDEN' },
-    })
-
-    // Revoke all sessions
+  const changed = await db.$transaction(async tx => {
+    const now = await lifecycleClockTx(tx, ctx.userId)
+    const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { status: true } })
+    if (!user) throw new NotFoundError('User not found')
+    await invalidateLifecycleExportsTx(tx, ctx.userId)
+    await cancelResumeParseDraftsTx(tx, ctx.userId)
+    // Repeated deletion still repairs pending invalidation, but never renews the 30-day clock.
+    if (user.status === 'DELETED') return false
+    await tx.user.update({ where: { id: ctx.userId }, data: { status: 'DELETED', deletedAt: now } })
+    await tx.studentProfile.updateMany({ where: { userId: ctx.userId }, data: { visibility: 'HIDDEN' } })
     await tx.session.deleteMany({ where: { userId: ctx.userId } })
-
-    // Create DataRequest(DELETE)
-    const r = await tx.dataRequest.create({
-      data: { userId: ctx.userId, type: DataRequestType.DELETE, status: DataRequestStatus.DONE, resolvedAt: new Date() },
-    })
-
-    await logAudit(
-      { actorId: ctx.userId, action: 'data.delete', targetType: 'DataRequest', targetId: r.id },
-      tx,
-    )
-
-    // In-transaction notification (no email here — email sent after commit)
-    await createNotification(tx, ctx.userId, 'account.deletion.confirmed', {
-      requestId: r.id,
-    })
-
-    return r
+    const request = await tx.dataRequest.create({ data: {
+      userId: ctx.userId, type: DataRequestType.DELETE, status: DataRequestStatus.DONE, resolvedAt: now,
+    } })
+    await logAudit({ actorId: ctx.userId, action: 'data.delete', targetType: 'DataRequest', targetId: request.id }, tx)
+    await createNotification(tx, ctx.userId, 'account.deletion.confirmed', { requestId: request.id })
+    return true
   })
-
-  // Post-commit email
-  await sendNotificationEmail(ctx.userId, { template: 'account-deletion-confirmed' })
+  if (changed) await sendNotificationEmail(ctx.userId, { template: 'account-deletion-confirmed' })
 }
 
-/** Get a completed export request belonging to the user, if still within 24 hours. */
+/** Owner-only ACTIVE + exact PUBLISHED authorization. Signing still occurs after this transaction. */
 export async function getExportDownloadRequest(ctx: { userId: string }, requestId: string) {
-  const req = await db.dataRequest.findUnique({
-    where: { id: requestId },
-    select: {
-      id: true,
-      userId: true,
-      type: true,
-      status: true,
-      resultKey: true,
-      resolvedAt: true,
-    },
+  return db.$transaction(async tx => {
+    const now = await lifecycleClockTx(tx, ctx.userId)
+    const req = await tx.dataRequest.findUnique({
+      where: { id: requestId },
+      select: { id: true, userId: true, type: true, status: true, resultKey: true, resolvedAt: true, exportGeneration: true },
+    })
+    if (!req || req.userId !== ctx.userId || req.type !== DataRequestType.EXPORT) throw new NotFoundError('Export not found')
+    const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { status: true } })
+    if (user?.status !== 'ACTIVE') return null
+    if (req.status !== DataRequestStatus.DONE || !req.resultKey || !req.resolvedAt) return null
+    if (now.getTime() - req.resolvedAt.getTime() >= EXPORT_DEDUP_WINDOW_MS) throw new NotFoundError('Export expired')
+    const artifact = await tx.dataExportArtifact.findUnique({ where: { storageKey: req.resultKey } })
+    if (!artifact || artifact.userId !== ctx.userId || artifact.requestId !== req.id || artifact.state !== 'PUBLISHED' ||
+      artifact.uploadOutcome !== 'ACKNOWLEDGED' || artifact.generation !== req.exportGeneration || !artifact.expiresAt || artifact.expiresAt <= now) return null
+    // Preserve the pre-existing public return shape without ledger/lease metadata.
+    return { id: req.id, userId: req.userId, type: req.type, status: req.status, resultKey: req.resultKey, resolvedAt: req.resolvedAt }
   })
-
-  if (!req || req.userId !== ctx.userId || req.type !== DataRequestType.EXPORT) {
-    throw new NotFoundError('Export not found')
-  }
-
-  if (req.status !== DataRequestStatus.DONE || !req.resultKey || !req.resolvedAt) {
-    return null
-  }
-
-  const age = Date.now() - req.resolvedAt.getTime()
-  if (age > EXPORT_DEDUP_WINDOW_MS) {
-    throw new NotFoundError('Export expired')
-  }
-
-  return req
 }
 
 /** List all data requests for admin. */

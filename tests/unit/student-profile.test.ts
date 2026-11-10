@@ -6,6 +6,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('@/env', () => ({ env: {} }))
 
 const mockTx = vi.hoisted(() => ({
+  $executeRaw: vi.fn(),
+  user: { findUnique: vi.fn() },
   studentProfile: { findUnique: vi.fn(), update: vi.fn() },
   studentLanguage: { count: vi.fn().mockResolvedValue(0), deleteMany: vi.fn(), createMany: vi.fn() },
   education: { count: vi.fn().mockResolvedValue(0) },
@@ -286,6 +288,8 @@ describe('step1Schema — schoolId validation (M2-T11)', () => {
 describe('saveStep1 — school validation (M2-T11)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    mockTx.$executeRaw.mockResolvedValue(1)
+    mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
     // First call: saveStep1 fetches id+onboardingStep+schoolId+schoolVerifiedAt; second call: recalcCompleteness
     mockTx.studentProfile.findUnique
@@ -325,6 +329,8 @@ describe('saveStep1 — school validation (M2-T11)', () => {
 describe('saveStep1 — school change clears verification (M2-T12)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    mockTx.$executeRaw.mockResolvedValue(1)
+    mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
     mockTx.studentProfile.update.mockResolvedValue({})
     mockHasStudentContactTx.mockResolvedValue(false)
@@ -394,13 +400,14 @@ describe('saveStep1 — school change clears verification (M2-T12)', () => {
 describe('recalcOwnCompleteness (M2-T11)', () => {
   beforeEach(() => {
     vi.resetAllMocks()
+    mockTx.$executeRaw.mockResolvedValue(1)
+    mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
     mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
   })
 
   it('recalculates completeness to 90 when contact is added to an 85-score profile', async () => {
     // Profile: workAuth(30) + intents(15) + skills(20) + edu/exp(20) = 85, no PDF, no contact
-    mockDb.studentProfile.findUnique.mockResolvedValue({ id: 'sp1' })
-    mockTx.studentProfile.findUnique.mockResolvedValue({
+    mockTx.studentProfile.findUnique.mockResolvedValueOnce({ id: 'sp1' }).mockResolvedValueOnce({
       workAuth: 'STUDENT_PASS',
       intents: ['INTERNSHIP'],
       skills: ['React'],

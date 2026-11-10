@@ -53,9 +53,14 @@ describe('T05 additional storage mutation boundaries', () => {
     try {
       await enteredOrSettled(entered.promise, settled)
       expect(sdk.send.mock.calls[0][0]).toBeInstanceOf(ListObjectVersionsCommand)
-      expect(sdk.send.mock.calls[1][1]?.abortSignal).toBe(controller.signal)
+      const signal = sdk.send.mock.calls[1][1]?.abortSignal as AbortSignal
+      expect(signal).toBeInstanceOf(AbortSignal)
+      expect(signal).toBe(sdk.send.mock.calls[0][1]?.abortSignal)
+      expect(signal.aborted).toBe(false)
       controller.abort()
       await enteredOrSettled(aborted.promise, settled)
+      expect(signal.aborted).toBe(true)
+      expect(signal.reason).toBe(controller.signal.reason)
       expect(finished).toBe(false)
       expect(sdk.destroy).toHaveBeenCalled()
     } finally {
@@ -84,8 +89,13 @@ describe('T05 additional storage mutation boundaries', () => {
       await enteredOrSettled(entered.promise, settled)
       const call = sdk.send.mock.calls.at(-1)!
       expect(call[0]).toBeInstanceOf(kind === 'put' ? PutObjectCommand : DeleteObjectsCommand)
-      expect(call[1]?.abortSignal).toBe(controller.signal)
+      const signal = call[1]?.abortSignal as AbortSignal
+      expect(signal).toBeInstanceOf(AbortSignal)
+      expect(signal).toSatisfy((actual: AbortSignal) => kind === 'delete' || actual === controller.signal)
+      expect(signal.aborted).toBe(false)
       controller.abort()
+      expect(signal.aborted).toBe(true)
+      expect(signal.reason).toBe(controller.signal.reason)
     } finally {
       controller.abort()
       release.resolve()
@@ -98,7 +108,8 @@ describe('T05 additional storage mutation boundaries', () => {
   it('preserves an existing one-argument delete with no exact candidate versions', async () => {
     sdk.send.mockResolvedValueOnce({ Versions: [{ Key: key + '-other', VersionId: 'unrelated' }] })
     await deleteAllVersions(key)
-    expect(sdk.send).toHaveBeenCalledExactlyOnceWith(expect.any(ListObjectVersionsCommand))
+    expect(sdk.send).toHaveBeenCalledExactlyOnceWith(expect.any(ListObjectVersionsCommand), { abortSignal: expect.any(AbortSignal) })
+    expect(sdk.send.mock.calls[0][1]?.abortSignal.aborted).toBe(false)
     expect(sdk.destroy).toHaveBeenCalledOnce()
   })
 

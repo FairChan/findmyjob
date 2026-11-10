@@ -12,7 +12,7 @@ export const LOCK_NS = {
   APPLICATION: 1005,
   WATERMARK_LEASE: 1006,
   JOB_REPORT: 1007,
-  // 1008 is reserved for the M9 student-data lifecycle lock.
+  STUDENT_DATA: 1008,
   INVOICE_NUMBER: 1009,
   // lane B 号段 1050–1099
   INVITATION: 1050,

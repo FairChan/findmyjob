@@ -140,7 +140,8 @@ flowchart LR
 - 只有 `services/contact-access.ts` 能调用 `decryptField`（ESLint override 保证）。企业侧入口是 `getContactForCompany(companyId, studentId)`，内部检查：存在 TalentUnlock、学生没有屏蔽该企业、学生账号未删除。学生本人读写自己的联系方式走 `getOwnContact` / `updateOwnContact`。
 - 企业侧拿到的学生数据**只能**经 `serializers/talent-card.ts` 的 `toTalentCard()` / `toTalentDetail()` 输出。企业侧通知和邮件的 payload 也只放 serializer 的输出；只有已解锁或学生已投递时才放全名。
 - 可见性只有一处判断：`services/talent-visibility.ts` 的 `isStudentVisibleToCompany`，搜索、详情、解锁、收藏、邀请都调用它；不满足时返回 404。
-- `lib/redact.ts`：把自由文本中的邮箱、电话（+60 / 01x、+86 1xx、通用格式）、URL、微信号模式替换为「[已隐藏]」。覆盖范围：headline、summary、每个技能标签、Education 的 major 和 description、Experience 的 title、organization 和 description、结构化简历预览。
+- `lib/redact.ts`：把自由文本中的邮箱、电话（+60 / 01x、+86 1xx、通用格式）、URL、微信号模式替换为「[已隐藏]」。覆盖范围：headline、summary、每个技能标签、Education 的 major 和 description、Experience 的 title、organization 和 description。
+- M9-T01 简历解析建议只经学生本人读取和本人数据导出提供；ADMIN 角色不自动获得草稿读取权限。企业人才/申请者详情不查询 `ResumeFile.parsedJson` 或私有草稿，`resumePreview` 保留 DTO 字段但始终为 null；正式档案、简历 ID 与下载沿原授权规则。只有学生选择并确认的字段才在同一事务写入正式档案，worker 不自动发布或改写档案。文本脱敏不等于匿名化，外发仍按个人资料处理。
 - **防泄漏测试**（必须存在，不得删除或放宽）：
   - 单元：构造一个所有 PII 字段都有值的学生，断言未解锁时序列化结果的 JSON 字符串里不出现任何 PII 值（全名、电话、邮箱、WhatsApp、微信、LinkedIn、简历 storageKey）。
   - E2E（M4-T13）：未解锁的企业访问搜索页和详情页，收集全部 HTML、RSC、JSON 响应，断言都没有哨兵值；职位侧用例见 M5-T03。
@@ -189,7 +190,7 @@ flowchart LR
 - **下载**：服务端先校验权限，再生成有效期不超过 300 秒的签名 GET，带 `Content-Disposition: attachment`，文件名按 RFC 5987 编码。企业下载简历走 `/api/resumes/[id]/download`：有界读取 PDF → `sanitizePdf` 重建并严格清理危险动作、注释及附件 → 按页面旋转加水印 → 分块流式返回，不暴露原始 URL。PostgreSQL ConcurrencyLease 协调跨实例容量，每个成员最多 2 个，全局默认 4；60 秒租约、15 秒续租，取消/失租停止底层处理，响应结束后释放。PDF 处理仍需完整有界缓冲区，响应分块避免额外整份复制；详细截止与故障语义见 M4-T17 决策。
 - **Logo**：走 `/api/logos/[companyId]` 代理，设 public 长缓存（P1：M7-T17）。
 - **存储桶**：私有并阻止公共访问；开启版本控制，非当前版本 30 天后过期。删除用户数据时用 ListObjectVersions + DeleteObjects 删掉全部版本。
-- **Key 规则**：`resumes/{studentId}/{cuid}.pdf`、`verifications/{companyId}/{cuid}.{ext}`、`logos/{companyId}/{cuid}.{ext}`、`exports/{userId}/{cuid}.zip`。
+- **Key 规则**：`resumes/{studentId}/{cuid}.pdf`、`verifications/{companyId}/{cuid}.{ext}`、`logos/{companyId}/{cuid}.{ext}`；M9-T01 新导出使用 `exports/{userId}/{requestId}/{artifactId}.zip`，每次 PUT 独立 key。旧固定导出 key 的一次性清单、过期及清理须先完成 RUNBOOK 的人工切换闸门。
 
 ### 5.6 后台任务（pg-boss）
 - worker 在 M0 就启动（`src/worker.ts`，M0-T11），连 `WORKER_DATABASE_URL`，`connection_limit=3`、`max=4`；Next 进程里只负责 send 的实例 `max=2`，关掉维护和调度。
@@ -206,13 +207,18 @@ flowchart LR
 | `reconcile-wallets` | 每天 03:00 |
 | `purge-deleted-accounts` | 每天 04:00，清理软删除满 30 天、仍有 PII 的账号（可重复执行） |
 | `employer-daily-digest` | 每天 09:00，新投递汇总 |
+| `resume-parse`（M9-T01） | 明确请求后入队；本进程消费并发 1、batchSize 1，不设 cron |
+| `dispatch-resume-parses`（M9-T01） | 每分钟，missed:once；恢复可处理的持久解析意图 |
+| `recover-data-exports`（M9-T01） | 每分钟，missed:once；按 artifact 独立恢复，不依赖已删除账号的 purge 筛选 |
 | `expire-subscriptions` | 每天 00:30 Asia/Kuala_Lumpur，missed:once；按公司主键每批 50，逐公司 CREDIT 事务过期并持久去重到期前 7 天站内提醒 |
 | `prune-rate-limit`（P1，M7-T14） | 定期清理限流桶 |
 
 套餐权益由 `subscription-entitlements.ts` 在调用方事务内统一解析：半开有效期 `[startsAt, endsAt)` 内已付款商业快照优先，关闭新销售不撤销已付权益。无有效段时，公益期沿现有配置，收费期用有限 FREE；异常快照不从当前商品补造。发布职位、席位预留/接受及学生邀请在同公司 CREDIT 锁后采样时间、复查身份与容量，再完成写入。邀请进一步按 CREDIT → INVITATION 取锁，并以吉隆坡自然月上下界计数。到期不删除职位/成员、不清空余额、不重置月用量；PENDING_REVIEW 不预留职位，已过期 PUBLISHED 重新开放须重新占位。显示层只读取 `getCompanyEntitlementUsage` 的来源、有效期、计数、限额及购买能力白名单；执行入口始终再次检查。
 
 ### 5.7 必须写审计日志的动作
-`auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`article.save`、`search.synonym.save`、`plan.create`、`plan.update`、`plan.deactivate`、`plan.delete`、`order.create`、`order.proof.attach`、`order.proof.view`、`order.cancel`、`order.confirm`、`invoice.issue`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
+`auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`resume.parse.consent`、`resume.parse.confirm`、`resume.parse.discard`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`article.save`、`search.synonym.save`、`plan.create`、`plan.update`、`plan.deactivate`、`plan.delete`、`order.create`、`order.proof.attach`、`order.proof.view`、`order.cancel`、`order.confirm`、`invoice.issue`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
+
+M9-T01 新增 `resume.parse.consent`、`resume.parse.confirm`、`resume.parse.discard`，与对应同意/确认/放弃事务一起提交。只记录同意布尔值及版本，或内部简历编号、代次、字段名、集合数量、schema 版本及结果 revision 等必要元数据；不得写入简历文本、建议正文、来源 key、provider 原始响应或错误正文。
 
 ### 5.8 安全清单
 - 所有外部输入用 zod 校验，Server Actions 也不例外（经 `action()` / `route()`）。
@@ -321,7 +327,7 @@ APP_TAG=                     # 镜像 tag（40 位 sha），部署脚本写入
 SEED_ADMIN_EMAIL=
 SEED_ADMIN_PASSWORD=
 ANTHROPIC_API_KEY=           # M9
-AI_MODEL_PARSE=claude-haiku-5-5      # M9，可换 claude-sonnet-5-5
+AI_MODEL_PARSE=             # M9-T01；人工核验项目可用的明确模型 ID，无 SDK/CLI 默认回退
 STRIPE_SECRET_KEY=           # M8
 STRIPE_WEBHOOK_SECRET=       # M8
 STRIPE_MODE=test             # test/live；与密钥、事件、Session/PI/Charge模式一致
