@@ -1,4 +1,12 @@
 {
+  "jobBrowser": {
+    "details": "职位详情",
+    "close": "关闭职位详情",
+    "loading": "正在加载职位详情…",
+    "unavailable": "该职位已不可用。关闭此窗口，继续浏览其他机会。",
+    "error": "暂时无法加载职位详情。请重试，或关闭此窗口继续浏览。",
+    "retry": "重试"
+  },
   "publicShowcase": {
     "jobsTitle": "从这里，发现下一种可能。",
     "jobsDescription": "先看看面向留马学生与毕业生的精选职位。登录后，按你的方向探索完整职位库，找到适合自己的下一步。",
@@ -1673,6 +1681,28 @@
     "description": "点击下方按钮下载你的个人数据包（ZIP 格式）。链接在生成后 5 分钟内有效。",
     "downloadButton": "下载数据包",
     "urlExpiry": "链接有效期 5 分钟，超时请刷新页面重新生成。"
+  },
+  "companyBrowser": {
+    "filters": "按标签筛选企业",
+    "selected": "已选中",
+    "selectedCompany": "当前选中企业",
+    "selectedFeedback": "已选中企业：{name}",
+    "loading": "正在加载企业及在招职位…",
+    "jobCount": "{count} 个在招职位",
+    "website": "企业官网（在新标签页打开）",
+    "noDescription": "该企业暂未添加简介。",
+    "openJobs": "在招职位",
+    "noJobs": "当前页暂无在招职位",
+    "missingTitle": "企业暂不可用",
+    "missingDescription": "未找到该企业，或该企业已停止展示。请选择其他企业查看在招职位。",
+    "chooseTitle": "探索企业机会",
+    "chooseDescription": "从列表中选择企业，查看企业简介及在招职位。",
+    "companyPagination": "企业分页",
+    "firstCompanies": "企业首页",
+    "nextCompanies": "下一页企业",
+    "jobPagination": "当前企业职位分页",
+    "firstJobs": "职位首页",
+    "nextJobs": "下一页职位"
   },
   "publicCompanies": {
     "title": "合作企业",

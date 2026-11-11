@@ -1,4 +1,12 @@
 {
+  "jobBrowser": {
+    "details": "Job details",
+    "close": "Close job details",
+    "loading": "Loading job details…",
+    "unavailable": "This job is no longer available. Close this window to keep exploring.",
+    "error": "Job details could not be loaded. Try again or close this window to keep exploring.",
+    "retry": "Try again"
+  },
   "publicShowcase": {
     "jobsTitle": "Find your next possibility.",
     "jobsDescription": "Start with selected opportunities for students and graduates in Malaysia. Sign in to explore the full job collection and find your next step.",
@@ -1673,6 +1681,28 @@
     "description": "Click the button below to download your personal data package (ZIP file). The link is valid for 5 minutes.",
     "downloadButton": "Download Data Package",
     "urlExpiry": "Link valid for 5 minutes. Reload this page to generate a new link."
+  },
+  "companyBrowser": {
+    "filters": "Filter companies by tag",
+    "selected": "Selected",
+    "selectedCompany": "Selected company",
+    "selectedFeedback": "Selected company: {name}",
+    "loading": "Loading company and open positions…",
+    "jobCount": "{count, plural, one {# open position} other {# open positions}}",
+    "website": "Company website (opens in a new tab)",
+    "noDescription": "This company has not added a description yet.",
+    "openJobs": "Open positions",
+    "noJobs": "No open positions on this page",
+    "missingTitle": "Company unavailable",
+    "missingDescription": "This company could not be found or is no longer available. Select another company to view its open positions.",
+    "chooseTitle": "Explore company opportunities",
+    "chooseDescription": "Choose a company from the list to see its profile and open positions.",
+    "companyPagination": "Company pages",
+    "firstCompanies": "First company page",
+    "nextCompanies": "Next companies",
+    "jobPagination": "Selected company job pages",
+    "firstJobs": "First job page",
+    "nextJobs": "Next jobs"
   },
   "publicCompanies": {
     "title": "Partner Companies",

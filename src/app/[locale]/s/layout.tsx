@@ -6,6 +6,7 @@ import { requireStudent } from '@/server/authz'
 import { ForbiddenError } from '@/server/errors'
 import type { Locale } from '@/i18n/routing'
 import { MemberNavigation } from '@/components/layout/member-navigation'
+import { JobBrowserMotion } from '@/components/jobs/job-browser-motion'
 
 export const metadata: Metadata = {
   title: { default: 'FindMYJob', template: '%s · FindMYJob' },
@@ -13,9 +14,11 @@ export const metadata: Metadata = {
 
 export default async function StudentLayout({
   children,
+  modal,
   params,
 }: {
   children: ReactNode
+  modal?: ReactNode
   params: Promise<{ locale: string }>
 }) {
   const { locale } = await params
@@ -30,7 +33,10 @@ export default async function StudentLayout({
   return (
     <div className="flex flex-1 flex-col">
       <MemberNavigation locale={locale as Locale} />
-      <main id="main-content" className="min-w-0 flex-1">{children}</main>
+      <JobBrowserMotion>
+        <main id="main-content" className="min-w-0 flex-1">{children}</main>
+        {modal}
+      </JobBrowserMotion>
     </div>
   )
 }

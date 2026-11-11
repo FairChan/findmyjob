@@ -7,7 +7,7 @@ import { DEFAULT_PUBLIC_SHOWCASE, PUBLIC_SHOWCASE_KEY } from '@/schemas/public-s
 import type { Prisma } from '@prisma/client'
 
 async function snapshot(page: Page, name: string) {
-  await page.screenshot({ path: path.resolve('.reports/member-navigation/screenshots', `${name}.png`), fullPage: true })
+  await page.screenshot({ path: path.resolve(process.env.REDESIGN_SHOT_DIR ?? '.reports/member-navigation/screenshots', `${name}.png`), fullPage: true })
 }
 
 async function accessible(page: Page) {
@@ -136,8 +136,9 @@ test('member company page links current positions into member job detail', async
   await page.getByRole('link', { name: /Member navigation job/ }).click()
   await expect(page).toHaveURL(new RegExp(`/zh/s/jobs/${job.id}$`))
   await expect(page.getByText('Synthetic member job description')).toBeVisible()
-  await expect(page.getByRole('button', { name: '账户菜单', exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: company.legalName, exact: true })).toHaveAttribute('href', `/zh/s/companies/${company.id}`)
+  // The modal keeps navigation visible behind it while hiding the background from assistive technology.
+  await expect(page.getByRole('button', { name: '账户菜单', exact: true, includeHidden: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: company.legalName, exact: true })).toHaveAttribute('href', `/zh/s/companies?company=${company.id}`)
 })
 
 test('admin can publish curated visitor selections and bilingual copy', async ({ page, browser }) => {

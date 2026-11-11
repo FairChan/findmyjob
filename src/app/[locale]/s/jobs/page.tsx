@@ -140,7 +140,7 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
   const hasFilters = !!(q || type || state || workMode || industry || rawTags || size || salary)
 
   return (
-    <div className="page-shell pb-20 pt-10 md:pt-14">
+    <div className="page-shell max-w-7xl pb-20 pt-10 md:pt-14">
       <PageHeader eyebrow={<BrandLine word="right" />} title={t('title')} lead={t('description')} />
 
       <form
@@ -246,7 +246,7 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
         />
       ) : (
         <>
-          <ul className="mt-8 grid gap-3">
+          <ul className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {items.map((hit) => {
               const { job } = hit
               const companyName =
@@ -265,7 +265,7 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
               return (
                 <li key={job.id}>
                   <JobCard
-                    layout="row"
+                    layout="tile"
                     as="h2"
                     jobId={job.id}
                     href={`/s/jobs/${job.id}`}

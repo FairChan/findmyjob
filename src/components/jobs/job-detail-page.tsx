@@ -19,12 +19,15 @@ import { formatKLDate } from '@/lib/format-date'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { cn } from '@/lib/utils'
+import { JobSharedTitle } from './job-browser-motion'
 
 const jobIdSchema = z.string().cuid()
 
 interface PageProps {
   params: Promise<{ locale: string; id: string }>
   listHref?: string
+  presentation?: 'page' | 'modal'
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
@@ -41,7 +44,8 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 }
 
-export default async function JobDetailPage({ params, listHref = '/jobs' }: PageProps) {
+export default async function JobDetailPage({ params, listHref = '/jobs', presentation = 'page' }: PageProps) {
+  const modal = presentation === 'modal'
   const { locale, id: rawId } = await params
   const idParsed = jobIdSchema.safeParse(rawId)
   if (!idParsed.success) return notFound()
@@ -127,7 +131,7 @@ export default async function JobDetailPage({ params, listHref = '/jobs' }: Page
     })
     const isOwnCompany = member?.companyId === job.companyId
     if (!isOwnCompany) {
-      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} locale={locale} t={t} jobId={id} listHref={listHref} />
+      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} locale={locale} t={t} jobId={id} listHref={listHref} presentation={presentation} />
     }
   }
 
@@ -153,7 +157,7 @@ export default async function JobDetailPage({ params, listHref = '/jobs' }: Page
     const { allowed, isNewView } = await openJob(studentProfile.id, id)
 
     if (!allowed) {
-      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} locale={locale} t={t} jobId={id} listHref={listHref} />
+      return <LockedJobCard title={job.title} companyName={companyName} state={job.state} locale={locale} t={t} jobId={id} listHref={listHref} presentation={presentation} />
     }
 
     // Only increment viewCount on first open — not on repeat visits
@@ -208,13 +212,15 @@ export default async function JobDetailPage({ params, listHref = '/jobs' }: Page
     .join(', ')
 
   return (
-    <div className="page-shell pb-20 pt-8 md:pt-12">
-      <BackToJobs label={t('backToList')} href={listHref} />
+    <div className={modal ? 'min-w-0' : 'page-shell pb-20 pt-8 md:pt-12'}>
+      {!modal && <BackToJobs label={t('backToList')} href={listHref} />}
 
-      <article className="mt-6 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-x-14">
+      <article className={cn('lg:grid', modal ? 'lg:grid-cols-[minmax(0,1fr)_18rem] lg:gap-x-8' : 'mt-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:gap-x-14')}>
         <header className="lg:col-start-1">
-          <Link href={`${listHref === '/s/jobs' ? '/s/companies' : '/companies'}/${job.companyId}`} prefetch={false} className="text-body text-muted-foreground hover:text-brand">{companyName}</Link>
-          <h1 className="mt-2 text-headline text-balance">{detail.title}</h1>
+          <Link href={listHref === '/s/jobs' ? `/s/companies?company=${job.companyId}` : `/companies/${job.companyId}`} prefetch={false} className="text-body text-muted-foreground hover:text-brand">{companyName}</Link>
+          <h1 className={cn('mt-2 text-balance', modal ? 'text-title leading-snug sm:text-3xl' : 'text-headline')}>
+            {modal ? <JobSharedTitle jobId={id}>{detail.title}</JobSharedTitle> : detail.title}
+          </h1>
           {(detail.acceptsStudentPass || detail.sponsorsWorkPass) && (
             <div className="mt-5 flex flex-wrap gap-2">
               {detail.acceptsStudentPass && <Badge tone="success">{t('facts.studentPass')}</Badge>}
@@ -225,7 +231,7 @@ export default async function JobDetailPage({ params, listHref = '/jobs' }: Page
 
         {/* On small screens the action sits right under the title; on large ones it stays in view while reading. */}
         <aside className="mt-8 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-0">
-          <Card className="lg:sticky lg:top-20">
+          <Card className={modal ? 'lg:sticky lg:top-0' : 'lg:sticky lg:top-20'}>
             <p className="text-xs text-muted-foreground">{t('facts.salary')}</p>
             <p className="mt-1 text-title">{salary ?? t('facts.salaryNegotiable')}</p>
             {detail.deadline && (
@@ -241,7 +247,7 @@ export default async function JobDetailPage({ params, listHref = '/jobs' }: Page
           </Card>
         </aside>
 
-        <div className="mt-10 lg:col-start-1">
+        <div className={cn('lg:col-start-1', modal ? 'mt-8' : 'mt-10')}>
           <dl
             aria-label={t('facts.label')}
             className="grid grid-cols-2 gap-x-8 border-y sm:grid-cols-3"
@@ -269,20 +275,20 @@ export default async function JobDetailPage({ params, listHref = '/jobs' }: Page
             </ul>
           )}
 
-          <section className="mt-12">
+          <section className={modal ? 'mt-8' : 'mt-12'}>
             <h2 className="text-title">{t('descriptionLabel')}</h2>
             <p className="mt-4 whitespace-pre-wrap text-body">{detail.description}</p>
           </section>
 
           {detail.requirements && (
-            <section className="mt-12">
+            <section className={modal ? 'mt-8' : 'mt-12'}>
               <h2 className="text-title">{t('requirementsLabel')}</h2>
               <p className="mt-4 whitespace-pre-wrap text-body">{detail.requirements}</p>
             </section>
           )}
 
           {detail.benefits && (
-            <section className="mt-12">
+            <section className={modal ? 'mt-8' : 'mt-12'}>
               <h2 className="text-title">{t('benefitsLabel')}</h2>
               <p className="mt-4 whitespace-pre-wrap text-body">{detail.benefits}</p>
             </section>
@@ -323,6 +329,7 @@ function LockedJobCard({
   t,
   jobId,
   listHref,
+  presentation,
 }: {
   title: string
   companyName: string
@@ -331,11 +338,12 @@ function LockedJobCard({
   t: Awaited<ReturnType<typeof getTranslations<'publicJobs'>>>
   jobId: string
   listHref: string
+  presentation: 'page' | 'modal'
 }) {
   return (
-    <div className="page-shell max-w-3xl pb-20 pt-8 md:pt-12">
-      <BackToJobs label={t('backToList')} href={listHref} />
-      <header className="mt-6">
+    <div className={presentation === 'modal' ? 'min-w-0' : 'page-shell max-w-3xl pb-20 pt-8 md:pt-12'}>
+      {presentation !== 'modal' && <BackToJobs label={t('backToList')} href={listHref} />}
+      <header className={presentation === 'modal' ? undefined : 'mt-6'}>
         <p className="text-body text-muted-foreground">
           {companyName}
           {state && <span> · {stateLabel(state, locale)}</span>}
