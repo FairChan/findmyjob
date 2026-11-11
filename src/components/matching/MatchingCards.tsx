@@ -13,7 +13,7 @@ const linkClass = 'inline-flex min-h-11 items-center font-semibold text-foregrou
 export function MatchingJobCards({ items, locale }: { items: JobListItem[]; locale: string }) {
   const t = useTranslations('publicJobs')
   return <ul className="space-y-3" data-testid="matching-job-results">{items.map(job => <li key={job.id} className={cardClass}>
-    <h3><Link href={'/' + locale + '/jobs/' + job.id} prefetch={false} className={linkClass}>{job.title}</Link></h3>
+    <h3><Link href={'/' + locale + '/s/jobs/' + job.id} prefetch={false} className={linkClass}>{job.title}</Link></h3>
     <p className="text-sm text-muted-foreground">{locale === 'zh' ? job.company.displayNameZh ?? job.company.legalName : job.company.displayNameEn ?? job.company.legalName}</p>
     <p className="mt-1 text-sm">{t(`type.${job.type}`)}{job.state ? ' · ' + stateLabel(job.state, locale) : ''}{job.city ? ' · ' + job.city : ''}</p>
     {job.skills.length > 0 && <p className="mt-2 text-sm text-muted-foreground">{job.skills.slice(0, 5).join(' · ')}</p>}

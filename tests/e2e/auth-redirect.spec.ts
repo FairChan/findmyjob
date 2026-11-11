@@ -135,8 +135,9 @@ test.describe('student registration → verification → login → sign-out', ()
 
     // --- Step 6: Sign out ---
     await page.goto('/zh/s/settings')
-    // The workspace top bar and the settings page both offer sign-out; use the one that is on every page.
-    await page.getByRole('banner').getByRole('button', { name: '退出登录' }).click()
+    // The avatar menu remains available on every member page.
+    await page.getByRole('button', { name: '账户菜单', exact: true }).click()
+    await page.getByRole('menuitem', { name: '退出登录', exact: true }).click()
     await expect(page).toHaveURL(/\/zh\/login/, { timeout: 10000 })
 
     // --- Step 7: The session is gone ---

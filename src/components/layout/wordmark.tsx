@@ -7,19 +7,24 @@ interface WordmarkProps {
   symbol?: boolean
   /** On narrow screens show the symbol only; the name stays available to assistive tech. */
   collapse?: boolean
-  /** Oversized symbol that breaks out of the bar it sits in, for contrast with a slim nav. */
+  /** Compact symbol sized to sit within the navigation bar. */
   prominent?: boolean
 }
 
 // "MY" carries both readings of the name: mine, and Malaysia's country code.
 // It is set in italics and in the colours of the Malaysian flag.
-export function Wordmark({ className, symbol = true, collapse = false, prominent = false }: WordmarkProps) {
+export function Wordmark({
+  className,
+  symbol = true,
+  collapse = false,
+  prominent = false,
+}: WordmarkProps) {
   return (
     <span
       className={cn(
         'inline-flex items-center gap-[0.4em] font-semibold tracking-tight',
-        // Room for the oversized symbol, which is taken out of the flow so the bar keeps its height.
-        prominent && 'relative pl-[4.15em]',
+        // Keep the symbol centered within the compact navigation bar.
+        prominent && 'relative pl-[2.8em]',
         className,
       )}
     >
@@ -34,7 +39,7 @@ export function Wordmark({ className, symbol = true, collapse = false, prominent
           className={cn(
             'w-auto shrink-0',
             prominent
-              ? 'absolute left-0 top-1/2 h-[3.5em] max-w-none -translate-y-1/2 drop-shadow-[0_6px_10px_rgb(0_0_0/0.18)]'
+              ? 'absolute left-0 top-1/2 h-[2.2em] max-w-none -translate-y-1/2 drop-shadow-[0_2px_4px_rgb(0_0_0/0.12)]'
               : 'h-[1.3em]',
           )}
         />

@@ -14,6 +14,8 @@ vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('@/server/authz', () => ({ requireAdmin: mocks.admin }))
 vi.mock('@/server/services/admin-settings', () => ({ getAllSettings: mocks.settings }))
 vi.mock('@/app/[locale]/admin/settings/bank-transfer-form', () => ({ BankTransferForm: () => null }))
+vi.mock('@/app/[locale]/admin/settings/showcase-form', () => ({ ShowcaseForm: () => null }))
+vi.mock('@/server/services/public-showcase', () => ({ getPublicShowcaseOptions: async () => ({ jobs: [], companies: [] }) }))
 vi.mock('@/app/[locale]/admin/settings/settings-form', () => ({ SettingsForm: (props: unknown) => { mocks.scalar(props); return null } }))
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({
   locale: mocks.locale, messages: messages(mocks.locale) as AbstractIntlMessages, namespace,

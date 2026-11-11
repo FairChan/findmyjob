@@ -10,6 +10,7 @@ import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 import { expectPageHealthy } from './helpers/smoke'
 import { e2eDb } from './helpers/db'
+import { loginAs } from './helpers/session'
 
 const shotDir = process.env.REDESIGN_SHOT_DIR
 
@@ -99,7 +100,8 @@ test.beforeAll(async () => {
 
 test.afterAll(removeFixtureJobs)
 
-test.describe('redesign: job list', () => {
+test.describe('redesign: member job list', () => {
+  test.beforeEach(async ({ page }) => { await loginAs(page, { role: 'STUDENT' }) })
   test('keyword and type filters narrow the list and can be cleared', async ({ page }) => {
     await page.goto('/zh/jobs')
     await expect(page.getByRole('heading', { level: 1, name: '职位列表' })).toBeVisible()
@@ -108,7 +110,7 @@ test.describe('redesign: job list', () => {
     const search = page.getByRole('search', { name: '筛选职位' })
     await search.getByRole('searchbox', { name: '关键词' }).fill(`Zebrafinch ${unique}`)
     await search.getByRole('button', { name: '搜索' }).click()
-    await expect(page).toHaveURL(/\/zh\/jobs\?.*q=Zebrafinch/)
+    await expect(page).toHaveURL(/\/zh\/s\/jobs\?.*q=Zebrafinch/)
     // The keyword survives the round trip even though the unused selects were submitted blank.
     await expect(search.getByRole('searchbox', { name: '关键词' })).toHaveValue(`Zebrafinch ${unique}`)
     // Search is fuzzy, so other jobs may be listed too; both of ours must be.
@@ -137,7 +139,7 @@ test.describe('redesign: job list', () => {
     await shot(page, 'jobs-zh-1440')
 
     await search.getByRole('link', { name: '清除筛选' }).click()
-    await expect(page).toHaveURL(/\/zh\/jobs$/)
+    await expect(page).toHaveURL(/\/zh\/s\/jobs$/)
     await expect(search.getByRole('link', { name: '清除筛选' })).toHaveCount(0)
   })
 
@@ -160,7 +162,8 @@ test.describe('redesign: job list', () => {
 
 test.describe('redesign: other public pages', () => {
   test('company list and company page', async ({ page }) => {
-    await expectPageHealthy(page, '/zh/companies')
+    await loginAs(page, { role: 'STUDENT' })
+    await expectPageHealthy(page, '/zh/s/companies')
     await expect(page.getByRole('link', { name: '全部', exact: true })).toHaveAttribute('aria-current', 'true')
     await expectNoSeriousA11y(page)
     await shot(page, 'companies-zh-1440')
@@ -172,10 +175,10 @@ test.describe('redesign: other public pages', () => {
     // Loading more keeps the visitor on a real page (the link used to double the locale).
     const more = page.getByRole('link', { name: '加载更多' })
     if (await more.count()) {
-      await expect(more).toHaveAttribute('href', /^\/zh\/companies\?/)
+      await expect(more).toHaveAttribute('href', /^\/zh\/s\/companies\?/)
     }
 
-    await expectPageHealthy(page, `/zh/companies/${companyId}`)
+    await expectPageHealthy(page, `/zh/s/companies/${companyId}`)
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(`公开页示例公司${unique}`)
     await expect(page.getByText('Petaling Jaya, Selangor')).toBeVisible()
     await expect(page.locator('a[href="https://example.com/about"]')).toHaveText(/example\.com/)
@@ -208,10 +211,11 @@ test.describe('redesign: other public pages', () => {
   })
 
   test('job list pagination link stays inside the locale', async ({ page }) => {
+    await loginAs(page, { role: 'STUDENT' })
     await page.goto('/zh/jobs')
     const more = page.getByRole('link', { name: '加载更多' })
     if (await more.count()) {
-      await expect(more).toHaveAttribute('href', /^\/zh\/jobs\?/)
+      await expect(more).toHaveAttribute('href', /^\/zh\/s\/jobs\?/)
       await more.click()
       await expect(page.getByRole('heading', { level: 1, name: '职位列表' })).toBeVisible()
     }

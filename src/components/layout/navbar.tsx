@@ -3,9 +3,13 @@ import type { Locale } from '@/i18n/routing'
 import { Navbar1 } from '@/components/ui/navbar-1'
 import LocaleSwitcher from './locale-switcher'
 import { Wordmark } from './wordmark'
+import { getMemberIdentity } from '@/server/services/member-identity'
+import { MemberNavigation } from './member-navigation'
 
 export default async function Navbar({ locale }: { locale: Locale }) {
   const t = await getTranslations('nav')
+  const member = await getMemberIdentity()
+  if (member && member.role !== 'ADMIN') return <MemberNavigation locale={locale} />
 
   return (
     <Navbar1

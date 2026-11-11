@@ -1,6 +1,7 @@
 'use client'
 import { useState, useTransition, KeyboardEvent, DragEvent } from 'react'
 import { useTranslations } from 'next-intl'
+import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { FIELD_COMPACT_CLASS, TEXTAREA_CLASS } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
@@ -41,6 +42,7 @@ type ExperienceEntry = {
 }
 
 function useSectionSave() {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
@@ -49,6 +51,7 @@ function useSectionSave() {
     startTransition(async () => {
       const result = await fn()
       setStatus(result.ok ? 'success' : 'error')
+      if (result.ok) router.refresh()
     })
   }
 

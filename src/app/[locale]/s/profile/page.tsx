@@ -5,6 +5,7 @@ import { getProfileForOnboarding } from '@/server/services/student-profile'
 import { db } from '@/server/db'
 import ProfileEditor from '@/components/profile/ProfileEditor'
 import { WorkspacePage } from '@/components/layout/workspace-page'
+import ProfileOverview from '@/components/profile/profile-overview'
 
 interface Props {
   params: Promise<{ locale: string }>
@@ -26,6 +27,7 @@ export default async function StudentProfilePage({ params }: Props) {
   return (
     <WorkspacePage title={t('title')}>
       <ProfileEditor locale={locale} profile={profile} schools={schools} />
+      <ProfileOverview params={params} />
     </WorkspacePage>
   )
 }

@@ -1,6 +1,8 @@
 'use server'
 
 import { z } from 'zod'
+import { publicShowcaseSchema } from '@/schemas/public-showcase'
+import { updatePublicShowcaseSettingsAdmin } from '@/server/services/admin-settings'
 import { marketingGateInputSchema } from '@/schemas/marketing-settings'
 import { action } from '@/server/action'
 import { matchingGateInputSchema } from '@/schemas/semantic-matching'
@@ -13,6 +15,11 @@ const updateSettingInput = z.object({
   key: z.string().min(1).max(100),
   value: z.unknown(),
 })
+
+export const savePublicShowcaseSettingsAction = action(
+  { auth: 'admin-fresh', input: publicShowcaseSchema },
+  async ctx => updatePublicShowcaseSettingsAdmin({ userId: ctx.userId! }, ctx.input),
+)
 
 export const updateSettingAction = action(
   {

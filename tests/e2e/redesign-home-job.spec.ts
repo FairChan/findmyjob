@@ -99,11 +99,16 @@ test.describe('redesign: home', () => {
     await shot(page, 'home-en-1440')
   })
 
-  test('hero search hands the keyword to the jobs list', async ({ page }) => {
+  test('hero invites visitors to sign in and gives members a working search', async ({ page }) => {
+    await page.goto('/zh')
+    await expect(page.getByRole('searchbox')).toHaveCount(0)
+    await expect(page.getByRole('link', { name: '登录查看更多职位', exact: true })).toHaveAttribute('href', /\/zh\/login\?redirect=/)
+    await loginAs(page, { role: 'STUDENT' })
     await page.goto('/zh')
     await page.getByRole('searchbox', { name: '搜索职位' }).fill('marketing')
     await page.getByRole('button', { name: '搜索', exact: true }).click()
-    await expect(page).toHaveURL(/\/zh\/jobs\?q=marketing/)
+    await expect(page).toHaveURL(/\/zh\/s\/jobs\?q=marketing/)
+    await expect(page.locator('#jobs-q')).toHaveValue('marketing')
   })
 
   test('375px: headline and search fit without horizontal scroll', async ({ page }) => {

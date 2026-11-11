@@ -1,6 +1,7 @@
 'use server'
 import { z } from 'zod'
 import { headers } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 import { action } from '@/server/action'
 import { getSession } from '@/server/auth'
 import { db } from '@/server/db'
@@ -44,7 +45,7 @@ export const getPostLoginRedirect = action(
       const path =
         !profile || profile.completeness === 0
           ? `/${locale}/s/onboarding`
-          : `/${locale}/s`
+          : `/${locale}/s/jobs`
       return { path }
     }
 
@@ -53,7 +54,7 @@ export const getPostLoginRedirect = action(
         where: { userId: session.user.id },
         select: { id: true },
       })
-      const path = !member ? `/${locale}/e/onboarding` : `/${locale}/e`
+      const path = !member ? `/${locale}/e/onboarding` : `/${locale}/e/jobs`
       return { path }
     }
 
@@ -72,6 +73,15 @@ export const updateLocaleAction = action(
       where: { id: userId },
       data: { locale: input.locale },
     })
+    return {}
+  },
+)
+
+export const updateAccountNameAction = action(
+  { auth: 'user', input: z.object({ name: z.string().trim().min(1).max(100) }) },
+  async ({ userId, input }) => {
+    await db.user.update({ where: { id: userId }, data: { name: input.name } })
+    revalidatePath('/', 'layout')
     return {}
   },
 )

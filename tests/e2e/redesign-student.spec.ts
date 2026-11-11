@@ -54,9 +54,9 @@ async function loginStudent(page: Page) {
 }
 
 test.describe('redesign: student workspace', () => {
-  test('dashboard shows completeness and sends each task to the page that completes it', async ({ page }) => {
+  test('profile shows completeness and sends each task to the page that completes it', async ({ page }) => {
     await loginStudent(page)
-    await expectPageHealthy(page, '/zh/s')
+    await expectPageHealthy(page, '/zh/s/profile')
     const main = page.getByRole('main')
     await expect(main.getByRole('heading', { level: 1 })).toHaveCount(1)
     await expect(main.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '40')
@@ -72,7 +72,7 @@ test.describe('redesign: student workspace', () => {
     await shot(page, 'student-home-zh-1440')
 
     await page.setViewportSize({ width: 375, height: 812 })
-    await page.goto('/zh/s')
+    await page.goto('/zh/s/profile')
     await expectNoHorizontalScroll(page)
     await shot(page, 'student-home-zh-375')
   })
@@ -95,11 +95,12 @@ test.describe('redesign: student workspace', () => {
 
   test('english pages render their own copy', async ({ page }) => {
     await loginStudent(page)
-    await expectPageHealthy(page, '/en/s')
-    await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'Student Dashboard' })).toBeVisible()
+    await expectPageHealthy(page, '/en/s', { expectUrl: '/en/s/jobs' })
+    await expect(page).toHaveURL(/\/en\/s\/jobs$/)
+    await expect(page.getByRole('search')).toBeVisible()
     await shot(page, 'student-home-en-1440')
 
     await expectPageHealthy(page, '/en/s/applications')
-    await expect(page.getByRole('main').getByRole('link', { name: 'Browse jobs' })).toHaveAttribute('href', '/en/jobs')
+    await expect(page.getByRole('main').getByRole('link', { name: 'Browse jobs' })).toHaveAttribute('href', '/en/s/jobs')
   })
 })

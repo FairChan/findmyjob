@@ -17,6 +17,7 @@ export interface ShowcaseCompany {
 }
 
 interface CompanyShowcaseProps {
+  basePath?: string
   companies: ShowcaseCompany[]
   labels: {
     region: string
@@ -50,7 +51,7 @@ function initialTile(name: string, index: number) {
  * The partner companies as a flexing image row. Selecting the centred company opens its
  * details. Decoration over the plain list below it, which stays the accessible way in.
  */
-export function CompanyShowcase({ companies, labels }: CompanyShowcaseProps) {
+export function CompanyShowcase({ companies, labels, basePath = '/companies' }: CompanyShowcaseProps) {
   const [selected, setSelected] = useState<ShowcaseCompany | null>(null)
   const items = useMemo(
     () =>
@@ -98,7 +99,7 @@ export function CompanyShowcase({ companies, labels }: CompanyShowcaseProps) {
                 {selected.description?.trim() || labels.noDescription}
               </p>
               <Button asChild variant="brand" className="mt-2 w-full">
-                <Link href={`/companies/${selected.id}`} prefetch={false}>
+                <Link href={`${basePath}/${selected.id}`} prefetch={false}>
                   {labels.viewCompany}
                 </Link>
               </Button>

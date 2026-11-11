@@ -1,5 +1,6 @@
 import 'server-only'
 import { z } from 'zod'
+import { DEFAULT_PUBLIC_SHOWCASE, PUBLIC_SHOWCASE_KEY, publicShowcaseSchema } from '@/schemas/public-showcase'
 import { randomUUID } from 'node:crypto'
 import { matchingGateInputSchema } from '@/schemas/semantic-matching'
 import { env } from '@/env'
@@ -33,6 +34,7 @@ export interface SettingMeta {
 }
 
 export const SETTINGS: SettingMeta[] = [
+  { key: PUBLIC_SHOWCASE_KEY, defaultValue: DEFAULT_PUBLIC_SHOWCASE, schema: publicShowcaseSchema, group: 'showcase' },
   { key: 'billing.enabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
   { key: 'billing.studentEnabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
   { key: 'billing.bankTransfer', defaultValue: EMPTY_BANK_TRANSFER, schema: bankTransferSettingsSchema, group: 'billing' },
@@ -119,6 +121,7 @@ export async function updateSettingAdmin(
   rawValue: unknown,
 ): Promise<void> {
   await assertAdmin(ctx.userId)
+  if (key === PUBLIC_SHOWCASE_KEY) throw new NotFoundError('Dedicated showcase settings writer required')
   if (key === 'marketing.weekly') throw new NotFoundError('Dedicated marketing settings writer required')
   if (key === 'ai.matching') throw new NotFoundError('Dedicated matching settings writer required')
   const meta = SETTINGS_BY_KEY.get(key)
@@ -132,6 +135,13 @@ export async function updateSettingAdmin(
 }
 
 export { getSetting }
+
+export async function updatePublicShowcaseSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = publicShowcaseSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid showcase configuration')
+  await setSetting(PUBLIC_SHOWCASE_KEY, parsed.data, ctx.userId)
+}
 
 const jdAssistantGateInputSchema = resumeParseGateSchema.omit({ epoch: true }).strict()
 

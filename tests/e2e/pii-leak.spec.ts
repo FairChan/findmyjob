@@ -453,7 +453,7 @@ test.describe('PII leak – talent search/detail (M4-T22, free-text coverage + i
         const saResponsePromise = page.waitForResponse(
           (r) => !!r.request().headers()['next-action'],
         )
-        await page.locator('button[aria-haspopup="dialog"]').first().click()
+        await page.getByRole('main').locator('button[aria-haspopup="dialog"]').first().click()
         await page.locator('[role="dialog"]').waitFor({ state: 'visible' })
         await saResponsePromise.catch(() => {})  // tolerate timeout: dialog may not trigger SA
         await page.keyboard.press('Escape')

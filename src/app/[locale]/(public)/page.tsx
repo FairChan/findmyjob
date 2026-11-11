@@ -5,6 +5,7 @@ import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
 import { getHomePartners } from '@/server/services/admin-schools-partners'
 import { getHomeStats, getLatestJobs } from '@/server/services/home'
+import { getMemberIdentity } from '@/server/services/member-identity'
 import { safeWebsiteHref } from '@/lib/url-utils'
 import { HeroFloating } from '@/components/home/hero-floating'
 import { HeroWord } from '@/components/home/hero-word'
@@ -56,10 +57,12 @@ export default async function HomePage({ params }: Props) {
   const { locale } = await params
   const t = await getTranslations({ locale, namespace: 'home' })
 
-  const [partners, stats, latestJobs] = await Promise.all([
+  const [partners, stats, latestJobs, member, showcase] = await Promise.all([
     getHomePartners(),
     getHomeStats(),
     getLatestJobs(6),
+    getMemberIdentity(),
+    getTranslations({ locale, namespace: 'publicShowcase' }),
   ])
 
   const heroWords = HERO_WORD_KEYS.map((key) => t(`heroWords.${key}`))
@@ -89,8 +92,8 @@ export default async function HomePage({ params }: Props) {
             {t('heroSubtitle')}
           </p>
 
-          <form
-            action={`/${locale}/jobs`}
+          {member?.role === 'STUDENT' ? <form
+            action={`/${locale}/s/jobs`}
             method="get"
             role="search"
             className="mx-auto mt-10 flex max-w-xl items-center gap-2 rounded-full bg-muted p-1.5 pl-5 focus-within:ring-2 focus-within:ring-ring"
@@ -110,7 +113,13 @@ export default async function HomePage({ params }: Props) {
             <Button type="submit" variant="brand" className="h-11 px-6">
               {t('searchSubmit')}
             </Button>
-          </form>
+          </form> : <div className="mt-10 flex justify-center">
+            <Button asChild variant="brand" size="lg">
+              <Link href={member?.role === 'EMPLOYER' ? '/e' : `/login?redirect=${encodeURIComponent(`/${locale}/s/jobs`)}`} prefetch={false}>
+                {member?.role === 'EMPLOYER' ? t('employerCta') : showcase('jobsCta')}
+              </Link>
+            </Button>
+          </div>}
 
           <div className="mt-6 flex flex-wrap justify-center gap-x-8 gap-y-2 text-body">
             <TextLink href="/register/student">{t('ctaRegister')}</TextLink>

@@ -49,7 +49,7 @@ export default async function MyApplicationsPage({
           description={t('emptyHint')}
           action={
             <Button asChild variant="brand">
-              <Link href="/jobs" prefetch={false}>
+              <Link href="/s/jobs" prefetch={false}>
                 {t('browseJobs')}
               </Link>
             </Button>
@@ -64,7 +64,7 @@ export default async function MyApplicationsPage({
                   <div className="min-w-0">
                     <p className="text-xs text-muted-foreground">{app.job.companyName}</p>
                     <Link
-                      href={`/jobs/${app.job.id}`}
+                      href={`/s/jobs/${app.job.id}`}
                       // Opening a job detail spends the student's view quota.
                       prefetch={false}
                       className="mt-1 inline-block text-body font-semibold leading-snug underline-offset-4 hover:underline"

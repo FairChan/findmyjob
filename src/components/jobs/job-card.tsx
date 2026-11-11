@@ -10,6 +10,7 @@ export interface JobCardBadge {
 
 interface JobCardProps {
   jobId: string
+  href?: string
   title: string
   company: string
   badges: JobCardBadge[]
@@ -21,11 +22,11 @@ interface JobCardProps {
   as?: 'h2' | 'h3' | 'p'
 }
 
-export function JobCard({ jobId, title, company, badges, salary, layout = 'tile', as: Title = 'h3' }: JobCardProps) {
+export function JobCard({ jobId, href, title, company, badges, salary, layout = 'tile', as: Title = 'h3' }: JobCardProps) {
   const row = layout === 'row'
   return (
     // Opening a job detail spends the student's view quota, so never prefetch it.
-    <Link href={`/jobs/${jobId}`} prefetch={false} className="group block h-full rounded-card">
+    <Link href={href ?? `/jobs/${jobId}`} prefetch={false} className="group block h-full rounded-card">
       <Card
         className={cn(
           'flex h-full transition-[background-color,box-shadow] group-hover:bg-card group-hover:shadow-float motion-reduce:transition-none',

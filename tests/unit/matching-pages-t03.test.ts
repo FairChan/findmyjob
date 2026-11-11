@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { createElement, isValidElement, type ComponentProps, type ReactElement, type ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import StudentDashboardPage from '@/app/[locale]/s/page'
+import StudentDashboardPage from '@/components/profile/profile-overview'
 import PrivacyPage from '@/app/[locale]/s/privacy/page'
 import CompanyJobsPage from '@/app/[locale]/e/jobs/page'
 import JobRecommendationsPage from '@/app/[locale]/e/jobs/[id]/recommendations/page'
@@ -44,7 +44,7 @@ beforeEach(() => {
 })
 describe('matching server-page boundaries', () => {
   for (const locale of ['zh', 'en'] as const) {
-    it(locale + ' binds dashboard bootstrap to the authenticated student only', async () => {
+    it(locale + ' binds profile overview bootstrap to the authenticated student only', async () => {
       io.locale = locale
       const tree = nodes(await StudentDashboardPage({ params: Promise.resolve({ locale }) }))
       const panel = tree.find(node => node.type === StudentMatchingPanel)

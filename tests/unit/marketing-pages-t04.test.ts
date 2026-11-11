@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import StudentPrivacyPage from '@/app/[locale]/s/privacy/page'
 import EmployerPreferencesPage from '@/app/[locale]/e/preferences/page'
 import EmployerLayout from '@/app/[locale]/e/layout'
+import { MemberNavigation } from '@/components/layout/member-navigation'
 import { MarketingPreferences } from '@/components/privacy/MarketingPreferences'
 import { StudentMatchingPanel } from '@/components/matching/StudentMatchingPanel'
 import PrivacyCenter from '@/components/privacy/PrivacyCenter'
@@ -19,7 +20,8 @@ vi.mock('next-intl/server', () => ({ getLocale: async () => io.locale, getTransl
   return data[namespace]?.[key] ?? key
 } }))
 vi.mock('@/server/authz', () => ({ requireStudent: io.student, requireEmployer: io.employer }))
-vi.mock('@/server/db', () => ({ db: { notification: { count: async () => 0 } } }))
+vi.mock('@/server/db', () => ({ db: { notification: { count: async () => 0 }, companyMember: { findFirst: async () => null } } }))
+vi.mock('@/server/services/member-identity', () => ({ getMemberIdentity: async () => ({ id: 'synthetic-employer', name: 'Employer', image: null, role: 'EMPLOYER', status: 'ACTIVE' }) }))
 vi.mock('@/server/services/marketing-consent', () => ({ getMarketingUiState: io.bootstrap }))
 vi.mock('@/server/services/semantic-matching', () => ({ getStudentMatchingUiState: async () => ({ available: false, consentGranted: false, consentCurrent: false, legalVersion: null }) }))
 vi.mock('@/server/services/privacy', () => ({ getLatestTalentPoolConsent: async () => false, listBlockedCompanies: async () => [], getProfileViews: async () => [], getUnlocks: async () => [] }))
@@ -60,12 +62,13 @@ describe('marketing preference server boundaries', () => {
       expect(io.employer).toHaveBeenCalledExactlyOnceWith(expect.any(Headers))
       expect(io.student).not.toHaveBeenCalled()
     })
-    it(locale + ' keeps an employer layout entry without consulting company membership', async () => {
+    it(locale + ' keeps personal preferences in the avatar menu without company membership', async () => {
       io.locale = locale
       const tree = nodes(await EmployerLayout({ children: null, params: Promise.resolve({ locale }) }))
-      const entry = tree.find(node => node.props.href === '/' + locale + '/e/preferences')
-      expect(entry?.props.children).toBe(copy(locale).marketing.preferencesLink)
-      expect(entry?.props.prefetch).toBe(false)
+      expect(tree.some(node => node.type === MemberNavigation)).toBe(true)
+      const header = await MemberNavigation({ locale })
+      expect(header?.props.accountLinks).toContainEqual({ href: '/e/preferences', label: copy(locale).marketing.preferencesLink })
+      expect(header?.props.accountLinks).toContainEqual(expect.objectContaining({ href: '/e/settings' }))
     })
   }
   it('stops an unauthenticated student before reading bootstrap', async () => {

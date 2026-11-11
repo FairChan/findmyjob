@@ -34,7 +34,7 @@ for (const locale of ['zh', 'en'] as const) describe(locale + ' explicit AI matc
     await click(button(t.requestJobs))
     expect(io.jobs).toHaveBeenCalledExactlyOnceWith({ limit: 10 })
     expect(document.body.textContent).toContain(job.title)
-    const detail = document.querySelector('a[href="/' + locale + '/jobs/' + jobId + '"]')
+    const detail = document.querySelector('a[href="/' + locale + '/s/jobs/' + jobId + '"]')
     expect(detail?.getAttribute('data-prefetch')).toBe('false')
   })
   it('keeps independent consent management in privacy mode without any recommendation request control', async () => {
@@ -50,7 +50,7 @@ for (const locale of ['zh', 'en'] as const) describe(locale + ' explicit AI matc
     const t = copy(locale).matching
     await student({ ...granted, available: false, consentCurrent: false, legalVersion: null })
     expect(button(t.requestJobs).disabled).toBe(true)
-    expect(document.querySelector('a[href="/' + locale + '/jobs"]')).not.toBeNull()
+    expect(document.querySelector('a[href="/' + locale + '/s/jobs"]')).not.toBeNull()
     await click(button(t.withdraw))
     expect(io.consent).toHaveBeenCalledExactlyOnceWith({ granted: false, submittedVersion: null })
     expect(document.body.textContent).toContain(t.consentWithdrawn)
@@ -65,7 +65,7 @@ for (const locale of ['zh', 'en'] as const) describe(locale + ' explicit AI matc
     expect(document.body.textContent).not.toContain(t.empty)
     await click(button(t.requestJobs))
     expect(document.body.textContent).toContain(t.empty)
-    expect(document.querySelector('a[href="/' + locale + '/jobs"]')?.textContent).toBe(t.searchJobs)
+    expect(document.querySelector('a[href="/' + locale + '/s/jobs"]')?.textContent).toBe(t.searchJobs)
   })
   it('renders only job-card fields as plain text and ignores extra sensitive data', async () => {
     const t = copy(locale).matching

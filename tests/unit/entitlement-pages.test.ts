@@ -28,6 +28,8 @@ vi.mock('@/server/actions/team', () => ({ inviteMemberAction: vi.fn(), removeMem
 vi.mock('@/app/[locale]/e/jobs/actions', () => ({ copyJobAction: vi.fn(), closeJobAction: vi.fn() }))
 vi.mock('@/components/notifications/NotificationsClient', () => ({ NotificationsClient: () => null }))
 vi.mock('@/components/notifications/MarkAllReadButton', () => ({ MarkAllReadButton: () => null }))
+// Async overview is covered in browser tests; this suite mounts entitlement wiring in jsdom.
+vi.mock('@/components/company/employer-overview', () => ({ default: () => null }))
 vi.mock('next-intl/server', () => ({
   getLocale: async () => mocks.locale,
   getTranslations: async (arg: string | { locale?: string; namespace: string }) => createTranslator({

@@ -209,7 +209,10 @@ export default async function middleware(request: NextRequest) {
       const locale = extractLocale(pathname)
       const loginUrl = new URL(`/${locale}/login`, request.url)
       loginUrl.searchParams.set('redirect', pathname)
-      return withCsp(NextResponse.redirect(loginUrl))
+      const response = NextResponse.redirect(loginUrl)
+      response.headers.set('Cache-Control', 'private, no-store')
+      response.headers.set('X-Robots-Tag', 'noindex, nofollow')
+      return withCsp(response)
     }
   }
 
@@ -234,8 +237,10 @@ export default async function middleware(request: NextRequest) {
   response.headers.set('x-request-id', requestId)
 
   // Protected pages (student, employer, admin) and auth pages: prevent caching and indexing.
-  if (requiresNoIndex(pathname)) {
+  if (requiresNoIndex(pathname) || hasSessionCookie(request)) {
     response.headers.set('Cache-Control', 'private, no-store')
+  }
+  if (requiresNoIndex(pathname)) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow')
   }
 

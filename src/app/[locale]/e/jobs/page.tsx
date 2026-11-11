@@ -6,6 +6,7 @@ import { listCompanyJobs } from '@/server/services/jobs'
 import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 import JobListClient from '@/components/jobs/job-list-client'
+import EmployerOverview from '@/components/company/employer-overview'
 import { WorkspacePage } from '@/components/layout/workspace-page'
 import { Button } from '@/components/ui/button'
 import type { JobStatus, JobType } from '@prisma/client'
@@ -51,6 +52,7 @@ export default async function JobsPage({ params }: { params: Promise<{ locale: s
         </Button>
       }
     >
+      <EmployerOverview params={params} />
       <CompanyEntitlementSummary usage={usage} resource="jobs" />
       {publishedJobs.length > 0 && <section className="space-y-2 rounded-card bg-muted p-5 sm:p-6" aria-labelledby="matching-jobs-title">
         <h2 id="matching-jobs-title" className="text-title">{matching('jobLinksTitle')}</h2>

@@ -52,16 +52,20 @@ test.describe('redesign: public and auth shells', () => {
 })
 
 test.describe('redesign: workspace shells', () => {
-  test('student: navigation marks the current page and sign-out is one click away', async ({ page }) => {
+  test('student: navigation marks the current page and the avatar opens profile and sign-out', async ({ page }) => {
     const { userId } = await loginAs(page, { role: 'STUDENT' })
     await e2eDb.studentProfile.create({
       data: { userId, fullName: 'Shell Student', completeness: 80, visibility: 'PUBLIC', onboardingStep: 5 },
     })
     await page.goto('/zh/s/profile')
     const nav = page.getByRole('navigation', { name: '学生导航', exact: true })
-    await expect(nav.getByRole('link', { name: '我的档案', exact: true })).toHaveAttribute('aria-current', 'page')
-    await expect(nav.getByRole('link', { name: '工作台', exact: true })).not.toHaveAttribute('aria-current', 'page')
-    await expect(nav.getByRole('link')).toHaveCount(10)
+    await expect(nav.getByRole('link', { name: '工作台', exact: true })).toHaveCount(0)
+    await expect(nav.getByRole('link')).toHaveCount(6)
+    await nav.getByRole('link', { name: '找职位', exact: true }).click()
+    await expect(nav.getByRole('link', { name: '找职位', exact: true })).toHaveAttribute('aria-current', 'page')
+    await page.getByRole('button', { name: '账户菜单', exact: true }).click()
+    await page.getByRole('menuitem', { name: '个人资料', exact: true }).click()
+    await expect(page).toHaveURL(/\/zh\/s\/profile$/)
     await expectSingleMain(page)
     await shot(page, 'student-profile-zh-1440')
 
@@ -74,7 +78,8 @@ test.describe('redesign: workspace shells', () => {
     await shot(page, 'student-profile-zh-375')
 
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.getByRole('button', { name: '退出登录' }).click()
+    await page.getByRole('button', { name: '账户菜单', exact: true }).click()
+    await page.getByRole('menuitem', { name: '退出登录', exact: true }).click()
     await expect(page).toHaveURL(/\/zh\/login/)
   })
 
@@ -85,16 +90,23 @@ test.describe('redesign: workspace shells', () => {
     })
     await page.goto('/zh/e')
     const nav = page.getByRole('navigation', { name: '企业导航' })
-    await expect(nav.getByRole('link', { name: '工作台', exact: true })).toHaveAttribute('aria-current', 'page')
-    for (const name of ['职位管理', '人才库', '企业资料', '认证材料', '订单与账单']) {
+    await expect(nav.getByRole('link', { name: '职位管理', exact: true })).toHaveAttribute('aria-current', 'page')
+    for (const name of ['职位管理', '人才库']) {
       await expect(nav.getByRole('link', { name, exact: true })).toBeVisible()
     }
+    await page.getByRole('button', { name: '账户菜单', exact: true }).click()
+    for (const name of ['企业资料', '认证材料', '订单与账单']) {
+      await expect(page.getByRole('menuitem', { name, exact: true })).toBeVisible()
+    }
+    await page.keyboard.press('Escape')
     await expectSingleMain(page)
     await shot(page, 'employer-home-zh-1440')
 
     // Email preferences stay reachable from the top bar at every width.
     await page.setViewportSize({ width: 375, height: 812 })
-    await expect(page.getByRole('banner').locator('a[href="/zh/e/preferences"]')).toBeVisible()
+    await page.getByRole('button', { name: '账户菜单', exact: true }).click()
+    await expect(page.getByRole('menu').locator('a[href="/zh/e/preferences"]')).toBeVisible()
+    await page.keyboard.press('Escape')
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
@@ -118,11 +130,11 @@ test.describe('redesign: workspace shells', () => {
     const nav = page.getByRole('navigation', { name: 'Employer navigation' })
     await expect(nav.getByRole('link', { name: 'Talent pool', exact: true })).toBeVisible()
     await expect(nav.getByRole('link', { name: 'Team', exact: false })).toBeVisible()
-    await expect(nav.getByRole('link', { name: /Billing|Orders/ })).toHaveCount(0)
-    await expect(nav.getByRole('link', { name: /Verification/ })).toHaveCount(0)
     // Role never hides the personal email preferences link.
     await page.setViewportSize({ width: 375, height: 812 })
-    await expect(page.getByRole('banner').locator('a[href="/en/e/preferences"]')).toBeVisible()
+    await page.getByRole('button', { name: 'Account menu', exact: true }).click()
+    await expect(page.getByRole('menuitem', { name: /Billing|Orders|Verification|Company details/ })).toHaveCount(0)
+    await expect(page.getByRole('menu').locator('a[href="/en/e/preferences"]')).toBeVisible()
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )

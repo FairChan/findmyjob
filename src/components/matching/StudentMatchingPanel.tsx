@@ -92,7 +92,7 @@ export function StudentMatchingPanel({ locale, uiState, consentOnly = false }: S
       {!current && <p className="text-sm text-muted-foreground">{t('needConsent')}</p>}
       <div className="flex flex-wrap items-center gap-3">
         <Button type="button" variant="brand" disabled={requestPending || consentPending || !permitted} aria-busy={requestPending} onClick={() => void request()} className={buttonClass}>{t('requestJobs')}</Button>
-        <Link href={'/' + locale + '/jobs'} prefetch={false} className={linkClass}>{t('searchJobs')}</Link>
+        <Link href={'/' + locale + '/s/jobs'} prefetch={false} className={linkClass}>{t('searchJobs')}</Link>
         <Link href={'/' + locale + '/s/profile'} prefetch={false} className={linkClass}>{t('editProfile')}</Link>
         <Link href={'/' + locale + '/s/privacy'} prefetch={false} className={linkClass}>{t('manageConsent')}</Link>
       </div>
