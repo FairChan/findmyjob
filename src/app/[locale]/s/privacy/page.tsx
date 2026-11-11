@@ -13,6 +13,7 @@ import { getStudentMatchingUiState } from '@/server/services/semantic-matching'
 import { StudentMatchingPanel } from '@/components/matching/StudentMatchingPanel'
 import { getMarketingUiState } from '@/server/services/marketing-consent'
 import { MarketingPreferences } from '@/components/privacy/MarketingPreferences'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function PrivacyPage() {
   const t = await getTranslations('privacy')
@@ -45,9 +46,7 @@ export default async function PrivacyPage() {
   }))
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
-      <p className="mb-8 text-sm text-muted-foreground">{t('subtitle')}</p>
+    <WorkspacePage title={t('title')} lead={t('subtitle')}>
       <StudentMatchingPanel locale={locale} uiState={matchingState} consentOnly />
       <MarketingPreferences locale={locale} audience="student" uiState={marketingState} />
       <PrivacyCenter
@@ -57,6 +56,6 @@ export default async function PrivacyPage() {
         unlocks={formattedUnlocks}
         locale={locale}
       />
-    </div>
+    </WorkspacePage>
   )
 }

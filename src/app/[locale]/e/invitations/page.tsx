@@ -7,6 +7,7 @@ import { listCompanyInvitations } from '@/server/services/invitations'
 import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 import { CompanyInvitationList } from '@/components/invitations/CompanyInvitationList'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function EmployerInvitationsPage({
   params,
@@ -30,14 +31,9 @@ export default async function EmployerInvitationsPage({
   ])
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <h1 className="text-2xl font-bold">{t('companyInvitationsTitle')}</h1>
-        </div>
-      </div>
+    <WorkspacePage title={t('companyInvitationsTitle')} width="list">
       <CompanyEntitlementSummary usage={usage} resource="invitations" />
       <CompanyInvitationList invitations={invitations} locale={locale} />
-    </div>
+    </WorkspacePage>
   )
 }

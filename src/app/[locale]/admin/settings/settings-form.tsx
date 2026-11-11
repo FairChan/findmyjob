@@ -80,7 +80,7 @@ function SettingRow({ setting }: { setting: SettingDisplay }) {
         <td className="p-3 font-mono text-xs text-muted-foreground align-middle whitespace-nowrap">
           {setting.key}
           {setting.p1 && (
-            <span className="ml-1 inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
+            <span className="ml-1 inline-flex items-center rounded-full bg-warning-muted px-1.5 py-0.5 text-[10px] text-warning">
               P1
             </span>
           )}
@@ -90,7 +90,7 @@ function SettingRow({ setting }: { setting: SettingDisplay }) {
             <select
               value={localValue}
               onChange={(e) => setLocalValue(e.target.value)}
-              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-control border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="true">{t('boolTrue')}</option>
               <option value="false">{t('boolFalse')}</option>
@@ -99,7 +99,7 @@ function SettingRow({ setting }: { setting: SettingDisplay }) {
             <select
               value={localValue}
               onChange={(e) => setLocalValue(e.target.value)}
-              className="rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="rounded-control border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="EXACT">EXACT</option>
               <option value="RELATED">RELATED</option>
@@ -109,7 +109,7 @@ function SettingRow({ setting }: { setting: SettingDisplay }) {
               type="text"
               value={localValue}
               onChange={(e) => setLocalValue(e.target.value)}
-              className="w-48 rounded-md border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              className="w-48 rounded-control border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder={isArray ? t('arrayHint') : ''}
             />
           )}
@@ -122,12 +122,12 @@ function SettingRow({ setting }: { setting: SettingDisplay }) {
             type="button"
             onClick={handleSave}
             disabled={saving}
-            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-control bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {saving ? t('saving') : t('save')}
           </button>
           {success && (
-            <span className="ml-2 text-xs text-green-600">{t('saved')}</span>
+            <span className="ml-2 text-xs text-success">{t('saved')}</span>
           )}
           {error && (
             <span className="ml-2 text-xs text-destructive">{error}</span>
@@ -165,7 +165,7 @@ function SettingGroup({ group, settings }: GroupProps) {
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
         {t(`group_${group}` as Parameters<typeof t>[0])}
       </h2>
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-control border">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">

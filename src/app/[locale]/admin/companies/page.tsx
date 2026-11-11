@@ -68,12 +68,12 @@ export default async function AdminCompaniesPage({
           name="q"
           defaultValue={q}
           placeholder={t('searchPlaceholder')}
-          className="flex-1 min-w-[200px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 min-w-[200px] rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <select
           name="status"
           defaultValue={status ?? ''}
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="rounded-control border border-input bg-background px-3 py-2 text-sm"
         >
           <option value="">{t('filterVerificationAll')}</option>
           <option value="UNSUBMITTED">{t('verificationUnsubmitted')}</option>
@@ -84,7 +84,7 @@ export default async function AdminCompaniesPage({
         <select
           name="active"
           defaultValue={active ?? ''}
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="rounded-control border border-input bg-background px-3 py-2 text-sm"
         >
           <option value="">{t('filterAll')}</option>
           <option value="true">{t('filterActive')}</option>
@@ -92,7 +92,7 @@ export default async function AdminCompaniesPage({
         </select>
         <button
           type="submit"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           {t('searchBtn')}
         </button>
@@ -124,7 +124,7 @@ export default async function AdminCompaniesPage({
                   <td className="p-3 font-medium">
                     {company.legalName}
                     {company.isFoundingPartner && (
-                      <span className="ml-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
+                      <span className="ml-2 inline-flex items-center rounded-full bg-warning-muted px-2 py-0.5 text-xs text-warning">
                         {t('foundingPartnerBadge')}
                       </span>
                     )}
@@ -132,19 +132,19 @@ export default async function AdminCompaniesPage({
                   <td className="p-3">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
                       company.verificationStatus === 'VERIFIED'
-                        ? 'bg-green-100 text-green-800'
+                        ? 'bg-success-muted text-success'
                         : company.verificationStatus === 'PENDING'
-                        ? 'bg-yellow-100 text-yellow-800'
+                        ? 'bg-warning-muted text-warning'
                         : company.verificationStatus === 'REJECTED'
-                        ? 'bg-red-100 text-red-800'
-                        : 'bg-gray-100 text-gray-600'
+                        ? 'bg-destructive-muted text-destructive'
+                        : 'bg-muted text-muted-foreground'
                     }`}>
                       {t(`verification${company.verificationStatus.charAt(0).toUpperCase()}${company.verificationStatus.slice(1).toLowerCase()}` as 'verificationVerified')}
                     </span>
                   </td>
                   <td className="p-3">
                     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
-                      company.isActive ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      company.isActive ? 'bg-success-muted text-success' : 'bg-destructive-muted text-destructive'
                     }`}>
                       {company.isActive ? t('statusActive') : t('statusInactive')}
                     </span>

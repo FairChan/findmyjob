@@ -30,12 +30,12 @@ export function PlanFeedback({ title, description, actions, children }: {
     }}>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 ref={heading} data-testid="plan-heading" tabIndex={-1} className="text-2xl font-semibold focus-visible:outline-2 focus-visible:outline-blue-600">{title}</h1>
-          <p className="mt-2 text-sm text-gray-600">{description}</p>
+          <h1 ref={heading} data-testid="plan-heading" tabIndex={-1} className="text-2xl font-semibold focus-visible:outline-2 focus-visible:outline-brand">{title}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">{actions}</div>
       </div>
-      <p data-testid="plan-feedback" role="status" aria-atomic="true" className="text-sm text-green-800">
+      <p data-testid="plan-feedback" role="status" aria-atomic="true" className="text-sm text-success">
         <span key={notice.sequence}>{notice.message}</span>
       </p>
       {children}

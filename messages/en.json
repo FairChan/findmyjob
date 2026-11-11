@@ -438,9 +438,11 @@
     "todoEnableTalentPool": "Enable Talent Pool",
     "todoEnableTalentPoolDesc": "Join the talent pool so verified employers can discover you",
     "todoAction": "Complete",
-    "invitesTitle": "Recent Invites",
-    "applicationsTitle": "Recent Applications",
-    "emptyPlaceholder": "Nothing here yet"
+    "editProfile": "Edit profile",
+    "invitesDesc": "Invitations from employers. Accepting one counts as applying.",
+    "invitesLink": "View invitations",
+    "applicationsDesc": "Follow the progress and status of every application.",
+    "applicationsLink": "View applications"
   },
   "employerDashboard": {
     "title": "Employer Dashboard",
@@ -991,6 +993,7 @@
     "copied": "Copied",
     "milestoneLabel": "Invite progress",
     "milestoneUnlimited": "Unlimited",
+    "milestoneReached": "Reached",
     "referralsTitle": "People You've Invited",
     "referralsEmpty": "No invitations yet",
     "colName": "Name",
@@ -1727,6 +1730,7 @@
     "declineError": "Action failed, please try again",
     "expiresAt": "Expires {date}",
     "sentAt": "Sent {date}",
+    "invitedForJob": "Invited you to apply for “{job}”",
     "inviteButton": "Invite to Apply",
     "inviteDialogTitle": "Invite to Apply",
     "inviteDialogJobLabel": "Job Position",
@@ -1868,6 +1872,8 @@
   "myApplications": {
     "title": "My Applications",
     "empty": "No applications yet",
+    "emptyHint": "Apply to a job you like and its progress will show up here.",
+    "browseJobs": "Browse jobs",
     "appliedAt": "Applied",
     "coverNoteLabel": "Cover Note",
     "timelineLabel": "Status Timeline",

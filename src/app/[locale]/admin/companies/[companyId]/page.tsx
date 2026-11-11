@@ -57,7 +57,7 @@ export default async function AdminCompanyDetailPage({
       <h1 className="text-2xl font-bold mb-6">{reviewData.legalName}</h1>
 
       {/* Company info */}
-      <section className="rounded-lg border p-5 mb-6 space-y-2">
+      <section className="rounded-card border p-5 mb-6 space-y-2">
         <h2 className="font-semibold mb-3">{tReview('companyInfoTitle')}</h2>
         <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
           <dt className="text-muted-foreground">{tReview('legalName')}</dt>
@@ -97,7 +97,7 @@ export default async function AdminCompanyDetailPage({
       </section>
 
       {/* Verification documents */}
-      <section className="rounded-lg border p-5 mb-6">
+      <section className="rounded-card border p-5 mb-6">
         <h2 className="font-semibold mb-3">{tReview('docsTitle')}</h2>
         {!cv ? (
           <p className="text-sm text-muted-foreground">{tReview('noVerification')}</p>
@@ -125,7 +125,7 @@ export default async function AdminCompanyDetailPage({
       </section>
 
       {/* SOP hint */}
-      <div className="rounded-lg bg-amber-50 border border-amber-200 p-4 mb-6 text-sm text-amber-900">
+      <div className="rounded-card bg-warning-muted border border-warning/30 p-4 mb-6 text-sm text-warning">
         {tReview('sopHint')}
       </div>
 

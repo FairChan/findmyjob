@@ -6,6 +6,7 @@ import { getMyCompany } from '@/server/services/company'
 import { INDUSTRIES } from '@/server/lib/taxonomy/industries'
 import { createCompanyAction } from '@/server/actions/company'
 import CompanyForm from '@/components/company/company-form'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function EmployerOnboardingPage({
   params,
@@ -24,15 +25,13 @@ export default async function EmployerOnboardingPage({
   }
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-12">
-      <h1 className="text-2xl font-bold mb-2">{t('title')}</h1>
-      <p className="text-muted-foreground mb-8">{t('subtitle')}</p>
+    <WorkspacePage title={t('title')} lead={t('subtitle')}>
       <CompanyForm
         mode="create"
         industries={INDUSTRIES}
         locale={locale}
         onSubmit={createCompanyAction}
       />
-    </div>
+    </WorkspacePage>
   )
 }

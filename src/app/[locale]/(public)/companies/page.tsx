@@ -139,7 +139,7 @@ export default async function CompaniesPage({ params, searchParams }: PageProps)
                     <img
                       src={`/api/logos/${company.id}`}
                       alt={displayName}
-                      className="size-14 rounded-control bg-white object-contain"
+                      className="size-14 rounded-control bg-card object-contain"
                     />
                   ) : (
                     <div className="flex size-14 items-center justify-center rounded-control bg-background text-xl font-semibold text-muted-foreground">

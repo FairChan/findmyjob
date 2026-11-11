@@ -157,14 +157,14 @@ export function ResumeParsePanel({ resumes, locale, uiState }: ResumeParsePanelP
   const ready = draft?.state === 'READY' && draft.payload && draft.currentProfile && edited
   const requestable = !draft || draft.state === 'FAILED' || draft.state === 'CANCELLED'
 
-  return <section data-testid="resume-parse-panel" aria-labelledby={id + '-title'} className="mt-8 min-w-0 space-y-5 rounded-xl border bg-card p-4 sm:p-6">
-    <h2 id={id + '-title'} className="text-xl font-semibold">{t('title')}</h2>
+  return <section data-testid="resume-parse-panel" aria-labelledby={id + '-title'} className="mt-8 min-w-0 space-y-5 rounded-card bg-muted p-5 sm:p-6">
+    <h2 id={id + '-title'} className="text-title">{t('title')}</h2>
     <p className="text-sm text-muted-foreground">{t('description')}</p>
-    <a href={'/' + locale + '/s/profile'} className="inline-flex min-h-11 items-center text-sm text-primary underline">{t('manualEdit')}</a>
-    {!uiState.available && <p role="status" className="rounded-md bg-muted p-3 text-sm">{t('unavailable')}</p>}
-    <div className="space-y-3 rounded-lg border p-4">
+    <a href={'/' + locale + '/s/profile'} className="inline-flex min-h-11 items-center text-sm text-brand underline underline-offset-4">{t('manualEdit')}</a>
+    {!uiState.available && <p role="status" className="rounded-control bg-background p-3 text-sm">{t('unavailable')}</p>}
+    <div className="space-y-3 rounded-control bg-background p-4">
       <p className="text-sm">{t('disclosure')}</p>
-      <a href={'/' + locale + '/legal/privacy'} className="inline-flex min-h-11 items-center text-sm text-primary underline">{t('privacyPolicy')}</a>
+      <a href={'/' + locale + '/legal/privacy'} className="inline-flex min-h-11 items-center text-sm text-brand underline underline-offset-4">{t('privacyPolicy')}</a>
       {canWithdraw && <div className="space-y-2"><p className="text-sm">{t('consentActive')}</p>
         <Button type="button" variant="outline" disabled={pending} onClick={() => consent(false)} className={buttonClass}>{t('withdraw')}</Button></div>}
       {!consented && <div className="space-y-3">
@@ -180,7 +180,7 @@ export function ResumeParsePanel({ resumes, locale, uiState }: ResumeParsePanelP
         onChange={event => {
           if (dirty) ask({ kind: 'source', sourceId: event.target.value })
           else changeSource(event.target.value)
-        }} className="w-full min-w-0 rounded-md border bg-background p-3 text-base">
+        }} className="w-full min-w-0 rounded-control border border-input bg-background p-3 text-base">
         {!source && <option value="" disabled>{t('chooseSource')}</option>}
         {resumes.map(resume => <option key={resume.id} value={resume.id}>{resume.fileName}</option>)}
       </select></label>
@@ -190,7 +190,7 @@ export function ResumeParsePanel({ resumes, locale, uiState }: ResumeParsePanelP
         <Button type="button" disabled={pending || !source || !permitted || !requestable} onClick={request} className={buttonClass}>{t(draft ? 'retry' : 'request')}</Button>
       </div>
     </>}
-    {draft && <div className="space-y-2 rounded-md bg-muted p-3 text-sm">
+    {draft && <div className="space-y-2 rounded-control bg-background p-4 text-sm">
       <p role="status">{label('state.' + draft.state)}</p>
       <p className="break-words [overflow-wrap:anywhere]">{t('sourceFile')}: {draft.source.fileName}</p>
       <p>{t('sourceUploaded', { date: date(draft.source.createdAt) })}</p>
@@ -204,7 +204,7 @@ export function ResumeParsePanel({ resumes, locale, uiState }: ResumeParsePanelP
       <p className="text-sm text-muted-foreground">{t('selectionHint')}</p>
       <Button type="button" variant="outline" disabled={pending} onClick={() => load(true)} className={buttonClass}>{t('compareAgain')}</Button>
       {RESUME_GROUPS.map(group => <fieldset key={group} data-testid={'parse-group-' + group} disabled={pending}
-        className="min-w-0 space-y-4 rounded-lg border p-4">
+        className="min-w-0 space-y-4 rounded-control bg-background p-4">
         <legend className="px-1 font-semibold">{label('group.' + group)}</legend>
         <div className="grid min-w-0 gap-4 sm:grid-cols-2">
           <section aria-label={t('currentValue')} className="min-w-0 space-y-2"><h4 className="text-sm font-medium">{t('currentValue')}</h4><ResumeGroupValue group={group} value={draft.currentProfile!} /></section>

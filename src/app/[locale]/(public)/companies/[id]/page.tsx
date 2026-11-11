@@ -69,7 +69,7 @@ export default async function CompanyPublicPage({ params }: PageProps) {
           <img
             src={`/api/logos/${company.id}`}
             alt={displayName}
-            className="size-20 shrink-0 rounded-card border bg-white object-contain"
+            className="size-20 shrink-0 rounded-card border bg-card object-contain"
           />
         ) : (
           <div className="flex size-20 shrink-0 items-center justify-center rounded-card bg-muted text-2xl font-semibold text-muted-foreground">

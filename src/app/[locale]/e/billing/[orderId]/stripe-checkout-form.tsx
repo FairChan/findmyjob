@@ -49,9 +49,9 @@ export function StripeCheckoutForm({ orderId }: { orderId: string }) {
         : failure === 'PAYMENT_UNAVAILABLE' ? 'errorUnavailable'
           : failure === 'PAYMENT_REJECTED' ? 'errorRejected' : 'errorGeneric'
 
-  return <form data-testid="stripe-checkout-form" onSubmit={start} aria-busy={pending} className="min-w-0 space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-    <p className="text-sm text-gray-600">{t('checkoutNotice')}</p>
-    {failure && <p role="alert" className="text-sm text-red-800">{t(errorKey)}</p>}
+  return <form data-testid="stripe-checkout-form" onSubmit={start} aria-busy={pending} className="min-w-0 space-y-4 rounded-card border border-border bg-card p-4 sm:p-6">
+    <p className="text-sm text-muted-foreground">{t('checkoutNotice')}</p>
+    {failure && <p role="alert" className="text-sm text-destructive">{t(errorKey)}</p>}
     {checkoutUrl
       ? <Button asChild className="h-auto min-h-10 whitespace-normal"><a ref={checkoutLink} href={checkoutUrl}>{t('open')}</a></Button>
       : <Button type="submit" disabled={pending} aria-busy={pending} className="h-auto min-h-10 whitespace-normal">{t('start')}</Button>}

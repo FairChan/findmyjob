@@ -39,7 +39,7 @@ export default async function AdminNotificationsPage() {
       {notifications.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('empty')}</p>
       ) : (
-        <ul className="divide-y rounded-md border">
+        <ul className="divide-y rounded-control border">
           {notifications.map((n) => (
             <li
               key={n.id}

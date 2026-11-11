@@ -101,7 +101,7 @@ export default function ChangePasswordForm() {
         </p>
       )}
       {success && (
-        <p role="status" className="text-sm text-green-600">
+        <p role="status" className="text-sm text-success">
           {t('passwordChangeSuccess')}
         </p>
       )}

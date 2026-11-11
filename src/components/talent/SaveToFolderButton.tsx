@@ -110,11 +110,11 @@ export function SaveToFolderButton({ studentId, labels }: Props) {
                   {folders.map((folder) => {
                     const inFolder = memberIds.includes(folder.id)
                     return (
-                      <li key={folder.id} className="flex items-center justify-between rounded-md border px-3 py-2">
+                      <li key={folder.id} className="flex items-center justify-between rounded-control border px-3 py-2">
                         <span className="text-sm font-medium">
                           {folder.name}
                           {inFolder && (
-                            <span className="ml-2 rounded-full bg-green-100 px-1.5 py-0.5 text-xs text-green-700">
+                            <span className="ml-2 rounded-full bg-success-muted px-1.5 py-0.5 text-xs text-success">
                               {labels.added}
                             </span>
                           )}

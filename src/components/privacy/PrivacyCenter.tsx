@@ -4,7 +4,9 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { UnlockSource } from '@prisma/client'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Row, RowList } from '@/components/ui/row-list'
 import {
   Dialog,
   DialogContent,
@@ -23,6 +25,8 @@ import {
   requestExportAction,
   requestDeletionAction,
 } from '@/server/actions/data-rights'
+
+const EMPTY_CLASS = 'rounded-card bg-muted px-5 py-4 text-sm text-muted-foreground'
 
 interface Company {
   id: string
@@ -81,7 +85,8 @@ function ToggleSwitch({
         'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         'disabled:cursor-not-allowed disabled:opacity-50',
-        checked ? 'bg-primary' : 'bg-input',
+        // The off track still needs 3:1 against the card it sits on.
+        checked ? 'bg-brand' : 'bg-muted-foreground',
       ].join(' ')}
     >
       <span
@@ -218,21 +223,21 @@ export default function PrivacyCenter({
     <div className="space-y-10">
       {/* Visibility section */}
       <section aria-labelledby="visibility-heading">
-        <h2 id="visibility-heading" className="mb-1 text-lg font-semibold">
+        <h2 id="visibility-heading" className="mb-1 text-title">
           {t('visibilityTitle')}
         </h2>
         <p className="mb-4 text-sm text-muted-foreground">{t('visibilityDesc')}</p>
-        <div className="flex min-h-[24px] items-center gap-3">
+        <Card className="flex min-h-[24px] items-center justify-between gap-4">
+          <label htmlFor="talent-pool-toggle" className="cursor-pointer text-sm font-medium">
+            {visible ? t('visibilityOn') : t('visibilityOff')}
+          </label>
           <ToggleSwitch
             id="talent-pool-toggle"
             checked={visible}
             onChange={handleVisibilityChange}
             disabled={isVisibilityPending}
           />
-          <label htmlFor="talent-pool-toggle" className="cursor-pointer text-sm">
-            {visible ? t('visibilityOn') : t('visibilityOff')}
-          </label>
-        </div>
+        </Card>
         {visibilityError && (
           <p role="alert" className="mt-2 text-sm text-destructive">
             {visibilityError}
@@ -242,7 +247,7 @@ export default function PrivacyCenter({
 
       {/* Block companies section */}
       <section aria-labelledby="block-heading">
-        <h2 id="block-heading" className="mb-1 text-lg font-semibold">
+        <h2 id="block-heading" className="mb-1 text-title">
           {t('blockTitle')}
         </h2>
         <p className="mb-4 text-sm text-muted-foreground">{t('blockDesc')}</p>
@@ -259,13 +264,13 @@ export default function PrivacyCenter({
             <ul
               role="listbox"
               aria-label={t('blockSearchResults')}
-              className="absolute z-10 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md"
+              className="absolute z-10 mt-1 w-full overflow-hidden rounded-control border bg-popover text-popover-foreground shadow-float"
             >
               {searchResults.map((c) => (
                 <li key={c.id} role="option" aria-selected={false}>
                   <button
                     type="button"
-                    className="w-full px-4 py-2 text-left text-sm hover:bg-accent"
+                    className="min-h-10 w-full px-4 py-2 text-left text-sm hover:bg-accent"
                     onClick={() => handleAddBlock(c)}
                     disabled={blocked.some((b) => b.companyId === c.id)}
                   >
@@ -289,62 +294,63 @@ export default function PrivacyCenter({
         )}
 
         {blocked.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('blockEmpty')}</p>
+          <p className={EMPTY_CLASS}>{t('blockEmpty')}</p>
         ) : (
-          <ul className="divide-y rounded-md border">
+          <RowList>
             {blocked.map((b) => (
-              <li key={b.companyId} className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm">{b.companyName}</span>
+              <Row key={b.companyId} className="py-3">
+                <span className="min-w-0 break-words text-sm">{b.companyName}</span>
                 <Button
-                  variant="ghost"
+                  variant="outline"
                   size="sm"
                   onClick={() => handleRemoveBlock(b.companyId)}
                   disabled={isBlockPending}
                   aria-label={`${t('blockRemove')} ${b.companyName}`}
+                  className="shrink-0"
                 >
                   {t('blockRemove')}
                 </Button>
-              </li>
+              </Row>
             ))}
-          </ul>
+          </RowList>
         )}
       </section>
 
       {/* Profile views section */}
       <section aria-labelledby="views-heading">
-        <h2 id="views-heading" className="mb-1 text-lg font-semibold">
+        <h2 id="views-heading" className="mb-1 text-title">
           {t('viewsTitle')}
         </h2>
         <p className="mb-4 text-sm text-muted-foreground">{t('viewsDesc')}</p>
         {profileViews.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('viewsEmpty')}</p>
+          <p className={EMPTY_CLASS}>{t('viewsEmpty')}</p>
         ) : (
-          <ul className="divide-y rounded-md border">
+          <RowList>
             {profileViews.map((v) => (
-              <li key={`${v.companyId}-${v.viewedAtKey}`} className="flex items-center justify-between px-4 py-3">
-                <span className="text-sm">{v.companyName}</span>
-                <span className="text-xs text-muted-foreground">
+              <Row key={`${v.companyId}-${v.viewedAtKey}`}>
+                <span className="min-w-0 break-words text-sm">{v.companyName}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {v.viewedAt}
                 </span>
-              </li>
+              </Row>
             ))}
-          </ul>
+          </RowList>
         )}
       </section>
 
       {/* Unlocks section */}
       <section aria-labelledby="unlocks-heading">
-        <h2 id="unlocks-heading" className="mb-1 text-lg font-semibold">
+        <h2 id="unlocks-heading" className="mb-1 text-title">
           {t('unlocksTitle')}
         </h2>
         <p className="mb-4 text-sm text-muted-foreground">{t('unlocksDesc')}</p>
         {unlocks.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('unlocksEmpty')}</p>
+          <p className={EMPTY_CLASS}>{t('unlocksEmpty')}</p>
         ) : (
-          <ul className="divide-y rounded-md border">
+          <RowList>
             {unlocks.map((u) => (
-              <li key={`${u.companyId}-${u.unlockedAtKey}`} className="flex items-center justify-between px-4 py-3">
-                <div className="min-w-0 text-sm">
+              <Row key={`${u.companyId}-${u.unlockedAtKey}`}>
+                <div className="min-w-0 break-words text-sm">
                   <span>{u.companyName}</span>
                   {u.source === 'APPLICATION' && (
                     <span className="mt-1 block text-xs text-muted-foreground">
@@ -352,34 +358,34 @@ export default function PrivacyCenter({
                     </span>
                   )}
                 </div>
-                <span className="text-xs text-muted-foreground">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {u.unlockedAt}
                 </span>
-              </li>
+              </Row>
             ))}
-          </ul>
+          </RowList>
         )}
       </section>
 
       {/* Data rights section */}
       <section aria-labelledby="data-rights-heading">
-        <h2 id="data-rights-heading" className="mb-1 text-lg font-semibold">
+        <h2 id="data-rights-heading" className="mb-1 text-title">
           {t('dataRightsTitle')}
         </h2>
         <p className="mb-4 text-sm text-muted-foreground">{t('dataRightsDesc')}</p>
 
-        <div className="space-y-4">
+        <div className="space-y-3">
           {/* Export */}
-          <div className="rounded-md border p-4">
-            <h3 className="text-sm font-medium mb-1">{t('exportTitle')}</h3>
-            <p className="text-xs text-muted-foreground mb-3">{t('exportDesc')}</p>
+          <Card>
+            <h3 className="mb-1 text-body font-semibold">{t('exportTitle')}</h3>
+            <p className="mb-4 text-sm text-muted-foreground">{t('exportDesc')}</p>
             {exportDone ? (
               <div className="space-y-2">
-                <p className="text-sm text-green-700">{t('exportRequested')}</p>
+                <p role="status" className="text-sm text-success">{t('exportRequested')}</p>
                 {exportRequestId && (
                   <a
                     href={`/${locale}/s/privacy/exports/${exportRequestId}`}
-                    className="text-sm text-primary underline-offset-4 hover:underline"
+                    className="inline-flex min-h-6 items-center text-sm text-brand underline underline-offset-4"
                   >
                     {t('exportViewLink')}
                   </a>
@@ -401,12 +407,12 @@ export default function PrivacyCenter({
                 )}
               </>
             )}
-          </div>
+          </Card>
 
-          {/* Delete */}
-          <div className="rounded-md border border-destructive/30 p-4">
-            <h3 className="text-sm font-medium mb-1 text-destructive">{t('deleteTitle')}</h3>
-            <p className="text-xs text-muted-foreground mb-3">{t('deleteDesc')}</p>
+          {/* Delete: outlined rather than filled, so the one irreversible action stands apart. */}
+          <div className="rounded-card border border-destructive/30 p-5 sm:p-6">
+            <h3 className="mb-1 text-body font-semibold text-destructive">{t('deleteTitle')}</h3>
+            <p className="mb-4 text-sm text-muted-foreground">{t('deleteDesc')}</p>
             <Button
               variant="destructive"
               size="sm"

@@ -50,7 +50,7 @@ export function DeletePlanDialog({ id, name, protectedPlan }: { id: string; name
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild><Button variant="outline" size="sm" disabled={protectedPlan || feedback.refreshing}>{t('delete')}</Button></DialogTrigger>
-      <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-xl [&>button]:hidden" aria-busy={pending}
+      <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-card [&>button]:hidden" aria-busy={pending}
         onEscapeKeyDown={(event) => { if (pending) event.preventDefault() }}
         onPointerDownOutside={(event) => { if (pending) event.preventDefault() }}
         onCloseAutoFocus={(event) => { if (succeeded.current) { event.preventDefault(); feedback.focusHeading() } }}>

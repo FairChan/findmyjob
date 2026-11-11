@@ -57,36 +57,36 @@ export default async function OrderPage({ params }: Props) {
   const paymentMethod = stripeOrder
     ? stripe(order.paymentMethod === 'FPX' ? 'paymentMethodFpx' : order.paymentMethod === 'CARD' ? 'paymentMethodCard' : 'paymentMethodStripe')
     : bankOrder ? t('bankTransfer') : t('paymentMethodUnknown')
-  return <div className="mx-auto w-full max-w-4xl space-y-6 p-4 md:p-6">
-    <header className="space-y-2"><h1 data-testid="billing-heading" tabIndex={-1} className="text-2xl font-semibold">{t('orderTitle')}</h1><p className="text-sm text-gray-600">{t('orderDescription')}</p></header>
-    <Link href="/e/billing" className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{t('backToOrders')}</Link>
+  return <div className="mx-auto w-full max-w-4xl space-y-6 px-4 pb-20 pt-8 sm:px-6 md:pt-12">
+    <header className="space-y-3"><h1 data-testid="billing-heading" tabIndex={-1} className="text-headline">{t('orderTitle')}</h1><p className="text-body text-muted-foreground">{t('orderDescription')}</p></header>
+    <Link href="/e/billing" className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('backToOrders')}</Link>
     <AdminActionFeedback>
-      <section data-testid="order-summary" className="min-w-0 space-y-5 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+      <section data-testid="order-summary" className="min-w-0 space-y-5 rounded-card border border-border bg-card p-4 sm:p-6">
         <dl className="grid gap-4 text-sm sm:grid-cols-2">
-          <div><dt className="text-gray-600">{t('orderNumber')}</dt><dd data-testid="order-number" className="mt-1 break-all font-semibold">{order.orderNo}</dd></div>
-          <div><dt className="text-gray-600">{t('status')}</dt><dd data-testid="order-status" className="mt-1 font-semibold">{t(orderStatusKey(order.status))}</dd></div>
-          <div><dt className="text-gray-600">{t('payable')}</dt><dd data-testid="order-amount" className="mt-1 text-xl font-semibold tabular-nums">{formatMoney(order.amountSen)}</dd></div>
-          <div><dt className="text-gray-600">{t('createdAt')}</dt><dd className="mt-1"><time dateTime={order.createdAt}>{formatKLDateTime(order.createdAt, locale)}</time></dd></div>
-          {order.paidAt && <div><dt className="text-gray-600">{t('paidAt')}</dt><dd className="mt-1"><time dateTime={order.paidAt}>{formatKLDateTime(order.paidAt, locale)}</time></dd></div>}
-          <div><dt className="text-gray-600">{t('paymentMethod')}</dt><dd className="mt-1">{paymentMethod}</dd></div>
+          <div><dt className="text-muted-foreground">{t('orderNumber')}</dt><dd data-testid="order-number" className="mt-1 break-all font-semibold">{order.orderNo}</dd></div>
+          <div><dt className="text-muted-foreground">{t('status')}</dt><dd data-testid="order-status" className="mt-1 font-semibold">{t(orderStatusKey(order.status))}</dd></div>
+          <div><dt className="text-muted-foreground">{t('payable')}</dt><dd data-testid="order-amount" className="mt-1 text-xl font-semibold tabular-nums">{formatMoney(order.amountSen)}</dd></div>
+          <div><dt className="text-muted-foreground">{t('createdAt')}</dt><dd className="mt-1"><time dateTime={order.createdAt}>{formatKLDateTime(order.createdAt, locale)}</time></dd></div>
+          {order.paidAt && <div><dt className="text-muted-foreground">{t('paidAt')}</dt><dd className="mt-1"><time dateTime={order.paidAt}>{formatKLDateTime(order.paidAt, locale)}</time></dd></div>}
+          <div><dt className="text-muted-foreground">{t('paymentMethod')}</dt><dd className="mt-1">{paymentMethod}</dd></div>
         </dl>
-        {order.commercialSnapshot ? <BillingTerms quote={order.commercialSnapshot} /> : <p className="text-sm text-gray-600">{t('snapshotUnavailable')}</p>}
+        {order.commercialSnapshot ? <BillingTerms quote={order.commercialSnapshot} /> : <p className="text-sm text-muted-foreground">{t('snapshotUnavailable')}</p>}
       </section>
-      {stripeOrder && paymentState && (order.status === 'PENDING' || order.status === 'PAID') && <section className="min-w-0 space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:p-6">
+      {stripeOrder && paymentState && (order.status === 'PENDING' || order.status === 'PAID') && <section className="min-w-0 space-y-3 rounded-card border border-border bg-muted p-4 sm:p-6">
         <h2 className="font-semibold">{stripe('paymentMethodStripe')}</h2>
-        <p data-testid="stripe-payment-state" className="text-sm text-gray-700">{stripe(order.status === 'PAID' ? 'stateSucceeded' : paymentState === 'SUCCEEDED' ? 'stateReconciliation' : stripeStateKey[paymentState])}</p>
-        <a href={'/' + locale + '/e/billing/' + encodeURIComponent(order.id)} className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{stripe('refreshStatus')}</a>
+        <p data-testid="stripe-payment-state" className="text-sm text-foreground">{stripe(order.status === 'PAID' ? 'stateSucceeded' : paymentState === 'SUCCEEDED' ? 'stateReconciliation' : stripeStateKey[paymentState])}</p>
+        <a href={'/' + locale + '/e/billing/' + encodeURIComponent(order.id)} className="inline-flex min-h-10 items-center text-sm text-brand underline">{stripe('refreshStatus')}</a>
       </section>}
       {canContinueCheckout && <StripeCheckoutForm orderId={order.id} />}
-      {showReceipt && receipt && <section data-testid="fpx-receipt" className="min-w-0 space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-        <h2 className="text-lg font-semibold">{stripe('receiptTitle')}</h2>
+      {showReceipt && receipt && <section data-testid="fpx-receipt" className="min-w-0 space-y-4 rounded-card border border-border bg-card p-4 sm:p-6">
+        <h2 className="text-title">{stripe('receiptTitle')}</h2>
         <dl className="grid gap-4 text-sm sm:grid-cols-2">
-          <div className="min-w-0"><dt className="text-gray-600">{stripe('receiptDate')}</dt><dd className="mt-1 break-words"><time dateTime={receipt.createdAt}>{formatKLDateTime(receipt.createdAt, locale)}</time> (Asia/Kuala_Lumpur)</dd></div>
-          <div className="min-w-0"><dt className="text-gray-600">{stripe('receiptAmount')}</dt><dd className="mt-1 font-semibold tabular-nums">{formatMoney(receipt.amountSen)}</dd></div>
-          <div className="min-w-0"><dt className="text-gray-600">{stripe('receiptSellerOrderNo')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{receipt.sellerOrderNo ?? stripe('notAvailable')}</dd></div>
-          <div className="min-w-0"><dt className="text-gray-600">{stripe('receiptTransactionId')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{receipt.transactionId ?? stripe('notAvailable')}</dd></div>
-          <div className="min-w-0"><dt className="text-gray-600">{stripe('receiptBank')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{receipt.bankName ?? stripe('notAvailable')}</dd></div>
-          <div className="min-w-0"><dt className="text-gray-600">{stripe('receiptStatus')}</dt><dd className="mt-1 font-semibold">{stripe('receiptSucceeded')}</dd></div>
+          <div className="min-w-0"><dt className="text-muted-foreground">{stripe('receiptDate')}</dt><dd className="mt-1 break-words"><time dateTime={receipt.createdAt}>{formatKLDateTime(receipt.createdAt, locale)}</time> (Asia/Kuala_Lumpur)</dd></div>
+          <div className="min-w-0"><dt className="text-muted-foreground">{stripe('receiptAmount')}</dt><dd className="mt-1 font-semibold tabular-nums">{formatMoney(receipt.amountSen)}</dd></div>
+          <div className="min-w-0"><dt className="text-muted-foreground">{stripe('receiptSellerOrderNo')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{receipt.sellerOrderNo ?? stripe('notAvailable')}</dd></div>
+          <div className="min-w-0"><dt className="text-muted-foreground">{stripe('receiptTransactionId')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{receipt.transactionId ?? stripe('notAvailable')}</dd></div>
+          <div className="min-w-0"><dt className="text-muted-foreground">{stripe('receiptBank')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{receipt.bankName ?? stripe('notAvailable')}</dd></div>
+          <div className="min-w-0"><dt className="text-muted-foreground">{stripe('receiptStatus')}</dt><dd className="mt-1 font-semibold">{stripe('receiptSucceeded')}</dd></div>
         </dl>
       </section>}
       {order.status === 'PAID' && <OrderInvoicePanel orderId={order.id} invoice={order.invoice ? {

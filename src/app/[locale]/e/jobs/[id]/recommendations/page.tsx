@@ -1,11 +1,13 @@
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { ChevronLeft } from 'lucide-react'
 import { getTranslations } from 'next-intl/server'
 import { requireVerifiedCompany } from '@/server/authz'
 import { getCompanyJob } from '@/server/services/jobs'
 import { NotFoundError } from '@/server/errors'
 import { EmployerMatchingPanel } from '@/components/matching/EmployerMatchingPanel'
+import { BACK_LINK_CLASS, WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function JobRecommendationsPage({ params }: { params: Promise<{ locale: string; id: string }> }) {
   const { locale, id } = await params
@@ -19,9 +21,13 @@ export default async function JobRecommendationsPage({ params }: { params: Promi
   const requestedAt = Date.now()
   if (job.status !== 'PUBLISHED' || job.deadline && job.deadline.getTime() <= requestedAt) return notFound()
   const t = await getTranslations('matching')
-  return <div className="container mx-auto max-w-4xl space-y-6 px-4 py-8">
-    <h1 className="text-2xl font-bold">{t('employerTitle')}</h1>
-    <Link href={'/' + locale + '/e/jobs'} prefetch={false} className="inline-flex min-h-11 items-center text-sm text-primary underline">{t('backJobs')}</Link>
+  return <WorkspacePage
+    width="wide"
+    title={t('employerTitle')}
+    eyebrow={<Link href={'/' + locale + '/e/jobs'} prefetch={false} className={BACK_LINK_CLASS}>
+      <ChevronLeft aria-hidden="true" className="size-4" />{t('backJobs')}
+    </Link>}
+  >
     <EmployerMatchingPanel key={job.id} locale={locale} job={{ id: job.id, title: job.title }} />
-  </div>
+  </WorkspacePage>
 }

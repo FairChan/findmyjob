@@ -53,36 +53,36 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
   if (query.limit !== undefined) next.set('limit', String(query.limit))
   if (result.nextCursor) next.set('cursor', result.nextCursor)
   return <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
-    <header className="space-y-2"><h1 data-testid="admin-orders-heading" tabIndex={-1} className="text-2xl font-semibold">{t('title')}</h1><p className="text-sm text-gray-600">{t('description')}</p></header>
+    <header className="space-y-2"><h1 data-testid="admin-orders-heading" tabIndex={-1} className="text-2xl font-semibold">{t('title')}</h1><p className="text-sm text-muted-foreground">{t('description')}</p></header>
     <AdminActionFeedback>
-      <form method="GET" action={path} className="flex flex-wrap items-end gap-3 rounded-xl border border-gray-200 bg-white p-4">
-        <div className="min-w-0 basis-full space-y-1 sm:basis-auto sm:flex-1"><label htmlFor="order-status-filter" className="text-sm font-medium">{t('status')}</label><select key={query.status ?? 'AWAITING_CONFIRMATION'} id="order-status-filter" name="status" defaultValue={query.status ?? 'AWAITING_CONFIRMATION'} className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-base focus-visible:outline-2 focus-visible:outline-blue-600">
+      <form method="GET" action={path} className="flex flex-wrap items-end gap-3 rounded-card border border-border bg-card p-4">
+        <div className="min-w-0 basis-full space-y-1 sm:basis-auto sm:flex-1"><label htmlFor="order-status-filter" className="text-sm font-medium">{t('status')}</label><select key={query.status ?? 'AWAITING_CONFIRMATION'} id="order-status-filter" name="status" defaultValue={query.status ?? 'AWAITING_CONFIRMATION'} className="h-10 w-full rounded-card border border-border bg-card px-3 text-base focus-visible:outline-2 focus-visible:outline-brand">
           <option value="ALL">{t('all')}</option>
           {(['PENDING', 'AWAITING_CONFIRMATION', 'PAID', 'CANCELLED', 'REFUNDED'] as const).map((status) => <option key={status} value={status}>{t('statuses.' + status)}</option>)}
         </select></div>
         {query.limit !== undefined && <input type="hidden" name="limit" value={query.limit} />}
-        <Button type="submit">{t('filter')}</Button><a href={path} className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{t('reset')}</a>
+        <Button type="submit">{t('filter')}</Button><a href={path} className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('reset')}</a>
       </form>
-      {invalid ? <p role="alert" className="rounded-lg border border-red-200 bg-white p-4 text-sm text-red-800">{t('errorQuery')}</p> : <div className="space-y-3">
-        {!result.items.length && <p className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">{t('empty')}</p>}
-        {result.items.map((order) => <article key={order.id} data-testid={'admin-order-' + order.id} className="min-w-0 space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+      {invalid ? <p role="alert" className="rounded-card border border-destructive/30 bg-card p-4 text-sm text-destructive">{t('errorQuery')}</p> : <div className="space-y-3">
+        {!result.items.length && <p className="rounded-card border border-border bg-card p-6 text-sm text-muted-foreground">{t('empty')}</p>}
+        {result.items.map((order) => <article key={order.id} data-testid={'admin-order-' + order.id} className="min-w-0 space-y-4 rounded-card border border-border bg-card p-4 sm:p-5">
           <h2 className="break-words font-semibold [overflow-wrap:anywhere]">{order.orderNo}</h2>
           <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-            <div><dt className="text-gray-600">{t('company')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{order.company.displayName}</dd></div>
-            <div><dt className="text-gray-600">{t('product')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{order.plan ? locale === 'zh' ? order.plan.nameZh : order.plan.nameEn : t('snapshotUnavailable')}</dd></div>
-            <div><dt className="text-gray-600">{t('status')}</dt><dd className="mt-1 font-medium">{t('statuses.' + order.status)}</dd></div>
-            <div><dt className="text-gray-600">{t('payable')}</dt><dd className="mt-1 font-semibold tabular-nums">{formatMoney(order.amountSen)}</dd></div>
-            <div><dt className="text-gray-600">{t('discount')}</dt><dd className="mt-1 tabular-nums">{formatMoney(order.discountSen)}</dd></div>
-            <div><dt className="text-gray-600">{t('createdAt')}</dt><dd className="mt-1">{formatKLDateTime(order.createdAt, locale)}</dd></div>
+            <div><dt className="text-muted-foreground">{t('company')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{order.company.displayName}</dd></div>
+            <div><dt className="text-muted-foreground">{t('product')}</dt><dd className="mt-1 break-words [overflow-wrap:anywhere]">{order.plan ? locale === 'zh' ? order.plan.nameZh : order.plan.nameEn : t('snapshotUnavailable')}</dd></div>
+            <div><dt className="text-muted-foreground">{t('status')}</dt><dd className="mt-1 font-medium">{t('statuses.' + order.status)}</dd></div>
+            <div><dt className="text-muted-foreground">{t('payable')}</dt><dd className="mt-1 font-semibold tabular-nums">{formatMoney(order.amountSen)}</dd></div>
+            <div><dt className="text-muted-foreground">{t('discount')}</dt><dd className="mt-1 tabular-nums">{formatMoney(order.discountSen)}</dd></div>
+            <div><dt className="text-muted-foreground">{t('createdAt')}</dt><dd className="mt-1">{formatKLDateTime(order.createdAt, locale)}</dd></div>
           </dl>
           <div className="flex flex-wrap items-center gap-4">
-            {order.hasProof ? <a href={'/api/admin/orders/' + encodeURIComponent(order.id) + '/payment-proof'} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{t('preview')}</a> : <p className="text-sm text-gray-600">{t('noProof')}</p>}
+            {order.hasProof ? <a href={'/api/admin/orders/' + encodeURIComponent(order.id) + '/payment-proof'} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('preview')}</a> : <p className="text-sm text-muted-foreground">{t('noProof')}</p>}
             {order.status === 'AWAITING_CONFIRMATION' && order.hasProof && order.paymentProvider === 'BANK_TRANSFER' && <ConfirmOrderDialog orderId={order.id} orderNo={order.orderNo} amountSen={order.amountSen} />}
           </div>
-          {order.hasProof && <p className="text-xs text-gray-600">{t('previewHint')}</p>}
+          {order.hasProof && <p className="text-xs text-muted-foreground">{t('previewHint')}</p>}
         </article>)}
       </div>}
-      {!invalid && result.nextCursor && <a href={path + '?' + next.toString()} className="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm">{t('next')}</a>}
+      {!invalid && result.nextCursor && <a href={path + '?' + next.toString()} className="inline-flex min-h-10 items-center rounded-card border border-border bg-card px-4 text-sm">{t('next')}</a>}
     </AdminActionFeedback>
   </div>
 }

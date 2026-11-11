@@ -28,13 +28,13 @@ export function EmployerMatchingPanel({ locale, job }: EmployerMatchingPanelProp
     } catch { if (source.current === requestedId) setError(t('error.generic')) }
     finally { inFlight.current = false; setPending(false) }
   }
-  return <section data-testid="employer-matching-panel" aria-labelledby={id + '-title'} className="min-w-0 space-y-4 rounded-xl border bg-card p-4 sm:p-6">
-    <h2 id={id + '-title'} className="text-xl font-semibold">{t('employerTitle')}</h2>
+  return <section data-testid="employer-matching-panel" aria-labelledby={id + '-title'} className="min-w-0 space-y-4 rounded-card bg-muted p-5 sm:p-6">
+    <h2 id={id + '-title'} className="text-title">{t('employerTitle')}</h2>
     <p className="font-medium [overflow-wrap:anywhere]">{job.title}</p>
     <p className="text-sm text-muted-foreground">{t('employerDescription')}</p>
     <div className="flex flex-wrap items-center gap-3">
-      <Button type="button" disabled={pending} aria-busy={pending} onClick={() => void request()} className="h-auto min-h-11 whitespace-normal">{t('requestTalent')}</Button>
-      <Link href={'/' + locale + '/e/talent'} prefetch={false} className="inline-flex min-h-11 items-center text-sm text-primary underline">{t('searchTalent')}</Link>
+      <Button type="button" variant="brand" disabled={pending} aria-busy={pending} onClick={() => void request()} className="h-auto min-h-11 whitespace-normal">{t('requestTalent')}</Button>
+      <Link href={'/' + locale + '/e/talent'} prefetch={false} className="inline-flex min-h-11 items-center text-sm text-brand underline underline-offset-4">{t('searchTalent')}</Link>
     </div>
     {result?.jobId === job.id && result.items.length > 0 && <div className="space-y-3"><h3 className="font-semibold">{t('results')}</h3><MatchingTalentCards items={result.items} locale={locale} /></div>}
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

@@ -111,7 +111,7 @@ function JdAssistantSession({
     changeOpen(false)
   }
 
-  const fieldClass = 'w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
+  const fieldClass = 'w-full min-w-0 rounded-control border border-input bg-background px-3 py-2 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50'
 
   return (
     <div className="mt-3 space-y-2">
@@ -136,7 +136,7 @@ function JdAssistantSession({
           {confirmation ? (
             <div className="min-w-0 space-y-3">
               <p id={id + '-current'} className="text-sm font-medium">{t('currentDescription')}</p>
-              <pre data-testid="jd-replace-current" aria-labelledby={id + '-current'} className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md border bg-muted p-3 font-sans text-base">{confirmation.text}</pre>
+              <pre data-testid="jd-replace-current" aria-labelledby={id + '-current'} className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-control border bg-muted p-3 font-sans text-base">{confirmation.text}</pre>
               {error && <p role="alert" className="text-sm text-destructive">{t(error)}</p>}
               <DialogFooter className="gap-2">
                 <Button type="button" variant="outline" className="min-h-11 whitespace-normal" onClick={() => { setConfirmation(null); setError(null) }}>{t('keepEditing')}</Button>
@@ -150,7 +150,7 @@ function JdAssistantSession({
                 <textarea id={id + '-points'} name="points" value={points} onChange={event => setPoints(event.target.value)} maxLength={3000} rows={5} disabled={pending} aria-describedby={id + '-points-hint'} className={fieldClass} />
                 <p id={id + '-points-hint'} className="text-sm text-muted-foreground">{t('pointsHint')}</p>
               </div>
-              <div className="space-y-2 rounded-md border bg-muted/40 p-3">
+              <div className="space-y-2 rounded-control border bg-muted/40 p-3">
                 <p id={id + '-disclosure'} className="text-sm">{t('disclosure')}</p>
                 <a href={'/' + locale + '/legal/privacy'} className="inline-flex min-h-11 items-center text-sm underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{t('policy')}</a>
                 <label htmlFor={id + '-acknowledged'} className="flex min-h-11 items-start gap-3 py-2 text-sm">
@@ -159,7 +159,7 @@ function JdAssistantSession({
                 </label>
               </div>
               <Button type="button" disabled={pending || disabled} onClick={() => void generate()} className="min-h-11 whitespace-normal">{pending ? t('generating') : t('generate')}</Button>
-              {error && <p role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">{t(error)}</p>}
+              {error && <p role="alert" className="rounded-control bg-destructive/10 p-3 text-sm text-destructive">{t(error)}</p>}
               {hasSuggestion && (
                 <section className="space-y-3 border-t pt-4" aria-label={t('generated')}>
                   <p role="status" className="text-sm font-medium">{t('generated')}</p>

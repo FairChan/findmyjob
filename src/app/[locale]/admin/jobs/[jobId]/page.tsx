@@ -31,7 +31,7 @@ export default async function AdminJobReviewPage({
 
       <h1 className="text-2xl font-bold mb-6">{t('detailTitle')}</h1>
 
-      <section className="rounded-lg border p-5 mb-6 space-y-3">
+      <section className="rounded-card border p-5 mb-6 space-y-3">
         <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">{t('titleLabel')}</dt>
           <dd className="font-medium">{job.title}</dd>

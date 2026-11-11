@@ -38,25 +38,25 @@ export default async function SynonymsPage({ params, searchParams }: {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0"><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="mt-2 text-sm text-gray-600">{t('description')}</p></div>
+        <div className="min-w-0"><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="mt-2 text-sm text-muted-foreground">{t('description')}</p></div>
         <SynonymForm />
       </div>
-      {invalid ? <div className="space-y-3"><p role="alert" className="rounded-lg border border-red-200 bg-white p-4 text-sm text-red-800">{t('errorQuery')}</p><a href={path} className="text-sm text-blue-700 underline underline-offset-2">{t('reset')}</a></div> : (
+      {invalid ? <div className="space-y-3"><p role="alert" className="rounded-card border border-destructive/30 bg-card p-4 text-sm text-destructive">{t('errorQuery')}</p><a href={path} className="text-sm text-brand underline underline-offset-2">{t('reset')}</a></div> : (
         <div className="space-y-3">
-          {result.items.length === 0 && <p className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">{t('empty')}</p>}
+          {result.items.length === 0 && <p className="rounded-card border border-border bg-card p-6 text-sm text-muted-foreground">{t('empty')}</p>}
           {result.items.map((row) => (
-            <article key={row.id} data-testid={'synonym-' + row.id} className="min-w-0 space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+            <article key={row.id} data-testid={'synonym-' + row.id} className="min-w-0 space-y-4 rounded-card border border-border bg-card p-4 sm:p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-800">{t(row.active ? 'active' : 'inactive')}</span>
+                <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">{t(row.active ? 'active' : 'inactive')}</span>
                 <SynonymForm group={{ id: row.id, terms: row.terms, active: row.active }} />
               </div>
-              <ul className="flex min-w-0 flex-wrap gap-2">{row.terms.map((term) => <li key={term} className="max-w-full rounded-lg border border-blue-100 bg-blue-50 px-3 py-1 text-sm text-blue-900 [overflow-wrap:anywhere]">{term}</li>)}</ul>
-              <p className="text-xs text-gray-600">{t('updatedAt')}: {formatKLDateTime(row.updatedAt, locale)}</p>
+              <ul className="flex min-w-0 flex-wrap gap-2">{row.terms.map((term) => <li key={term} className="max-w-full rounded-card border border-brand/30 bg-brand-muted px-3 py-1 text-sm text-brand [overflow-wrap:anywhere]">{term}</li>)}</ul>
+              <p className="text-xs text-muted-foreground">{t('updatedAt')}: {formatKLDateTime(row.updatedAt, locale)}</p>
             </article>
           ))}
         </div>
       )}
-      {!invalid && result.nextCursor && <a href={path + '?' + new URLSearchParams({ cursor: result.nextCursor }).toString()} className="inline-flex min-h-10 items-center rounded-lg border border-gray-300 bg-white px-4 text-sm">{t('next')}</a>}
+      {!invalid && result.nextCursor && <a href={path + '?' + new URLSearchParams({ cursor: result.nextCursor }).toString()} className="inline-flex min-h-10 items-center rounded-card border border-border bg-card px-4 text-sm">{t('next')}</a>}
     </div>
   )
 }

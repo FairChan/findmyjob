@@ -17,8 +17,8 @@ export function BillingError({ code, operation }: { code: string; operation: 'qu
                 : code === 'VALIDATION_ERROR' ? 'errorInvalid'
                   : operation === 'quote' ? 'errorQuote' : operation === 'create' ? 'errorCreate' : operation === 'upload' ? 'errorUpload' : operation === 'attach' ? 'errorAttach' : 'errorCancel'
   return <div className="space-y-2">
-    <p role="alert" className="text-sm text-red-800">{t(key)}</p>
-    {auth && <a href={'/' + locale + '/login'} className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{t('signIn')}</a>}
-    {operation === 'create' && code !== 'CONFLICT' && <a href={'/' + locale + '/e/billing'} className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{t('backToOrders')}</a>}
+    <p role="alert" className="text-sm text-destructive">{t(key)}</p>
+    {auth && <a href={'/' + locale + '/login'} className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('signIn')}</a>}
+    {operation === 'create' && code !== 'CONFLICT' && <a href={'/' + locale + '/e/billing'} className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('backToOrders')}</a>}
   </div>
 }

@@ -123,19 +123,19 @@ export function OrderInvoicePanel({ orderId, invoice }: Props) {
   const date = invoice?.issuedAt && Number.isFinite(new Date(invoice.issuedAt).getTime()) ? invoice.issuedAt : null
   const statusKey = invoice?.pdfStatus === 'READY' ? 'ready' : invoice?.pdfStatus === 'FAILED' ? 'unavailable'
     : invoice ? 'processing' : 'notIssued'
-  return <section data-testid="order-invoice" aria-labelledby="order-invoice-heading" className="min-w-0 space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
-    <h2 id="order-invoice-heading" className="text-lg font-semibold">{t('title')}</h2>
-    <p className="text-sm text-gray-600">{t(statusKey)}</p>
+  return <section data-testid="order-invoice" aria-labelledby="order-invoice-heading" className="min-w-0 space-y-4 rounded-card border border-border bg-card p-4 sm:p-6">
+    <h2 id="order-invoice-heading" className="text-title">{t('title')}</h2>
+    <p className="text-sm text-muted-foreground">{t(statusKey)}</p>
     {invoice && <dl className="grid gap-4 text-sm sm:grid-cols-2">
-      <div className="min-w-0"><dt className="text-gray-600">{t('invoiceNumber')}</dt><dd className="mt-1 break-all font-semibold">{validNumber(invoice.invoiceNo) ? invoice.invoiceNo : t('notAvailable')}</dd></div>
-      <div><dt className="text-gray-600">{t('issuedAt')}</dt><dd className="mt-1">{date ? <time dateTime={date}>{formatKLDateTime(date, locale)} (Asia/Kuala_Lumpur)</time> : t('notAvailable')}</dd></div>
+      <div className="min-w-0"><dt className="text-muted-foreground">{t('invoiceNumber')}</dt><dd className="mt-1 break-all font-semibold">{validNumber(invoice.invoiceNo) ? invoice.invoiceNo : t('notAvailable')}</dd></div>
+      <div><dt className="text-muted-foreground">{t('issuedAt')}</dt><dd className="mt-1">{date ? <time dateTime={date}>{formatKLDateTime(date, locale)} (Asia/Kuala_Lumpur)</time> : t('notAvailable')}</dd></div>
     </dl>}
-    {failure && <p role="alert" className="text-sm text-red-800">{t(failureKey[failure])}</p>}
-    {started && <p role="status" className="text-sm text-green-800">{t('downloadStarted')}</p>}
+    {failure && <p role="alert" className="text-sm text-destructive">{t(failureKey[failure])}</p>}
+    {started && <p role="status" className="text-sm text-success">{t('downloadStarted')}</p>}
     <div className="flex flex-wrap items-center gap-4">
       {invoice?.pdfStatus === 'READY' && <Button type="button" onClick={download} disabled={!hydrated || pending} aria-busy={pending} className="h-auto min-h-11 whitespace-normal">{t('download')}</Button>}
-      {pending && <span role="status" className="text-sm text-gray-600">{t('downloading')}</span>}
-      <a href={'/' + locale + '/e/billing/' + encodeURIComponent(orderId)} className="inline-flex min-h-11 items-center text-sm text-blue-700 underline">{t('refresh')}</a>
+      {pending && <span role="status" className="text-sm text-muted-foreground">{t('downloading')}</span>}
+      <a href={'/' + locale + '/e/billing/' + encodeURIComponent(orderId)} className="inline-flex min-h-11 items-center text-sm text-brand underline">{t('refresh')}</a>
     </div>
   </section>
 }

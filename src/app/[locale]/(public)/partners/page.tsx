@@ -69,7 +69,7 @@ export default async function PartnersPage({ params }: Props) {
                         aria-hidden="true"
                         width={40}
                         height={40}
-                        className="size-10 shrink-0 rounded-control bg-white object-contain"
+                        className="size-10 shrink-0 rounded-control bg-card object-contain"
                         unoptimized
                       />
                     )}

@@ -4,6 +4,7 @@ import { requireStudent } from '@/server/authz'
 import { db } from '@/server/db'
 import { listActiveSchools } from '@/server/services/school-verification'
 import SchoolVerifyForm from '@/components/school-verify/SchoolVerifyForm'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 interface Props {
   params: Promise<{ locale: string }>
@@ -25,15 +26,13 @@ export default async function SchoolVerifyPage({ params }: Props) {
   const initiallyVerified = profile?.schoolVerifiedAt != null
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
-      <p className="mb-8 text-sm text-muted-foreground">{t('subtitle')}</p>
+    <WorkspacePage title={t('title')} lead={t('subtitle')}>
       <SchoolVerifyForm
         schools={schools}
         locale={locale}
         initiallyVerified={initiallyVerified}
         verifiedEmail={profile?.schoolEmail ?? null}
       />
-    </div>
+    </WorkspacePage>
   )
 }

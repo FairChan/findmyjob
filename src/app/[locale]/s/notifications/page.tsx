@@ -6,6 +6,10 @@ import { listNotifications } from '@/server/services/notifications'
 import { NotificationsClient } from '@/components/notifications/NotificationsClient'
 import { MarkAllReadButton } from '@/components/notifications/MarkAllReadButton'
 import { formatKLDate } from '@/lib/format-date'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Row, RowList } from '@/components/ui/row-list'
 
 export default async function NotificationsPage({
   params,
@@ -58,52 +62,42 @@ export default async function NotificationsPage({
   const unreadCount = notifications.filter((n) => n.readAt === null).length
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="mb-1 text-2xl font-bold">{t('title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
-        </div>
-        {unreadCount > 0 && <MarkAllReadButton label={t('markAllRead')} />}
-      </div>
-
+    <WorkspacePage
+      title={t('title')}
+      lead={t('subtitle')}
+      width="list"
+      actions={unreadCount > 0 ? <MarkAllReadButton label={t('markAllRead')} /> : undefined}
+    >
       {notifications.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <EmptyState title={t('empty')} />
       ) : (
-        <ul className="divide-y rounded-md border">
+        <RowList>
           {notifications.map((n) => (
-            <li
-              key={n.id}
-              className="flex items-start justify-between gap-4 px-4 py-3"
-            >
+            <Row key={n.id} className="items-start">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{notificationLabel(n.type)}</span>
-                  {n.readAt === null && (
-                    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
-                      {t('unread')}
-                    </span>
-                  )}
+                  {n.readAt === null && <Badge tone="brand">{t('unread')}</Badge>}
                 </div>
                 {n.type === 'talent.unlock' && (
                   <Link
                     href={`/${locale}/s/privacy`}
-                    className="mt-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                    className="mt-1 inline-flex min-h-6 items-center text-sm text-brand underline underline-offset-4"
                   >
                     {t('privacyLink')}
                   </Link>
                 )}
               </div>
-              <span className="shrink-0 text-xs text-muted-foreground">
+              <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
                 {formatKLDate(n.createdAt, detectedLocale)}
               </span>
-            </li>
+            </Row>
           ))}
-        </ul>
+        </RowList>
       )}
 
       {/* Mark displayed notifications as read after page renders */}
       <NotificationsClient ids={ids} />
-    </div>
+    </WorkspacePage>
   )
 }

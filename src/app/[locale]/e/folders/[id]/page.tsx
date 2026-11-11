@@ -4,14 +4,18 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
+import { ChevronLeft } from 'lucide-react'
 import type { DegreeLevel } from '@prisma/client'
 import { requireCompanyMember } from '@/server/authz'
 import { ForbiddenError, NotFoundError } from '@/server/errors'
 import { db } from '@/server/db'
 import { getFolderItems } from '@/server/services/talent-folders'
 import type { FolderItem } from '@/server/services/talent-folders'
-import type { TalentCard } from '@/server/serializers/talent-card'
+import { BACK_LINK_CLASS, WorkspacePage } from '@/components/layout/workspace-page'
+import { WorkspaceNotice } from '@/components/layout/workspace-notice'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
 import { FolderItemActions } from './FolderItemActions'
 
 const DEGREE_LABELS: Record<DegreeLevel, string> = {
@@ -35,22 +39,18 @@ function FolderCard({
 }) {
   const { card } = item
   return (
-    <div className="rounded-lg border bg-card p-4">
+    <div className="rounded-card bg-muted p-5">
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Link
               href={`/${locale}/e/talent/${card.id}`}
               prefetch={false}
-              className="font-semibold hover:text-primary"
+              className="font-semibold underline-offset-4 hover:underline"
             >
               {card.name}
             </Link>
-            {card.unlocked && (
-              <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                {tLabel('unlocked')}
-              </span>
-            )}
+            {card.unlocked && <Badge tone="success">{tLabel('unlocked')}</Badge>}
             {card.graduationYear !== null && (
               <span className="text-sm text-muted-foreground">{card.graduationYear}</span>
             )}
@@ -75,18 +75,15 @@ function FolderCard({
           {card.skills.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {card.skills.slice(0, 5).map((skill) => (
-                <span
-                  key={skill}
-                  className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-                >
+                <Badge key={skill} tone="plain">
                   {skill}
-                </span>
+                </Badge>
               ))}
             </div>
           )}
 
           {item.note && (
-            <p className="mt-2 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            <p className="mt-3 rounded-control bg-background px-3 py-2 text-sm text-muted-foreground">
               {item.note}
             </p>
           )}
@@ -142,18 +139,11 @@ export default async function FolderDetailPage({
 
   if (company?.verificationStatus !== 'VERIFIED') {
     return (
-      <div className="container mx-auto max-w-2xl px-4 py-12">
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
-        >
-          <h1 className="text-xl font-semibold text-amber-900">{t('verifyRequired')}</h1>
-          <p className="mt-2 text-sm text-amber-700">{t('verifyDesc')}</p>
-          <Button asChild className="mt-6">
-            <Link href={`/${locale}/e/onboarding`}>{t('verifyAction')}</Link>
-          </Button>
-        </div>
-      </div>
+      <WorkspaceNotice
+        title={t('verifyRequired')}
+        description={t('verifyDesc')}
+        action={{ label: t('verifyAction'), href: `/${locale}/e/onboarding` }}
+      />
     )
   }
 
@@ -168,26 +158,21 @@ export default async function FolderDetailPage({
   const { folder, items } = result
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-6">
-      <nav aria-label="breadcrumb" className="mb-4">
-        <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link href={`/${locale}/e/folders`} prefetch={false}>
-            ← {tLabel('backToFolders')}
+    <WorkspacePage
+      width="list"
+      title={folder.name}
+      lead={`${items.length} ${tLabel('visibleItems')}`}
+      eyebrow={
+        <nav aria-label="breadcrumb">
+          <Link href={`/${locale}/e/folders`} prefetch={false} className={BACK_LINK_CLASS}>
+            <ChevronLeft aria-hidden="true" className="size-4" />
+            {tLabel('backToFolders')}
           </Link>
-        </Button>
-      </nav>
-
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">{folder.name}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {items.length} {tLabel('visibleItems')}
-        </p>
-      </div>
-
+        </nav>
+      }
+    >
       {items.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          {tLabel('emptyFolder')}
-        </div>
+        <EmptyState title={tLabel('emptyFolder')} />
       ) : (
         <div className="space-y-3">
           {items.map((item) => (
@@ -201,6 +186,6 @@ export default async function FolderDetailPage({
           ))}
         </div>
       )}
-    </div>
+    </WorkspacePage>
   )
 }

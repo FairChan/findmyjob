@@ -6,6 +6,8 @@ import { redirect } from 'next/navigation'
 import ChangePasswordForm from '@/components/auth/ChangePasswordForm'
 import LocaleForm from '@/components/auth/LocaleForm'
 import SignOutButton from '@/components/auth/SignOutButton'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { Card } from '@/components/ui/card'
 
 export default async function StudentSettingsPage({
   params,
@@ -27,23 +29,33 @@ export default async function StudentSettingsPage({
   const userLocale = (user?.locale as 'zh' | 'en') ?? 'zh'
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-12 space-y-10">
-      <h1 className="text-2xl font-bold">{t('title')}</h1>
-
-      <section className="rounded-lg border bg-card p-6 space-y-4">
-        <h2 className="text-lg font-semibold">{t('changePasswordTitle')}</h2>
-        <ChangePasswordForm />
+    <WorkspacePage title={t('title')}>
+      <section aria-labelledby="settings-password">
+        <Card className="space-y-5">
+          <h2 id="settings-password" className="text-title">
+            {t('changePasswordTitle')}
+          </h2>
+          <ChangePasswordForm />
+        </Card>
       </section>
 
-      <section className="rounded-lg border bg-card p-6 space-y-4">
-        <h2 className="text-lg font-semibold">{t('languageTitle')}</h2>
-        <LocaleForm currentLocale={userLocale} />
+      <section aria-labelledby="settings-language">
+        <Card className="space-y-5">
+          <h2 id="settings-language" className="text-title">
+            {t('languageTitle')}
+          </h2>
+          <LocaleForm currentLocale={userLocale} />
+        </Card>
       </section>
 
-      <section className="rounded-lg border bg-card p-6 space-y-4">
-        <h2 className="text-lg font-semibold">{t('signOutTitle')}</h2>
-        <SignOutButton />
+      <section aria-labelledby="settings-sign-out">
+        <Card className="space-y-5">
+          <h2 id="settings-sign-out" className="text-title">
+            {t('signOutTitle')}
+          </h2>
+          <SignOutButton />
+        </Card>
       </section>
-    </div>
+    </WorkspacePage>
   )
 }

@@ -63,13 +63,13 @@ export function MarketingPreferences({ locale, audience, uiState }: MarketingPre
   }
 
   return <section data-testid="marketing-preferences" aria-labelledby={id + '-title'}
-    className="my-8 min-w-0 space-y-4 rounded-xl border bg-card p-4 sm:p-6">
-    <h2 id={id + '-title'} className="text-xl font-semibold">{t('title')}</h2>
+    className="my-8 min-w-0 space-y-4 rounded-card bg-muted p-5 sm:p-6">
+    <h2 id={id + '-title'} className="text-title">{t('title')}</h2>
     <p className="text-sm">{t(audience === 'student' ? 'studentDescription' : 'employerDescription')}</p>
     <p id={id + '-details'} className="text-sm text-muted-foreground">{t('independent')}</p>
     <Link href={'/' + locale + '/legal/privacy'} prefetch={false}
-      className="inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4">{t('privacyPolicy')}</Link>
-    {granted && <div className="space-y-2 rounded-lg border p-4">
+      className="inline-flex min-h-11 items-center text-sm text-brand underline underline-offset-4">{t('privacyPolicy')}</Link>
+    {granted && <div className="space-y-2 rounded-control bg-background p-4">
       <p className="text-sm">{t('recorded')}</p>
       <Button type="button" variant="outline" disabled={!hydrated || pending} aria-busy={pending}
         onClick={() => void save(false)} className="h-auto min-h-11 whitespace-normal">{t('withdraw')}</Button>
@@ -83,7 +83,7 @@ export function MarketingPreferences({ locale, audience, uiState }: MarketingPre
       <Button type="button" disabled={!hydrated || pending || !checked || !canGrant} aria-busy={pending}
         onClick={() => void save(true)} className="h-auto min-h-11 whitespace-normal">{t('save')}</Button>
     </div>
-    {!canGrant && <p className="rounded-md bg-muted p-3 text-sm">{t('unavailable')}</p>}
+    {!canGrant && <p className="rounded-control bg-background p-3 text-sm">{t('unavailable')}</p>}
     <p className="text-sm text-muted-foreground">{t('withdrawalNote')}</p>
     {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     <p ref={statusRef} role="status" aria-live="polite" tabIndex={-1}

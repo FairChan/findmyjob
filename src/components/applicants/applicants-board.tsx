@@ -208,7 +208,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
 
       {/* Status change error banner */}
       {statusChangeError && (
-        <div role="alert" className="mb-3 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <div role="alert" className="mb-3 rounded-control border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {statusChangeError}
         </div>
       )}
@@ -222,7 +222,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
             return (
               <div
                 key={col}
-                className={`min-w-[160px] flex-1 rounded-lg border p-2 ${dragOverCol === col ? 'bg-muted/60' : 'bg-muted/20'}`}
+                className={`min-w-[160px] flex-1 rounded-card border p-2 ${dragOverCol === col ? 'bg-muted/60' : 'bg-muted/20'}`}
                 onDragOver={isDropTarget ? (e) => onDragOver(e, col) : undefined}
                 onDrop={isDropTarget ? (e) => onDrop(e, col) : undefined}
                 onDragLeave={() => setDragOverCol(null)}
@@ -301,7 +301,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
           </div>
 
           {/* Horizontally scrollable table */}
-          <div className="overflow-x-auto rounded-md border">
+          <div className="overflow-x-auto rounded-control border">
             <table className="min-w-[900px] w-full text-sm" aria-label="standardized-applicant-list">
               <thead>
                 <tr className="border-b bg-muted/40 text-xs font-semibold text-muted-foreground">
@@ -372,7 +372,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
               value={noteValue}
               onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setNoteValue(e.target.value)}
               placeholder={t.notePlaceholder}
-              className="min-h-[120px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="min-h-[120px] w-full rounded-control border border-input bg-background px-3 py-2 text-sm"
               maxLength={2000}
             />
             {noteError && <p className="text-sm text-destructive">{noteError}</p>}
@@ -414,7 +414,7 @@ function ApplicantCard({
 }) {
   return (
     <div
-      className="rounded-md border bg-card p-2 shadow-sm"
+      className="rounded-control border bg-card p-2 shadow-sm"
       draggable={onDragStart !== undefined}
       onDragStart={onDragStart ? () => onDragStart(a.applicationId) : undefined}
       onDragEnd={onDragEnd}

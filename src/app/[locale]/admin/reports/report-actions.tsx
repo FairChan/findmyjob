@@ -49,7 +49,7 @@ function ReportDecision({ reportId, status }: { reportId: string; status: 'RESOL
   return (
     <Dialog open={open} onOpenChange={(value) => { if (!inFlight.current) { setOpen(value); setError(''); setAuthCode('') } }}>
       <DialogTrigger asChild><Button size="sm" variant={resolving ? 'default' : 'outline'}>{t(resolving ? 'resolve' : 'dismiss')}</Button></DialogTrigger>
-      <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-xl" onEscapeKeyDown={(event) => { if (pending) event.preventDefault() }} onPointerDownOutside={(event) => { if (pending) event.preventDefault() }} onCloseAutoFocus={(event) => {
+      <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-card" onEscapeKeyDown={(event) => { if (pending) event.preventDefault() }} onPointerDownOutside={(event) => { if (pending) event.preventDefault() }} onCloseAutoFocus={(event) => {
         if (succeeded.current) {
           event.preventDefault()
           focusFeedback()
@@ -57,8 +57,8 @@ function ReportDecision({ reportId, status }: { reportId: string; status: 'RESOL
         }
       }}>
         <DialogHeader><DialogTitle>{t(resolving ? 'resolve' : 'dismiss')}</DialogTitle><DialogDescription>{t(resolving ? 'resolveDescription' : 'dismissDescription')}</DialogDescription></DialogHeader>
-        {error && <p role="alert" className="text-sm text-red-800">{error}</p>}
-        {['FORBIDDEN', 'FRESH_SESSION_REQUIRED', 'TWO_FACTOR_REQUIRED'].includes(authCode) && <a className="text-sm text-blue-700 underline" href={'/' + locale + (authCode === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')}>{t(authCode === 'TWO_FACTOR_REQUIRED' ? 'setupTwoFactor' : 'signIn')}</a>}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {['FORBIDDEN', 'FRESH_SESSION_REQUIRED', 'TWO_FACTOR_REQUIRED'].includes(authCode) && <a className="text-sm text-brand underline" href={'/' + locale + (authCode === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')}>{t(authCode === 'TWO_FACTOR_REQUIRED' ? 'setupTwoFactor' : 'signIn')}</a>}
         <DialogFooter><Button type="button" variant="outline" disabled={pending} onClick={() => setOpen(false)}>{t('cancel')}</Button><Button type="button" disabled={pending} onClick={submit}>{t(pending ? 'saving' : resolving ? 'confirmResolve' : 'confirmDismiss')}</Button></DialogFooter>
       </DialogContent>
     </Dialog>

@@ -253,7 +253,7 @@ export default function JobFormClient({
           placeholder={t.titlePlaceholder}
           disabled={disabled}
           maxLength={200}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
         {titleError && <p className="mt-1 text-xs text-destructive">{titleError}</p>}
       </div>
@@ -265,7 +265,7 @@ export default function JobFormClient({
           value={type}
           onChange={e => setType(e.target.value as typeof type)}
           disabled={disabled}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         >
           <option value="INTERNSHIP">{t.typeInternship}</option>
           <option value="FULL_TIME">{t.typeFullTime}</option>
@@ -283,7 +283,7 @@ export default function JobFormClient({
           placeholder={t.categoryPlaceholder}
           disabled={disabled}
           maxLength={100}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
       </div>
 
@@ -299,7 +299,7 @@ export default function JobFormClient({
           disabled={disabled}
           rows={6}
           maxLength={10000}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
         {descError && <p className="mt-1 text-xs text-destructive">{descError}</p>}
         {jdAssistant && isEditable && (
@@ -326,7 +326,7 @@ export default function JobFormClient({
           disabled={disabled}
           rows={4}
           maxLength={5000}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
       </div>
 
@@ -340,7 +340,7 @@ export default function JobFormClient({
           disabled={disabled}
           rows={3}
           maxLength={5000}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
       </div>
 
@@ -351,7 +351,7 @@ export default function JobFormClient({
           value={workMode}
           onChange={e => setWorkMode(e.target.value as typeof workMode)}
           disabled={disabled}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         >
           <option value="ONSITE">{t.workModeOnsite}</option>
           <option value="HYBRID">{t.workModeHybrid}</option>
@@ -367,7 +367,7 @@ export default function JobFormClient({
             value={state}
             onChange={e => setState(e.target.value)}
             disabled={disabled}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           >
             <option value="">{t.statePlaceholder}</option>
             {MY_STATES.map(s => (
@@ -386,7 +386,7 @@ export default function JobFormClient({
             placeholder={t.cityPlaceholder}
             disabled={disabled}
             maxLength={100}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           />
         </div>
       </div>
@@ -402,7 +402,7 @@ export default function JobFormClient({
               onChange={e => setSalaryMin(e.target.value)}
               min={0}
               disabled={disabled}
-              className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+              className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
             />
           </div>
           <div>
@@ -413,7 +413,7 @@ export default function JobFormClient({
               onChange={e => setSalaryMax(e.target.value)}
               min={0}
               disabled={disabled}
-              className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+              className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
             />
           </div>
         </div>
@@ -432,7 +432,7 @@ export default function JobFormClient({
       {/* Languages */}
       <div>
         <label className="mb-1 block text-sm font-medium">{t.languagesLabel}</label>
-        <div className="flex flex-wrap gap-1 rounded-md border p-2">
+        <div className="flex flex-wrap gap-1 rounded-control border p-2">
           {languages.map(lang => (
             <span
               key={lang}
@@ -474,7 +474,7 @@ export default function JobFormClient({
       {/* Skills */}
       <div>
         <label className="mb-1 block text-sm font-medium">{t.skillsLabel}</label>
-        <div className="flex flex-wrap gap-1 rounded-md border p-2">
+        <div className="flex flex-wrap gap-1 rounded-control border p-2">
           {skills.map(skill => (
             <span
               key={skill}
@@ -548,7 +548,7 @@ export default function JobFormClient({
             min={1}
             max={9999}
             disabled={disabled}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           />
         </div>
         <div>
@@ -558,7 +558,7 @@ export default function JobFormClient({
             value={deadline}
             onChange={e => setDeadline(e.target.value)}
             disabled={disabled}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           />
         </div>
       </div>
@@ -567,7 +567,7 @@ export default function JobFormClient({
       {limitReached && <EntitlementLimitNotice resource="jobs" canPurchase={canPurchase} />}
       {error && <p role="alert" className="rounded bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
       {successMsg && (
-        <p className="rounded bg-green-50 p-3 text-sm text-green-700">{successMsg}</p>
+        <p className="rounded bg-success-muted p-3 text-sm text-success">{successMsg}</p>
       )}
 
       {/* Actions */}

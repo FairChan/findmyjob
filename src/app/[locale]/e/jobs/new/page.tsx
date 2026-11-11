@@ -7,6 +7,7 @@ import { createJobAction } from '../actions'
 import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 import { getJdAssistantAvailability } from '@/server/services/jd-assistant'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function NewJobPage({ params }: { params: Promise<{ locale: string }> }) {
   await params
@@ -23,8 +24,7 @@ export default async function NewJobPage({ params }: { params: Promise<{ locale:
   const jdAssistant = await getJdAssistantAvailability(ctx)
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">{t('newJobTitle')}</h1>
+    <WorkspacePage title={t('newJobTitle')} width="list">
       <CompanyEntitlementSummary usage={usage} resource="jobs" />
       <JobFormClient
         canPurchase={usage.canPurchase}
@@ -80,6 +80,6 @@ export default async function NewJobPage({ params }: { params: Promise<{ locale:
           removeTagLabel: t('form.removeTagLabel'),
         }}
       />
-    </div>
+    </WorkspacePage>
   )
 }

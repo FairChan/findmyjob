@@ -77,10 +77,10 @@ export default async function AdminDataRequestsPage({
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
                         req.status === 'OPEN'
-                          ? 'bg-yellow-100 text-yellow-800'
+                          ? 'bg-warning-muted text-warning'
                           : req.status === 'DONE'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-success-muted text-success'
+                            : 'bg-destructive-muted text-destructive'
                       }`}
                     >
                       {t(`status_${req.status}`)}

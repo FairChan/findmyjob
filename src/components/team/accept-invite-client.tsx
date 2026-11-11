@@ -54,14 +54,14 @@ export default function AcceptInviteClient({ token, companyName, role, locale, t
 
   if (accepted) {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-        <p className="text-sm text-green-700">{t.successMessage}</p>
+      <div className="rounded-card border border-success/30 bg-success-muted p-4">
+        <p className="text-sm text-success">{t.successMessage}</p>
       </div>
     )
   }
 
   return (
-    <div className="rounded-lg border p-6">
+    <div className="rounded-card border p-6">
       <div className="mb-4">
         <p className="text-sm text-muted-foreground">{t.companyLabel}</p>
         <p className="font-medium">{companyName}</p>
@@ -73,7 +73,7 @@ export default function AcceptInviteClient({ token, companyName, role, locale, t
       <button
         onClick={handleAccept}
         disabled={isPending}
-        className="w-full rounded bg-brand px-4 py-2 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
+        className="min-h-11 w-full rounded-full bg-brand px-5 py-2 text-sm font-medium text-brand-foreground hover:bg-brand/90 disabled:opacity-50"
       >
         {t.acceptButton}
       </button>

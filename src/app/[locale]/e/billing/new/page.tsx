@@ -41,14 +41,14 @@ export default async function NewOrderPage({ params, searchParams }: Props) {
       errorCode = error.code
     }
   }
-  return <div className="mx-auto w-full max-w-4xl space-y-6 p-4 md:p-6">
-    <header className="space-y-2"><h1 data-testid="billing-heading" tabIndex={-1} className="text-2xl font-semibold">{t('quoteTitle')}</h1><p className="text-sm text-gray-600">{t('quoteDescription')}</p></header>
-    <Link href="/e/billing" className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{t('backToOrders')}</Link>
-    {!parsed.success ? <p role="alert" className="text-sm text-red-800">{t('errorPlan')}</p> : quote ? <CreateOrderForm initialQuote={quote} bank={bank} /> : <div className="space-y-4">
+  return <div className="mx-auto w-full max-w-4xl space-y-6 px-4 pb-20 pt-8 sm:px-6 md:pt-12">
+    <header className="space-y-3"><h1 data-testid="billing-heading" tabIndex={-1} className="text-headline">{t('quoteTitle')}</h1><p className="text-body text-muted-foreground">{t('quoteDescription')}</p></header>
+    <Link href="/e/billing" className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('backToOrders')}</Link>
+    {!parsed.success ? <p role="alert" className="text-sm text-destructive">{t('errorPlan')}</p> : quote ? <CreateOrderForm initialQuote={quote} bank={bank} /> : <div className="space-y-4">
       {!bank && <BankDetails bank={null} />}
       <BillingError code={errorCode || 'UNKNOWN'} operation="quote" />
-      <Link href="/pricing" className="inline-flex min-h-10 items-center text-sm text-blue-700 underline">{t('viewPricing')}</Link>
+      <Link href="/pricing" className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('viewPricing')}</Link>
     </div>}
-    <p className="text-xs text-gray-600">{t('currencyNote')}</p>
+    <p className="text-xs text-muted-foreground">{t('currencyNote')}</p>
   </div>
 }

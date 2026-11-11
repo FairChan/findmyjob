@@ -6,6 +6,8 @@ import { listCompanyJobs } from '@/server/services/jobs'
 import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
 import JobListClient from '@/components/jobs/job-list-client'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { Button } from '@/components/ui/button'
 import type { JobStatus, JobType } from '@prisma/client'
 
 export type JobListItem = {
@@ -40,24 +42,22 @@ export default async function JobsPage({ params }: { params: Promise<{ locale: s
   const publishedJobs = jobs.filter(job => job.status === 'PUBLISHED' && (!job.deadline || job.deadline.getTime() > requestedAt))
 
   return (
-    <div className="container mx-auto max-w-5xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold">{t('listTitle')}</h1>
-        <Link
-          href="/e/jobs/new"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          {t('newJob')}
-        </Link>
-      </div>
-
+    <WorkspacePage
+      title={t('listTitle')}
+      width="board"
+      actions={
+        <Button asChild variant="brand">
+          <Link href="/e/jobs/new">{t('newJob')}</Link>
+        </Button>
+      }
+    >
       <CompanyEntitlementSummary usage={usage} resource="jobs" />
-      {publishedJobs.length > 0 && <section className="mb-6 space-y-2 rounded-lg border p-4" aria-labelledby="matching-jobs-title">
-        <h2 id="matching-jobs-title" className="text-lg font-semibold">{matching('jobLinksTitle')}</h2>
+      {publishedJobs.length > 0 && <section className="space-y-2 rounded-card bg-muted p-5 sm:p-6" aria-labelledby="matching-jobs-title">
+        <h2 id="matching-jobs-title" className="text-title">{matching('jobLinksTitle')}</h2>
         <p className="text-sm text-muted-foreground">{matching('jobLinksHint')}</p>
         <ul className="space-y-1">{publishedJobs.map(job => <li key={job.id}>
           <Link href={'/e/jobs/' + job.id + '/recommendations'} prefetch={false}
-            className="inline-flex min-h-11 items-center text-sm text-primary underline [overflow-wrap:anywhere]">{job.title}</Link>
+            className="inline-flex min-h-11 items-center text-sm text-brand underline underline-offset-4 [overflow-wrap:anywhere]">{job.title}</Link>
         </li>)}</ul>
       </section>}
       <JobListClient
@@ -84,6 +84,6 @@ export default async function JobsPage({ params }: { params: Promise<{ locale: s
           errorForbidden: t('errorForbidden'),
         }}
       />
-    </div>
+    </WorkspacePage>
   )
 }

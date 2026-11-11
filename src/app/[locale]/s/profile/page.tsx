@@ -4,6 +4,7 @@ import { requireStudent } from '@/server/authz'
 import { getProfileForOnboarding } from '@/server/services/student-profile'
 import { db } from '@/server/db'
 import ProfileEditor from '@/components/profile/ProfileEditor'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 interface Props {
   params: Promise<{ locale: string }>
@@ -23,9 +24,8 @@ export default async function StudentProfilePage({ params }: Props) {
   })
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
-      <h1 className="text-2xl font-bold mb-8">{t('title')}</h1>
+    <WorkspacePage title={t('title')}>
       <ProfileEditor locale={locale} profile={profile} schools={schools} />
-    </div>
+    </WorkspacePage>
   )
 }

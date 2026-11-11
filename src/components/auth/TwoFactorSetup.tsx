@@ -186,7 +186,7 @@ export default function TwoFactorSetup({ locale, alreadyEnabled }: Props) {
           <section className="space-y-3 border-t pt-5" aria-labelledby="setup-backup-title">
             <h2 id="setup-backup-title" className="font-semibold">{t('backupTitle')}</h2>
             <p id="backup-codes-description" className="text-sm text-muted-foreground">{t('backupDescription')}</p>
-            <ul aria-label={t('backupCodesLabel')} className="grid grid-cols-1 gap-2 rounded-md border bg-muted p-3 min-[360px]:grid-cols-2">
+            <ul aria-label={t('backupCodesLabel')} className="grid grid-cols-1 gap-2 rounded-control border bg-muted p-3 min-[360px]:grid-cols-2">
               {setup.backupCodes.map((backupCode) => (
                 <li key={backupCode} className="break-all font-mono text-sm">{backupCode}</li>
               ))}

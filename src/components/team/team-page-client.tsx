@@ -132,7 +132,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
         </DialogContent>
       </Dialog>
       {/* Member list */}
-      <div className="mb-8 overflow-x-auto rounded-lg border">
+      <div className="mb-8 overflow-x-auto rounded-card border">
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-muted">
             <tr>
@@ -184,8 +184,8 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
 
       {/* Invite form (OWNER/ADMIN only) */}
       {canManage && (
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">{t.invite}</h2>
+        <div className="rounded-card border p-4">
+          <h2 className="mb-4 text-title">{t.invite}</h2>
           <form onSubmit={handleInvite} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <label className="mb-1 block text-sm font-medium">{t.emailLabel}</label>
@@ -214,13 +214,13 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
             <button
               type="submit"
               disabled={isPending}
-              className="rounded bg-brand px-4 py-2 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
+              className="min-h-10 rounded-full bg-brand px-5 py-2 text-sm font-medium text-brand-foreground hover:bg-brand/90 disabled:opacity-50"
             >
               {t.inviteSubmit}
             </button>
           </form>
           {inviteSuccess && (
-            <p className="mt-2 text-sm text-green-600">{t.inviteSent}</p>
+            <p className="mt-2 text-sm text-success">{t.inviteSent}</p>
           )}
           {inviteError && (
             <p role="alert" className="mt-2 text-sm text-destructive">{inviteError}</p>

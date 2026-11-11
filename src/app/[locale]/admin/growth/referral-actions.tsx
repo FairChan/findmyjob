@@ -56,7 +56,7 @@ export function ReferralActions({ referralId }: { referralId: string }) {
     <div>
       <Dialog open={open} onOpenChange={(value) => { if (!inFlight.current) { setOpen(value); setError(''); setAuthCode('') } }}>
         <DialogTrigger asChild><Button variant="outline" size="sm">{t('void')}</Button></DialogTrigger>
-        <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-xl" onEscapeKeyDown={(event) => { if (pending) event.preventDefault() }} onPointerDownOutside={(event) => { if (pending) event.preventDefault() }} onCloseAutoFocus={(event) => {
+        <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-card" onEscapeKeyDown={(event) => { if (pending) event.preventDefault() }} onPointerDownOutside={(event) => { if (pending) event.preventDefault() }} onCloseAutoFocus={(event) => {
           if (succeeded.current) {
             event.preventDefault()
             focusFeedback()
@@ -65,9 +65,9 @@ export function ReferralActions({ referralId }: { referralId: string }) {
         }}>
           <DialogHeader><DialogTitle>{t('void')}</DialogTitle><DialogDescription>{t('voidDescription')}</DialogDescription></DialogHeader>
           <form onSubmit={submit} className="min-w-0 space-y-4" aria-busy={pending}>
-            <div className="space-y-2"><label htmlFor={id} className="text-sm font-medium">{t('reason')}</label><textarea id={id} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required rows={4} disabled={pending} aria-describedby={id + '-hint'} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-blue-600" /><p id={id + '-hint'} className="text-xs text-gray-600">{t('reasonHint')}</p></div>
-            {error && <p role="alert" className="text-sm text-red-800">{error}</p>}
-            {['FORBIDDEN', 'FRESH_SESSION_REQUIRED', 'TWO_FACTOR_REQUIRED'].includes(authCode) && <a className="block text-sm text-blue-700 underline" href={'/' + locale + (authCode === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')}>{t(authCode === 'TWO_FACTOR_REQUIRED' ? 'setupTwoFactor' : 'signIn')}</a>}
+            <div className="space-y-2"><label htmlFor={id} className="text-sm font-medium">{t('reason')}</label><textarea id={id} value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required rows={4} disabled={pending} aria-describedby={id + '-hint'} className="w-full rounded-card border border-border px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-brand" /><p id={id + '-hint'} className="text-xs text-muted-foreground">{t('reasonHint')}</p></div>
+            {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+            {['FORBIDDEN', 'FRESH_SESSION_REQUIRED', 'TWO_FACTOR_REQUIRED'].includes(authCode) && <a className="block text-sm text-brand underline" href={'/' + locale + (authCode === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')}>{t(authCode === 'TWO_FACTOR_REQUIRED' ? 'setupTwoFactor' : 'signIn')}</a>}
             <DialogFooter><Button type="button" variant="outline" disabled={pending} onClick={() => setOpen(false)}>{t('cancel')}</Button><Button type="submit" disabled={pending}>{t(pending ? 'saving' : 'confirmVoid')}</Button></DialogFooter>
           </form>
         </DialogContent>

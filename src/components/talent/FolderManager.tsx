@@ -107,7 +107,7 @@ export function FolderManager({ initialFolders, locale, labels }: Props) {
 
       {/* Folder list */}
       {folders.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
+        <div className="rounded-card border p-8 text-center text-muted-foreground">
           {labels.noFolders}
         </div>
       ) : (
@@ -115,7 +115,7 @@ export function FolderManager({ initialFolders, locale, labels }: Props) {
           {folders.map((folder) => (
             <li
               key={folder.id}
-              className="flex items-center justify-between rounded-lg border bg-card px-4 py-3"
+              className="flex items-center justify-between rounded-card border bg-card px-4 py-3"
             >
               <div>
                 <Link

@@ -188,7 +188,7 @@ export function AdminCompanyActions({
   return (
     <div className="space-y-6">
       {/* Deactivate / Reactivate */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('deactivateTitle')}</h2>
         {isActive ? (
           <form onSubmit={handleDeactivate} className="space-y-3">
@@ -206,7 +206,7 @@ export function AdminCompanyActions({
                 value={deactivateReason}
                 onChange={(e) => setDeactivateReason(e.target.value)}
                 placeholder={t('deactivateReasonPlaceholder')}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             {deactivateError && (
@@ -215,7 +215,7 @@ export function AdminCompanyActions({
             <button
               type="submit"
               disabled={deactivateLoading}
-              className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              className="rounded-control bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
             >
               {t('deactivateBtn')}
             </button>
@@ -230,7 +230,7 @@ export function AdminCompanyActions({
               type="button"
               onClick={handleReactivate}
               disabled={reactivateLoading}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {t('reactivateBtn')}
             </button>
@@ -239,7 +239,7 @@ export function AdminCompanyActions({
       </section>
 
       {/* Founding partner */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('foundingPartnerTitle')}</h2>
         <form onSubmit={handleFoundingPartner} className="space-y-3">
           <label className="flex items-center gap-2 cursor-pointer">
@@ -255,12 +255,12 @@ export function AdminCompanyActions({
             <p className="text-sm text-destructive">{foundingPartnerError}</p>
           )}
           {foundingPartnerSuccess && (
-            <p className="text-sm text-green-700">{t('successFoundingPartner')}</p>
+            <p className="text-sm text-success">{t('successFoundingPartner')}</p>
           )}
           <button
             type="submit"
             disabled={foundingPartnerLoading}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {t('foundingPartnerSave')}
           </button>
@@ -268,7 +268,7 @@ export function AdminCompanyActions({
       </section>
 
       {/* Tags */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('tagsTitle')}</h2>
         <form onSubmit={handleTags} className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -292,11 +292,11 @@ export function AdminCompanyActions({
             ))}
           </div>
           {tagsError && <p className="text-sm text-destructive">{tagsError}</p>}
-          {tagsSuccess && <p className="text-sm text-green-700">{t('successTags')}</p>}
+          {tagsSuccess && <p className="text-sm text-success">{t('successTags')}</p>}
           <button
             type="submit"
             disabled={tagsLoading}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {t('tagsSave')}
           </button>
@@ -304,7 +304,7 @@ export function AdminCompanyActions({
       </section>
 
       {/* Credits */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('creditsTitle')}</h2>
         {currentBalance !== null ? (
           <p className="text-sm text-muted-foreground mb-3">
@@ -324,7 +324,7 @@ export function AdminCompanyActions({
                 type="number"
                 value={creditDelta}
                 onChange={(e) => setCreditDelta(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             <div>
@@ -337,7 +337,7 @@ export function AdminCompanyActions({
                 value={creditNote}
                 onChange={(e) => setCreditNote(e.target.value)}
                 placeholder={t('creditsNotePlaceholder')}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             {creditsError && <p role="alert" className="text-sm text-destructive">{creditsError}</p>}
@@ -357,11 +357,11 @@ export function AdminCompanyActions({
                 </Link>
               </div>
             )}
-            {creditsSuccess && <p className="text-sm text-green-700">{creditsSuccess}</p>}
+            {creditsSuccess && <p className="text-sm text-success">{creditsSuccess}</p>}
             <button
               type="submit"
               disabled={creditsLoading}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {t('creditsSubmit')}
             </button>

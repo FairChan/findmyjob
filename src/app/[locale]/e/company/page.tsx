@@ -7,6 +7,7 @@ import { INDUSTRIES } from '@/server/lib/taxonomy/industries'
 import { updateCompanyAction } from '@/server/actions/company'
 import CompanyForm from '@/components/company/company-form'
 import type { CompanyFormData } from '@/components/company/company-form'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function CompanyEditPage({
   params,
@@ -39,9 +40,7 @@ export default async function CompanyEditPage({
   }
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-12">
-      <h1 className="text-2xl font-bold mb-2">{t('title')}</h1>
-      <p className="text-muted-foreground mb-8">{t('subtitle')}</p>
+    <WorkspacePage title={t('title')} lead={t('subtitle')}>
       <CompanyForm
         mode="edit"
         industries={INDUSTRIES}
@@ -50,6 +49,6 @@ export default async function CompanyEditPage({
         companyId={company.id}
         onSubmit={updateCompanyAction}
       />
-    </div>
+    </WorkspacePage>
   )
 }

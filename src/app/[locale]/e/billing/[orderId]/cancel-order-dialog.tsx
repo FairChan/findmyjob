@@ -42,7 +42,7 @@ export function CancelOrderDialog({ orderId, orderNo }: { orderId: string; order
   }
   return <Dialog open={open} onOpenChange={changeOpen}>
     <DialogTrigger asChild><Button variant="outline">{t('cancelOrder')}</Button></DialogTrigger>
-    <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-xl" onEscapeKeyDown={(event) => { if (pending) event.preventDefault() }} onPointerDownOutside={(event) => { if (pending) event.preventDefault() }} onCloseAutoFocus={(event) => { if (succeeded.current) { event.preventDefault(); feedback.focusFeedback() } }}>
+    <DialogContent closeLabel={t('close')} className="max-h-[90dvh] w-[calc(100%_-_2rem)] overflow-y-auto rounded-card" onEscapeKeyDown={(event) => { if (pending) event.preventDefault() }} onPointerDownOutside={(event) => { if (pending) event.preventDefault() }} onCloseAutoFocus={(event) => { if (succeeded.current) { event.preventDefault(); feedback.focusFeedback() } }}>
       <DialogHeader><DialogTitle>{t('cancelOrder')}</DialogTitle><DialogDescription className="break-words [overflow-wrap:anywhere]">{t('cancelDescription', { orderNo })}</DialogDescription></DialogHeader>
       <form onSubmit={cancel} aria-busy={pending} className="space-y-4">
         <BillingError code={error} operation="cancel" />

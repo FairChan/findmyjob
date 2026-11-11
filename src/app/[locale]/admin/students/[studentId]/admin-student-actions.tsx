@@ -155,7 +155,7 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
   return (
     <div className="space-y-6">
       {/* Suspend / restore */}
-      <div className="rounded-lg border p-5 space-y-4">
+      <div className="rounded-card border p-5 space-y-4">
         <h3 className="font-semibold">{t('sectionStatus')}</h3>
         {currentStatus === 'ACTIVE' ? (
           <form onSubmit={handleSuspend} className="space-y-3">
@@ -169,7 +169,7 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
                 value={suspendReason}
                 onChange={(e) => setSuspendReason(e.target.value)}
                 placeholder={t('suspendReasonPlaceholder')}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm"
               />
             </div>
             {suspendError && <p className="text-sm text-destructive">{suspendError}</p>}
@@ -191,11 +191,11 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
 
       {/* School verification */}
       {!schoolVerifiedAt && (
-        <div className="rounded-lg border p-5 space-y-3">
+        <div className="rounded-card border p-5 space-y-3">
           <h3 className="font-semibold">{t('sectionSchoolVerify')}</h3>
           <p className="text-sm text-muted-foreground">{t('schoolVerifyDesc')}</p>
           {verifyError && <p className="text-sm text-destructive">{verifyError}</p>}
-          {verifySuccess && <p className="text-sm text-green-600">{t('schoolVerifySuccess')}</p>}
+          {verifySuccess && <p className="text-sm text-success">{t('schoolVerifySuccess')}</p>}
           <Button onClick={handleVerify} disabled={verifyLoading} variant="outline">
             {verifyLoading ? '…' : t('schoolVerifyBtn')}
           </Button>
@@ -203,7 +203,7 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
       )}
 
       {/* Contact information */}
-      <div className="rounded-lg border p-5 space-y-3">
+      <div className="rounded-card border p-5 space-y-3">
         <h3 className="font-semibold">{t('sectionContact')}</h3>
         {contact ? (
           <dl className="space-y-2 text-sm">
@@ -268,7 +268,7 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
       </div>
 
       {/* Grant job view quota */}
-      <div className="rounded-lg border p-5 space-y-4">
+      <div className="rounded-card border p-5 space-y-4">
         <h3 className="font-semibold">{t('sectionGrantQuota')}</h3>
         <form onSubmit={handleGrant} className="space-y-3">
           <div>
@@ -283,7 +283,7 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
               value={grantAmount}
               onChange={(e) => setGrantAmount(e.target.value)}
               placeholder="10"
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm"
             />
           </div>
           <div>
@@ -296,11 +296,11 @@ export function AdminStudentActions({ studentUserId, currentStatus, schoolVerifi
               value={grantNote}
               onChange={(e) => setGrantNote(e.target.value)}
               placeholder={t('grantNotePlaceholder')}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm"
             />
           </div>
           {grantError && <p className="text-sm text-destructive">{grantError}</p>}
-          {grantSuccess && <p className="text-sm text-green-600">{t('grantSuccess')}</p>}
+          {grantSuccess && <p className="text-sm text-success">{t('grantSuccess')}</p>}
           <Button type="submit" disabled={grantLoading}>
             {grantLoading ? '…' : t('grantBtn')}
           </Button>

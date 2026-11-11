@@ -53,20 +53,20 @@ export function CreateOrderForm({ initialQuote, bank }: { initialQuote: OrderQuo
     finally { inFlight.current = false; if (!completed.current) setPending(null) }
   }
 
-  return <form data-testid="billing-quote" onSubmit={create} aria-busy={pending !== null} className="min-w-0 space-y-6 rounded-xl border border-gray-200 bg-white p-4 sm:p-6">
+  return <form data-testid="billing-quote" onSubmit={create} aria-busy={pending !== null} className="min-w-0 space-y-6 rounded-card border border-border bg-card p-4 sm:p-6">
     <BillingTerms quote={quote} quoteIds />
     <fieldset disabled={pending !== null || salesClosed} className="min-w-0 space-y-3">
       <legend className="mb-3 text-sm font-semibold">{stripe('methodLabel')}</legend>
       <div className="grid gap-3 sm:grid-cols-2">
-        {(['BANK_TRANSFER', 'STRIPE'] as const).map((value) => <label key={value} className={'flex min-h-12 min-w-0 cursor-pointer items-center gap-3 rounded-lg border p-3 text-sm focus-within:ring-2 focus-within:ring-blue-600 focus-within:ring-offset-2 ' + (method === value ? 'border-blue-600 bg-blue-50 text-blue-950' : 'border-gray-200 text-gray-700')}>
-          <input type="radio" name="method" value={value} checked={method === value} onChange={() => setMethod(value)} className="h-4 w-4 shrink-0 accent-blue-700" />
+        {(['BANK_TRANSFER', 'STRIPE'] as const).map((value) => <label key={value} className={'flex min-h-12 min-w-0 cursor-pointer items-center gap-3 rounded-card border p-3 text-sm focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ' + (method === value ? 'border-brand bg-brand-muted text-brand' : 'border-border text-foreground')}>
+          <input type="radio" name="method" value={value} checked={method === value} onChange={() => setMethod(value)} className="h-4 w-4 shrink-0 accent-brand" />
           <span className="break-words">{value === 'BANK_TRANSFER' ? t('bankTransfer') : stripe('stripeLabel')}</span>
         </label>)}
       </div>
     </fieldset>
     {!salesClosed && method === 'BANK_TRANSFER' && <BankDetails bank={bank} />}
-    {method === 'STRIPE' && <p className="text-sm text-gray-600">{stripe('checkoutNotice')}</p>}
-    {method === 'BANK_TRANSFER' && <p className="text-sm text-gray-600">{t('createNotice')}</p>}
+    {method === 'STRIPE' && <p className="text-sm text-muted-foreground">{stripe('checkoutNotice')}</p>}
+    {method === 'BANK_TRANSFER' && <p className="text-sm text-muted-foreground">{t('createNotice')}</p>}
     <BillingError code={failure.code} operation={failure.operation} />
     <div className="flex flex-wrap gap-3">
       <Button type="submit" disabled={pending !== null || (method === 'BANK_TRANSFER' && !bank) || salesClosed} aria-busy={pending === 'create'} className="h-auto min-h-10 whitespace-normal">{t('create')}</Button>

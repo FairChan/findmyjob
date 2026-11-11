@@ -30,7 +30,7 @@ export function AdminActionFeedback({ children }: { children: ReactNode }) {
         aria-atomic="true"
         tabIndex={-1}
         className={feedback.message
-          ? 'rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900 focus:outline-2 focus:outline-offset-2 focus:outline-green-700'
+          ? 'rounded-card border border-success/30 bg-success-muted p-4 text-sm text-success focus:outline-2 focus:outline-offset-2 focus:outline-success'
           : 'sr-only'}
       >
         <span key={feedback.sequence}>{feedback.message}</span>

@@ -85,7 +85,7 @@ export function ReportJobDialog({ jobId }: { jobId: string }) {
         </DialogTrigger>
         <DialogContent
           closeLabel={t('close')}
-          className="max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] overflow-y-auto rounded-lg"
+          className="max-h-[calc(100dvh_-_2rem)] w-[calc(100%_-_2rem)] overflow-y-auto rounded-card"
           aria-busy={pending}
           onEscapeKeyDown={(event) => { if (inFlight.current) event.preventDefault() }}
           onPointerDownOutside={(event) => { if (inFlight.current) event.preventDefault() }}
@@ -104,7 +104,7 @@ export function ReportJobDialog({ jobId }: { jobId: string }) {
                 defaultValue={reasons[0]}
                 required
                 disabled={pending}
-                className="min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+                className="min-h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
               >
                 {reasons.map((reason) => <option key={reason} value={reason}>{t(`reasons.${reason}`)}</option>)}
               </select>
@@ -118,7 +118,7 @@ export function ReportJobDialog({ jobId }: { jobId: string }) {
                 maxLength={1000}
                 disabled={pending}
                 aria-describedby={`${id}-note-hint`}
-                className="min-h-24 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
+                className="min-h-24 w-full resize-y rounded-control border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
               />
               <p id={`${id}-note-hint`} className="text-xs text-muted-foreground">{t('noteHint')}</p>
             </div>

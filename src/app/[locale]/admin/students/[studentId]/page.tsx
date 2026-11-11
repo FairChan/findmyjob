@@ -46,7 +46,7 @@ export default async function AdminStudentDetailPage({
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Basic info */}
-        <div className="rounded-lg border p-5 space-y-3">
+        <div className="rounded-card border p-5 space-y-3">
           <h2 className="font-semibold text-base">{t('sectionBasicInfo')}</h2>
           <dl className="space-y-2 text-sm">
             <div className="flex justify-between">
@@ -55,10 +55,10 @@ export default async function AdminStudentDetailPage({
                 <span
                   className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
                     detail.status === 'ACTIVE'
-                      ? 'bg-green-100 text-green-800'
+                      ? 'bg-success-muted text-success'
                       : detail.status === 'SUSPENDED'
-                      ? 'bg-red-100 text-red-800'
-                      : 'bg-gray-100 text-gray-600'
+                      ? 'bg-destructive-muted text-destructive'
+                      : 'bg-muted text-muted-foreground'
                   }`}
                 >
                   {t(`status_${detail.status.toLowerCase()}` as 'status_active')}
@@ -136,7 +136,7 @@ export default async function AdminStudentDetailPage({
 
         {/* Quota info */}
         {quota && (
-          <div className="rounded-lg border p-5 space-y-3">
+          <div className="rounded-card border p-5 space-y-3">
             <h2 className="font-semibold text-base">{t('sectionQuota')}</h2>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">

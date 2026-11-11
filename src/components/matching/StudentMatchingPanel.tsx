@@ -32,7 +32,7 @@ export function StudentMatchingPanel({ locale, uiState, consentOnly = false }: S
     return () => { permission.current = { metadataKey: '', permitted: false } }
   }, [metadataKey, permitted])
   const buttonClass = 'h-auto min-h-11 whitespace-normal'
-  const linkClass = 'inline-flex min-h-11 items-center text-sm text-primary underline underline-offset-4'
+  const linkClass = 'inline-flex min-h-11 items-center text-sm text-brand underline underline-offset-4'
 
   function failure(code: string) {
     setError(t(matchingErrorKey(code)))
@@ -70,10 +70,10 @@ export function StudentMatchingPanel({ locale, uiState, consentOnly = false }: S
   }
 
   return <section data-testid={consentOnly ? 'matching-consent-panel' : 'student-matching-panel'} aria-labelledby={id + '-title'}
-    className="my-8 min-w-0 space-y-4 rounded-xl border bg-card p-4 sm:p-6">
-    <h2 id={id + '-title'} className="text-xl font-semibold">{t(consentOnly ? 'consentTitle' : 'studentTitle')}</h2>
+    className="my-8 min-w-0 space-y-4 rounded-card bg-muted p-5 sm:p-6">
+    <h2 id={id + '-title'} className="text-title">{t(consentOnly ? 'consentTitle' : 'studentTitle')}</h2>
     {!consentOnly && <p className="text-sm text-muted-foreground">{t('studentDescription')}</p>}
-    <div className="space-y-3 rounded-lg border p-4">
+    <div className="space-y-3 rounded-control bg-background p-4">
       {!consentOnly && <h3 className="font-medium">{t('consentTitle')}</h3>}
       <p className="text-sm">{t('disclosure')}</p>
       <Link href={'/' + locale + '/legal/privacy'} prefetch={false} className={linkClass}>{t('privacyPolicy')}</Link>
@@ -87,11 +87,11 @@ export function StudentMatchingPanel({ locale, uiState, consentOnly = false }: S
         <Button type="button" disabled={consentPending || !checked || !uiState.available} onClick={() => void consent(true)} className={buttonClass}>{t('saveConsent')}</Button>
       </div>}
     </div>
-    {!uiState.available && <p role="status" className="rounded-md bg-muted p-3 text-sm">{t('unavailable')}</p>}
+    {!uiState.available && <p role="status" className="rounded-control bg-background p-3 text-sm">{t('unavailable')}</p>}
     {!consentOnly && <>
       {!current && <p className="text-sm text-muted-foreground">{t('needConsent')}</p>}
       <div className="flex flex-wrap items-center gap-3">
-        <Button type="button" disabled={requestPending || consentPending || !permitted} aria-busy={requestPending} onClick={() => void request()} className={buttonClass}>{t('requestJobs')}</Button>
+        <Button type="button" variant="brand" disabled={requestPending || consentPending || !permitted} aria-busy={requestPending} onClick={() => void request()} className={buttonClass}>{t('requestJobs')}</Button>
         <Link href={'/' + locale + '/jobs'} prefetch={false} className={linkClass}>{t('searchJobs')}</Link>
         <Link href={'/' + locale + '/s/profile'} prefetch={false} className={linkClass}>{t('editProfile')}</Link>
         <Link href={'/' + locale + '/s/privacy'} prefetch={false} className={linkClass}>{t('manageConsent')}</Link>

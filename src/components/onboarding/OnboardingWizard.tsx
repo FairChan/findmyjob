@@ -602,7 +602,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
             <div>
               <Label>{t('skillsLabel')}</Label>
-              <div className="mt-1 flex flex-wrap gap-1 p-2 border rounded-md min-h-[42px]">
+              <div className="mt-1 flex flex-wrap gap-1 p-2 border rounded-control min-h-[42px]">
                 {skills.map((skill) => (
                   <span
                     key={skill}
@@ -667,7 +667,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               <Label>{t('educationsLabel')}</Label>
               <div className="mt-2 space-y-4">
                 {educations.map((edu, i) => (
-                  <div key={i} className="rounded-md border p-4 space-y-3">
+                  <div key={i} className="rounded-control border p-4 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">
                         {edu.schoolName || `#${i + 1}`}
@@ -767,7 +767,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               <Label>{t('experiencesLabel')}</Label>
               <div className="mt-2 space-y-4">
                 {experiences.map((exp, i) => (
-                  <div key={i} className="rounded-md border p-4 space-y-3">
+                  <div key={i} className="rounded-control border p-4 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">{exp.title || `#${i + 1}`}</span>
                       <Button

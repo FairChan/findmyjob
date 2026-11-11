@@ -22,8 +22,8 @@ export function PlanActionError({ code, operation, id }: {
 
   return (
     <div className="space-y-2">
-      <p id={id} role="alert" className="text-sm text-red-800">{t(key)}</p>
-      {needsAuth && <a className="inline-flex min-h-10 items-center text-sm text-blue-700 underline underline-offset-2" href={'/' + locale + (code === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')}>
+      <p id={id} role="alert" className="text-sm text-destructive">{t(key)}</p>
+      {needsAuth && <a className="inline-flex min-h-10 items-center text-sm text-brand underline underline-offset-2" href={'/' + locale + (code === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')}>
         {t(code === 'TWO_FACTOR_REQUIRED' ? 'setupTwoFactor' : 'signIn')}
       </a>}
     </div>

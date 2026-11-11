@@ -30,7 +30,7 @@ export default async function AdminSchoolsPage({
         <h1 className="text-2xl font-bold">{t('title')}</h1>
         <Link
           href={`/${locale}/admin/schools/new`}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           {t('createBtn')}
         </Link>
@@ -42,11 +42,11 @@ export default async function AdminSchoolsPage({
           name="q"
           defaultValue={sp.q}
           placeholder={t('searchPlaceholder')}
-          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <button
           type="submit"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           {t('searchBtn')}
         </button>
@@ -90,8 +90,8 @@ export default async function AdminSchoolsPage({
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
                         s.active
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-100 text-gray-600'
+                          ? 'bg-success-muted text-success'
+                          : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       {s.active ? t('statusActive') : t('statusInactive')}

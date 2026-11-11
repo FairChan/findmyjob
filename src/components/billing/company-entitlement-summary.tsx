@@ -18,7 +18,7 @@ export function CompanyEntitlementSummary({ usage, resource }: Props) {
   const endsAt = usage.source === 'SUBSCRIPTION' && usage.effectiveUntil && Number.isFinite(new Date(usage.effectiveUntil).getTime())
     ? usage.effectiveUntil : null
 
-  return <section data-testid="entitlement-usage" aria-label={t('title')} className="mb-6 min-w-0 space-y-3 rounded-lg border bg-muted/30 p-4">
+  return <section data-testid="entitlement-usage" aria-label={t('title')} className="min-w-0 space-y-3 rounded-card bg-muted p-5 sm:p-6">
     <div className="flex flex-wrap items-baseline justify-between gap-2">
       <h2 className="text-sm font-semibold">{t(resource)}</h2>
       <p className="text-xs text-muted-foreground">{t(sourceKey[usage.source])}</p>

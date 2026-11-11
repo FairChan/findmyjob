@@ -5,6 +5,10 @@ import { listNotifications } from '@/server/services/notifications'
 import { NotificationsClient } from '@/components/notifications/NotificationsClient'
 import { MarkAllReadButton } from '@/components/notifications/MarkAllReadButton'
 import { formatKLDate, formatKLDateTime } from '@/lib/format-date'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Row, RowList } from '@/components/ui/row-list'
 
 function expiryDate(payload: Record<string, unknown>): string | null {
   const value = payload.endsAt
@@ -56,48 +60,38 @@ export default async function EmployerNotificationsPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="mb-1 text-2xl font-bold">{t('title')}</h1>
-          <p className="text-sm text-muted-foreground">{t('subtitleEmployer')}</p>
-        </div>
-        {unreadCount > 0 && <MarkAllReadButton label={t('markAllRead')} />}
-      </div>
-
+    <WorkspacePage
+      title={t('title')}
+      lead={t('subtitleEmployer')}
+      width="list"
+      actions={unreadCount > 0 ? <MarkAllReadButton label={t('markAllRead')} /> : undefined}
+    >
       {notifications.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <EmptyState title={t('empty')} />
       ) : (
-        <ul className="divide-y rounded-md border">
+        <RowList>
           {notifications.map((n) => {
             const endsAt = n.type === 'subscription.expiring' ? expiryDate(n.payload) : null
             return (
-            <li
-              key={n.id}
-              className="flex items-start justify-between gap-4 px-4 py-3"
-            >
+            <Row key={n.id} className="items-start">
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{notificationLabel(n.type)}</span>
-                  {n.readAt === null && (
-                    <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-medium text-primary-foreground">
-                      {t('unread')}
-                    </span>
-                  )}
+                  {n.readAt === null && <Badge tone="brand">{t('unread')}</Badge>}
                 </div>
                 {endsAt && <p className="mt-2 text-sm text-muted-foreground"><time dateTime={endsAt}>{t('subscriptionExpiringDetail', { date: formatKLDateTime(endsAt, detectedLocale) })}</time></p>}
                 {n.type === 'subscription.expiring' && role === 'OWNER' && <a href={'/' + detectedLocale + '/e/billing'} className="mt-1 inline-flex min-h-10 items-center text-sm text-brand underline underline-offset-4">{t('subscriptionBilling')}</a>}
               </div>
-              <span className="shrink-0 text-xs text-muted-foreground">
+              <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
                 {formatKLDate(n.createdAt, detectedLocale)}
               </span>
-            </li>
+            </Row>
             )
           })}
-        </ul>
+        </RowList>
       )}
 
       <NotificationsClient ids={ids} />
-    </div>
+    </WorkspacePage>
   )
 }

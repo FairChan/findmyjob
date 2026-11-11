@@ -6,6 +6,8 @@ import { requireStudent } from '@/server/authz'
 import { getExportDownloadRequest } from '@/server/services/data-rights'
 import { getSignedDownloadUrl } from '@/lib/storage'
 import { ExportDownloadButton } from '@/components/privacy/export-download-button'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { Card } from '@/components/ui/card'
 
 const idSchema = z.string().cuid()
 
@@ -42,19 +44,18 @@ export default async function ExportDownloadPage({
   const t = await getTranslations('exportDownload')
 
   return (
-    <div
-      className="container mx-auto max-w-xl px-4 py-10"
-    >
-      <h1 className="mb-4 text-2xl font-bold">{t('title')}</h1>
+    <WorkspacePage title={t('title')}>
       {pending ? (
-        <p className="text-muted-foreground">{t('pending')}</p>
+        <Card>
+          <p className="text-body text-muted-foreground">{t('pending')}</p>
+        </Card>
       ) : signedUrl ? (
-        <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">{t('description')}</p>
+        <Card className="space-y-5">
+          <p className="text-body text-muted-foreground">{t('description')}</p>
           <ExportDownloadButton url={signedUrl} label={t('downloadButton')} />
-          <p className="text-xs text-muted-foreground">{t('urlExpiry')}</p>
-        </div>
+          <p className="text-sm text-muted-foreground">{t('urlExpiry')}</p>
+        </Card>
       ) : null}
-    </div>
+    </WorkspacePage>
   )
 }

@@ -26,7 +26,7 @@ const BLANK = {
   educations: { schoolName: '', degreeLevel: null, major: null, startDate: null, endDate: null, gpa: null, description: null },
   experiences: { kind: 'WORK', title: '', organization: null, startDate: null, endDate: null, description: null },
 } as const
-const inputClass = 'w-full min-w-0 rounded-md border border-input bg-background px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-ring'
+const inputClass = 'w-full min-w-0 rounded-control border border-input bg-background px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-ring'
 
 export function ResumeGroupValue({ group, value }: { group: ResumeGroup; value: ResumeSuggestionV1 }) {
   const t = useTranslations('resumeParse')
@@ -36,7 +36,7 @@ export function ResumeGroupValue({ group, value }: { group: ResumeGroup; value: 
   if (typeof content === 'string') return <p className="whitespace-pre-wrap break-words text-sm [overflow-wrap:anywhere]">{content}</p>
   if (group === 'skills') return <ul className="list-inside list-disc space-y-1 text-sm">{value.skills.map((skill, index) => <li key={index} className="break-words">{skill}</li>)}</ul>
   const entryGroup = group as EntryGroup
-  return <ol className="space-y-3 text-sm">{value[entryGroup].map((entry, index) => <li key={index} className="space-y-1 rounded-md border p-3">
+  return <ol className="space-y-3 text-sm">{value[entryGroup].map((entry, index) => <li key={index} className="space-y-1 rounded-control border p-3">
     {FIELDS[entryGroup].map(field => {
       const raw = (entry as unknown as Record<string, string | null>)[field.name]
       if (!raw) return null
@@ -64,7 +64,7 @@ export function ResumeGroupEditor({ group, value, onChange }: {
     onChange({ ...value, [group]: entries.map((entry, position) => position === index ? { ...entry, [name]: next || null } : entry) })
   }
   return <div className="space-y-3">
-    {entries.map((entry, index) => <fieldset key={index} className="min-w-0 space-y-3 rounded-md border p-3">
+    {entries.map((entry, index) => <fieldset key={index} className="min-w-0 space-y-3 rounded-control border p-3">
       <legend className="px-1 text-sm font-medium">{t('entry', { number: index + 1 })}</legend>
       {FIELDS[group].map(field => {
         const inputId = id + '-' + index + '-' + field.name
@@ -84,6 +84,6 @@ export function ResumeGroupEditor({ group, value, onChange }: {
     </fieldset>)}
     <button type="button" disabled={entries.length >= (group === 'experiences' ? 50 : 20)}
       onClick={() => onChange({ ...value, [group]: [...entries, { ...BLANK[group] }] })}
-      className="min-h-11 rounded-md border px-3 py-2 text-sm disabled:opacity-50">{t('addEntry')}</button>
+      className="min-h-11 rounded-full border border-input px-4 py-2 text-sm hover:bg-accent disabled:opacity-50">{t('addEntry')}</button>
   </div>
 }

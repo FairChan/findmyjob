@@ -108,7 +108,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
                   id="apply-resume"
                   value={resumeId}
                   onChange={(e) => setResumeId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring min-h-[36px]"
+                  className="flex h-9 w-full rounded-control border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring min-h-[36px]"
                 >
                   <option value="">{t('applyDialogNoResume')}</option>
                   {resumes.map((r) => (
@@ -129,7 +129,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCoverNote(e.target.value)}
                 maxLength={500}
                 rows={4}
-                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                className="flex w-full rounded-control border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               />
               <p className="text-xs text-muted-foreground text-right">{coverNote.length}/500</p>
             </div>

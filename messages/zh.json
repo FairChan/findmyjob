@@ -438,9 +438,11 @@
     "todoEnableTalentPool": "开启人才库",
     "todoEnableTalentPoolDesc": "加入人才库，让认证企业主动找到你",
     "todoAction": "去完成",
-    "invitesTitle": "最新邀请",
-    "applicationsTitle": "最新投递",
-    "emptyPlaceholder": "暂无记录"
+    "editProfile": "完善档案",
+    "invitesDesc": "企业发来的投递邀请，接受即视为投递。",
+    "invitesLink": "查看邀请",
+    "applicationsDesc": "查看每一份投递的进度和状态变化。",
+    "applicationsLink": "查看投递"
   },
   "employerDashboard": {
     "title": "企业工作台",
@@ -991,6 +993,7 @@
     "copied": "已复制",
     "milestoneLabel": "邀请进度",
     "milestoneUnlimited": "无限",
+    "milestoneReached": "已达成",
     "referralsTitle": "已邀请的同学",
     "referralsEmpty": "还没有邀请记录",
     "colName": "姓名",
@@ -1727,6 +1730,7 @@
     "declineError": "操作失败，请稍后重试",
     "expiresAt": "有效期至 {date}",
     "sentAt": "发送于 {date}",
+    "invitedForJob": "邀请你投递「{job}」",
     "inviteButton": "邀请投递",
     "inviteDialogTitle": "邀请投递",
     "inviteDialogJobLabel": "邀请投递的职位",
@@ -1868,6 +1872,8 @@
   "myApplications": {
     "title": "我的投递",
     "empty": "暂无投递记录",
+    "emptyHint": "看到合适的职位后投递，进度会显示在这里。",
+    "browseJobs": "浏览职位",
     "appliedAt": "投递于",
     "coverNoteLabel": "求职附言",
     "timelineLabel": "状态时间线",

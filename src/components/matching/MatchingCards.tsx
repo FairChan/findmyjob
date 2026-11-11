@@ -5,8 +5,10 @@ import { stateLabel } from '@/lib/my-states'
 import type { JobListItem } from '@/server/serializers/job'
 import type { TalentCard } from '@/server/serializers/talent-card'
 
-const cardClass = 'min-w-0 rounded-lg border bg-card p-4 [overflow-wrap:anywhere]'
-const linkClass = 'inline-flex min-h-11 items-center font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring'
+// Shared by the student panel (muted surface) and the employer panel (white surface),
+// so the cards keep a hairline to stay distinct on both.
+const cardClass = 'min-w-0 rounded-control border bg-background p-4 [overflow-wrap:anywhere]'
+const linkClass = 'inline-flex min-h-11 items-center font-semibold text-foreground underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-ring'
 
 export function MatchingJobCards({ items, locale }: { items: JobListItem[]; locale: string }) {
   const t = useTranslations('publicJobs')

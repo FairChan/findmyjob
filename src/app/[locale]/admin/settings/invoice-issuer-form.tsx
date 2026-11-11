@@ -16,7 +16,7 @@ export function InvoiceIssuerForm({ initialValue }: { initialValue: InvoiceIssue
   const [error, setError] = useState('')
   const [invalidFields, setInvalidFields] = useState<string[]>([])
   const [saved, setSaved] = useState(0)
-  const fieldClass = 'w-full min-w-0 rounded-lg border border-gray-300 bg-white px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-blue-600 disabled:bg-gray-100'
+  const fieldClass = 'w-full min-w-0 rounded-card border border-border bg-card px-3 py-2 text-base focus-visible:outline-2 focus-visible:outline-brand disabled:bg-muted'
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -52,9 +52,9 @@ export function InvoiceIssuerForm({ initialValue }: { initialValue: InvoiceIssue
 
   const authError = ['FORBIDDEN', 'FRESH_SESSION_REQUIRED', 'TWO_FACTOR_REQUIRED'].includes(error)
   return (
-    <section className="mb-8 min-w-0 rounded-xl border border-gray-200 bg-white p-4 sm:p-6" aria-labelledby={id + '-heading'}>
+    <section className="mb-8 min-w-0 rounded-card border border-border bg-card p-4 sm:p-6" aria-labelledby={id + '-heading'}>
       <h2 id={id + '-heading'} className="text-lg font-semibold">{t('title')}</h2>
-      <p className="mt-2 text-sm text-gray-600">{t('description')}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{t('description')}</p>
       <form data-testid="invoice-issuer-settings" noValidate onSubmit={submit} aria-busy={pending} className="mt-5 space-y-4">
         <fieldset disabled={pending} className="grid min-w-0 gap-4 sm:grid-cols-2">
           {(['legalName', 'address', 'registrationNo', 'version'] as const).map(key => <div key={key} className={'min-w-0 space-y-2 ' + (key === 'legalName' || key === 'address' ? 'sm:col-span-2' : '')}>
@@ -62,13 +62,13 @@ export function InvoiceIssuerForm({ initialValue }: { initialValue: InvoiceIssue
             {key === 'address'
               ? <textarea id={id + '-' + key} name={key} rows={4} value={draft[key]} onChange={event => edit(key, event.target.value)} aria-invalid={invalidFields.includes(key) || undefined} aria-describedby={id + '-' + key + '-hint'} className={fieldClass} />
               : <input id={id + '-' + key} name={key} type="text" autoComplete="off" value={draft[key] ?? ''} onChange={event => edit(key, event.target.value)} aria-invalid={invalidFields.includes(key) || undefined} aria-describedby={id + '-' + key + '-hint'} className={fieldClass} />}
-            <p id={id + '-' + key + '-hint'} className="text-xs text-gray-600">{t('limitHint', { max: INVOICE_ISSUER_LIMITS[key] })}{key === 'version' ? ' ' + t('versionHint') : ''}</p>
+            <p id={id + '-' + key + '-hint'} className="text-xs text-muted-foreground">{t('limitHint', { max: INVOICE_ISSUER_LIMITS[key] })}{key === 'version' ? ' ' + t('versionHint') : ''}</p>
           </div>)}
         </fieldset>
-        <p className="text-xs text-gray-600">{t('clearHint')}</p>
-        {error && <p role="alert" className="text-sm text-red-800">{t(error === 'VALIDATION_ERROR' ? 'errorInvalid' : error === 'TWO_FACTOR_REQUIRED' ? 'errorTwoFactor' : authError ? 'errorForbidden' : 'errorGeneric')}</p>}
-        {authError && <a href={'/' + locale + (error === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')} className="block text-sm text-blue-700 underline">{t(error === 'TWO_FACTOR_REQUIRED' ? 'setupTwoFactor' : 'signIn')}</a>}
-        <p role="status" aria-atomic="true" className="text-sm text-green-800"><span key={saved}>{saved ? t('issuerSaved') : ''}</span></p>
+        <p className="text-xs text-muted-foreground">{t('clearHint')}</p>
+        {error && <p role="alert" className="text-sm text-destructive">{t(error === 'VALIDATION_ERROR' ? 'errorInvalid' : error === 'TWO_FACTOR_REQUIRED' ? 'errorTwoFactor' : authError ? 'errorForbidden' : 'errorGeneric')}</p>}
+        {authError && <a href={'/' + locale + (error === 'TWO_FACTOR_REQUIRED' ? '/two-factor/setup' : '/login')} className="block text-sm text-brand underline">{t(error === 'TWO_FACTOR_REQUIRED' ? 'setupTwoFactor' : 'signIn')}</a>}
+        <p role="status" aria-atomic="true" className="text-sm text-success"><span key={saved}>{saved ? t('issuerSaved') : ''}</span></p>
         <Button type="submit" disabled={pending}>{t(pending ? 'saving' : 'saveIssuer')}</Button>
       </form>
     </section>

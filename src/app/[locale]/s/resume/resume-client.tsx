@@ -3,7 +3,12 @@
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { FileText } from 'lucide-react'
 import { setPrimaryResume, deleteResume } from '@/server/actions/resume'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Row, RowList } from '@/components/ui/row-list'
 
 interface ResumeFile {
   id: string
@@ -100,17 +105,18 @@ export function ResumeManager({ resumes, locale }: Props) {
           onChange={handleUpload}
           aria-label={t('uploadButton')}
         />
-        <button
+        <Button
           type="button"
+          variant="brand"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          className="inline-flex min-h-[44px] min-w-[120px] items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+          className="h-11 min-w-[7.5rem]"
         >
           {uploading ? t('uploading') : t('uploadButton')}
-        </button>
-        <p className="mt-1 text-xs text-muted-foreground">{t('uploadHint')}</p>
+        </Button>
+        <p className="mt-2 text-sm text-muted-foreground">{t('uploadHint')}</p>
         {uploadError && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
+          <p role="alert" className="mt-2 text-sm text-destructive">
             {uploadError}
           </p>
         )}
@@ -118,21 +124,17 @@ export function ResumeManager({ resumes, locale }: Props) {
 
       {/* Resume list */}
       {resumes.length === 0 ? (
-        <p className="text-muted-foreground">{t('empty')}</p>
+        <EmptyState title={t('empty')} icon={<FileText />} />
       ) : (
-        <ul className="divide-y rounded-lg border" aria-label={t('title')}>
+        <RowList aria-label={t('title')}>
           {resumes.map(resume => (
-            <li key={resume.id} className="flex flex-col items-stretch gap-3 p-4 sm:flex-row sm:flex-wrap sm:items-center">
+            <Row key={resume.id} className="flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{resume.fileName}</span>
-                  {resume.isPrimary && (
-                    <span className="rounded bg-brand/10 px-1.5 py-0.5 text-xs font-medium text-brand">
-                      {t('primary')}
-                    </span>
-                  )}
+                  {resume.isPrimary && <Badge tone="brand">{t('primary')}</Badge>}
                 </div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
+                <div className="mt-1 text-xs text-muted-foreground">
                   {resume.pageCount != null && (
                     <span className="mr-3">{t('pages', { count: resume.pageCount })}</span>
                   )}
@@ -145,40 +147,40 @@ export function ResumeManager({ resumes, locale }: Props) {
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
-                <a
-                  href={`/api/resumes/${resume.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-[36px] min-w-[60px] items-center justify-center rounded border px-3 py-1 text-sm transition hover:bg-muted"
-                >
-                  {t('preview')}
-                </a>
+                <Button asChild variant="outline" size="sm">
+                  <a href={`/api/resumes/${resume.id}`} target="_blank" rel="noopener noreferrer">
+                    {t('preview')}
+                  </a>
+                </Button>
                 {!resume.isPrimary && (
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="sm"
                     disabled={pending}
                     onClick={() => handleSetPrimary(resume.id)}
-                    className="inline-flex min-h-[36px] items-center justify-center rounded border px-3 py-1 text-sm transition hover:bg-muted disabled:opacity-60"
                   >
                     {t('setPrimary')}
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="sm"
                   disabled={pending}
                   onClick={() => handleDelete(resume.id)}
-                  className="inline-flex min-h-[36px] items-center justify-center rounded border border-red-200 px-3 py-1 text-sm text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                  className="border-destructive/30 text-destructive hover:bg-destructive-muted hover:text-destructive"
                 >
                   {t('delete')}
-                </button>
+                </Button>
               </div>
-            </li>
+            </Row>
           ))}
-        </ul>
+        </RowList>
       )}
 
       {/* Privacy notice */}
-      <p className="text-xs text-muted-foreground">{t('privacy')}</p>
+      <p className="text-sm text-muted-foreground">{t('privacy')}</p>
     </div>
   )
 }
