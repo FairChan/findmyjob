@@ -7,6 +7,8 @@ import { logger } from '../lib/logger'
 import { getSetting } from './settings'
 import { createNotification } from './notifications'
 import { canApplyToJob } from './job-view-quota'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { requireApplicationMaterialsTx } from './application-materials'
 
 async function getStudentProfileId(userId: string): Promise<string> {
   const profile = await db.studentProfile.findUnique({
@@ -19,6 +21,7 @@ async function getStudentProfileId(userId: string): Promise<string> {
 
 export interface ApplyInput {
   jobId: string
+  /** Defaults to the student's primary/latest resume; an owned resume is required. */
   resumeId?: string | null
   coverNote?: string | null
 }
@@ -30,6 +33,7 @@ export interface ApplyResult {
 /**
  * Apply to a job. Creates Application + TalentUnlock(source=APPLICATION) in one transaction.
  * Throws CompletenessLowError if profile completeness is below the configured minimum.
+ * Requires saved contact details and an owned resume, checked under STUDENT_DATA.
  * Throws DuplicateApplicationError if already applied.
  */
 export async function applyToJob(ctx: UserCtx, input: ApplyInput): Promise<ApplyResult> {
@@ -64,14 +68,6 @@ export async function applyToJob(ctx: UserCtx, input: ApplyInput): Promise<Apply
     throw new NotFoundError('Job not found or not accepting applications')
   }
 
-  if (input.resumeId) {
-    const resume = await db.resumeFile.findFirst({
-      where: { id: input.resumeId, studentId },
-      select: { id: true },
-    })
-    if (!resume) throw new NotFoundError('Resume not found')
-  }
-
   // Prevent quota bypass: student must have viewed the job (or have an invitation, or unlimited quota)
   // before applying. Same error code as "job not found" to avoid leaking existence.
   const allowed = await canApplyToJob(studentId, input.jobId)
@@ -84,11 +80,13 @@ export async function applyToJob(ctx: UserCtx, input: ApplyInput): Promise<Apply
   let applicationId: string
   try {
     const result = await db.$transaction(async (tx) => {
+      await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+      const resumeId = await requireApplicationMaterialsTx(tx, studentId, input.resumeId)
       const app = await tx.application.create({
         data: {
           jobId: input.jobId,
           studentId,
-          resumeId: input.resumeId ?? null,
+          resumeId,
           coverNote,
           status: ApplicationStatus.APPLIED,
         },

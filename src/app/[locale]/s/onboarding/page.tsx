@@ -5,6 +5,7 @@ import { requireStudent } from '@/server/authz'
 import { getProfileForOnboarding } from '@/server/services/student-profile'
 import { db } from '@/server/db'
 import OnboardingWizard from '@/components/onboarding/OnboardingWizard'
+import { getOwnContact } from '@/server/services/contact-access'
 
 interface Props {
   params: Promise<{ locale: string }>
@@ -21,7 +22,16 @@ export default async function StudentOnboardingPage({ params }: Props) {
   if (!profile) {
     redirect(`/${locale}/s`)
   }
-  if (profile.onboardingStep >= 5) {
+  const [contact, resumes] = await Promise.all([
+    getOwnContact({ userId }),
+    db.resumeFile.findMany({
+      where: { studentId: profile.id },
+      select: { id: true, fileName: true, sizeBytes: true, pageCount: true, isPrimary: true, createdAt: true },
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
+    }),
+  ])
+
+  if (profile.onboardingStep >= 6 && Object.values(contact).some(Boolean) && resumes.length > 0) {
     redirect(`/${locale}/s`)
   }
 
@@ -31,7 +41,7 @@ export default async function StudentOnboardingPage({ params }: Props) {
     orderBy: [{ isPartner: 'desc' }, { nameZh: 'asc' }],
   })
 
-  const currentStep = Math.min(Math.max(profile.onboardingStep, 1), 4)
+  const currentStep = Math.min(Math.max(profile.onboardingStep, 1), 5)
 
   return (
     <div>
@@ -43,6 +53,8 @@ export default async function StudentOnboardingPage({ params }: Props) {
         initialStep={currentStep}
         profile={profile}
         schools={schools}
+        contact={contact}
+        resumes={resumes}
       />
     </div>
   )

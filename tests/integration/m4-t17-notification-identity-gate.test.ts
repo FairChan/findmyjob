@@ -15,6 +15,7 @@ vi.mock('@/server/lib/alert', () => ({ alert: vi.fn() }))
 
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createJob } from '../factories'
+import { seedApplicationMaterials } from '../helpers/application-materials'
 import { acceptInvitation, declineInvitation } from '@/server/services/invitations'
 import { canSeeIdentity } from '@/server/services/contact-access'
 import { clearSettingsCache } from '@/server/services/settings'
@@ -35,6 +36,7 @@ async function invitationFixture() {
   })
   const job = await createJob(testDb, employer.companyId, employer.userId, { status: 'PUBLISHED' })
   const student = await createStudent(testDb, { name: 'Mira Sentinel', completeness: 80 })
+  await seedApplicationMaterials(testDb, student.profileId)
   await testDb.studentProfile.update({
     where: { id: student.profileId },
     data: { headline: 'Contact me: notification-gate@example.test' },

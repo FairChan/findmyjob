@@ -77,6 +77,7 @@ vi.mock('@/server/db', async () => {
 import { LedgerReason, Prisma } from '@prisma/client'
 import { setupTestDb, testDb } from '../setup/db'
 import { createEmployer, createJob, createStudent } from '../factories'
+import { seedApplicationMaterials } from '../helpers/application-materials'
 import { unlockStudent } from '@/server/services/unlock'
 import { applyToJob } from '@/server/services/applications'
 import { applyLedgerEntry } from '@/server/services/credits'
@@ -156,6 +157,7 @@ async function expectNoCharge(companyId: string, actorId: string, balance = 5) {
 
 async function prepareApplicationRace() {
   const scenario = await makeScenario()
+  await seedApplicationMaterials(testDb, scenario.student.profileId)
   const job = await createJob(testDb, scenario.emp.companyId, scenario.emp.userId)
   await testDb.jobView.create({
     data: { studentId: scenario.student.profileId, jobId: job.id },

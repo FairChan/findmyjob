@@ -12,7 +12,7 @@ const mockTx = vi.hoisted(() => ({
   studentLanguage: { count: vi.fn().mockResolvedValue(0), deleteMany: vi.fn(), createMany: vi.fn() },
   education: { count: vi.fn().mockResolvedValue(0) },
   experience: { count: vi.fn().mockResolvedValue(0) },
-  resumeFile: { count: vi.fn().mockResolvedValue(0) },
+  resumeFile: { count: vi.fn().mockResolvedValue(0), findFirst: vi.fn() },
   studentContact: { findUnique: vi.fn().mockResolvedValue(null) },
   school: { findFirst: vi.fn() },
   semanticIndex: { updateMany: vi.fn() },
@@ -25,7 +25,7 @@ const mockDb = vi.hoisted(() => ({
 vi.mock('@/server/db', () => ({ db: mockDb }))
 vi.mock('@/server/services/referrals', () => ({ qualifyReferral: vi.fn() }))
 
-import { step1Schema, step2Schema, step3Schema, step4Schema, getDashboardData, recalcOwnCompleteness, saveStep1 } from '@/server/services/student-profile'
+import { step1Schema, step2Schema, step3Schema, step4Schema, getDashboardData, recalcOwnCompleteness, saveStep1, completeOnboarding } from '@/server/services/student-profile'
 import { ValidationError } from '@/server/errors'
 
 const mockHasStudentContact = vi.hoisted(() => vi.fn())
@@ -34,6 +34,43 @@ vi.mock('@/server/services/contact-access', () => ({
   hasStudentContact: mockHasStudentContact,
   hasStudentContactTx: mockHasStudentContactTx,
 }))
+
+describe('completeOnboarding', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
+    mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
+    mockTx.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 5 })
+    mockHasStudentContactTx.mockResolvedValue(true)
+    mockTx.resumeFile.findFirst.mockResolvedValue({ id: 'resume' })
+  })
+
+  it('records completion when saved contact and resume both exist', async () => {
+    await completeOnboarding({ userId: 'user1' })
+    expect(mockTx.studentProfile.update).toHaveBeenCalledWith({
+      where: { id: 'sp1' }, data: { onboardingStep: 6, lastActiveAt: expect.any(Date) },
+    })
+    expect(mockTx.$executeRaw).toHaveBeenCalled()
+  })
+
+  it('keeps the last step open when no contact has been saved', async () => {
+    mockHasStudentContactTx.mockResolvedValue(false)
+    await expect(completeOnboarding({ userId: 'user1' })).rejects.toMatchObject({ code: 'CONTACT_REQUIRED' })
+    expect(mockTx.studentProfile.update).not.toHaveBeenCalled()
+  })
+
+  it('keeps the last step open when no resume has been uploaded', async () => {
+    mockTx.resumeFile.findFirst.mockResolvedValue(null)
+    await expect(completeOnboarding({ userId: 'user1' })).rejects.toMatchObject({ code: 'RESUME_REQUIRED' })
+    expect(mockTx.studentProfile.update).not.toHaveBeenCalled()
+  })
+
+  it('does not allow the final action to skip the profile steps', async () => {
+    mockTx.studentProfile.findUnique.mockResolvedValue({ id: 'sp1', onboardingStep: 2 })
+    await expect(completeOnboarding({ userId: 'user1' })).rejects.toBeInstanceOf(ValidationError)
+    expect(mockTx.studentProfile.update).not.toHaveBeenCalled()
+  })
+})
 
 describe('getDashboardData', () => {
   beforeEach(() => {

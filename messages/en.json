@@ -508,9 +508,9 @@
     "todoVerifySchool": "Verify School Email",
     "todoVerifySchoolDesc": "Verify via your school email to boost visibility and credibility",
     "todoUploadResume": "Upload Resume",
-    "todoUploadResumeDesc": "Upload a PDF resume so employers can learn more about you",
+    "todoUploadResumeDesc": "A PDF resume is required before applying",
     "todoFillContact": "Add Contact Info",
-    "todoFillContactDesc": "Add your phone number so employers can reach you after unlocking",
+    "todoFillContactDesc": "Save at least one contact method before applying",
     "todoEnableTalentPool": "Enable Talent Pool",
     "todoEnableTalentPoolDesc": "Join the talent pool so verified employers can discover you",
     "todoAction": "Complete",
@@ -901,10 +901,15 @@
     "kindCampus": "Campus Activity",
     "kindAward": "Award",
     "removeSkill": "Remove skill {skill}",
-    "skipStep4Hint": "You can add experience and resume later on your profile page.",
+    "skipStep4Hint": "You can add experience later. Next, add your contact details and upload a resume for applications.",
     "errorRequired": "This field is required",
     "errorCgpaRange": "CGPA must be between 0.00 and 4.00",
-    "errorAtLeastOneIntent": "Please select at least one job type"
+    "errorAtLeastOneIntent": "Please select at least one job type",
+    "step5Title": "Contact details & resume",
+    "contactSectionTitle": "Contact details (at least one required)",
+    "applicationMaterialsHint": "Save at least one contact method and upload a PDF resume before applying. You can save and browse jobs, but cannot apply until both are ready.",
+    "contactRequired": "Add at least one contact method so employers can reach you after you apply.",
+    "resumeRequired": "Upload a PDF resume before completing onboarding and applying for jobs."
   },
   "profile": {
     "title": "Edit Profile",
@@ -1780,7 +1785,7 @@
     "withdrawButton": "Withdraw Application",
     "completeProfileButton": "Complete Profile to Apply",
     "applyDialogTitle": "Apply for Position",
-    "applyDialogResume": "Attach Resume (optional)",
+    "applyDialogResume": "Attach Resume (required)",
     "applyDialogNoResume": "No resume",
     "applyDialogCoverNote": "Cover Note (optional, max 500 characters)",
     "applyDialogCoverNotePlaceholder": "Introduce yourself or explain why you are applying…",
@@ -1805,7 +1810,11 @@
       "submit": "Search",
       "reset": "Clear filters",
       "emptyHint": "Try another keyword, or clear the filters."
-    }
+    },
+    "applyBlockedContactAndResume": "Add your contact details and a PDF resume before applying.",
+    "applyBlockedContact": "Save at least one contact method before applying.",
+    "applyBlockedResume": "Upload a PDF resume before applying.",
+    "applyBlockedProfile": "Your profile does not meet the application completeness requirement. Complete your profile to continue."
   },
   "invitations": {
     "inviteDialogQuotaUnlimited": "Sent {used} invitations this month, unlimited allowance",

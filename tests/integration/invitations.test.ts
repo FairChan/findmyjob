@@ -35,6 +35,7 @@ vi.mock('@/server/lib/alert', () => ({ alert: vi.fn() }))
 
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createJob } from '../factories'
+import { seedApplicationMaterials } from '../helpers/application-materials'
 import { clearSettingsCache } from '@/server/services/settings'
 import {
   sendInvitation,
@@ -75,6 +76,7 @@ async function seedSettings(overrides: Record<string, unknown> = {}) {
 
 /** Make a student visible in the talent pool for the given company. */
 async function makeStudentVisible(profileId: string) {
+  await seedApplicationMaterials(testDb, profileId)
   await testDb.studentProfile.update({
     where: { id: profileId },
     data: { visibility: 'PUBLIC', completeness: 80, schoolVerifiedAt: new Date() },

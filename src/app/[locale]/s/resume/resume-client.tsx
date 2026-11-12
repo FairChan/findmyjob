@@ -22,6 +22,9 @@ interface ResumeFile {
 interface Props {
   resumes: ResumeFile[]
   locale: string
+  onBusyChange?: (busy: boolean) => void
+  onRefresh?: () => Promise<void>
+  disabled?: boolean
 }
 
 const ERROR_KEY_MAP: Record<string, 'errorFileTooLarge' | 'errorInvalidType' | 'errorEncryptedPdf' | 'errorTooManyPages' | 'errorRateLimit' | 'errorUploadFailed'> = {
@@ -36,7 +39,7 @@ function errorKey(code: string | undefined) {
   return ERROR_KEY_MAP[code ?? ''] ?? 'errorUploadFailed'
 }
 
-export function ResumeManager({ resumes, locale }: Props) {
+export function ResumeManager({ resumes, locale, onBusyChange, onRefresh, disabled = false }: Props) {
   const t = useTranslations('resume')
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -51,6 +54,7 @@ export function ResumeManager({ resumes, locale }: Props) {
     e.target.value = ''
     setUploadError(null)
     setUploading(true)
+    onBusyChange?.(true)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -62,27 +66,41 @@ export function ResumeManager({ resumes, locale }: Props) {
       if (!json.ok) {
         setUploadError(t(errorKey(json.code)))
       } else {
-        router.refresh()
+        if (onRefresh) await onRefresh()
+        else router.refresh()
       }
     } catch {
       setUploadError(t('errorUploadFailed'))
     } finally {
       setUploading(false)
+      onBusyChange?.(false)
     }
   }
 
   const handleSetPrimary = (resumeId: string) => {
+    onBusyChange?.(true)
     startTransition(async () => {
-      const result = await setPrimaryResume({ resumeId })
-      if (result.ok) router.refresh()
+      try {
+        const result = await setPrimaryResume({ resumeId })
+        if (result.ok) {
+          if (onRefresh) await onRefresh()
+          else router.refresh()
+        }
+      } finally { onBusyChange?.(false) }
     })
   }
 
   const handleDelete = (resumeId: string) => {
     if (!confirm(t('deleteConfirm'))) return
+    onBusyChange?.(true)
     startTransition(async () => {
-      const result = await deleteResume({ resumeId })
-      if (result.ok) router.refresh()
+      try {
+        const result = await deleteResume({ resumeId })
+        if (result.ok) {
+          if (onRefresh) await onRefresh()
+          else router.refresh()
+        }
+      } finally { onBusyChange?.(false) }
     })
   }
 
@@ -103,13 +121,14 @@ export function ResumeManager({ resumes, locale }: Props) {
           accept=".pdf,application/pdf"
           className="absolute w-0 h-0 overflow-hidden opacity-0"
           onChange={handleUpload}
+          disabled={disabled || uploading || pending}
           aria-label={t('uploadButton')}
         />
         <Button
           type="button"
           variant="brand"
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
+          disabled={disabled || uploading || pending}
           className="h-11 min-w-[7.5rem]"
         >
           {uploading ? t('uploading') : t('uploadButton')}
@@ -157,7 +176,7 @@ export function ResumeManager({ resumes, locale }: Props) {
                     type="button"
                     variant="outline"
                     size="sm"
-                    disabled={pending}
+                    disabled={disabled || pending || uploading}
                     onClick={() => handleSetPrimary(resume.id)}
                   >
                     {t('setPrimary')}
@@ -167,7 +186,7 @@ export function ResumeManager({ resumes, locale }: Props) {
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={pending}
+                  disabled={disabled || pending || uploading}
                   onClick={() => handleDelete(resume.id)}
                   className="border-destructive/30 text-destructive hover:bg-destructive-muted hover:text-destructive"
                 >

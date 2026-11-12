@@ -508,9 +508,9 @@
     "todoVerifySchool": "认证学校邮箱",
     "todoVerifySchoolDesc": "通过学校邮箱认证，提升曝光和可信度",
     "todoUploadResume": "上传简历",
-    "todoUploadResumeDesc": "上传 PDF 简历，让企业更全面了解你",
+    "todoUploadResumeDesc": "投递前须上传一份 PDF 简历",
     "todoFillContact": "填写联系方式",
-    "todoFillContactDesc": "填写手机号等联系方式，企业解锁后可联系你",
+    "todoFillContactDesc": "投递前须保存至少一种联系方式",
     "todoEnableTalentPool": "开启人才库",
     "todoEnableTalentPoolDesc": "加入人才库，让认证企业主动找到你",
     "todoAction": "去完成",
@@ -901,10 +901,15 @@
     "kindCampus": "校园活动",
     "kindAward": "奖项",
     "removeSkill": "删除技能 {skill}",
-    "skipStep4Hint": "经历和简历可以稍后在档案页补充。",
+    "skipStep4Hint": "经历可稍后补充。下一步填写联系方式并上传投递简历。",
     "errorRequired": "此项为必填",
     "errorCgpaRange": "GPA 请填 0.00–4.00",
-    "errorAtLeastOneIntent": "请至少选择一种求职类型"
+    "errorAtLeastOneIntent": "请至少选择一种求职类型",
+    "step5Title": "联系方式与简历",
+    "contactSectionTitle": "联系方式（至少填写一项）",
+    "applicationMaterialsHint": "投递前需保存至少一种联系方式并上传 PDF 简历。可保存后继续浏览，资料未补齐时暂不能投递。",
+    "contactRequired": "请至少填写一种联系方式，方便企业在投递后联系你。",
+    "resumeRequired": "请先上传一份 PDF 简历，上传后才能完成引导并投递。"
   },
   "profile": {
     "title": "编辑档案",
@@ -1780,7 +1785,7 @@
     "withdrawButton": "撤回投递",
     "completeProfileButton": "完善档案后投递",
     "applyDialogTitle": "投递职位",
-    "applyDialogResume": "选择简历（可选）",
+    "applyDialogResume": "选择投递简历（必填）",
     "applyDialogNoResume": "不附简历",
     "applyDialogCoverNote": "附言（可选，最多 500 字）",
     "applyDialogCoverNotePlaceholder": "向招聘方介绍自己，或说明申请原因……",
@@ -1805,7 +1810,11 @@
       "submit": "搜索",
       "reset": "清除筛选",
       "emptyHint": "换个关键词，或清除筛选再试。"
-    }
+    },
+    "applyBlockedContactAndResume": "请先补全联系方式和简历，资料未补齐时暂不能投递。",
+    "applyBlockedContact": "请先填写至少一种联系方式，保存后即可继续投递。",
+    "applyBlockedResume": "请先上传一份 PDF 简历，上传后即可继续投递。",
+    "applyBlockedProfile": "档案完整度尚未达到投递要求，请先完善档案。"
   },
   "invitations": {
     "inviteDialogQuotaUnlimited": "本月已发送 {used} 次邀请，配额不限",

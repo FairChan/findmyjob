@@ -26,9 +26,10 @@ interface Props {
 
 export function InvitationList({ invitations, locale }: Props) {
   const t = useTranslations('invitations')
+  const tApply = useTranslations('publicJobs')
   const router = useRouter()
   const [pending, setPending] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ id: string; msg: string; ok: boolean } | null>(null)
+  const [toast, setToast] = useState<{ id: string; msg: string; ok: boolean; repairPath?: string } | null>(null)
 
   const statusLabel: Record<string, string> = {
     SENT: t('statusSent'),
@@ -45,10 +46,17 @@ export function InvitationList({ invitations, locale }: Props) {
         setToast({ id: invitationId, msg: t('acceptSuccess'), ok: true })
         router.refresh()
       } else {
+        const missingMaterials = result.code === 'CONTACT_REQUIRED' || result.code === 'RESUME_REQUIRED'
+        const lowCompleteness = result.code === 'COMPLETENESS_LOW'
         setToast({
           id: invitationId,
-          msg: result.code === 'INVITATION_QUOTA_EXCEEDED' ? t('inviteErrorQuota') : t('acceptError'),
+          msg: missingMaterials
+            ? tApply(result.code === 'CONTACT_REQUIRED' ? 'applyBlockedContact' : 'applyBlockedResume')
+            : lowCompleteness ? tApply('applyBlockedProfile')
+              : result.code === 'INVITATION_QUOTA_EXCEEDED' ? t('inviteErrorQuota') : t('acceptError'),
           ok: false,
+          ...(missingMaterials ? { repairPath: `/${locale}/s/onboarding` }
+            : lowCompleteness ? { repairPath: `/${locale}/s/profile` } : {}),
         })
       }
     } finally {
@@ -94,6 +102,9 @@ export function InvitationList({ invitations, locale }: Props) {
                   )}
                 >
                   {toast.msg}
+                  {toast.repairPath && (
+                    <a href={toast.repairPath} className="ml-2 underline">{tApply('completeProfileButton')}</a>
+                  )}
                 </div>
               )}
 

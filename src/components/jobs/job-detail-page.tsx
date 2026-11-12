@@ -14,6 +14,8 @@ import { ShareJobButton } from '@/app/[locale]/(public)/jobs/[id]/ShareJobButton
 import { ReportJobDialog } from '@/components/jobs/report-job-dialog'
 import { ApplyModal, AppliedStatus, WithdrawnStatus } from '@/components/apply/ApplyModal'
 import { getSetting } from '@/server/services/settings'
+import { getApplicationBlocker } from '@/lib/application-readiness'
+import { hasStudentContact } from '@/server/services/contact-access'
 import { ChevronLeft, LockKeyhole } from 'lucide-react'
 import { formatKLDate } from '@/lib/format-date'
 import { Badge } from '@/components/ui/badge'
@@ -167,12 +169,16 @@ export default async function JobDetailPage({ params, listHref = '/jobs', presen
 
     // Apply section: show apply modal, already-applied badge, or complete-profile prompt
     const minCompleteness = await getSetting<number>('apply.minCompleteness', 60)
-    const incompleteStepPath =
-      studentProfile.completeness < minCompleteness
-        ? studentProfile.onboardingStep < 5
-          ? `/${locale}/s/onboarding`
-          : `/${locale}/s/resume`
-        : null
+    const blocker = getApplicationBlocker({
+      hasContact: await hasStudentContact(studentProfile.id),
+      hasResume: studentProfile.resumes.length > 0,
+      completeness: studentProfile.completeness,
+    }, minCompleteness)
+    const incompleteStepPath = blocker
+      ? blocker === 'profile' && studentProfile.onboardingStep >= 5
+        ? `/${locale}/s/profile`
+        : `/${locale}/s/onboarding`
+      : null
 
     const existing = await db.application.findUnique({
       where: { jobId_studentId: { jobId: id, studentId: studentProfile.id } },
@@ -190,6 +196,7 @@ export default async function JobDetailPage({ params, listHref = '/jobs', presen
           resumes={studentProfile.resumes}
           locale={locale}
           incompleteStepPath={incompleteStepPath}
+          blocker={blocker}
         />
       )
     }

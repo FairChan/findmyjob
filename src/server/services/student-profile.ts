@@ -10,6 +10,7 @@ import { qualifyReferral } from './referrals'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { logger } from '../lib/logger'
 import { invalidateStudentMatchingIndexTx } from './semantic-matching'
+import { requireApplicationMaterialsTx } from './application-materials'
 import {
   resumeDegreeLevelSchema as DegreeLevelEnum,
   resumeLanguageLevelSchema as LanguageLevelEnum,
@@ -470,7 +471,7 @@ export async function saveStep4(ctx: UserCtx, input: Step4Data, options?: { adva
     await tx.studentProfile.update({
       where: { id: profile.id },
       data: {
-        ...(advance ? { onboardingStep: 5 } : {}),
+        ...(advance ? { onboardingStep: Math.max(profile.onboardingStep, 5) } : {}),
         editRevision: { increment: 1 },
         lastActiveAt: new Date(),
       },
@@ -480,4 +481,20 @@ export async function saveStep4(ctx: UserCtx, input: Step4Data, options?: { adva
     await invalidateStudentMatchingIndexTx(tx, ctx.userId)
   })
   if (profileId) await qualifySavedProfile(profileId)
+}
+
+/** Step 5 completes only once both contact and an owned PDF resume are saved. */
+export async function completeOnboarding(ctx: UserCtx): Promise<void> {
+  await db.$transaction(async (tx) => {
+    await lockActiveStudentTx(tx, ctx.userId)
+    const profile = await tx.studentProfile.findUnique({
+      where: { userId: ctx.userId }, select: { id: true, onboardingStep: true },
+    })
+    if (!profile) throw new NotFoundError()
+    if (profile.onboardingStep < 5) throw new ValidationError('Complete the profile steps first')
+    await requireApplicationMaterialsTx(tx, profile.id)
+    await tx.studentProfile.update({
+      where: { id: profile.id }, data: { onboardingStep: 6, lastActiveAt: new Date() },
+    })
+  })
 }

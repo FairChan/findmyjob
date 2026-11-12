@@ -1,5 +1,5 @@
 'use client'
-import { useState, useTransition, KeyboardEvent } from 'react'
+import { useState, useTransition, KeyboardEvent, type ComponentProps } from 'react'
 import Stepper, { Step } from '@/components/ui/stepper/Stepper'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
@@ -16,17 +16,25 @@ import {
   saveStep2DraftAction,
   saveStep3DraftAction,
   saveStep4DraftAction,
+  completeOnboardingAction,
 } from '@/server/actions/onboarding'
+import { updateOwnContactAction } from '@/server/actions/contact'
+import { getOwnResumesAction } from '@/server/actions/resume'
+import type { ContactData } from '@/server/services/contact-access'
+import { ContactFields, normalizeContact } from '@/components/contact/ContactFields'
+import { ResumeManager } from '@/app/[locale]/s/resume/resume-client'
 import type { ProfileForOnboarding, Step1Data } from '@/server/services/student-profile'
 import { MY_STATES, COMMON_INDUSTRIES } from '@/lib/malaysia'
 
-const TOTAL_STEPS = 4
+const TOTAL_STEPS = 5
 
 interface Props {
   locale: string
   initialStep: number
   profile: ProfileForOnboarding
   schools: { id: string; nameZh: string; nameEn: string }[]
+  contact: ContactData
+  resumes: ComponentProps<typeof ResumeManager>['resumes']
 }
 
 type LanguageEntry = { language: string; level: string }
@@ -48,12 +56,23 @@ type ExperienceEntry = {
   description: string
 }
 
-export default function OnboardingWizard({ locale, initialStep, profile, schools }: Props) {
+export default function OnboardingWizard({ locale, initialStep, profile, schools, contact: initialContact, resumes: initialResumes }: Props) {
   const t = useTranslations('onboarding')
+  const tContact = useTranslations('contact')
+  const tResume = useTranslations('resume')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState(Math.min(initialStep, TOTAL_STEPS))
+  const [contact, setContact] = useState(initialContact)
+  const [resumeBusy, setResumeBusy] = useState(false)
+  const [resumes, setResumes] = useState(initialResumes)
+
+  async function refreshResumes() {
+    const result = await getOwnResumesAction()
+    if (!result.ok) throw new Error('Resume list unavailable')
+    setResumes(result.data.resumes)
+  }
 
   // ---- Step 1 state ----
   const [fullName, setFullName] = useState(profile.fullName ?? '')
@@ -218,10 +237,23 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
       result = draft
         ? await saveStep4DraftAction(buildStep4Payload())
         : await saveStep4Action(buildStep4Payload())
+    } else if (currentStep === 5) {
+      const normalized = normalizeContact(contact)
+      if (!draft && !Object.values(normalized).some(Boolean)) {
+        setError(t('contactRequired'))
+        return false
+      }
+      result = await updateOwnContactAction(normalized)
+      if (!result.ok) {
+        setError(result.code === 'VALIDATION_ERROR' ? tContact('errorValidation') : t('saveError'))
+        return false
+      }
+      if (!draft) result = await completeOnboardingAction()
     }
 
     if (result && !result.ok) {
-      setError(t('saveError'))
+      setError(result.code === 'RESUME_REQUIRED' ? t('resumeRequired')
+        : result.code === 'CONTACT_REQUIRED' ? t('contactRequired') : t('saveError'))
       return false
     }
     return true
@@ -246,7 +278,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
   function handleSaveAndExit() {
     startTransition(async () => {
-      await saveCurrentStep(true)
+      if (!await saveCurrentStep(true)) return
       router.push('/s')
     })
   }
@@ -296,7 +328,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
     setExperiences(experiences.filter((_, idx) => idx !== i))
   }
 
-  const stepTitles = [t('step1Title'), t('step2Title'), t('step3Title'), t('step4Title')]
+  const stepTitles = [t('step1Title'), t('step2Title'), t('step3Title'), t('step4Title'), t('step5Title')]
 
   return (
     <div className="bg-background">
@@ -307,6 +339,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
             {t('stepProgress', { current: currentStep, total: TOTAL_STEPS })}
           </p>
           <h1 className="mt-1 text-title">{stepTitles[currentStep - 1]}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t('applicationMaterialsHint')}</p>
         </div>
 
         {/* Error message */}
@@ -851,15 +884,31 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
             </div>
           </div>
         </Step>
+        <Step title={stepTitles[4]}>
+          <div className="space-y-8">
+            <section aria-labelledby="onboarding-contact-title" className="space-y-4">
+              <h2 id="onboarding-contact-title" className="font-semibold">{t('contactSectionTitle')}</h2>
+              <p className="text-sm text-muted-foreground">{t('contactRequired')}</p>
+              <div className="rounded-control bg-brand-muted p-4 text-sm text-brand-muted-foreground">
+                {tContact('privacyNotice')}
+              </div>
+              <ContactFields value={contact} onChange={setContact} disabled={isPending} />
+            </section>
+            <section aria-labelledby="onboarding-resume-title" className="space-y-4 border-t pt-6">
+              <h2 id="onboarding-resume-title" className="font-semibold">{tResume('title')}</h2>
+              <ResumeManager resumes={resumes} locale={locale} onBusyChange={setResumeBusy} onRefresh={refreshResumes} disabled={isPending} />
+            </section>
+          </div>
+        </Step>
         </Stepper>
 
         {/* Navigation */}
-        <div className="mt-8 flex items-center justify-between gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <Button
             type="button"
             variant="ghost"
             onClick={handleSaveAndExit}
-            disabled={isPending}
+            disabled={isPending || resumeBusy}
           >
             {isPending ? t('saving') : t('saveAndExit')}
           </Button>
@@ -870,12 +919,12 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 type="button"
                 variant="outline"
                 onClick={handlePrevious}
-                disabled={isPending}
+                disabled={isPending || resumeBusy}
               >
                 {t('previous')}
               </Button>
             )}
-            <Button type="button" variant="brand" onClick={handleNext} disabled={isPending}>
+            <Button type="button" variant="brand" onClick={handleNext} disabled={isPending || resumeBusy}>
               {isPending
                 ? t('saving')
                 : currentStep < TOTAL_STEPS

@@ -1,9 +1,9 @@
 /**
- * M2-T01 / M2-T11 E2E: Student onboarding wizard (4-step)
+ * M2-T01 / M2-T11 E2E: Student onboarding wizard (5-step)
  *
  * Requires: dev server + Mailpit (docker compose up -d).
  * The test registers a new student, verifies email via Mailpit, then walks
- * through all 4 onboarding steps, verifying:
+ * through all 5 onboarding steps, verifying:
  *   1. Progress indicator updates correctly
  *   2. Data survives a save-and-exit cycle (resumes at correct step — M2-T11 fix 2)
  *   3. Values persist after page refresh
@@ -14,6 +14,7 @@ import { test, expect } from '@playwright/test'
 import { E2E_PASSWORD } from './helpers/password'
 import { stubTurnstile } from './helpers/turnstile'
 import { uniqueClientIp } from './helpers/client-ip'
+import { PDFDocument } from 'pdf-lib'
 
 const MAILPIT_URL = process.env.MAILPIT_URL ?? 'http://127.0.0.1:8026'
 
@@ -81,20 +82,20 @@ test.beforeEach(async ({ page }) => {
 })
 
 test.describe('Student onboarding wizard', () => {
-  test('complete 4-step wizard, save-and-exit resumes at correct step, values persist after refresh', async ({ page, request }) => {
+  test('complete 5-step wizard with contact and resume, save-and-exit resumes correctly', async ({ page, request }) => {
     await registerAndLogin(page, request, 'a')
 
     // Explicit navigation avoids dev-mode error overlays from the login redirect chain
     await page.goto('/zh/s/onboarding')
 
     // --- Check step 1 progress indicator ---
-    await expect(page.getByText(/第 1 \/ 4 步/)).toBeVisible()
+    await expect(page.getByText(/第 1 \/ 5 步/)).toBeVisible()
 
     // --- Complete step 1: Basic Information ---
     await page.fill('[id="fullName"]', '测试向导同学')
     await page.selectOption('[id="workAuth"]', 'STUDENT_PASS')
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 2 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 2 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // --- Complete step 2: Job Preferences ---
     const internshipCheckbox = page.locator('label').filter({ hasText: '实习' }).locator('input[type="checkbox"]')
@@ -102,7 +103,7 @@ test.describe('Student onboarding wizard', () => {
       await internshipCheckbox.check()
     }
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 3 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // --- Save and exit on step 3 ---
     await page.click('button:has-text("保存并退出")')
@@ -110,25 +111,51 @@ test.describe('Student onboarding wizard', () => {
 
     // --- Re-enter onboarding: should resume at step 3 (M2-T11 fix 2) ---
     await page.goto('/zh/s/onboarding')
-    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 3 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // --- Refresh: values (step) should still persist (M2-T11 fix 2) ---
     await page.reload()
-    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 3 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // --- Complete step 3: Skills & Languages ---
     await page.click('button:has-text("添加语言")')
     await page.fill('input[placeholder*="语言"]', 'zh')
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 4 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 4 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // --- Complete step 4: Experience (empty is fine) ---
+    await page.click('button:has-text("下一步")')
+    await expect(page.getByText(/第 5 \/ 5 步/)).toBeVisible()
+    await expect(page.getByText(/暂不能投递/)).toBeVisible()
+
+    // --- Step 5 requires saved contact and a PDF resume ---
+    await page.fill('#contact-email', 'onboarding-contact@example.test')
     await page.click('button:has-text("完成")')
-    await page.waitForURL('**/s', { timeout: 10000 })
+    await expect(page.locator('[role="alert"]').filter({ hasText: '上传一份 PDF 简历' })).toBeVisible()
+
+    // Save and exit retains the pending materials step and contact details.
+    await page.click('button:has-text("保存并退出")')
+    await page.waitForURL('**/s/jobs')
+    await page.goto('/zh/s/onboarding')
+    await expect(page.getByText(/第 5 \/ 5 步/)).toBeVisible()
+    await expect(page.locator('#contact-email')).toHaveValue('onboarding-contact@example.test')
+    await page.setViewportSize({ width: 375, height: 812 })
+    expect(await page.evaluate(() => document.body.scrollWidth)).toBeLessThanOrEqual(377)
+
+    const pdf = await PDFDocument.create()
+    pdf.addPage().drawText('Synthetic onboarding resume')
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'onboarding-resume.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()),
+    })
+    await expect(page.getByText('onboarding-resume.pdf', { exact: true })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByText(/第 5 \/ 5 步/)).toBeVisible()
+    await page.screenshot({ path: test.info().outputPath('onboarding-materials-mobile.png'), fullPage: true })
+    await page.click('button:has-text("完成")')
+    await page.waitForURL('**/s/jobs', { timeout: 10000 })
 
     // After completion, should NOT redirect back to onboarding
     await page.goto('/zh/s/onboarding')
-    await expect(page).toHaveURL(/\/s$/)
+    await expect(page).toHaveURL(/\/s\/jobs$/)
   })
 
   test('save-and-exit persists fullName (step 1) and skill (step 3) after reload (M2-T13 item 2)', async ({
@@ -145,13 +172,13 @@ test.describe('Student onboarding wizard', () => {
     await page.fill('[id="fullName"]', fullName)
     await page.selectOption('[id="workAuth"]', 'STUDENT_PASS')
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 2 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 2 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // Step 2: select at least one job type (required)
     const internshipBox = page.locator('label').filter({ hasText: '实习' }).locator('input[type="checkbox"]')
     if (await internshipBox.count() > 0) await internshipBox.check()
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 3 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // Step 3: add a skill via Enter key
     const skill = 'Python'
@@ -162,22 +189,22 @@ test.describe('Student onboarding wizard', () => {
 
     // Save and exit → goes to /s dashboard
     await page.click('button:has-text("保存并退出")')
-    await page.waitForURL('**/s', { timeout: 10000 })
+    await page.waitForURL('**/s/jobs', { timeout: 10000 })
 
     // Re-enter onboarding: should resume at step 3
     await page.goto('/zh/s/onboarding')
-    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 3 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     // Reload: still on step 3, skill tag should still be there
     await page.reload()
-    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 3 \/ 5 步/)).toBeVisible({ timeout: 5000 })
     await expect(page.getByRole('button', { name: `删除技能 ${skill}` })).toBeVisible({ timeout: 3000 })
 
     // Navigate back to step 1 and check fullName persisted
     await page.click('button:has-text("上一步")')
-    await expect(page.getByText(/第 2 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 2 \/ 5 步/)).toBeVisible({ timeout: 5000 })
     await page.click('button:has-text("上一步")')
-    await expect(page.getByText(/第 1 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 1 \/ 5 步/)).toBeVisible({ timeout: 5000 })
     await expect(page.locator('[id="fullName"]')).toHaveValue(fullName)
   })
 
@@ -189,7 +216,7 @@ test.describe('Student onboarding wizard', () => {
     await page.goto('/zh/s/onboarding')
 
     // Should be on the onboarding page (not redirected away)
-    await expect(page.getByText(/第 1 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/第 1 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
     const bodyWidth = await page.evaluate(() => document.body.scrollWidth)
     const viewportWidth = page.viewportSize()!.width

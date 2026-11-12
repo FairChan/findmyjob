@@ -91,6 +91,18 @@ export class CompletenessLowError extends AppError {
   }
 }
 
+export class ContactRequiredError extends AppError {
+  constructor() {
+    super('Add at least one contact method before applying', 'CONTACT_REQUIRED', 400)
+  }
+}
+
+export class ResumeRequiredError extends AppError {
+  constructor() {
+    super('Upload a PDF resume before applying', 'RESUME_REQUIRED', 400)
+  }
+}
+
 export class InvitationQuotaError extends AppError {
   constructor(message = 'Monthly invitation quota exceeded') {
     super(message, 'INVITATION_QUOTA_EXCEEDED', 429)

@@ -10,11 +10,17 @@ import {
   saveStep2,
   saveStep3,
   saveStep4,
+  completeOnboarding,
 } from '@/server/services/student-profile'
 
 export const getOnboardingDataAction = action({ auth: 'student' }, async ({ userId }) => {
   const profile = await getProfileForOnboarding({ userId: userId! })
   return { profile }
+})
+
+export const completeOnboardingAction = action({ auth: 'student' }, async ({ userId }) => {
+  await completeOnboarding({ userId: userId! })
+  return {}
 })
 
 export const saveStep1Action = action(

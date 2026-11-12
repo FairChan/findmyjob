@@ -7,6 +7,14 @@ import { lockXact, LOCK_NS } from '@/server/lib/advisory-locks'
 import { recalcMatchingEligibilityTx } from '@/server/services/student-profile'
 import { z } from 'zod'
 
+export const getOwnResumesAction = action({ auth: 'student' }, async ({ userId }) => ({
+  resumes: await db.resumeFile.findMany({
+    where: { student: { userId: userId! } },
+    select: { id: true, fileName: true, sizeBytes: true, pageCount: true, isPrimary: true, createdAt: true },
+    orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
+  }),
+}))
+
 export const setPrimaryResume = action(
   { auth: 'student', input: z.object({ resumeId: z.string().cuid() }) },
   async ({ userId, input }) => {
