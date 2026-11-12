@@ -1,4 +1,5 @@
 import { PrismaClient, PartnerType, ArticleCategory } from '@prisma/client'
+import { seedPlans } from './seed-plans'
 
 const db = new PrismaClient()
 
@@ -228,6 +229,8 @@ async function main() {
     },
     update: {},
   })
+
+  await seedPlans(db)
 
   // --- Platform admin user ---
   // Password-based Account setup requires Better Auth (M1-T01).

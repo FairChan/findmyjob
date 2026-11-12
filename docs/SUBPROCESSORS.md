@@ -15,4 +15,10 @@
 | GitHub（含 Actions、GHCR、Dependabot） | 代码托管、CI、镜像仓库、依赖更新 | 源代码、合成测试数据、CI 日志、容器镜像；不含生产用户数据和应用密钥 | 待核实 | 是（待核实） | 默认；私有仓库 FairChan/findmyjob（D13） |
 | 开发期 AI 中转（D12） | Claude Code 开发会话和闸门 LLM 扫描 | 源代码、diff、提示词、合成测试数据；按 D12 不给真实数据 | 待核实 | 待核实 | 当作不可信第三方；数据保留和日志条款待查 |
 | Stripe（D5，M8） | 在线支付 | 企业付款信息（由 Stripe 托管页面收集，本系统只存 externalRef） | 待核实 | 待核实 | 未启用，M8 前补齐 |
-| Anthropic API（M9） | 简历解析、JD 生成 | 简历文本、职位要点 | 待核实 | 待核实 | 未启用；启用前更新隐私政策和 `legal.currentVersion` |
+| Anthropic API（M9-T01、T02） | 学生单独同意并主动请求的私有简历解析建议；企业逐次确认后的中英职位描述建议 | T01：服务端提取、最少化并遮蔽常见联系方式/URL 后的职业文本及建议，仍可能含姓名、单位等个人资料。T02：当前职位名称和岗位要点，同样遮蔽常见联系方式/URL，仍可能含未识别的个人或机密资料；不自动附加已有职位正文。均不附加原 PDF、文件名、存储 key、平台内部 ID、完整档案或联系方式表数据 | 待核实实际项目账户与合同适用的处理/存储地区 | 待核实；不得从 API 域名推断区域 | 两个功能独立默认关闭；使用项目官方 API 凭据直连 `api.anthropic.com`，不经开发期 AI 中转。地区、DPA/下游子处理者、保留与删除、日志/滥用例外、训练使用及模型可用性须人工核验；各功能完成法律披露及各自确认流程后才可另行批准启用。T02 不写长期 AI 同意，不自动保存或发布职位 |
+| Voyage AI（M9-T03） | 独立同意后的职业语义推荐与可见人才文档索引、公开职位文档索引 | 已确认档案的 headline/major/degree/skills/intents/preferredStates，经本地遮蔽；公开职位 title/type/category/workMode/state/city/skills/languages。不附加姓名/学校身份、联系方式、简历/草稿、Job正文/薪资或平台ID；职业自由文本仍可能含个人资料 | 待人工核实实际项目账户、合同及下游处理地区 | 待核实，不能按API域名推断 | 默认关闭，固定 api.voyageai.com；模型、DPA、保留/日志/删除/训练使用与跨境条款核实并更新政策后才可另行批准启用；不经开发期中转 |
+
+M9-T01 的常见联系方式遮蔽不是匿名化承诺。官方 [API 数据保留说明](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention.md) 只是核验入口；不能据此声称本项目已获零保留、不用于训练或特定地区处理。项目实际合同、账户设置及适用模型/功能的结论应在启用前留存证据并更新本表和双语隐私政策。本文不变更 `legal.currentVersion`、不创建同意记录、不启用外发；法律版本发布和功能启用按 RUNBOOK 分别审批。
+
+## M9-T04 optional weekly mail release draft
+Weekly recommendations reuse the configured SMTP/Resend service above, one recipient per message; no contact lists, cc/bcc, tracking or new AI processor. Only the minimal anonymous/job-list projection and recipient address leave through mail. MARKETING, matching and provider configuration remain separate. This entry does not approve a real account, region, publication or marketing activation.

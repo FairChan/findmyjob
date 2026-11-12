@@ -1,13 +1,12 @@
 import { getTranslations } from 'next-intl/server'
+import { AuthCard } from '@/components/auth/auth-card'
 import { Link } from '@/i18n/navigation'
 
 export default async function VerifyEmailPage() {
   const t = await getTranslations('verifyEmail')
 
   return (
-    <div className="container mx-auto max-w-md px-4 py-12">
-      <div className="rounded-lg border bg-card p-8 shadow-sm text-center">
-        <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
+    <AuthCard title={t('title')} contentClassName="text-center">
         <p className="text-muted-foreground mb-6">
           {t('message')}
         </p>
@@ -15,12 +14,11 @@ export default async function VerifyEmailPage() {
           {t('hint')}{' '}
           <Link
             href="/register/student"
-            className="text-brand underline-offset-4 hover:underline"
+            className="text-brand underline underline-offset-4"
           >
             {t('backToRegister')}
           </Link>
         </p>
-      </div>
-    </div>
+    </AuthCard>
   )
 }

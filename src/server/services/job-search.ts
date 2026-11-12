@@ -187,20 +187,28 @@ function scoreCandidate(
 // ----- Synonym cache -----
 
 let _synonymCache: { groups: string[][]; expiresAt: number } | null = null
+let synonymCacheVersion = 0
 
-/** Clear the synonym cache; for unit tests only. */
-export function _clearSynonymCache(): void {
+/** Invalidate this process after a committed edit; other processes retain the 60s TTL. */
+export function invalidateSynonymCache(): void {
+  synonymCacheVersion += 1
   _synonymCache = null
 }
 
+/** Retained alias for existing tests. */
+export const _clearSynonymCache = invalidateSynonymCache
+
 async function getCachedSynonymGroups(): Promise<string[][]> {
   if (_synonymCache && Date.now() < _synonymCache.expiresAt) return _synonymCache.groups
+  const version = synonymCacheVersion
+  const expiresAt = Date.now() + 60_000
   const rows = await db.searchSynonymGroup.findMany({
     where: { active: true },
     select: { terms: true },
   })
   const groups = rows.map((r) => r.terms)
-  _synonymCache = { groups, expiresAt: Date.now() + 60_000 }
+  // A read begun before invalidation may finish later; it must not restore stale cache data.
+  if (version === synonymCacheVersion) _synonymCache = { groups, expiresAt }
   return groups
 }
 

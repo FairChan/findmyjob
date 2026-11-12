@@ -87,7 +87,7 @@ export function SchoolForm({ locale, school }: Props) {
           onChange={(e) => setNameZh(e.target.value)}
           required
           maxLength={200}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
@@ -101,7 +101,7 @@ export function SchoolForm({ locale, school }: Props) {
           onChange={(e) => setNameEn(e.target.value)}
           required
           maxLength={200}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
@@ -114,7 +114,7 @@ export function SchoolForm({ locale, school }: Props) {
           value={shortName}
           onChange={(e) => setShortName(e.target.value)}
           maxLength={50}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
@@ -131,7 +131,7 @@ export function SchoolForm({ locale, school }: Props) {
             maxLength={2}
             minLength={2}
             pattern="[A-Z]{2}"
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
         <div>
@@ -143,7 +143,7 @@ export function SchoolForm({ locale, school }: Props) {
             value={state}
             onChange={(e) => setState(e.target.value)}
             maxLength={50}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+            className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
         </div>
       </div>
@@ -159,7 +159,7 @@ export function SchoolForm({ locale, school }: Props) {
           required
           rows={4}
           placeholder={t('emailDomainsPlaceholder')}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
       </div>
 
@@ -199,7 +199,7 @@ export function SchoolForm({ locale, school }: Props) {
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           {isPending ? t('saving') : t('saveBtn')}
         </button>

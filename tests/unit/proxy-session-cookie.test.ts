@@ -18,6 +18,7 @@ describe('proxy session cookie check', () => {
     const res = await middleware(req('/zh/s'))
     expect(res.status).toBe(307)
     expect(res.headers.get('location')).toContain('/zh/login?redirect=%2Fzh%2Fs')
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 
   it('lets a protected page through with the plain cookie name (development)', async () => {
@@ -38,5 +39,10 @@ describe('proxy session cookie check', () => {
   it('lets a protected API through with the __Secure- cookie name', async () => {
     const res = await middleware(req('/api/example', '__Secure-better-auth.session_token=abc.def'))
     expect(res.status).not.toBe(401)
+  })
+
+  it('prevents shared caching of a public page with personalized member navigation', async () => {
+    const res = await middleware(req('/zh/companies', '__Secure-better-auth.session_token=abc.def'))
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
   })
 })

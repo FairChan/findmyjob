@@ -3,7 +3,12 @@
 import { useRef, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
+import { FileText } from 'lucide-react'
 import { setPrimaryResume, deleteResume } from '@/server/actions/resume'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { EmptyState } from '@/components/ui/empty-state'
+import { Row, RowList } from '@/components/ui/row-list'
 
 interface ResumeFile {
   id: string
@@ -17,6 +22,9 @@ interface ResumeFile {
 interface Props {
   resumes: ResumeFile[]
   locale: string
+  onBusyChange?: (busy: boolean) => void
+  onRefresh?: () => Promise<void>
+  disabled?: boolean
 }
 
 const ERROR_KEY_MAP: Record<string, 'errorFileTooLarge' | 'errorInvalidType' | 'errorEncryptedPdf' | 'errorTooManyPages' | 'errorRateLimit' | 'errorUploadFailed'> = {
@@ -31,7 +39,7 @@ function errorKey(code: string | undefined) {
   return ERROR_KEY_MAP[code ?? ''] ?? 'errorUploadFailed'
 }
 
-export function ResumeManager({ resumes, locale }: Props) {
+export function ResumeManager({ resumes, locale, onBusyChange, onRefresh, disabled = false }: Props) {
   const t = useTranslations('resume')
   const router = useRouter()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -46,6 +54,7 @@ export function ResumeManager({ resumes, locale }: Props) {
     e.target.value = ''
     setUploadError(null)
     setUploading(true)
+    onBusyChange?.(true)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -57,27 +66,41 @@ export function ResumeManager({ resumes, locale }: Props) {
       if (!json.ok) {
         setUploadError(t(errorKey(json.code)))
       } else {
-        router.refresh()
+        if (onRefresh) await onRefresh()
+        else router.refresh()
       }
     } catch {
       setUploadError(t('errorUploadFailed'))
     } finally {
       setUploading(false)
+      onBusyChange?.(false)
     }
   }
 
   const handleSetPrimary = (resumeId: string) => {
+    onBusyChange?.(true)
     startTransition(async () => {
-      const result = await setPrimaryResume({ resumeId })
-      if (result.ok) router.refresh()
+      try {
+        const result = await setPrimaryResume({ resumeId })
+        if (result.ok) {
+          if (onRefresh) await onRefresh()
+          else router.refresh()
+        }
+      } finally { onBusyChange?.(false) }
     })
   }
 
   const handleDelete = (resumeId: string) => {
     if (!confirm(t('deleteConfirm'))) return
+    onBusyChange?.(true)
     startTransition(async () => {
-      const result = await deleteResume({ resumeId })
-      if (result.ok) router.refresh()
+      try {
+        const result = await deleteResume({ resumeId })
+        if (result.ok) {
+          if (onRefresh) await onRefresh()
+          else router.refresh()
+        }
+      } finally { onBusyChange?.(false) }
     })
   }
 
@@ -98,19 +121,21 @@ export function ResumeManager({ resumes, locale }: Props) {
           accept=".pdf,application/pdf"
           className="absolute w-0 h-0 overflow-hidden opacity-0"
           onChange={handleUpload}
+          disabled={disabled || uploading || pending}
           aria-label={t('uploadButton')}
         />
-        <button
+        <Button
           type="button"
+          variant="brand"
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
-          className="inline-flex min-h-[44px] min-w-[120px] items-center justify-center rounded-md bg-brand px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={disabled || uploading || pending}
+          className="h-11 min-w-[7.5rem]"
         >
           {uploading ? t('uploading') : t('uploadButton')}
-        </button>
-        <p className="mt-1 text-xs text-muted-foreground">{t('uploadHint')}</p>
+        </Button>
+        <p className="mt-2 text-sm text-muted-foreground">{t('uploadHint')}</p>
         {uploadError && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
+          <p role="alert" className="mt-2 text-sm text-destructive">
             {uploadError}
           </p>
         )}
@@ -118,21 +143,17 @@ export function ResumeManager({ resumes, locale }: Props) {
 
       {/* Resume list */}
       {resumes.length === 0 ? (
-        <p className="text-muted-foreground">{t('empty')}</p>
+        <EmptyState title={t('empty')} icon={<FileText />} />
       ) : (
-        <ul className="divide-y rounded-lg border" aria-label={t('title')}>
+        <RowList aria-label={t('title')}>
           {resumes.map(resume => (
-            <li key={resume.id} className="flex flex-wrap items-center gap-3 p-4">
+            <Row key={resume.id} className="flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="truncate font-medium">{resume.fileName}</span>
-                  {resume.isPrimary && (
-                    <span className="rounded bg-brand/10 px-1.5 py-0.5 text-xs font-medium text-brand">
-                      {t('primary')}
-                    </span>
-                  )}
+                  {resume.isPrimary && <Badge tone="brand">{t('primary')}</Badge>}
                 </div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
+                <div className="mt-1 text-xs text-muted-foreground">
                   {resume.pageCount != null && (
                     <span className="mr-3">{t('pages', { count: resume.pageCount })}</span>
                   )}
@@ -145,40 +166,40 @@ export function ResumeManager({ resumes, locale }: Props) {
               </div>
 
               <div className="flex shrink-0 flex-wrap gap-2">
-                <a
-                  href={`/api/resumes/${resume.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex min-h-[36px] min-w-[60px] items-center justify-center rounded border px-3 py-1 text-sm transition hover:bg-muted"
-                >
-                  {t('preview')}
-                </a>
+                <Button asChild variant="outline" size="sm">
+                  <a href={`/api/resumes/${resume.id}`} target="_blank" rel="noopener noreferrer">
+                    {t('preview')}
+                  </a>
+                </Button>
                 {!resume.isPrimary && (
-                  <button
+                  <Button
                     type="button"
-                    disabled={pending}
+                    variant="outline"
+                    size="sm"
+                    disabled={disabled || pending || uploading}
                     onClick={() => handleSetPrimary(resume.id)}
-                    className="inline-flex min-h-[36px] items-center justify-center rounded border px-3 py-1 text-sm transition hover:bg-muted disabled:opacity-60"
                   >
                     {t('setPrimary')}
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button
                   type="button"
-                  disabled={pending}
+                  variant="outline"
+                  size="sm"
+                  disabled={disabled || pending || uploading}
                   onClick={() => handleDelete(resume.id)}
-                  className="inline-flex min-h-[36px] items-center justify-center rounded border border-red-200 px-3 py-1 text-sm text-red-600 transition hover:bg-red-50 disabled:opacity-60"
+                  className="border-destructive/30 text-destructive hover:bg-destructive-muted hover:text-destructive"
                 >
                   {t('delete')}
-                </button>
+                </Button>
               </div>
-            </li>
+            </Row>
           ))}
-        </ul>
+        </RowList>
       )}
 
       {/* Privacy notice */}
-      <p className="text-xs text-muted-foreground">{t('privacy')}</p>
+      <p className="text-sm text-muted-foreground">{t('privacy')}</p>
     </div>
   )
 }

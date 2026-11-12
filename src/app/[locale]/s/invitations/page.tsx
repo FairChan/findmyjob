@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server'
 import { requireStudent } from '@/server/authz'
 import { listStudentInvitations } from '@/server/services/invitations'
 import { InvitationList } from '@/components/invitations/InvitationList'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function StudentInvitationsPage({
   params,
@@ -16,10 +17,8 @@ export default async function StudentInvitationsPage({
   const invitations = await listStudentInvitations({ userId })
 
   return (
-    <main id="main-content" className="container mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-1 text-2xl font-bold">{t('myInvitationsTitle')}</h1>
-      <p className="mb-6 text-sm text-muted-foreground">{t('myInvitationsSubtitle')}</p>
+    <WorkspacePage title={t('myInvitationsTitle')} lead={t('myInvitationsSubtitle')} width="list">
       <InvitationList invitations={invitations} locale={locale} />
-    </main>
+    </WorkspacePage>
   )
 }

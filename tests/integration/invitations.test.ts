@@ -35,6 +35,7 @@ vi.mock('@/server/lib/alert', () => ({ alert: vi.fn() }))
 
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createJob } from '../factories'
+import { seedApplicationMaterials } from '../helpers/application-materials'
 import { clearSettingsCache } from '@/server/services/settings'
 import {
   sendInvitation,
@@ -49,12 +50,15 @@ import {
   ForbiddenError,
   InvitationQuotaError,
   CompletenessLowError,
+  DuplicateApplicationError,
 } from '@/server/errors'
 
 setupTestDb()
 
 async function seedSettings(overrides: Record<string, unknown> = {}) {
   const defaults: Record<string, unknown> = {
+    // This suite exercises the existing pilot quota, not the commercial FREE plan.
+    'billing.enabled': false,
     'invitations.freeMonthlyQuota': 3,
     'invitations.expireDays': 14,
     'talentPool.minCompleteness': 60,
@@ -72,6 +76,7 @@ async function seedSettings(overrides: Record<string, unknown> = {}) {
 
 /** Make a student visible in the talent pool for the given company. */
 async function makeStudentVisible(profileId: string) {
+  await seedApplicationMaterials(testDb, profileId)
   await testDb.studentProfile.update({
     where: { id: profileId },
     data: { visibility: 'PUBLIC', completeness: 80, schoolVerifiedAt: new Date() },
@@ -90,6 +95,35 @@ async function createVerifiedEmployerWithJob() {
 }
 
 describe('sendInvitation', () => {
+  it.each(['APPLIED', 'REJECTED', 'HIRED'] as const)('rejects another invitation for an existing %s application without using quota', async (status) => {
+    await seedSettings()
+    const employer = await createVerifiedEmployerWithJob()
+    const student = await createStudent(testDb)
+    await makeStudentVisible(student.profileId)
+    const first = await sendInvitation(employer, { studentId: student.profileId, jobId: employer.jobId })
+    const accepted = await acceptInvitation(student, first)
+    await testDb.application.update({ where: { id: accepted.applicationId }, data: { status } })
+
+    await expect(sendInvitation(employer, { studentId: student.profileId, jobId: employer.jobId }))
+      .rejects.toBeInstanceOf(DuplicateApplicationError)
+    expect(await getMonthlyInvitationUsage(employer.companyId)).toEqual({ used: 1, quota: 3 })
+    expect(await testDb.invitation.count()).toBe(1)
+  })
+
+  it('allows a new invitation after the application was withdrawn', async () => {
+    await seedSettings()
+    const employer = await createVerifiedEmployerWithJob()
+    const student = await createStudent(testDb)
+    await makeStudentVisible(student.profileId)
+    await testDb.application.create({
+      data: { jobId: employer.jobId, studentId: student.profileId, status: 'WITHDRAWN' },
+    })
+
+    const result = await sendInvitation(employer, { studentId: student.profileId, jobId: employer.jobId })
+    expect(result.alreadyExists).toBe(false)
+    expect(await testDb.invitation.count({ where: { id: result.invitationId, status: 'SENT' } })).toBe(1)
+  })
+
   it('sends an invitation successfully', async () => {
     await seedSettings()
     const { userId, companyId, jobId } = await createVerifiedEmployerWithJob()
@@ -126,7 +160,7 @@ describe('sendInvitation', () => {
 
     await expect(
       sendInvitation({ userId, companyId }, { studentId: s3.profileId, jobId: job2.id }),
-    ).rejects.toBeInstanceOf(InvitationQuotaError)
+    ).rejects.toMatchObject({ code: 'INVITATION_QUOTA_EXCEEDED', httpStatus: 429 })
   })
 
   it('quota counts only current KL month (last-month invitation does not count)', async () => {
@@ -182,6 +216,7 @@ describe('sendInvitation', () => {
     expect(succeeded).toHaveLength(2)
     expect(failed).toHaveLength(1)
     expect(failed[0]!.reason).toBeInstanceOf(InvitationQuotaError)
+    expect(failed[0]!.reason).toMatchObject({ code: 'INVITATION_QUOTA_EXCEEDED', httpStatus: 429 })
   })
 
   it('invisible student (blocked) cannot be invited', async () => {
@@ -215,6 +250,51 @@ describe('sendInvitation', () => {
 })
 
 describe('acceptInvitation', () => {
+  it.each([false, true])('accepts two legacy invitations with one application (concurrent=%s)', async (concurrent) => {
+    await seedSettings()
+    const employer = await createVerifiedEmployerWithJob()
+    const student = await createStudent(testDb)
+    await makeStudentVisible(student.profileId)
+    // Historical duplicate invitations must remain usable after sending is guarded.
+    const data = {
+      companyId: employer.companyId, jobId: employer.jobId, studentId: student.profileId,
+      sentById: employer.userId, expiresAt: new Date(Date.now() + 86_400_000),
+    }
+    const a = await testDb.invitation.create({ data })
+    const b = await testDb.invitation.create({ data })
+    const results = concurrent
+      ? await Promise.all([a, b].map((inv) => acceptInvitation(student, { invitationId: inv.id })))
+      : [await acceptInvitation(student, { invitationId: a.id }), await acceptInvitation(student, { invitationId: b.id })]
+
+    expect(results[0]!.applicationId).toBe(results[1]!.applicationId)
+    const invitations = await testDb.invitation.findMany({ where: { id: { in: [a.id, b.id] } } })
+    expect(invitations.every((inv) => inv.status === 'ACCEPTED' && inv.respondedAt !== null)).toBe(true)
+    expect(invitations.filter((inv) => inv.applicationId === results[0]!.applicationId)).toHaveLength(1)
+    expect(invitations.filter((inv) => inv.applicationId === null)).toHaveLength(1)
+    expect(await testDb.application.count({ where: { jobId: employer.jobId, studentId: student.profileId } })).toBe(1)
+    expect(await testDb.talentUnlock.count({ where: { companyId: employer.companyId, studentId: student.profileId } })).toBe(1)
+    expect(await testDb.applicationEvent.count({ where: { applicationId: results[0]!.applicationId } })).toBe(1)
+    const links = [a, b].map((inv) => invitations.find((row) => row.id === inv.id)!.applicationId)
+    const expectedLinks = [results[0]!.applicationId, null]
+    expect(concurrent ? links.toSorted() : links).toEqual(concurrent ? expectedLinks.toSorted() : expectedLinks)
+  })
+
+  it('concurrent acceptance of the same invitation succeeds only once', async () => {
+    await seedSettings()
+    const employer = await createVerifiedEmployerWithJob()
+    const student = await createStudent(testDb)
+    await makeStudentVisible(student.profileId)
+    const invitation = await sendInvitation(employer, { studentId: student.profileId, jobId: employer.jobId })
+    const results = await Promise.allSettled([
+      acceptInvitation(student, invitation), acceptInvitation(student, invitation),
+    ])
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1)
+    const failures = results.filter((result) => result.status === 'rejected')
+    expect(failures).toHaveLength(1)
+    expect(failures[0]!.reason).toBeInstanceOf(ForbiddenError)
+    expect(await testDb.application.count()).toBe(1)
+  })
+
   it('accept creates application and links applicationId', async () => {
     await seedSettings()
     const { userId: empUserId, companyId, jobId } = await createVerifiedEmployerWithJob()

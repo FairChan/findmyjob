@@ -21,7 +21,7 @@ vi.mock('@/server/db', async () => {
 })
 
 import { setupTestDb, testDb } from '../setup/db'
-import { createStudent, createEmployer, faker } from '../factories'
+import { createStudent, createEmployer, createJob, faker } from '../factories'
 import { getDashboardStats } from '@/server/services/admin-dashboard'
 
 setupTestDb()
@@ -39,6 +39,68 @@ async function createAdmin() {
 }
 
 describe('getDashboardStats — data integrity', () => {
+  it.each(['weeklyApplications', 'weeklyUnlocks', 'weeklyPublishedJobs'] as const)(
+    '%s matches independent time-range counts across KL week and window boundaries', async (series) => {
+      const admin = await createAdmin()
+      const employer = await createEmployer(testDb)
+      // Use the DB clock to agree with the service even if the host clock drifts.
+      const [{ now }] = await testDb.$queryRaw<[{ now: Date }]>`SELECT NOW() AS now`
+      const hour = 3_600_000
+      const week = 7 * 24 * hour
+      const mondayKl = new Date(now.getTime() + 8 * hour)
+      mondayKl.setUTCDate(mondayKl.getUTCDate() - (mondayKl.getUTCDay() + 6) % 7)
+      mondayKl.setUTCHours(0, 0, 0, 0)
+      const currentStart = mondayKl.getTime() - 8 * hour
+      const oldestStart = currentStart - 11 * week
+      const dates = [oldestStart - 1, oldestStart, currentStart - 1, currentStart, currentStart, currentStart + week]
+      for (const timestamp of dates) {
+        const createdAt = new Date(timestamp)
+        const student = await createStudent(testDb)
+        const job = await createJob(testDb, employer.companyId, employer.userId, { status: 'PUBLISHED' })
+        await testDb.application.create({ data: { jobId: job.id, studentId: student.profileId, createdAt } })
+        await testDb.talentUnlock.create({ data: {
+          companyId: employer.companyId, studentId: student.profileId,
+          unlockedById: employer.userId, source: 'APPLICATION', createdAt,
+        } })
+        await testDb.job.update({ where: { id: job.id }, data: {
+          createdAt: new Date(oldestStart - week), publishedAt: createdAt,
+          status: timestamp === currentStart ? 'CLOSED' : 'PUBLISHED',
+        } })
+      }
+      // A newly created draft is not a newly published job.
+      await createJob(testDb, employer.companyId, employer.userId, { status: 'DRAFT' })
+      // Different totals catch accidentally swapping the three series; unlocks include both sources.
+      const extraStudent = await createStudent(testDb)
+      await testDb.talentUnlock.create({ data: {
+        companyId: employer.companyId, studentId: extraStudent.profileId,
+        unlockedById: employer.userId, source: 'CREDIT', createdAt: new Date(currentStart),
+      } })
+      for (let index = 0; index < 2; index++) {
+        const extraJob = await createJob(testDb, employer.companyId, employer.userId)
+        await testDb.job.update({ where: { id: extraJob.id }, data: { publishedAt: new Date(currentStart) } })
+      }
+      const stats = await getDashboardStats({ userId: admin.id })
+      const expected = []
+      for (let index = 0; index < 12; index++) {
+        const start = oldestStart + index * week
+        const range = { gte: new Date(start), lt: new Date(start + week) }
+        const value = series === 'weeklyApplications'
+          ? await testDb.application.count({ where: { createdAt: range } })
+          : series === 'weeklyUnlocks'
+            ? await testDb.talentUnlock.count({ where: { createdAt: range } })
+            : await testDb.job.count({ where: { publishedAt: range } })
+        const labelDate = new Date(start + 8 * hour)
+        expected.push({
+          label: `${String(labelDate.getUTCMonth() + 1).padStart(2, '0')}/${String(labelDate.getUTCDate()).padStart(2, '0')}`,
+          value,
+        })
+      }
+      expect(stats[series]).toEqual(expected)
+      const thisWeekCount = series === 'weeklyApplications' ? 2 : series === 'weeklyUnlocks' ? 3 : 4
+      expect(expected.map((bucket) => bucket.value)).toEqual([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, thisWeekCount])
+    },
+  )
+
   it('studentCount matches direct DB count of ACTIVE verified students', async () => {
     const admin = await createAdmin()
     // Seed 3 active+verified students, 1 unverified, 1 suspended

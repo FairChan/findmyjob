@@ -25,6 +25,18 @@ export class ForbiddenError extends AppError {
   }
 }
 
+export class TwoFactorRequiredError extends AppError {
+  constructor() {
+    super('Set up two-factor authentication', 'TWO_FACTOR_REQUIRED', 403)
+  }
+}
+
+export class FreshSessionRequiredError extends AppError {
+  constructor() {
+    super('Sign in again to continue', 'FRESH_SESSION_REQUIRED', 403)
+  }
+}
+
 export class ValidationError extends AppError {
   constructor(message = 'Validation failed') {
     super(message, 'VALIDATION_ERROR', 422)
@@ -76,6 +88,18 @@ export class DuplicateApplicationError extends AppError {
 export class CompletenessLowError extends AppError {
   constructor(message = 'Profile completeness too low to apply') {
     super(message, 'COMPLETENESS_LOW', 400)
+  }
+}
+
+export class ContactRequiredError extends AppError {
+  constructor() {
+    super('Add at least one contact method before applying', 'CONTACT_REQUIRED', 400)
+  }
+}
+
+export class ResumeRequiredError extends AppError {
+  constructor() {
+    super('Upload a PDF resume before applying', 'RESUME_REQUIRED', 400)
   }
 }
 

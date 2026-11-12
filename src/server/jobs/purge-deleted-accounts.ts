@@ -1,3 +1,10 @@
+import 'server-only'
+import { Prisma } from '@prisma/client'
+import { deleteAllVersions } from '@/lib/storage'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateLifecycleExportsTx } from '../services/data-rights'
+import { cancelResumeParseDraftsTx } from '../services/resume-parsing'
+import { invalidateStudentMatchingIndexTx } from '../services/semantic-matching'
 import { S3Client, ListObjectVersionsCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { db } from '../db'
 import { logger } from '../lib/logger'
@@ -20,59 +27,52 @@ function makeS3Client(): S3Client {
 }
 
 async function deleteAllVersionsForPrefix(s3: S3Client, prefix: string): Promise<void> {
-  let keyMarker: string | undefined
-  let versionIdMarker: string | undefined
-
-  for (;;) {
-    const list = await s3.send(
-      new ListObjectVersionsCommand({
-        Bucket: env.S3_BUCKET,
-        Prefix: prefix,
-        KeyMarker: keyMarker,
-        VersionIdMarker: versionIdMarker,
-      }),
-    )
-
-    const toDelete = [
-      ...(list.Versions ?? []),
-      ...(list.DeleteMarkers ?? []),
-    ].map(v => ({ Key: v.Key!, VersionId: v.VersionId }))
-
-    if (toDelete.length > 0) {
-      await s3.send(
-        new DeleteObjectsCommand({
-          Bucket: env.S3_BUCKET,
-          Delete: { Objects: toDelete as { Key: string; VersionId?: string }[] },
-        }),
-      )
+  const signal = AbortSignal.timeout(45_000)
+  const objects: { Key: string; VersionId?: string }[] = []
+  const markers = new Set<string>()
+  let keyMarker: string | undefined, versionIdMarker: string | undefined
+  for (let page = 0; page < 100; page++) {
+    const list = await s3.send(new ListObjectVersionsCommand({
+      Bucket: env.S3_BUCKET, Prefix: prefix, KeyMarker: keyMarker, VersionIdMarker: versionIdMarker,
+    }), { abortSignal: signal })
+    for (const version of [...(list.Versions ?? []), ...(list.DeleteMarkers ?? [])]) {
+      if (!version.Key?.startsWith(prefix)) throw new Error('PURGE_STORAGE_PREFIX_MISMATCH')
+      objects.push({ Key: version.Key, VersionId: version.VersionId })
     }
-
-    if (!list.IsTruncated) break
-    keyMarker = list.NextKeyMarker
-    versionIdMarker = list.NextVersionIdMarker
+    if (objects.length > 100_000) throw new Error('PURGE_STORAGE_VERSION_LIMIT')
+    if (!list.IsTruncated) {
+      for (let index = 0; index < objects.length; index += 1000) {
+        const deleted = await s3.send(new DeleteObjectsCommand({
+          Bucket: env.S3_BUCKET, Delete: { Objects: objects.slice(index, index + 1000) },
+        }), { abortSignal: signal })
+        if (deleted.Errors?.length) throw new Error('PURGE_STORAGE_DELETE_FAILED')
+      }
+      return
+    }
+    if (!list.NextKeyMarker) throw new Error('PURGE_STORAGE_MARKER_INVALID')
+    const marker = JSON.stringify([list.NextKeyMarker, list.NextVersionIdMarker])
+    if (markers.has(marker)) throw new Error('PURGE_STORAGE_MARKER_REPEATED')
+    markers.add(marker); keyMarker = list.NextKeyMarker; versionIdMarker = list.NextVersionIdMarker
   }
+  throw new Error('PURGE_STORAGE_PAGE_LIMIT')
 }
 
-async function deleteAllVersionsForKey(s3: S3Client, key: string): Promise<void> {
-  const list = await s3.send(
-    new ListObjectVersionsCommand({ Bucket: env.S3_BUCKET, Prefix: key }),
-  )
+async function lifecycleNow(tx: Prisma.TransactionClient, userId: string): Promise<Date> {
+  await lockXact(tx, LOCK_NS.STUDENT_DATA, userId)
+  await lockXact(tx, LOCK_NS.DATA_EXPORT, userId)
+  const [clock] = await tx.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS "now"`
+  if (!clock) throw new Error('PURGE_CLOCK_UNAVAILABLE')
+  return clock.now
+}
 
-  const toDelete = [
-    ...(list.Versions ?? []),
-    ...(list.DeleteMarkers ?? []),
-  ]
-    .filter(v => v.Key === key)
-    .map(v => ({ Key: v.Key!, VersionId: v.VersionId }))
-
-  if (toDelete.length === 0) return
-
-  await s3.send(
-    new DeleteObjectsCommand({
-      Bucket: env.S3_BUCKET,
-      Delete: { Objects: toDelete as { Key: string; VersionId?: string }[] },
-    }),
-  )
+async function eligibleUser(tx: Prisma.TransactionClient, userId: string, now: Date) {
+  return tx.user.findFirst({
+    where: { id: userId, status: 'DELETED', deletedAt: { lte: new Date(now.getTime() - PURGE_AFTER_DAYS * 24 * 60 * 60 * 1000) },
+      NOT: { email: { endsWith: '@purged.internal' } } },
+    select: { id: true, deletedAt: true, studentProfile: { select: { id: true,
+      resumes: { select: { id: true, storageKey: true }, orderBy: { id: 'asc' } }, contact: { select: { studentId: true } },
+    } } },
+  })
 }
 
 function anonEmail(userId: string): string {
@@ -86,24 +86,10 @@ function anonName(userId: string): string {
 export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
   const cutoff = new Date(Date.now() - PURGE_AFTER_DAYS * 24 * 60 * 60 * 1000)
 
-  // Find all deleted users with PII still present (email not yet anonymized to @purged.internal)
+  // Selection is only a bounded hint; recheck after lifecycle locks before storage and DB writes.
   const deletedUsers = await db.user.findMany({
-    where: {
-      status: 'DELETED',
-      deletedAt: { lte: cutoff },
-      NOT: { email: { endsWith: '@purged.internal' } },
-    },
-    select: {
-      id: true,
-      studentProfile: {
-        select: {
-          id: true,
-          resumes: { select: { id: true, storageKey: true } },
-          contact: { select: { studentId: true } },
-        },
-      },
-    },
-    take: BATCH_SIZE,
+    where: { status: 'DELETED', deletedAt: { lte: cutoff }, NOT: { email: { endsWith: '@purged.internal' } } },
+    select: { id: true }, take: BATCH_SIZE, orderBy: { id: 'asc' },
   })
 
   if (deletedUsers.length === 0) return { purged: 0 }
@@ -111,30 +97,38 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
   const s3 = makeS3Client()
   let purged = 0
 
-  for (const user of deletedUsers) {
-    // ── S3 cleanup (outside transaction) ──────────────────────────────────
-    const profileId = user.studentProfile?.id
-    const resumes = user.studentProfile?.resumes ?? []
-
-    for (const r of resumes) {
-      try {
-        await deleteAllVersionsForKey(s3, r.storageKey)
-      } catch (err) {
-        logger.error({ userId: user.id, resumeKey: r.storageKey, err }, 'purge: failed to delete resume from S3')
-        throw err
-      }
-    }
-
-    // Delete all export objects for this user
+  for (const candidate of deletedUsers) {
+    const prepared = await db.$transaction(async tx => {
+      const now = await lifecycleNow(tx, candidate.id)
+      const current = await eligibleUser(tx, candidate.id, now)
+      if (!current) return null
+      await invalidateLifecycleExportsTx(tx, candidate.id)
+      await cancelResumeParseDraftsTx(tx, candidate.id)
+      await invalidateStudentMatchingIndexTx(tx, candidate.id)
+      return current
+    })
+    if (!prepared) continue
+    // Storage I/O is after commit; failures preserve DB sources for later retry.
     try {
-      await deleteAllVersionsForPrefix(s3, `exports/${user.id}/`)
-    } catch (err) {
-      logger.error({ userId: user.id, err }, 'purge: failed to delete exports from S3')
-      throw err
+      for (const resume of prepared.studentProfile?.resumes ?? []) await deleteAllVersions(resume.storageKey)
+      // Additional legacy cleanup only; the artifact ledger remains authoritative
+      // for a delayed new-protocol PUT after this prefix deletion.
+      await deleteAllVersionsForPrefix(s3, `exports/${prepared.id}/`)
+    } catch {
+      logger.warn({ userId: prepared.id, code: 'ACCOUNT_PURGE_STORAGE_PENDING' }, 'Account purge storage cleanup remains pending')
+      throw new Error('ACCOUNT_PURGE_STORAGE_PENDING')
     }
 
-    // ── Database anonymization (per-user transaction) ─────────────────────
-    await db.$transaction(async (tx) => {
+    const changed = await db.$transaction(async tx => {
+      const now = await lifecycleNow(tx, candidate.id)
+      const user = await eligibleUser(tx, candidate.id, now)
+      if (!user || user.deletedAt?.getTime() !== prepared.deletedAt?.getTime() ||
+        user.studentProfile?.id !== prepared.studentProfile?.id ||
+        JSON.stringify(user.studentProfile?.resumes ?? []) !== JSON.stringify(prepared.studentProfile?.resumes ?? [])) return false
+      await invalidateLifecycleExportsTx(tx, user.id)
+      await cancelResumeParseDraftsTx(tx, user.id)
+      await invalidateStudentMatchingIndexTx(tx, user.id)
+      const profileId = user.studentProfile?.id
       // Delete StudentContact
       if (user.studentProfile?.contact) {
         await purgeContactForStudent(tx, user.studentProfile.id)
@@ -144,6 +138,9 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
       if (profileId) {
         await tx.resumeFile.deleteMany({ where: { studentId: profileId } })
       }
+
+      await lockXact(tx, LOCK_NS.MARKETING, user.id)
+      await tx.weeklyDigestDelivery.deleteMany({ where: { userId: user.id } })
 
       // Anonymize User
       await tx.user.update({
@@ -161,6 +158,7 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
           where: { id: profileId },
           data: {
             fullName: anonName(user.id),
+            editRevision: { increment: 1 },
             headline: null,
             summary: null,
             nationality: null,
@@ -224,11 +222,66 @@ export async function runPurgeDeletedAccounts(): Promise<{ purged: number }> {
           },
         })
       }
+      return true
     })
 
-    purged++
-    logger.info({ userId: user.id }, 'purge: account purged')
+    if (changed) {
+      purged++
+      logger.info({ userId: candidate.id }, 'purge: account purged')
+    }
   }
 
   return { purged }
+}
+
+/**
+ * Explicit cutover-only sweep. Do not schedule until old exporter processes and
+ * remote PUTs are proven quiescent. Finite leases/timeouts are NOT that proof.
+ * Scan is independent of User/Profile presence, status, email or anonymization.
+ */
+export async function cleanupLegacyDataExports(options: { cutoverAt: Date; oldWritersQuiesced: true }): Promise<{ cleaned: number; pending: number }> {
+  if (options?.oldWritersQuiesced !== true || !Number.isFinite(options.cutoverAt?.getTime())) {
+    throw new Error('LEGACY_EXPORT_CUTOVER_REQUIRED')
+  }
+  const cutoverAt = options.cutoverAt, started = Date.now()
+  const [clock] = await db.$queryRaw<Array<{ now: Date }>>`SELECT clock_timestamp() AS "now"`
+  if (!clock || cutoverAt > clock.now) throw new Error('LEGACY_EXPORT_CUTOVER_INVALID')
+  const candidates = await db.$queryRaw<Array<{ id: string; userId: string }>>(Prisma.sql`
+    SELECT r.id, r."userId" FROM "DataRequest" r
+    WHERE r.type = 'EXPORT' AND r."createdAt" <= ${cutoverAt}
+      AND r."resultKey" = 'exports/' || r."userId" || '/' || r.id || '.zip'
+      AND NOT EXISTS (SELECT 1 FROM "DataExportArtifact" a WHERE a."storageKey" = r."resultKey")
+    ORDER BY COALESCE(r."resolvedAt", r."createdAt") ASC, r.id ASC LIMIT 20
+  `)
+  let cleaned = 0, pending = 0
+  for (const candidate of candidates) {
+    if (Date.now() - started > 45_000) break
+    const intent = await db.$transaction(async tx => {
+      const now = await lifecycleNow(tx, candidate.userId)
+      const request = await tx.dataRequest.findUnique({ where: { id: candidate.id } })
+      if (!request || request.userId !== candidate.userId || request.type !== 'EXPORT' || request.createdAt > cutoverAt ||
+        request.resultKey !== `exports/${candidate.userId}/${candidate.id}.zip` ||
+        await tx.dataExportArtifact.findUnique({ where: { storageKey: request.resultKey }, select: { id: true } })) return null
+      const invalidated = await tx.dataRequest.update({ where: { id: request.id }, data: {
+        status: 'REJECTED', exportGeneration: { increment: 1 }, exportLeaseToken: null, exportLeaseExpiresAt: null, resolvedAt: now,
+      } })
+      return { storageKey: request.resultKey, generation: invalidated.exportGeneration }
+    })
+    if (!intent) continue
+    try { await deleteAllVersions(intent.storageKey) }
+    catch { pending++; continue }
+    const changed = await db.$transaction(async tx => {
+      await lifecycleNow(tx, candidate.userId)
+      if (await tx.dataExportArtifact.findUnique({ where: { storageKey: intent.storageKey }, select: { id: true } })) return false
+      const request = await tx.dataRequest.findUnique({ where: { id: candidate.id }, select: { note: true } })
+      const result = await tx.dataRequest.updateMany({
+        where: { id: candidate.id, userId: candidate.userId, type: 'EXPORT', status: 'REJECTED',
+          createdAt: { lte: cutoverAt }, exportGeneration: intent.generation, resultKey: intent.storageKey },
+        data: { resultKey: null, ...(request?.note === 'EXPORT_CLEANUP_REQUIRED' ? { note: null } : {}) },
+      })
+      return result.count === 1
+    })
+    if (changed) cleaned++; else pending++
+  }
+  return { cleaned, pending }
 }

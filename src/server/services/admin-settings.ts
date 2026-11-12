@@ -1,9 +1,19 @@
 import 'server-only'
 import { z } from 'zod'
+import { DEFAULT_PUBLIC_SHOWCASE, PUBLIC_SHOWCASE_KEY, publicShowcaseSchema } from '@/schemas/public-showcase'
+import { randomUUID } from 'node:crypto'
+import { matchingGateInputSchema } from '@/schemas/semantic-matching'
+import { env } from '@/env'
+import { marketingGateInputSchema } from '@/schemas/marketing-settings'
+import { marketingUnsubscribeConfigured } from '../lib/marketing-unsubscribe'
+import { isMarketingDisclosurePublished } from '../lib/marketing-disclosure'
+import { resumeParseGateSchema } from '../schemas/resume-parsing'
 import { db } from '../db'
-import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { VersionMismatchError, ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { getSetting, setSetting } from './settings'
 import type { UserCtx } from '../authz'
+import { bankTransferSettingsSchema, EMPTY_BANK_TRANSFER, foundingOfferSettingsSchema, DEFAULT_FOUNDING_OFFER } from '../lib/billing-settings'
+import { invoiceIssuerSettingsSchema, EMPTY_INVOICE_ISSUER } from '../lib/invoice-settings'
 
 async function assertAdmin(userId: string): Promise<void> {
   const user = await db.user.findUnique({
@@ -24,8 +34,12 @@ export interface SettingMeta {
 }
 
 export const SETTINGS: SettingMeta[] = [
+  { key: PUBLIC_SHOWCASE_KEY, defaultValue: DEFAULT_PUBLIC_SHOWCASE, schema: publicShowcaseSchema, group: 'showcase' },
   { key: 'billing.enabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
   { key: 'billing.studentEnabled', defaultValue: false, schema: z.boolean(), group: 'billing' },
+  { key: 'billing.bankTransfer', defaultValue: EMPTY_BANK_TRANSFER, schema: bankTransferSettingsSchema, group: 'billing' },
+  { key: 'billing.invoiceIssuer', defaultValue: EMPTY_INVOICE_ISSUER, schema: invoiceIssuerSettingsSchema, group: 'billing' },
+  { key: 'billing.foundingOffer', defaultValue: DEFAULT_FOUNDING_OFFER, schema: foundingOfferSettingsSchema, group: 'billing' },
   { key: 'pilot.monthlyCredits', defaultValue: 30, schema: z.number().int().min(0).max(10000), group: 'pilot' },
   { key: 'unlock.costCredits', defaultValue: 1, schema: z.number().int().min(0).max(1000), group: 'unlock' },
   { key: 'unlock.enabled', defaultValue: true, schema: z.boolean(), group: 'unlock', p1: true },
@@ -37,6 +51,10 @@ export const SETTINGS: SettingMeta[] = [
   { key: 'limits.otpSendsPerEmailPerDay', defaultValue: 5, schema: z.number().int().min(1).max(100), group: 'limits' },
   { key: 'limits.uploadsPerHour', defaultValue: 20, schema: z.number().int().min(1).max(1000), group: 'limits' },
   { key: 'limits.jobReportsPerDay', defaultValue: 10, schema: z.number().int().min(1).max(1000), group: 'limits' },
+  { key: 'limits.aiJdPerUserPerHour', defaultValue: 10, schema: z.number().int().min(1).max(1000), group: 'limits' },
+  { key: 'limits.aiJdPerCompanyPerHour', defaultValue: 30, schema: z.number().int().min(1).max(1000), group: 'limits' },
+  { key: 'ai.matching.reconcileBatchSize', defaultValue: 25, schema: z.number().int().min(1).max(50), group: 'ai' },
+  { key: 'ai.matching.reconcileEveryMinutes', defaultValue: 5, schema: z.number().int().min(1).max(30), group: 'ai' },
   { key: 'talentSearch.maxPage', defaultValue: 25, schema: z.number().int().min(1).max(1000), group: 'talentSearch' },
   { key: 'talentPool.minCompleteness', defaultValue: 60, schema: z.number().int().min(0).max(100), group: 'talentPool' },
   { key: 'talentPool.searchEnabled', defaultValue: true, schema: z.boolean(), group: 'talentPool', p1: true },
@@ -103,6 +121,9 @@ export async function updateSettingAdmin(
   rawValue: unknown,
 ): Promise<void> {
   await assertAdmin(ctx.userId)
+  if (key === PUBLIC_SHOWCASE_KEY) throw new NotFoundError('Dedicated showcase settings writer required')
+  if (key === 'marketing.weekly') throw new NotFoundError('Dedicated marketing settings writer required')
+  if (key === 'ai.matching') throw new NotFoundError('Dedicated matching settings writer required')
   const meta = SETTINGS_BY_KEY.get(key)
   if (!meta) throw new NotFoundError(`Unknown setting key: ${key}`)
   const parsed = meta.schema.safeParse(rawValue)
@@ -114,3 +135,65 @@ export async function updateSettingAdmin(
 }
 
 export { getSetting }
+
+export async function updatePublicShowcaseSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = publicShowcaseSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid showcase configuration')
+  await setSetting(PUBLIC_SHOWCASE_KEY, parsed.data, ctx.userId)
+}
+
+const jdAssistantGateInputSchema = resumeParseGateSchema.omit({ epoch: true }).strict()
+
+export async function updateJdAssistantSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = jdAssistantGateInputSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid JD assistant configuration')
+  if (parsed.data.enabled) {
+    const version = await getSetting<unknown>('legal.currentVersion', '2026-11-draft', { fresh: true })
+    if (!parsed.data.legalVersion || typeof version !== 'string' || parsed.data.legalVersion !== version) {
+      throw new VersionMismatchError()
+    }
+  }
+  await setSetting('ai.jdAssistant', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
+}
+
+const resumeParseGateInputSchema = resumeParseGateSchema.omit({ epoch: true }).strict()
+
+export async function updateResumeParseSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = resumeParseGateInputSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid resume parsing configuration')
+  if (parsed.data.enabled) {
+    const version = await getSetting<unknown>('legal.currentVersion', '2026-11-draft', { fresh: true })
+    if (!parsed.data.legalVersion || typeof version !== 'string' || parsed.data.legalVersion !== version) {
+      throw new VersionMismatchError()
+    }
+  }
+  await setSetting('ai.resumeParse', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
+}
+
+export async function updateMatchingSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = matchingGateInputSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid matching configuration')
+  if (parsed.data.enabled) {
+    const version = await getSetting<unknown>('legal.currentVersion', '2026-11-draft', { fresh: true })
+    if (!parsed.data.legalVersion || typeof version !== 'string' || parsed.data.legalVersion !== version) throw new VersionMismatchError()
+    const model = z.string().trim().min(1).max(200).refine(value => !/[\u0000-\u001f\u007f]/u.test(value)).safeParse(env.AI_MODEL_EMBED)
+    if (!env.VOYAGE_API_KEY?.trim() || !model.success) throw new ValidationError('Matching provider configuration unavailable')
+  }
+  await setSetting('ai.matching', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
+}
+
+export async function updateMarketingSettingsAdmin(ctx: UserCtx, rawValue: unknown): Promise<void> {
+  await assertAdmin(ctx.userId)
+  const parsed = marketingGateInputSchema.safeParse(rawValue)
+  if (!parsed.success) throw new ValidationError('Invalid marketing configuration')
+  if (parsed.data.enabled) {
+    const current = await getSetting<unknown>('legal.currentVersion', null, { fresh: true })
+    if (!parsed.data.legalVersion || typeof current !== 'string' || parsed.data.legalVersion !== current) throw new VersionMismatchError()
+    if (!marketingUnsubscribeConfigured() || !await isMarketingDisclosurePublished(current)) throw new ValidationError('Marketing publication or signing configuration unavailable')
+  }
+  await setSetting('marketing.weekly', { ...parsed.data, epoch: randomUUID() }, ctx.userId)
+}

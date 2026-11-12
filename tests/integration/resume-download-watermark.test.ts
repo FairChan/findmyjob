@@ -292,8 +292,13 @@ describe('resume download — real PDF sanitize + watermark (M4-T19)', () => {
 
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
     const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toBe('application/pdf')
+    try {
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('application/pdf')
+    } finally {
+      // This assertion-only request does not consume the PDF; cancel its lease.
+      await res.body?.cancel()
+    }
   }, 60_000)
 
   it('sizeBytes exceeds RESUME_MAX_BYTES — getObjectBytes NOT called, 422 returned', async () => {

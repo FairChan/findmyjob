@@ -1,5 +1,6 @@
 'use client'
-import { useState, useTransition, KeyboardEvent } from 'react'
+import { useState, useTransition, KeyboardEvent, type ComponentProps } from 'react'
+import Stepper, { Step } from '@/components/ui/stepper/Stepper'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
@@ -15,17 +16,25 @@ import {
   saveStep2DraftAction,
   saveStep3DraftAction,
   saveStep4DraftAction,
+  completeOnboardingAction,
 } from '@/server/actions/onboarding'
+import { updateOwnContactAction } from '@/server/actions/contact'
+import { getOwnResumesAction } from '@/server/actions/resume'
+import type { ContactData } from '@/server/services/contact-access'
+import { ContactFields, normalizeContact } from '@/components/contact/ContactFields'
+import { ResumeManager } from '@/app/[locale]/s/resume/resume-client'
 import type { ProfileForOnboarding, Step1Data } from '@/server/services/student-profile'
 import { MY_STATES, COMMON_INDUSTRIES } from '@/lib/malaysia'
 
-const TOTAL_STEPS = 4
+const TOTAL_STEPS = 5
 
 interface Props {
   locale: string
   initialStep: number
   profile: ProfileForOnboarding
   schools: { id: string; nameZh: string; nameEn: string }[]
+  contact: ContactData
+  resumes: ComponentProps<typeof ResumeManager>['resumes']
 }
 
 type LanguageEntry = { language: string; level: string }
@@ -47,12 +56,23 @@ type ExperienceEntry = {
   description: string
 }
 
-export default function OnboardingWizard({ locale, initialStep, profile, schools }: Props) {
+export default function OnboardingWizard({ locale, initialStep, profile, schools, contact: initialContact, resumes: initialResumes }: Props) {
   const t = useTranslations('onboarding')
+  const tContact = useTranslations('contact')
+  const tResume = useTranslations('resume')
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [currentStep, setCurrentStep] = useState(Math.min(initialStep, TOTAL_STEPS))
+  const [contact, setContact] = useState(initialContact)
+  const [resumeBusy, setResumeBusy] = useState(false)
+  const [resumes, setResumes] = useState(initialResumes)
+
+  async function refreshResumes() {
+    const result = await getOwnResumesAction()
+    if (!result.ok) throw new Error('Resume list unavailable')
+    setResumes(result.data.resumes)
+  }
 
   // ---- Step 1 state ----
   const [fullName, setFullName] = useState(profile.fullName ?? '')
@@ -217,10 +237,23 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
       result = draft
         ? await saveStep4DraftAction(buildStep4Payload())
         : await saveStep4Action(buildStep4Payload())
+    } else if (currentStep === 5) {
+      const normalized = normalizeContact(contact)
+      if (!draft && !Object.values(normalized).some(Boolean)) {
+        setError(t('contactRequired'))
+        return false
+      }
+      result = await updateOwnContactAction(normalized)
+      if (!result.ok) {
+        setError(result.code === 'VALIDATION_ERROR' ? tContact('errorValidation') : t('saveError'))
+        return false
+      }
+      if (!draft) result = await completeOnboardingAction()
     }
 
     if (result && !result.ok) {
-      setError(t('saveError'))
+      setError(result.code === 'RESUME_REQUIRED' ? t('resumeRequired')
+        : result.code === 'CONTACT_REQUIRED' ? t('contactRequired') : t('saveError'))
       return false
     }
     return true
@@ -245,7 +278,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
   function handleSaveAndExit() {
     startTransition(async () => {
-      await saveCurrentStep(true)
+      if (!await saveCurrentStep(true)) return
       router.push('/s')
     })
   }
@@ -295,38 +328,40 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
     setExperiences(experiences.filter((_, idx) => idx !== i))
   }
 
-  const stepTitles = [t('step1Title'), t('step2Title'), t('step3Title'), t('step4Title')]
+  const stepTitles = [t('step1Title'), t('step2Title'), t('step3Title'), t('step4Title'), t('step5Title')]
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="bg-background">
+      <div className="page-shell max-w-2xl py-8 md:py-12">
         {/* Progress header */}
-        <div className="mb-8">
-          <p className="text-sm text-muted-foreground mb-2">
+        <div className="mb-6">
+          <p className="text-sm text-muted-foreground">
             {t('stepProgress', { current: currentStep, total: TOTAL_STEPS })}
           </p>
-          <div className="flex gap-1">
-            {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
-              <div
-                key={i}
-                className={`h-1.5 flex-1 rounded-full transition-colors ${
-                  i + 1 <= currentStep ? 'bg-primary' : 'bg-muted'
-                }`}
-              />
-            ))}
-          </div>
-          <h1 className="text-xl font-semibold mt-4">{stepTitles[currentStep - 1]}</h1>
+          <h1 className="mt-1 text-title">{stepTitles[currentStep - 1]}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">{t('applicationMaterialsHint')}</p>
         </div>
 
         {/* Error message */}
         {error && (
-          <div role="alert" className="mb-4 rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+          <div role="alert" className="mb-4 rounded-control bg-destructive-muted p-3 text-sm text-destructive">
             {error}
           </div>
         )}
 
+        <Stepper
+          step={currentStep}
+          linear
+          disableStepIndicators
+          showFooter={false}
+          theme="light"
+          frame={false}
+          width="100%"
+          accentColor="hsl(210 100% 40%)"
+          contentClassName="px-1 pb-1 pt-6"
+        >
         {/* Step 1 */}
-        {currentStep === 1 && (
+        <Step title={stepTitles[0]}>
           <div className="space-y-5">
             <div>
               <Label htmlFor="fullName">{t('fullNameLabel')} *</Label>
@@ -346,7 +381,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 id="school"
                 value={schoolId}
                 onChange={(e) => setSchoolId(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               >
                 <option value="">{t('schoolPlaceholder')}</option>
                 {schools.map((s) => (
@@ -365,7 +400,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                   id="degreeLevel"
                   value={degreeLevel}
                   onChange={(e) => setDegreeLevel(e.target.value)}
-                  className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                 >
                   <option value="">{t('degreeLevelPlaceholder')}</option>
                   <option value="FOUNDATION">{t('degreeLevelFoundation')}</option>
@@ -448,7 +483,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 id="workAuth"
                 value={workAuth}
                 onChange={(e) => setWorkAuth(e.target.value)}
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
+                className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               >
                 <option value="">{t('workAuthPlaceholder')}</option>
                 <option value="MY_CITIZEN">{t('workAuthMyCitizen')}</option>
@@ -460,10 +495,10 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               </select>
             </div>
           </div>
-        )}
+        </Step>
 
         {/* Step 2 */}
-        {currentStep === 2 && (
+        <Step title={stepTitles[1]}>
           <div className="space-y-5">
             <div>
               <Label>{t('intentsLabel')} *</Label>
@@ -555,10 +590,10 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               </div>
             </div>
           </div>
-        )}
+        </Step>
 
         {/* Step 3 */}
-        {currentStep === 3 && (
+        <Step title={stepTitles[2]}>
           <div className="space-y-5">
             <div>
               <Label>{t('languagesLabel')}</Label>
@@ -574,7 +609,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                     <select
                       value={lang.level}
                       onChange={(e) => updateLanguage(i, 'level', e.target.value)}
-                      className="h-10 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="h-10 rounded-control border border-input bg-background px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                     >
                       <option value="BASIC">{t('langLevelBasic')}</option>
                       <option value="CONVERSATIONAL">{t('langLevelConversational')}</option>
@@ -600,7 +635,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
             <div>
               <Label>{t('skillsLabel')}</Label>
-              <div className="mt-1 flex flex-wrap gap-1 p-2 border rounded-md min-h-[42px]">
+              <div className="mt-1 flex flex-wrap gap-1 p-2 border rounded-control min-h-[42px]">
                 {skills.map((skill) => (
                   <span
                     key={skill}
@@ -649,14 +684,14 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 placeholder={t('summaryPlaceholder')}
                 maxLength={2000}
                 rows={5}
-                className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="mt-1 flex w-full rounded-control border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
               />
             </div>
           </div>
-        )}
+        </Step>
 
         {/* Step 4 */}
-        {currentStep === 4 && (
+        <Step title={stepTitles[3]}>
           <div className="space-y-6">
             <p className="text-sm text-muted-foreground">{t('skipStep4Hint')}</p>
 
@@ -665,7 +700,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               <Label>{t('educationsLabel')}</Label>
               <div className="mt-2 space-y-4">
                 {educations.map((edu, i) => (
-                  <div key={i} className="rounded-md border p-4 space-y-3">
+                  <div key={i} className="rounded-control border p-4 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">
                         {edu.schoolName || `#${i + 1}`}
@@ -694,7 +729,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         <select
                           value={edu.degreeLevel}
                           onChange={(e) => updateEducation(i, 'degreeLevel', e.target.value)}
-                          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                         >
                           <option value=""></option>
                           <option value="FOUNDATION">{t('degreeLevelFoundation')}</option>
@@ -749,7 +784,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         onChange={(e) => updateEducation(i, 'description', e.target.value)}
                         rows={2}
                         maxLength={1000}
-                        className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="mt-1 flex w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                       />
                     </div>
                   </div>
@@ -765,7 +800,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               <Label>{t('experiencesLabel')}</Label>
               <div className="mt-2 space-y-4">
                 {experiences.map((exp, i) => (
-                  <div key={i} className="rounded-md border p-4 space-y-3">
+                  <div key={i} className="rounded-control border p-4 space-y-3">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">{exp.title || `#${i + 1}`}</span>
                       <Button
@@ -783,7 +818,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         <select
                           value={exp.kind}
                           onChange={(e) => updateExperience(i, 'kind', e.target.value)}
-                          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                          className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                         >
                           <option value="INTERNSHIP">{t('kindInternship')}</option>
                           <option value="WORK">{t('kindWork')}</option>
@@ -837,7 +872,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                         onChange={(e) => updateExperience(i, 'description', e.target.value)}
                         rows={2}
                         maxLength={1000}
-                        className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="mt-1 flex w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                       />
                     </div>
                   </div>
@@ -848,15 +883,32 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
               </div>
             </div>
           </div>
-        )}
+        </Step>
+        <Step title={stepTitles[4]}>
+          <div className="space-y-8">
+            <section aria-labelledby="onboarding-contact-title" className="space-y-4">
+              <h2 id="onboarding-contact-title" className="font-semibold">{t('contactSectionTitle')}</h2>
+              <p className="text-sm text-muted-foreground">{t('contactRequired')}</p>
+              <div className="rounded-control bg-brand-muted p-4 text-sm text-brand-muted-foreground">
+                {tContact('privacyNotice')}
+              </div>
+              <ContactFields value={contact} onChange={setContact} disabled={isPending} />
+            </section>
+            <section aria-labelledby="onboarding-resume-title" className="space-y-4 border-t pt-6">
+              <h2 id="onboarding-resume-title" className="font-semibold">{tResume('title')}</h2>
+              <ResumeManager resumes={resumes} locale={locale} onBusyChange={setResumeBusy} onRefresh={refreshResumes} disabled={isPending} />
+            </section>
+          </div>
+        </Step>
+        </Stepper>
 
         {/* Navigation */}
-        <div className="mt-8 flex items-center justify-between gap-3">
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
           <Button
             type="button"
             variant="ghost"
             onClick={handleSaveAndExit}
-            disabled={isPending}
+            disabled={isPending || resumeBusy}
           >
             {isPending ? t('saving') : t('saveAndExit')}
           </Button>
@@ -867,12 +919,12 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 type="button"
                 variant="outline"
                 onClick={handlePrevious}
-                disabled={isPending}
+                disabled={isPending || resumeBusy}
               >
                 {t('previous')}
               </Button>
             )}
-            <Button type="button" onClick={handleNext} disabled={isPending}>
+            <Button type="button" variant="brand" onClick={handleNext} disabled={isPending || resumeBusy}>
               {isPending
                 ? t('saving')
                 : currentStep < TOTAL_STEPS

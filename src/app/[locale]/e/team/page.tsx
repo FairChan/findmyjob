@@ -5,6 +5,9 @@ import { requireCompanyMember } from '@/server/authz'
 import { getMyCompany } from '@/server/services/company'
 import { listTeamMembers } from '@/server/services/team'
 import TeamPageClient from '@/components/team/team-page-client'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
+import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
+import { WorkspacePage } from '@/components/layout/workspace-page'
 
 export default async function TeamPage({
   params,
@@ -21,7 +24,7 @@ export default async function TeamPage({
     redirect(`/${locale}/e/onboarding`)
   }
 
-  const members = await listTeamMembers(ctx)
+  const [members, usage] = await Promise.all([listTeamMembers(ctx), getCompanyEntitlementUsage(ctx)])
 
   const translations = {
     invite: t('invite'),
@@ -47,15 +50,15 @@ export default async function TeamPage({
   }
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-12">
-      <h1 className="mb-2 text-2xl font-bold">{t('title')}</h1>
-      <p className="mb-8 text-muted-foreground">{t('subtitle')}</p>
+    <WorkspacePage title={t('title')} lead={t('subtitle')} width="list">
+      <CompanyEntitlementSummary usage={usage} resource="seats" />
       <TeamPageClient
+        canPurchase={usage.canPurchase}
         members={members}
         currentUserId={ctx.userId}
         currentRole={ctx.role}
         t={translations}
       />
-    </div>
+    </WorkspacePage>
   )
 }

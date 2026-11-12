@@ -40,17 +40,15 @@ export function WithdrawButton({ applicationId }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-1">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleWithdraw}
-        disabled={loading}
-        className="min-h-[36px]"
-      >
+    <div className="flex flex-col items-start gap-1.5">
+      <Button variant="outline" size="sm" onClick={handleWithdraw} disabled={loading}>
         {loading ? t('withdrawing') : t('withdrawButton')}
       </Button>
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

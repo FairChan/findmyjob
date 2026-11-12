@@ -59,6 +59,9 @@ const mockEnv = vi.hoisted(() => ({
   S3_ACCESS_KEY_ID: 'minioadmin',
   S3_SECRET_ACCESS_KEY: 'minioadmin',
   EMAIL_PROVIDER: 'smtp' as const,
+  EMAIL_VERIFICATION_PROVIDER: 'resend' as const,
+  EMAIL_VERIFICATION_RESEND_API_KEY: ['dedicated', 'verification', 'test', 'key'].join('-'),
+  EMAIL_VERIFICATION_FROM: 'FindMYJob <no-reply@findmyjob.asia>',
   EMAIL_FROM: 'test@example.test',
   LOG_LEVEL: 'info' as const,
   HSTS_MAX_AGE: 300,
@@ -73,8 +76,12 @@ vi.mock('next/server', () => ({
 // Email provider: captures sendEmail calls without hitting SMTP.
 // Must be hoisted so the mock factory can reference it before the variable declaration.
 const mockSendEmail = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+const mockEmailProviderOverrides = vi.hoisted(() => [] as Array<Record<string, unknown>>)
 vi.mock('@/lib/email', () => ({
-  createEmailProvider: () => ({ sendEmail: mockSendEmail }),
+  createEmailProvider: (overrides?: Record<string, unknown>) => {
+    mockEmailProviderOverrides.push(overrides ?? {})
+    return { sendEmail: mockSendEmail }
+  },
 }))
 
 // alert: captures alert() calls to verify observability
@@ -133,6 +140,17 @@ import StudentLayout from '@/app/[locale]/s/layout'
 import EmployerLayout from '@/app/[locale]/e/layout'
 
 setupTestDb()
+
+describe('dedicated registration verification mail configuration', () => {
+  it('routes only verification mail to Resend with its dedicated key and verified-domain sender', () => {
+    expect(mockEmailProviderOverrides).toContainEqual({})
+    expect(mockEmailProviderOverrides).toContainEqual({
+      provider: 'resend',
+      apiKey: ['dedicated', 'verification', 'test', 'key'].join('-'),
+      from: 'FindMYJob <no-reply@findmyjob.asia>',
+    })
+  })
+})
 
 // --- Turnstile fetch stub ---
 

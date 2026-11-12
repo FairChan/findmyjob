@@ -2,6 +2,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { acceptInviteAction } from '@/server/actions/team'
+import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
 
 interface Props {
   token: string
@@ -24,6 +25,7 @@ interface Props {
 
 export default function AcceptInviteClient({ token, companyName, role, locale, t }: Props) {
   const [error, setError] = useState('')
+  const [seatLimitReached, setSeatLimitReached] = useState(false)
   const [accepted, setAccepted] = useState(false)
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -37,27 +39,29 @@ export default function AcceptInviteClient({ token, companyName, role, locale, t
 
   function handleAccept() {
     setError('')
+    setSeatLimitReached(false)
     startTransition(async () => {
       const res = await acceptInviteAction({ token })
       if (res.ok) {
         setAccepted(true)
         setTimeout(() => router.push(`/${locale}/e`), 2000)
       } else {
-        setError(mapError(res.code))
+        if (res.code === 'SEAT_LIMIT_EXCEEDED') setSeatLimitReached(true)
+        else setError(mapError(res.code))
       }
     })
   }
 
   if (accepted) {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-        <p className="text-sm text-green-700">{t.successMessage}</p>
+      <div className="rounded-card border border-success/30 bg-success-muted p-4">
+        <p className="text-sm text-success">{t.successMessage}</p>
       </div>
     )
   }
 
   return (
-    <div className="rounded-lg border p-6">
+    <div className="rounded-card border p-6">
       <div className="mb-4">
         <p className="text-sm text-muted-foreground">{t.companyLabel}</p>
         <p className="font-medium">{companyName}</p>
@@ -69,13 +73,14 @@ export default function AcceptInviteClient({ token, companyName, role, locale, t
       <button
         onClick={handleAccept}
         disabled={isPending}
-        className="w-full rounded bg-brand px-4 py-2 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
+        className="min-h-11 w-full rounded-full bg-brand px-5 py-2 text-sm font-medium text-brand-foreground hover:bg-brand/90 disabled:opacity-50"
       >
         {t.acceptButton}
       </button>
       {error && (
-        <p className="mt-3 text-sm text-destructive">{error}</p>
+        <p role="alert" className="mt-3 text-sm text-destructive">{error}</p>
       )}
+      {seatLimitReached && <EntitlementLimitNotice resource="seats" />}
     </div>
   )
 }

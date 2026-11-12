@@ -1,10 +1,12 @@
 import 'server-only'
 import { z } from 'zod'
-import { Visibility, Prisma } from '@prisma/client'
+import { Visibility, Prisma, type UnlockSource } from '@prisma/client'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { logAudit } from './audit'
-import { NotFoundError } from '../errors'
+import { NotFoundError, ForbiddenError } from '../errors'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 
 export const setVisibilitySchema = z.object({
   granted: z.boolean(),
@@ -40,21 +42,29 @@ export async function setVisibility(
   input: z.infer<typeof setVisibilitySchema>,
   meta: { ip?: string | null } = {},
 ): Promise<void> {
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true },
-  })
-  if (!profile) throw new NotFoundError('Student profile not found')
-
-  const version = await getSetting<string>('legal.currentVersion', '1.0')
   const newVisibility = input.granted ? Visibility.PUBLIC : Visibility.HIDDEN
-
-  await db.$transaction([
-    db.studentProfile.update({
-      where: { id: profile.id },
-      data: { visibility: newVisibility },
-    }),
-    db.consent.create({
+  await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+    const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { role: true, status: true } })
+    if (user?.role !== 'STUDENT' || user.status !== 'ACTIVE') throw new ForbiddenError()
+    const profile = await tx.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true, visibility: true } })
+    if (!profile) throw new NotFoundError('Student profile not found')
+    const rawVersion = await getSetting<unknown>('legal.currentVersion', null, { tx, fresh: true })
+    const parsedVersion = z.string().min(1).max(100).safeParse(rawVersion)
+    if (input.granted) {
+      if (!parsedVersion.success) throw new ForbiddenError()
+      const grants = await Promise.all((['TERMS', 'PRIVACY'] as const).map(type => tx.consent.findFirst({
+        where: { userId: ctx.userId, type }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { granted: true, version: true },
+      })))
+      if (grants.some(grant => !grant?.granted || grant.version !== parsedVersion.data)) throw new ForbiddenError()
+    }
+    const version = parsedVersion.success ? parsedVersion.data : 'withdrawal-v1'
+    if (profile.visibility !== newVisibility) {
+      await tx.studentProfile.update({ where: { id: profile.id }, data: { visibility: newVisibility, editRevision: { increment: 1 } } })
+      await invalidateStudentMatchingIndexTx(tx, ctx.userId)
+    }
+    await tx.consent.create({
       data: {
         userId: ctx.userId,
         type: 'TALENT_POOL',
@@ -62,16 +72,15 @@ export async function setVisibility(
         granted: input.granted,
         ip: meta.ip ?? null,
       },
-    }),
-  ])
-
-  await logAudit({
-    actorId: ctx.userId,
-    action: 'student.visibility.change',
-    targetType: 'StudentProfile',
-    targetId: profile.id,
-    metadata: { granted: input.granted, visibility: newVisibility },
-    ip: meta.ip ?? undefined,
+    })
+    await logAudit({
+      actorId: ctx.userId,
+      action: 'student.visibility.change',
+      targetType: 'StudentProfile',
+      targetId: profile.id,
+      metadata: { granted: input.granted, visibility: newVisibility },
+      ip: meta.ip ?? undefined,
+    }, tx)
   })
 }
 
@@ -105,19 +114,15 @@ export async function addBlockedCompany(
   ctx: { userId: string },
   input: z.infer<typeof blockCompanySchema>,
 ): Promise<void> {
-  const [profile, company] = await Promise.all([
-    db.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true } }),
-    db.company.findUnique({
-      where: { id: input.companyId },
-      select: { id: true, verificationStatus: true },
-    }),
-  ])
-  if (!profile) throw new NotFoundError('Student profile not found')
-  if (!company || company.verificationStatus !== 'VERIFIED') {
-    throw new NotFoundError('Company not found')
-  }
-
   await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+    const [profile, company] = await Promise.all([
+      tx.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true, user: { select: { role: true, status: true } } } }),
+      tx.company.findUnique({ where: { id: input.companyId }, select: { id: true, verificationStatus: true } }),
+    ])
+    if (!profile) throw new NotFoundError('Student profile not found')
+    if (profile.user.role !== 'STUDENT' || profile.user.status !== 'ACTIVE') throw new ForbiddenError()
+    if (!company || company.verificationStatus !== 'VERIFIED') throw new NotFoundError('Company not found')
     await tx.blockedCompany.upsert({
       where: { studentId_companyId: { studentId: profile.id, companyId: input.companyId } },
       create: { studentId: profile.id, companyId: input.companyId },
@@ -137,13 +142,13 @@ export async function removeBlockedCompany(
   ctx: { userId: string },
   input: z.infer<typeof unblockCompanySchema>,
 ): Promise<void> {
-  const profile = await db.studentProfile.findUnique({
-    where: { userId: ctx.userId },
-    select: { id: true },
-  })
-  if (!profile) throw new NotFoundError('Student profile not found')
-
   await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+    const profile = await tx.studentProfile.findUnique({
+      where: { userId: ctx.userId }, select: { id: true, user: { select: { role: true, status: true } } },
+    })
+    if (!profile) throw new NotFoundError('Student profile not found')
+    if (profile.user.role !== 'STUDENT' || profile.user.status !== 'ACTIVE') throw new ForbiddenError()
     await tx.blockedCompany.deleteMany({
       where: { studentId: profile.id, companyId: input.companyId },
     })
@@ -232,7 +237,7 @@ export async function getProfileViews(ctx: { userId: string }): Promise<
 }
 
 export async function getUnlocks(ctx: { userId: string }): Promise<
-  Array<{ companyId: string; companyName: string; unlockedAt: Date }>
+  Array<{ companyId: string; companyName: string; unlockedAt: Date; source: UnlockSource }>
 > {
   const profile = await db.studentProfile.findUnique({
     where: { userId: ctx.userId },
@@ -253,5 +258,6 @@ export async function getUnlocks(ctx: { userId: string }): Promise<
     companyName:
       r.company.displayNameZh ?? r.company.displayNameEn ?? r.company.legalName,
     unlockedAt: r.createdAt,
+    source: r.source,
   }))
 }

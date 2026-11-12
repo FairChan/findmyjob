@@ -1,6 +1,6 @@
 'use client'
 import { useState, useTransition } from 'react'
-import { Link } from '@/i18n/navigation'
+import { Link, useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import type { JobListItem } from '@/app/[locale]/e/jobs/page'
 import { copyJobAction, closeJobAction } from '@/app/[locale]/e/jobs/actions'
@@ -32,14 +32,15 @@ interface Props {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  DRAFT: 'bg-gray-100 text-gray-700',
-  PENDING_REVIEW: 'bg-yellow-100 text-yellow-800',
-  PUBLISHED: 'bg-green-100 text-green-800',
-  CLOSED: 'bg-red-100 text-red-700',
-  REJECTED: 'bg-red-100 text-red-700',
+  DRAFT: 'bg-muted text-foreground',
+  PENDING_REVIEW: 'bg-warning-muted text-warning',
+  PUBLISHED: 'bg-success-muted text-success',
+  CLOSED: 'bg-destructive-muted text-destructive',
+  REJECTED: 'bg-destructive-muted text-destructive',
 }
 
 export default function JobListClient({ jobs, locale, t }: Props) {
+  const router = useRouter()
   const [localJobs, setLocalJobs] = useState(jobs)
   const [isPending, startTransition] = useTransition()
   const [actionError, setActionError] = useState<string | null>(null)
@@ -92,6 +93,7 @@ export default function JobListClient({ jobs, locale, t }: Props) {
         prev.map(j => (j.id === jobId ? { ...j, status: result.data.status as typeof j.status } : j)),
       )
       setActionSuccess(t.closeSuccess)
+      router.refresh()
     })
   }
 
@@ -105,9 +107,9 @@ export default function JobListClient({ jobs, locale, t }: Props) {
         <p className="mb-4 rounded bg-destructive/10 p-3 text-sm text-destructive">{actionError}</p>
       )}
       {actionSuccess && (
-        <p className="mb-4 rounded bg-green-50 p-3 text-sm text-green-700">{actionSuccess}</p>
+        <p className="mb-4 rounded bg-success-muted p-3 text-sm text-success">{actionSuccess}</p>
       )}
-      <div className="divide-y rounded-lg border">
+      <div className="divide-y rounded-card border">
         {localJobs.map(job => {
           const canClose = job.status === 'PUBLISHED' || job.status === 'PENDING_REVIEW'
           return (
@@ -137,7 +139,7 @@ export default function JobListClient({ jobs, locale, t }: Props) {
               <div className="ml-4 flex shrink-0 gap-2">
                 <Link
                   href={`/e/jobs/${job.id}/edit`}
-                  className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
+                  className="rounded-control border px-3 py-1.5 text-xs font-medium hover:bg-muted/50"
                 >
                   {t.editButton}
                 </Link>

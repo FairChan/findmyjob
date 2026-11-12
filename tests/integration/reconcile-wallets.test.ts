@@ -31,6 +31,20 @@ beforeEach(() => {
 })
 
 describe('runReconcileWallets', () => {
+  it('alerts when a positive wallet balance has no ledger entries', async () => {
+    const { companyId } = await createEmployer(testDb)
+    await testDb.creditWallet.create({ data: { companyId, balance: 25 } })
+
+    await runReconcileWallets()
+
+    expect(vi.mocked(alert)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(alert)).toHaveBeenCalledWith('wallet.mismatch', {
+      companyId,
+      expected: 0,
+      actual: 25,
+    })
+  })
+
   it('no alert when all wallets are balanced', async () => {
     const { companyId } = await createEmployer(testDb)
     await testDb.creditWallet.create({ data: { companyId, balance: 0 } })

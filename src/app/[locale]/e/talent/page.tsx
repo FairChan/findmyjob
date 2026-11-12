@@ -12,6 +12,10 @@ import { searchTalents } from '@/server/services/talent-search'
 import type { TalentSearchResult } from '@/server/services/talent-search'
 import type { TalentCard } from '@/server/serializers/talent-card'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import { EmptyState } from '@/components/ui/empty-state'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { WorkspaceNotice } from '@/components/layout/workspace-notice'
 import { TalentFilterPanel } from '@/components/talent/TalentFilterPanel'
 import { buildSearchString } from '@/lib/talent-search-params'
 import type { FilterState } from '@/lib/talent-search-params'
@@ -83,22 +87,18 @@ function TalentCardItem({
   tFolders: (key: string) => string
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-lg border bg-card p-4 transition hover:border-primary/30 hover:shadow-sm sm:flex-row">
+    <div className="flex flex-col gap-3 rounded-card bg-muted p-5 transition-[background-color,box-shadow] hover:bg-card hover:shadow-float motion-reduce:transition-none sm:flex-row">
       <div className="min-w-0 flex-1">
         {/* Header row */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Link
             href={`/${locale}/e/talent/${card.id}`}
             prefetch={false}
-            className="font-semibold hover:text-primary"
+            className="font-semibold underline-offset-4 hover:underline"
           >
             {card.name}
           </Link>
-          {card.unlocked && (
-            <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-              {tLabel('unlocked')}
-            </span>
-          )}
+          {card.unlocked && <Badge tone="success">{tLabel('unlocked')}</Badge>}
           {card.graduationYear !== null && (
             <span className="text-sm text-muted-foreground">{card.graduationYear}</span>
           )}
@@ -107,11 +107,7 @@ function TalentCardItem({
               · {tLabel(DEGREE_LABELS[card.degreeLevel])}
             </span>
           )}
-          {card.workAuth !== null && (
-            <span className="rounded-full border border-current px-2 py-0.5 text-xs text-muted-foreground">
-              {tLabel(WORK_AUTH_LABELS[card.workAuth])}
-            </span>
-          )}
+          {card.workAuth !== null && <Badge tone="plain">{tLabel(WORK_AUTH_LABELS[card.workAuth])}</Badge>}
         </div>
 
         {/* School + major */}
@@ -135,12 +131,9 @@ function TalentCardItem({
         {card.skills.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
             {card.skills.slice(0, 5).map((skill) => (
-              <span
-                key={skill}
-                className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-              >
+              <Badge key={skill} tone="plain">
                 {skill}
-              </span>
+              </Badge>
             ))}
           </div>
         )}
@@ -216,9 +209,7 @@ function ResultsList({
       </div>
 
       {students.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-muted-foreground">
-          {tLabel('noResults')}
-        </div>
+        <EmptyState title={tLabel('noResults')} />
       ) : (
         <div className="space-y-3">
           {students.map((card) => (
@@ -297,18 +288,11 @@ export default async function TalentSearchPage({
 
   if (company?.verificationStatus !== 'VERIFIED') {
     return (
-      <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
-        >
-          <h1 className="text-xl font-semibold text-amber-900">{t('verifyRequired')}</h1>
-          <p className="mt-2 text-sm text-amber-700">{t('verifyDesc')}</p>
-          <Button asChild className="mt-6">
-            <Link href={`/${locale}/e/onboarding`}>{t('verifyAction')}</Link>
-          </Button>
-        </div>
-      </main>
+      <WorkspaceNotice
+        title={t('verifyRequired')}
+        description={t('verifyDesc')}
+        action={{ label: t('verifyAction'), href: `/${locale}/e/onboarding` }}
+      />
     )
   }
 
@@ -369,9 +353,7 @@ export default async function TalentSearchPage({
   )
 
   return (
-    <main id="main-content" className="container mx-auto max-w-7xl px-4 py-6">
-      <h1 className="mb-6 text-2xl font-bold">{t('title')}</h1>
-
+    <WorkspacePage title={t('title')} width="full">
       <div className="flex gap-6">
         {/* Filter panel: Suspense required because TalentFilterPanel uses useSearchParams */}
         <Suspense fallback={null}>
@@ -381,17 +363,11 @@ export default async function TalentSearchPage({
         {/* Results area */}
         <div className="min-w-0 flex-1">
           {outcome.kind === 'featureDisabled' ? (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground">
-              {t('featureDisabled')}
-            </div>
+            <EmptyState title={t('featureDisabled')} />
           ) : outcome.kind === 'rateLimited' ? (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground">
-              {t('rateLimited')}
-            </div>
+            <EmptyState title={t('rateLimited')} />
           ) : outcome.kind === 'validationError' ? (
-            <div className="rounded-lg border p-8 text-center text-muted-foreground">
-              {t('invalidParams')}
-            </div>
+            <EmptyState title={t('invalidParams')} />
           ) : (
             <ResultsList
               result={outcome.result}
@@ -404,6 +380,6 @@ export default async function TalentSearchPage({
           )}
         </div>
       </div>
-    </main>
+    </WorkspacePage>
   )
 }

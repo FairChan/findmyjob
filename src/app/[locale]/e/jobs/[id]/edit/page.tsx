@@ -7,6 +7,11 @@ import { db } from '@/server/db'
 import JobFormClient from '@/components/jobs/job-form-client'
 import { updateJobAction } from '../../actions'
 import { NotFoundError } from '@/server/errors'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
+import { CompanyEntitlementSummary } from '@/components/billing/company-entitlement-summary'
+import { getJdAssistantAvailability } from '@/server/services/jd-assistant'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { Badge } from '@/components/ui/badge'
 
 export default async function EditJobPage({
   params,
@@ -32,6 +37,7 @@ export default async function EditJobPage({
     select: { verificationStatus: true },
   })
   const isVerified = company?.verificationStatus === 'VERIFIED'
+  const usage = await getCompanyEntitlementUsage(ctx)
 
   const initialData = {
     jobId: job.id,
@@ -57,21 +63,24 @@ export default async function EditJobPage({
   }
 
   const isEditable = job.status !== 'CLOSED'
+  const jdAssistant = isEditable ? await getJdAssistantAvailability(ctx) : null
 
   return (
-    <div className="container mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-2 flex items-center gap-3">
-        <h1 className="text-2xl font-bold">{t('editJobTitle')}</h1>
-        <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium">
-          {t(`status.${job.status}`)}
-        </span>
-      </div>
+    <WorkspacePage
+      title={t('editJobTitle')}
+      width="list"
+      eyebrow={<Badge>{t(`status.${job.status}`)}</Badge>}
+    >
       {!isEditable && (
-        <p className="mb-4 rounded bg-muted p-3 text-sm text-muted-foreground">
+        <p className="rounded-control bg-muted p-4 text-sm text-muted-foreground">
           {t('notEditable')}
         </p>
       )}
+      <CompanyEntitlementSummary usage={usage} resource="jobs" />
       <JobFormClient
+        key={job.id}
+        canPurchase={usage.canPurchase}
+        jdAssistant={jdAssistant ?? undefined}
         mode="edit"
         isVerified={isVerified}
         isEditable={isEditable}
@@ -125,6 +134,6 @@ export default async function EditJobPage({
           removeTagLabel: t('form.removeTagLabel'),
         }}
       />
-    </div>
+    </WorkspacePage>
   )
 }

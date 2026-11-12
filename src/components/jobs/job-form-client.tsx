@@ -1,9 +1,11 @@
 'use client'
-import { useState, useTransition } from 'react'
+import { useId, useRef, useState, useTransition } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { isImeComposing } from '@/lib/ime'
 import { MY_STATES } from '@/lib/my-states'
+import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
+import { JdAssistant } from './jd-assistant'
 
 export interface JobFormData {
   jobId?: string
@@ -33,6 +35,8 @@ type ActionResult =
   | { ok: false; code: string }
 
 interface Props {
+  jdAssistant?: { submittedVersion: string }
+  canPurchase?: boolean
   mode: 'create' | 'edit'
   isVerified: boolean
   isEditable?: boolean
@@ -93,12 +97,15 @@ export default function JobFormClient({
   isEditable = true,
   initialData,
   onSaveOrSubmit,
+  canPurchase = false,
+  jdAssistant,
   backHref,
   t,
 }: Props) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [limitReached, setLimitReached] = useState(false)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
 
   const [title, setTitle] = useState(initialData?.title ?? '')
@@ -107,6 +114,10 @@ export default function JobFormClient({
   )
   const [category, setCategory] = useState(initialData?.category ?? '')
   const [description, setDescription] = useState(initialData?.description ?? '')
+  const descriptionId = useId()
+  const descriptionElement = useRef<HTMLTextAreaElement>(null)
+  const revisionRef = useRef(0)
+  const [descriptionRevision, setDescriptionRevision] = useState(0)
   const [requirements, setRequirements] = useState(initialData?.requirements ?? '')
   const [benefits, setBenefits] = useState(initialData?.benefits ?? '')
   const [workMode, setWorkMode] = useState<'ONSITE' | 'HYBRID' | 'REMOTE'>(
@@ -134,6 +145,19 @@ export default function JobFormClient({
   const [titleError, setTitleError] = useState('')
   const [descError, setDescError] = useState('')
   const [formUpdatedAt, setFormUpdatedAt] = useState(initialData?.updatedAt)
+
+  function updateDescription(value: string) {
+    revisionRef.current += 1
+    setDescriptionRevision(revisionRef.current)
+    setDescription(value)
+  }
+
+  function applyJdDescription(value: string, expectedRevision: number): boolean {
+    if (!isEditable || isPending || expectedRevision !== revisionRef.current || value.length > 10000) return false
+    updateDescription(value)
+    setDescError('')
+    return true
+  }
 
   function addTag(
     input: string,
@@ -192,11 +216,13 @@ export default function JobFormClient({
   function handleSave(submit: boolean) {
     if (!validate()) return
     setError(null)
+    setLimitReached(false)
     setSuccessMsg(null)
     startTransition(async () => {
       const result = await onSaveOrSubmit(buildPayload(submit))
       if (!result.ok) {
-        if (result.code === 'FORBIDDEN') setError(t.errorForbidden)
+        if (result.code === 'JOB_POST_LIMIT_EXCEEDED') setLimitReached(true)
+        else if (result.code === 'FORBIDDEN') setError(t.errorForbidden)
         else setError(t.errorUnknown)
         return
       }
@@ -204,7 +230,7 @@ export default function JobFormClient({
       setSuccessMsg(submit ? t.submitSuccess : t.saveSuccess)
       if (mode === 'create') {
         router.push(`/e/jobs/${result.data.id}/edit`)
-      }
+      } else router.refresh()
     })
   }
 
@@ -227,7 +253,7 @@ export default function JobFormClient({
           placeholder={t.titlePlaceholder}
           disabled={disabled}
           maxLength={200}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
         {titleError && <p className="mt-1 text-xs text-destructive">{titleError}</p>}
       </div>
@@ -239,7 +265,7 @@ export default function JobFormClient({
           value={type}
           onChange={e => setType(e.target.value as typeof type)}
           disabled={disabled}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         >
           <option value="INTERNSHIP">{t.typeInternship}</option>
           <option value="FULL_TIME">{t.typeFullTime}</option>
@@ -257,23 +283,37 @@ export default function JobFormClient({
           placeholder={t.categoryPlaceholder}
           disabled={disabled}
           maxLength={100}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
       </div>
 
       {/* Description */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.descriptionLabel}</label>
+        <label htmlFor={descriptionId} className="mb-1 block text-sm font-medium">{t.descriptionLabel}</label>
         <textarea
+          id={descriptionId}
+          ref={descriptionElement}
           value={description}
-          onChange={e => setDescription(e.target.value)}
+          onChange={e => updateDescription(e.target.value)}
           placeholder={t.descriptionPlaceholder}
           disabled={disabled}
           rows={6}
           maxLength={10000}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
         {descError && <p className="mt-1 text-xs text-destructive">{descError}</p>}
+        {jdAssistant && isEditable && (
+          <JdAssistant
+            title={title}
+            currentDescription={description}
+            descriptionRevision={descriptionRevision}
+            contextKey={JSON.stringify([mode, initialData?.jobId ?? 'new'])}
+            submittedVersion={jdAssistant.submittedVersion}
+            disabled={disabled}
+            onApply={applyJdDescription}
+            onAppliedFocus={() => descriptionElement.current?.focus()}
+          />
+        )}
       </div>
 
       {/* Requirements */}
@@ -286,7 +326,7 @@ export default function JobFormClient({
           disabled={disabled}
           rows={4}
           maxLength={5000}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
       </div>
 
@@ -300,7 +340,7 @@ export default function JobFormClient({
           disabled={disabled}
           rows={3}
           maxLength={5000}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
       </div>
 
@@ -311,7 +351,7 @@ export default function JobFormClient({
           value={workMode}
           onChange={e => setWorkMode(e.target.value as typeof workMode)}
           disabled={disabled}
-          className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+          className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         >
           <option value="ONSITE">{t.workModeOnsite}</option>
           <option value="HYBRID">{t.workModeHybrid}</option>
@@ -327,7 +367,7 @@ export default function JobFormClient({
             value={state}
             onChange={e => setState(e.target.value)}
             disabled={disabled}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           >
             <option value="">{t.statePlaceholder}</option>
             {MY_STATES.map(s => (
@@ -346,7 +386,7 @@ export default function JobFormClient({
             placeholder={t.cityPlaceholder}
             disabled={disabled}
             maxLength={100}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           />
         </div>
       </div>
@@ -362,7 +402,7 @@ export default function JobFormClient({
               onChange={e => setSalaryMin(e.target.value)}
               min={0}
               disabled={disabled}
-              className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+              className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
             />
           </div>
           <div>
@@ -373,7 +413,7 @@ export default function JobFormClient({
               onChange={e => setSalaryMax(e.target.value)}
               min={0}
               disabled={disabled}
-              className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+              className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
             />
           </div>
         </div>
@@ -392,7 +432,7 @@ export default function JobFormClient({
       {/* Languages */}
       <div>
         <label className="mb-1 block text-sm font-medium">{t.languagesLabel}</label>
-        <div className="flex flex-wrap gap-1 rounded-md border p-2">
+        <div className="flex flex-wrap gap-1 rounded-control border p-2">
           {languages.map(lang => (
             <span
               key={lang}
@@ -434,7 +474,7 @@ export default function JobFormClient({
       {/* Skills */}
       <div>
         <label className="mb-1 block text-sm font-medium">{t.skillsLabel}</label>
-        <div className="flex flex-wrap gap-1 rounded-md border p-2">
+        <div className="flex flex-wrap gap-1 rounded-control border p-2">
           {skills.map(skill => (
             <span
               key={skill}
@@ -508,7 +548,7 @@ export default function JobFormClient({
             min={1}
             max={9999}
             disabled={disabled}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           />
         </div>
         <div>
@@ -518,15 +558,16 @@ export default function JobFormClient({
             value={deadline}
             onChange={e => setDeadline(e.target.value)}
             disabled={disabled}
-            className="w-full rounded-md border px-3 py-2 text-sm disabled:opacity-50"
+            className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
           />
         </div>
       </div>
 
       {/* Feedback */}
-      {error && <p className="rounded bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
+      {limitReached && <EntitlementLimitNotice resource="jobs" canPurchase={canPurchase} />}
+      {error && <p role="alert" className="rounded bg-destructive/10 p-3 text-sm text-destructive">{error}</p>}
       {successMsg && (
-        <p className="rounded bg-green-50 p-3 text-sm text-green-700">{successMsg}</p>
+        <p className="rounded bg-success-muted p-3 text-sm text-success">{successMsg}</p>
       )}
 
       {/* Actions */}

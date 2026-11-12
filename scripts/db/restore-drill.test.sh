@@ -8,6 +8,65 @@ SCRIPT="$(dirname "${BASH_SOURCE[0]}")/restore-drill.sh"
 PASS=0
 FAIL=0
 
+# Exercise both real restore pipelines with synthetic bytes. PostgreSQL treats
+# a positional '-' as a filename; stdin requires omitting the filename entirely.
+_stdin_bin="$(mktemp -d -t restore-drill-stdin.XXXXXXXX)"
+cat > "${_stdin_bin}/aws" <<'MOCKEOF'
+#!/usr/bin/env bash
+if [[ "$*" == *"--range"* ]]; then
+  printf 'age-encryption.org/v1' > "${@: -1}"
+elif [[ "$*" == *"s3api get-object"* ]]; then
+  printf 'synthetic-archive' > "${@: -1}"
+else
+  printf 'synthetic-archive'
+fi
+MOCKEOF
+cat > "${_stdin_bin}/age" <<'MOCKEOF'
+#!/usr/bin/env bash
+cat
+MOCKEOF
+cat > "${_stdin_bin}/pg_restore" <<'MOCKEOF'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  if [[ "$arg" == "-" ]]; then
+    echo 'ERROR: pg_restore received filename instead of stdin' >&2
+    exit 91
+  fi
+done
+[[ "$(cat)" == 'synthetic-archive' ]] || exit 92
+echo 'MOCK: pg_restore consumed stdin'
+MOCKEOF
+cat > "${_stdin_bin}/psql" <<'MOCKEOF'
+#!/usr/bin/env bash
+# Deliberately fail migration verification after restore, preserving its guard.
+if [[ "$*" == *"SELECT count(*) FROM _prisma_migrations"* ]]; then echo 999999; fi
+MOCKEOF
+printf '#!/usr/bin/env bash\nexit 0\n' > "${_stdin_bin}/python3"
+chmod +x "${_stdin_bin}"/*
+for _stdin_branch in streaming versioned; do
+  _stdin_args=()
+  [[ "$_stdin_branch" == versioned ]] && _stdin_args+=(--version-id synthetic-version)
+  _stdin_rc=0
+  _stdin_out=$(
+    PATH="${_stdin_bin}:${PATH}" BACKUP_S3_BUCKET=testbucket \
+    RESTORE_S3_ACCESS_KEY_ID=testkey RESTORE_S3_SECRET_ACCESS_KEY=testsecret \
+    RESTORE_ADMIN_DATABASE_URL=postgresql://u:p@localhost:5432/postgres \
+    bash "$SCRIPT" --key db/daily/2026-11-05T19-15-00Z.dump.age \
+      "${_stdin_args[@]}" --skip-rpo findmyjob_restore_drill <<< synthetic-private-key 2>&1
+  ) || _stdin_rc=$?
+  if [[ "$_stdin_rc" -eq 1 ]] \
+    && [[ "$_stdin_out" == *'MOCK: pg_restore consumed stdin'* ]] \
+    && [[ "$_stdin_out" == *'FAIL: migration count mismatch'* ]]; then
+    echo "PASS: ${_stdin_branch} pg_restore consumes stdin without filename; migration guard retained"
+    PASS=$(( PASS + 1 ))
+  else
+    echo "FAIL: ${_stdin_branch} pg_restore stdin (rc=${_stdin_rc}): ${_stdin_out}"
+    FAIL=$(( FAIL + 1 ))
+  fi
+done
+rm -rf "${_stdin_bin}"
+unset _stdin_bin _stdin_branch _stdin_args _stdin_rc _stdin_out
+
 assert_exit() {
   local desc="$1"
   local expected="$2"

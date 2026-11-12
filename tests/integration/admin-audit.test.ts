@@ -71,6 +71,33 @@ function encPhone(val: string, studentId: string): string {
 
 // ---- Tests ------------------------------------------------------------------
 
+describe('M6-T08 content actions appear in the admin audit query', () => {
+  it('queries actual article and synonym saves with safe metadata', async () => {
+    const { userId } = await createAdmin(testDb)
+    const { saveArticle } = await import('@/server/services/articles')
+    const { saveSynonymGroup } = await import('@/server/services/search-synonyms')
+    const article = await saveArticle({ userId }, {
+      category: 'GUIDE', title: 'Synthetic audit guide',
+      body: 'audit-private-body-sentinel', sortOrder: 0, published: false,
+    })
+    const synonym = await saveSynonymGroup({ userId }, {
+      terms: ['audit-private-term-alpha', 'audit-private-term-beta'], active: true,
+    })
+    for (const expected of [
+      { action: 'article.save', targetType: 'Article', targetId: article.id },
+      { action: 'search.synonym.save', targetType: 'SearchSynonymGroup', targetId: synonym.id },
+    ]) {
+      const { items } = await listAuditLogs({ userId }, { action: expected.action })
+      expect(items).toHaveLength(1)
+      expect(items[0]).toMatchObject({ ...expected, actorId: userId })
+      const serialized = JSON.stringify(items[0].metadata)
+      expect(serialized).not.toContain('audit-private-body-sentinel')
+      expect(serialized).not.toContain('audit-private-term-alpha')
+      expect(serialized).not.toContain('audit-private-term-beta')
+    }
+  })
+})
+
 describe('listAuditLogs: all AUDIT_ACTIONS can be queried', () => {
   it('every action from AUDIT_ACTIONS can be found via listAuditLogs', async () => {
     const { userId } = await mkAdmin()

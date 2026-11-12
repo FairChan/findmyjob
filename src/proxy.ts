@@ -3,6 +3,8 @@ import { routing } from './i18n/routing'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSessionCookie } from 'better-auth/cookies'
+import { env } from './env'
+import { buildContentSecurityPolicy } from './lib/csp'
 
 // Fixed loopback address for the internal reconsent check.
 // Never derive this from the incoming Host/X-Forwarded-Host headers — that would
@@ -32,6 +34,7 @@ const AUTH_PAGE_SLUGS = [
   'reset-password',
   'forgot-password',
   'legal/reconsent',
+  'two-factor/setup',
 ] as const
 
 function requiresNoIndex(pathname: string): boolean {
@@ -94,9 +97,11 @@ function isProtectedPage(pathname: string): boolean {
 // send CSP violation reports without cookies.
 function isProtectedApi(pathname: string): boolean {
   if (!pathname.startsWith('/api/')) return false
+  if (pathname === '/api/marketing/unsubscribe') return false
   if (pathname.startsWith('/api/auth/')) return false
   if (pathname === '/api/health') return false
   if (pathname === '/api/csp-report') return false
+  if (pathname === '/api/payments/stripe/webhook') return false
   if (pathname.startsWith('/api/partner-logos/')) return false
   if (pathname.startsWith('/api/logos/')) return false
   return true
@@ -120,6 +125,12 @@ async function checkReconsent(
   if (!hasSessionCookie(request)) return null
 
   const pathname = request.nextUrl.pathname
+  // Keep personal withdrawal reachable without first granting new legal consent.
+  // Page/action role checks still apply; opt-in services require current consent.
+  const withdrawalPage = routing.locales.some(locale =>
+    pathname === `/${locale}/s/privacy` || pathname === `/${locale}/e/preferences`,
+  )
+  if (withdrawalPage) return null
   // Don't redirect away from the reconsent page itself
   if (pathname.includes('/legal/reconsent')) return null
 
@@ -179,13 +190,29 @@ export default async function middleware(request: NextRequest) {
     return response
   }
 
+  // Next extracts its script nonce from the request CSP. Never trust a nonce
+  // supplied by the caller, and give the browser the exact same policy.
+  const nonce = Buffer.from(randomUUID()).toString('base64')
+  // Direct access is inlined at build time, like the browser instrumentation.
+  const csp = buildContentSecurityPolicy({ nonce, appEnv: env.APP_ENV, sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN })
+  requestHeaders.set('x-nonce', nonce)
+  requestHeaders.set('Content-Security-Policy', csp)
+  const withCsp = (response: NextResponse) => {
+    response.headers.set('Content-Security-Policy', csp)
+    response.headers.set('x-request-id', requestId)
+    return response
+  }
+
   // --- Protected page routes: redirect to login if no session ---
   if (isProtectedPage(pathname)) {
     if (!hasSessionCookie(request)) {
       const locale = extractLocale(pathname)
       const loginUrl = new URL(`/${locale}/login`, request.url)
       loginUrl.searchParams.set('redirect', pathname)
-      return NextResponse.redirect(loginUrl)
+      const response = NextResponse.redirect(loginUrl)
+      response.headers.set('Cache-Control', 'private, no-store')
+      response.headers.set('X-Robots-Tag', 'noindex, nofollow')
+      return withCsp(response)
     }
   }
 
@@ -203,19 +230,21 @@ export default async function middleware(request: NextRequest) {
     const reconsentRedirect = await checkReconsent(req)
     if (reconsentRedirect) {
       reconsentRedirect.headers.set('x-request-id', requestId)
-      return reconsentRedirect
+      return withCsp(reconsentRedirect)
     }
   }
   const response = intlMiddleware(req)
   response.headers.set('x-request-id', requestId)
 
   // Protected pages (student, employer, admin) and auth pages: prevent caching and indexing.
-  if (requiresNoIndex(pathname)) {
+  if (requiresNoIndex(pathname) || hasSessionCookie(request)) {
     response.headers.set('Cache-Control', 'private, no-store')
+  }
+  if (requiresNoIndex(pathname)) {
     response.headers.set('X-Robots-Tag', 'noindex, nofollow')
   }
 
-  return response
+  return withCsp(response)
 }
 
 export const config = {

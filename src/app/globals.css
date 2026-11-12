@@ -6,43 +6,124 @@
     "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "PingFang SC",
     "Microsoft YaHei", "Noto Sans SC";
 
-  /* Brand color utilities */
-  --color-brand: hsl(221 83% 53%);
-  --color-brand-foreground: hsl(0 0% 100%);
-  --color-brand-muted: hsl(221 83% 95%);
-  --color-brand-muted-foreground: hsl(221 60% 30%);
+  /* Radius scale: controls, cards, large feature tiles. Buttons and chips are pills. */
+  --radius-control: 0.75rem;
+  --radius-card: 1.125rem;
+  --radius-tile: 1.75rem;
+
+  /* Type scale: five steps, used as text-display / headline / title / lead / body. */
+  --text-display: clamp(2.5rem, 6.4vw, 4.5rem);
+  --text-display--line-height: 1.06;
+  --text-display--letter-spacing: var(--tracking-display);
+  --text-display--font-weight: 600;
+
+  --text-headline: clamp(1.875rem, 3.8vw, 3rem);
+  --text-headline--line-height: 1.1;
+  --text-headline--letter-spacing: var(--tracking-display);
+  --text-headline--font-weight: 600;
+
+  --text-title: clamp(1.25rem, 2vw, 1.5rem);
+  --text-title--line-height: 1.25;
+  --text-title--letter-spacing: var(--tracking-title);
+  --text-title--font-weight: 600;
+
+  --text-lead: clamp(1.0625rem, 1.7vw, 1.3125rem);
+  --text-lead--line-height: 1.45;
+
+  --text-body: 1.0625rem;
+  --text-body--line-height: 1.6;
+
+  --shadow-float: 0 12px 32px -12px hsl(240 10% 10% / 0.18);
+}
+
+/* Tailwind 4 needs color theme entries to generate the semantic utilities. */
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  /* The one accent. Reserved for things you can act on, plus the MY in the wordmark. */
+  --color-brand: hsl(var(--brand));
+  --color-brand-foreground: hsl(var(--brand-foreground));
+  --color-brand-muted: hsl(var(--brand-muted));
+  --color-brand-muted-foreground: hsl(var(--brand-muted-foreground));
+
+  /* Status colors: use these instead of raw green/amber/red utilities. */
+  --color-success: hsl(var(--success));
+  --color-success-muted: hsl(var(--success-muted));
+  --color-warning: hsl(var(--warning));
+  --color-warning-muted: hsl(var(--warning-muted));
+  --color-destructive-muted: hsl(var(--destructive-muted));
+
+  --color-chart-1: #2563eb;
+  --color-chart-2: #0f766e;
+  --color-chart-3: #b45309;
+  --color-chart-4: #7c3aed;
+  --color-chart-5: #be185d;
 }
 
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --foreground: 240 3% 12%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 240 3% 12%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --popover-foreground: 240 3% 12%;
+    --primary: 240 3% 12%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 11% 96%;
+    --secondary-foreground: 240 3% 12%;
+    --muted: 240 11% 96%;
+    --muted-foreground: 240 2% 42%;
+    --accent: 240 11% 96%;
+    --accent-foreground: 240 3% 12%;
+    --destructive: 4 74% 42%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-muted: 4 80% 96%;
+    --border: 240 6% 90%;
+    --input: 240 5% 82%;
+    --ring: 210 100% 40%;
+    --radius: 0.75rem;
 
-    /* FindMYJob brand colors */
-    --brand: 221 83% 53%;
+    --brand: 210 100% 40%;
     --brand-foreground: 0 0% 100%;
-    --brand-muted: 221 83% 95%;
-    --brand-muted-foreground: 221 60% 30%;
+    --brand-muted: 210 100% 96%;
+    --brand-muted-foreground: 210 100% 30%;
+
+    --success: 146 64% 25%;
+    --success-muted: 146 50% 94%;
+    --warning: 30 92% 28%;
+    --warning-muted: 42 92% 92%;
+
+    /* Latin display type is set tight; CJK glyphs fill their box and need none. */
+    --tracking-display: -0.022em;
+    --tracking-title: -0.012em;
   }
 
+  :root:lang(zh-Hans) {
+    --tracking-display: 0em;
+    --tracking-title: 0em;
+  }
+
+  /* Light theme only for now; the dark values below predate the redesign and stay inert
+     until a theme switch exists. */
   .dark {
     --background: 222.2 84% 4.9%;
     --foreground: 210 40% 98%;
@@ -60,14 +141,71 @@
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
+    --destructive-muted: 0 40% 16%;
     --border: 217.2 32.6% 17.5%;
     --input: 217.2 32.6% 17.5%;
     --ring: 212.7 26.8% 83.9%;
 
-    /* FindMYJob brand colors (dark mode) */
-    --brand: 221 83% 65%;
+    --brand: 210 100% 62%;
     --brand-foreground: 0 0% 100%;
-    --brand-muted: 221 50% 15%;
-    --brand-muted-foreground: 221 60% 75%;
+    --brand-muted: 210 50% 15%;
+    --brand-muted-foreground: 210 80% 78%;
+
+    --success: 146 50% 62%;
+    --success-muted: 146 40% 14%;
+    --warning: 38 90% 62%;
+    --warning-muted: 38 50% 14%;
   }
+
+  * {
+    border-color: var(--color-border);
+  }
+
+  body {
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Project rule: every clickable target is at least 24×24px, whatever size utility a page uses. */
+  :where(input[type='checkbox'], input[type='radio']) {
+    min-width: 1.5rem;
+    min-height: 1.5rem;
+    accent-color: var(--color-brand);
+  }
+
+  :where(a, button, summary, [role='button']):focus-visible {
+    outline: 2px solid var(--color-ring);
+    outline-offset: 2px;
+  }
+}
+
+/* Auth cards rise into place once; skipped for reduced motion. */
+@keyframes auth-enter {
+  from {
+    opacity: 0;
+    transform: translateY(1rem) scale(0.96);
+  }
+}
+@utility auth-enter {
+  animation: auth-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  @media (prefers-reduced-motion: reduce) {
+    animation: none;
+  }
+}
+
+/* Typewriter caret in the home headline. */
+@keyframes caret-blink {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
+@utility animate-caret {
+  animation: caret-blink 1s steps(1, end) infinite;
+}
+
+/* Page gutter shared by the nav, footer and every section, so their edges line up.
+   Same box as the legacy `container mx-auto max-w-5xl px-4` so unmigrated pages still align. */
+@utility page-shell {
+  width: 100%;
+  max-width: 64rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
 }

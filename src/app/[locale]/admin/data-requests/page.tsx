@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { requireAdmin } from '@/server/authz'
 import { listDataRequestsForAdmin } from '@/server/services/data-rights'
 import { DataRequestActions } from '@/components/admin/data-request-actions'
+import { formatKLDate } from '@/lib/format-date'
 
 const searchParamsSchema = z.object({
   status: z.enum(['OPEN', 'DONE', 'REJECTED']).optional(),
@@ -33,7 +34,7 @@ export default async function AdminDataRequestsPage({
   const t = await getTranslations('adminDataRequests')
 
   return (
-    <main id="main-content" className="p-6 max-w-5xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">{t('title')}</h1>
 
       {/* Status filter */}
@@ -76,17 +77,17 @@ export default async function AdminDataRequestsPage({
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
                         req.status === 'OPEN'
-                          ? 'bg-yellow-100 text-yellow-800'
+                          ? 'bg-warning-muted text-warning'
                           : req.status === 'DONE'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-success-muted text-success'
+                            : 'bg-destructive-muted text-destructive'
                       }`}
                     >
                       {t(`status_${req.status}`)}
                     </span>
                   </td>
                   <td className="p-3 text-muted-foreground">
-                    {new Date(req.createdAt).toLocaleDateString(locale)}
+                    {formatKLDate(req.createdAt, locale)}
                   </td>
                   <td className="p-3 text-right">
                     {req.type === 'CORRECT' && req.status === 'OPEN' && (
@@ -110,6 +111,6 @@ export default async function AdminDataRequestsPage({
           </a>
         </div>
       )}
-    </main>
+    </div>
   )
 }

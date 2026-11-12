@@ -218,32 +218,33 @@ export default async function globalSetup() {
     // ---- Ensure CreditWallet for verified employer (M4-T07: unlock) ----
     // Use proper ledger entries to maintain reconciliation (balance = sum of all deltas)
     const TARGET_BALANCE = 100
-    let wallet = await prisma.creditWallet.findUnique({
-      where: { companyId: verifiedEmp.companyId },
-      select: { id: true, balance: true },
-    })
-    if (!wallet) {
-      const created = await prisma.creditWallet.create({
-        data: { companyId: verifiedEmp.companyId, balance: 0 },
+    await prisma.$transaction(async (tx) => {
+      let wallet = await tx.creditWallet.findUnique({
+        where: { companyId: verifiedEmp.companyId },
         select: { id: true, balance: true },
       })
-      wallet = created
-    }
-    if (wallet.balance !== TARGET_BALANCE) {
-      const delta = TARGET_BALANCE - wallet.balance
-      await prisma.creditLedger.create({
-        data: {
-          walletId: wallet.id,
-          delta,
-          balanceAfter: TARGET_BALANCE,
-          reason: LedgerReason.ADMIN_ADJUST,
-        },
-      })
-      await prisma.creditWallet.update({
-        where: { id: wallet.id },
-        data: { balance: TARGET_BALANCE },
-      })
-    }
+      if (!wallet) {
+        wallet = await tx.creditWallet.create({
+          data: { companyId: verifiedEmp.companyId, balance: 0 },
+          select: { id: true, balance: true },
+        })
+      }
+      if (wallet.balance !== TARGET_BALANCE) {
+        const delta = TARGET_BALANCE - wallet.balance
+        await tx.creditLedger.create({
+          data: {
+            walletId: wallet.id,
+            delta,
+            balanceAfter: TARGET_BALANCE,
+            reason: LedgerReason.ADMIN_ADJUST,
+          },
+        })
+        await tx.creditWallet.update({
+          where: { id: wallet.id },
+          data: { balance: TARGET_BALANCE },
+        })
+      }
+    })
     // Clear any TalentUnlock records so the unlock button is always visible each run
     await prisma.talentUnlock.deleteMany({ where: { companyId: verifiedEmp.companyId } })
 

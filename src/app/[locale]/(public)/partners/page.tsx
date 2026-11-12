@@ -1,6 +1,8 @@
 import type { Metadata } from 'next'
 import Image from 'next/image'
 import { getTranslations } from 'next-intl/server'
+import { EmptyState } from '@/components/ui/empty-state'
+import { PageHeader } from '@/components/ui/page-header'
 import { getPublicPartners } from '@/server/services/admin-schools-partners'
 import { safeWebsiteHref } from '@/lib/url-utils'
 
@@ -44,75 +46,63 @@ export default async function PartnersPage({ params }: Props) {
   }
 
   return (
-    <>
-      {/* Hero */}
-      <section className="bg-gradient-to-br from-brand to-brand/70 py-16 md:py-24 text-white">
-        <div className="container mx-auto max-w-5xl px-4">
-          <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">{t('heroTitle')}</h1>
-          <p className="mt-4 text-lg text-white/85 max-w-2xl">{t('heroSubtitle')}</p>
-        </div>
-      </section>
+    <div className="page-shell pb-20 pt-10 md:pt-14">
+      <PageHeader title={t('heroTitle')} lead={t('heroSubtitle')} />
 
       {/* Partners list */}
-      <section className="py-16">
-        <div className="container mx-auto max-w-5xl px-4">
-          <h2 className="text-2xl font-semibold mb-8">{t('allPartnersTitle')}</h2>
-          {partners.length === 0 ? (
-            <p className="text-muted-foreground">{t('noPartners')}</p>
-          ) : (
-            <ul className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {partners.map((p) => {
-                const name = locale === 'zh' ? p.name : (p.nameEn ?? p.name)
-                const href = safeWebsiteHref(p.website)
-                return (
-                  <li key={p.id} className="rounded-xl border bg-background p-5 flex flex-col gap-3">
-                    <div className="flex items-center gap-3">
-                      {p.hasLogo && (
-                        <Image
-                          src={`/api/partner-logos/${p.id}`}
-                          alt=""
-                          aria-hidden="true"
-                          width={40}
-                          height={40}
-                          className="size-10 rounded object-contain flex-shrink-0"
-                          unoptimized
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <p className="font-semibold leading-tight truncate">{name}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5">{t(typeKey(p.type))}</p>
-                      </div>
+      <section className="mt-14">
+        <h2 className="text-title">{t('allPartnersTitle')}</h2>
+        {partners.length === 0 ? (
+          <EmptyState className="mt-6" title={<span className="text-body font-medium">{t('noPartners')}</span>} />
+        ) : (
+          <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {partners.map((p) => {
+              const name = locale === 'zh' ? p.name : (p.nameEn ?? p.name)
+              const href = safeWebsiteHref(p.website)
+              return (
+                <li key={p.id} className="flex flex-col gap-3 rounded-card bg-muted p-6">
+                  <div className="flex items-center gap-3">
+                    {p.hasLogo && (
+                      <Image
+                        src={`/api/partner-logos/${p.id}`}
+                        alt=""
+                        aria-hidden="true"
+                        width={40}
+                        height={40}
+                        className="size-10 shrink-0 rounded-control bg-card object-contain"
+                        unoptimized
+                      />
+                    )}
+                    <div className="min-w-0">
+                      <p className="truncate text-body font-semibold leading-tight">{name}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">{t(typeKey(p.type))}</p>
                     </div>
-                    {p.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-3">{p.description}</p>
-                    )}
-                    {href && (
-                      <a
-                        href={href}
-                        target="_blank"
-                        rel="noopener noreferrer nofollow"
-                        className="text-xs text-brand hover:underline underline-offset-4 mt-auto"
-                      >
-                        {new URL(href).hostname}
-                      </a>
-                    )}
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </div>
+                  </div>
+                  {p.description && (
+                    <p className="line-clamp-3 text-sm text-muted-foreground">{p.description}</p>
+                  )}
+                  {href && (
+                    <a
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      className="mt-auto inline-flex min-h-6 items-center self-start text-sm text-brand underline-offset-4 hover:underline"
+                    >
+                      {new URL(href).hostname}
+                    </a>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+        )}
       </section>
 
       {/* Contact section */}
-      <section className="py-12 border-t bg-muted/20">
-        <div className="container mx-auto max-w-5xl px-4">
-          <div className="rounded-xl border bg-background p-6 md:p-8">
-            <h2 className="text-xl font-semibold">{t('contactTitle')}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">{t('contactDesc')}</p>
-          </div>
-        </div>
+      <section className="mt-14 rounded-tile bg-foreground p-7 text-background sm:p-10">
+        <h2 className="text-title">{t('contactTitle')}</h2>
+        <p className="mt-3 max-w-2xl text-body text-background/80">{t('contactDesc')}</p>
       </section>
-    </>
+    </div>
   )
 }

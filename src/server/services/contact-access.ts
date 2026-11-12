@@ -1,10 +1,13 @@
 import 'server-only'
 import { z } from 'zod'
 import { db } from '../db'
-import { NotFoundError, ForbiddenError } from '../errors'
+import { NotFoundError, ForbiddenError, DecryptError } from '../errors'
 import { encryptField, decryptField } from '../lib/crypto'
+import { alert } from '../lib/alert'
 import { logAudit } from './audit'
 import type { UserCtx } from '../authz'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { recalcMatchingEligibilityTx } from './student-profile'
 
 export type ContactData = {
   phone: string | null
@@ -87,12 +90,27 @@ function encryptIfPresent(value: string | null | undefined, field: string, stude
   return encryptField(value, aad(field, studentId))
 }
 
-function decryptIfPresent(value: string | null, field: string, studentId: string) {
+function decryptIfPresent(
+  value: string | null,
+  field: string,
+  studentId: string,
+  onFailure: 'throw' | 'null',
+) {
   if (value == null) return null
-  return decryptField(value, aad(field, studentId))
+  try {
+    return decryptField(value, aad(field, studentId))
+  } catch (err) {
+    if (!(err instanceof DecryptError)) throw err
+    alert('contact.decrypt_failed', { studentId, field })
+    if (onFailure === 'throw') throw err
+    return null
+  }
 }
 
-/** Reads and decrypts the student's own contact info. */
+/**
+ * Reads the student's contact info for editing. Fail closed so an unreadable
+ * value cannot become an editable null and erase its ciphertext on submission.
+ */
 export async function getOwnContact(ctx: UserCtx): Promise<ContactData> {
   const studentId = await getStudentId(ctx)
   const row = await db.studentContact.findUnique({ where: { studentId } })
@@ -100,11 +118,11 @@ export async function getOwnContact(ctx: UserCtx): Promise<ContactData> {
     return { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null }
   }
   return {
-    phone: decryptIfPresent(row.phone, 'phone', studentId),
-    email: decryptIfPresent(row.email, 'email', studentId),
-    whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
-    wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
-    linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
+    phone: decryptIfPresent(row.phone, 'phone', studentId, 'throw'),
+    email: decryptIfPresent(row.email, 'email', studentId, 'throw'),
+    whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId, 'throw'),
+    wechat: decryptIfPresent(row.wechat, 'wechat', studentId, 'throw'),
+    linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId, 'throw'),
   }
 }
 
@@ -247,11 +265,11 @@ export async function getContactForCompany(
     }
 
     return {
-      phone: decryptIfPresent(row.phone, 'phone', studentId),
-      email: decryptIfPresent(row.email, 'email', studentId),
-      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId),
-      wechat: decryptIfPresent(row.wechat, 'wechat', studentId),
-      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId),
+      phone: decryptIfPresent(row.phone, 'phone', studentId, 'null'),
+      email: decryptIfPresent(row.email, 'email', studentId, 'null'),
+      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentId, 'null'),
+      wechat: decryptIfPresent(row.wechat, 'wechat', studentId, 'null'),
+      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentId, 'null'),
     }
   })
 }
@@ -285,29 +303,33 @@ export async function getContactForAdmin(
     }
 
     return {
-      phone: decryptIfPresent(row.phone, 'phone', studentProfileId),
-      email: decryptIfPresent(row.email, 'email', studentProfileId),
-      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentProfileId),
-      wechat: decryptIfPresent(row.wechat, 'wechat', studentProfileId),
-      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentProfileId),
+      phone: decryptIfPresent(row.phone, 'phone', studentProfileId, 'null'),
+      email: decryptIfPresent(row.email, 'email', studentProfileId, 'null'),
+      whatsapp: decryptIfPresent(row.whatsapp, 'whatsapp', studentProfileId, 'null'),
+      wechat: decryptIfPresent(row.wechat, 'wechat', studentProfileId, 'null'),
+      linkedinUrl: decryptIfPresent(row.linkedinUrl, 'linkedinUrl', studentProfileId, 'null'),
     }
   })
 }
 
 /** Encrypts and upserts the student's own contact info. */
 export async function updateOwnContact(ctx: UserCtx, input: UpdateContactInput): Promise<void> {
-  const studentId = await getStudentId(ctx)
-  const data = {
-    phone: encryptIfPresent(input.phone, 'phone', studentId),
-    email: encryptIfPresent(input.email, 'email', studentId),
-    whatsapp: encryptIfPresent(input.whatsapp, 'whatsapp', studentId),
-    wechat: encryptIfPresent(input.wechat, 'wechat', studentId),
-    linkedinUrl: encryptIfPresent(input.linkedinUrl, 'linkedinUrl', studentId),
-  }
-  await db.studentContact.upsert({
-    where: { studentId },
-    create: { studentId, ...data },
-    update: data,
+  await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
+    const user = await tx.user.findUnique({ where: { id: ctx.userId }, select: { role: true, status: true } })
+    if (user?.role !== 'STUDENT' || user.status !== 'ACTIVE') throw new ForbiddenError()
+    const profile = await tx.studentProfile.findUnique({ where: { userId: ctx.userId }, select: { id: true } })
+    if (!profile) throw new NotFoundError('StudentProfile not found')
+    const studentId = profile.id
+    const data = {
+      phone: encryptIfPresent(input.phone, 'phone', studentId),
+      email: encryptIfPresent(input.email, 'email', studentId),
+      whatsapp: encryptIfPresent(input.whatsapp, 'whatsapp', studentId),
+      wechat: encryptIfPresent(input.wechat, 'wechat', studentId),
+      linkedinUrl: encryptIfPresent(input.linkedinUrl, 'linkedinUrl', studentId),
+    }
+    await tx.studentContact.upsert({ where: { studentId }, create: { studentId, ...data }, update: data })
+    await recalcMatchingEligibilityTx(tx, studentId)
   })
 }
 

@@ -1,0 +1,29 @@
+{
+  "repository": "https://github.com/notofonts/noto-cjk",
+  "commit": "523d033d6cb47f4a80c58a35753646f5c3608a78",
+  "upstreamPath": "Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf",
+  "upstreamVersion": "Sans2.004",
+  "sourceSizeBytes": 17773132,
+  "sourceGitBlobSha1": "5371a543be5fc670c7cdee9760c03554ee3e9b8e",
+  "sourceSha256": "d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964",
+  "version": "findmyjob-invoice-sc-2.004-static400-v1",
+  "file": "FindMYJobInvoiceSC-Regular.ttf",
+  "sizeBytes": 10596344,
+  "sha256": "e04d1f780ce3e7651b3a85ffd5f8b28e847dee53501181099395cb984fde32bc",
+  "transformation": {
+    "tool": "fontTools",
+    "toolVersion": "4.60.1",
+    "script": "generate-invoice-font.py",
+    "weight": 400,
+    "recalcTimestamp": false,
+    "optimize": true,
+    "updateFontNames": true,
+    "internalFamily": "FindMYJobInvoiceSC",
+    "glyphCount": 31036,
+    "codePointCount": 30890
+  },
+  "embedding": { "subset": false, "features": { "locl": false, "liga": false, "clig": false } },
+  "license": "SIL Open Font License 1.1",
+  "licenseFile": "LICENSE",
+  "licenseSha256": "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2"
+}

@@ -2,6 +2,9 @@ import 'server-only'
 import type { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
+import { bankTransferSettingsSchema, EMPTY_BANK_TRANSFER } from '../lib/billing-settings'
+import { configuredInvoiceIssuerSchema, EMPTY_INVOICE_ISSUER } from '../lib/invoice-settings'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 
 const TTL_MS = 60_000
 
@@ -11,20 +14,30 @@ interface CacheEntry {
 }
 
 const cache = new Map<string, CacheEntry>()
+let cacheGeneration = 0
 
 export function clearSettingsCache(): void {
+  cacheGeneration++
   cache.clear()
 }
 
-export async function getSetting<T>(key: string, defaultValue: T): Promise<T> {
+export async function getSetting<T>(
+  key: string, defaultValue: T,
+  options?: { tx?: Prisma.TransactionClient; fresh?: boolean },
+): Promise<T> {
+  if (options?.tx || options?.fresh) {
+    const row = await (options.tx ?? db).systemSetting.findUnique({ where: { key } })
+    return row !== null ? (row.value as T) : defaultValue
+  }
   const cached = cache.get(key)
   if (cached && cached.expiresAt > Date.now()) {
     return cached.value as T
   }
 
+  const generation = cacheGeneration
   const row = await db.systemSetting.findUnique({ where: { key } })
   const value: T = row !== null ? (row.value as T) : defaultValue
-  cache.set(key, { value, expiresAt: Date.now() + TTL_MS })
+  if (generation === cacheGeneration) cache.set(key, { value, expiresAt: Date.now() + TTL_MS })
   return value
 }
 
@@ -34,9 +47,14 @@ export async function setSetting(
   actorId?: string,
 ): Promise<void> {
   const jsonValue = value as Prisma.InputJsonValue
-  const existing = await db.systemSetting.findUnique({ where: { key }, select: { value: true } })
-  const from = existing?.value ?? null
   await db.$transaction(async (tx) => {
+    // Weekly talent preparation uses the same key lock, including when the
+    // setting is absent and this upsert would create its first row.
+    if (key === 'talentPool.searchEnabled' || key === 'talentPool.minCompleteness') {
+      await lockXact(tx, LOCK_NS.SYSTEM_SETTING, key)
+    }
+    const existing = await tx.systemSetting.findUnique({ where: { key }, select: { value: true } })
+    const from = existing?.value ?? null
     await tx.systemSetting.upsert({
       where: { key },
       create: { key, value: jsonValue, updatedById: actorId },
@@ -48,10 +66,47 @@ export async function setSetting(
         action: 'setting.update',
         targetType: 'SystemSetting',
         targetId: key,
-        metadata: { key, from, to: value },
+        metadata: key === 'billing.bankTransfer' ? bankAudit(from, value)
+          : key === 'billing.invoiceIssuer' ? invoiceIssuerAudit(from, value)
+          : key === 'ai.matching' ? matchingGateAudit(from, value) : { key, from, to: value },
       },
       tx,
     )
   })
-  cache.delete(key)
+  clearSettingsCache()
+}
+
+function bankAudit(from: unknown, to: unknown) {
+  const fields = Object.keys(EMPTY_BANK_TRANSFER) as (keyof typeof EMPTY_BANK_TRANSFER)[]
+  const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {}
+  const configured = (value: unknown) => {
+    const parsed = bankTransferSettingsSchema.safeParse(value)
+    return parsed.success && Boolean(parsed.data.bankName && parsed.data.accountName && parsed.data.accountNumber)
+  }
+  const previous = object(from)
+  const next = object(to)
+  return {
+    key: 'billing.bankTransfer', fromConfigured: configured(from), toConfigured: configured(to),
+    changedFields: fields.filter(field => previous[field] !== next[field]),
+  }
+}
+
+function invoiceIssuerAudit(from: unknown, to: unknown) {
+  const fields = Object.keys(EMPTY_INVOICE_ISSUER) as (keyof typeof EMPTY_INVOICE_ISSUER)[]
+  const object = (value: unknown): Record<string, unknown> => value !== null && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {}
+  const previous = object(from)
+  const next = object(to)
+  return {
+    key: 'billing.invoiceIssuer',
+    fromConfigured: configuredInvoiceIssuerSchema.safeParse(from).success,
+    toConfigured: configuredInvoiceIssuerSchema.safeParse(to).success,
+    changedFields: fields.filter(field => previous[field] !== next[field]),
+  }
+}
+
+function matchingGateAudit(from: unknown, to: unknown) {
+  const enabled = (value: unknown) => value !== null && typeof value === 'object' && !Array.isArray(value) && 'enabled' in value && value.enabled === true
+  return { key: 'ai.matching', fromEnabled: enabled(from), toEnabled: enabled(to) }
 }

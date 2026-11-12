@@ -12,6 +12,7 @@ vi.mock('@/lib/storage', () => ({ putObject: mockPutObject }))
 
 const mockLogAudit = vi.fn()
 vi.mock('@/server/services/audit', () => ({ logAudit: mockLogAudit }))
+vi.mock('@/server/services/student-profile', () => ({ recalcMatchingEligibilityTx: vi.fn().mockResolvedValue(undefined) }))
 
 vi.mock('@/server/services/settings', () => ({
   getSetting: vi.fn().mockResolvedValue(20),
@@ -51,12 +52,15 @@ vi.mock('@/server/lib/pdf', () => ({
 
 // stub db — studentProfile found
 const mockResumeFileCreate = vi.fn().mockResolvedValue({ id: 'rf-01' })
-vi.mock('@/server/db', () => ({
-  db: {
-    studentProfile: { findUnique: vi.fn().mockResolvedValue({ id: 'sp-01' }) },
+vi.mock('@/server/db', () => {
+  const db = {
+    $executeRaw: vi.fn().mockResolvedValue(1),
+    user: { findUnique: vi.fn().mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' }) },
+    studentProfile: { findUnique: vi.fn().mockResolvedValue({ id: 'sp-01', userId: 'user-test-01' }) },
     resumeFile: { create: mockResumeFileCreate },
-  },
-}))
+  }
+  return { db: { ...db, $transaction: vi.fn(async (work: (tx: typeof db) => Promise<unknown>) => work(db)) } }
+})
 
 const { POST } = await import('@/app/api/uploads/[purpose]/route')
 

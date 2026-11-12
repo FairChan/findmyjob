@@ -10,6 +10,32 @@
 | 技术负责人 | 待定 | 部署、批准迁移、复核运维操作 |
 | 运维备份人 | 待指定（B15） | GATE-M7 前独立完成一次回滚和一次恢复演练；离线密钥的第二位保管人 |
 
+## 运营账号双重验证
+
+> M6-T09，2026-11-09：以下流程对应本地实现，尚未部署。上线须批准新增迁移 `20261109092518_admin_two_factor`，并在部署后完成现场验收。
+
+### 上线前与首次设置
+
+1. 技术负责人按「部署」节审阅并批准迁移，确认会增加 `User.twoFactorEnabled`、`Session.twoFactorVerifiedAt` 和 `TwoFactor` 表。部署前通知部署会话及运营人员：已有 staging 演示运营账号首次进入 `/zh/admin` 或 `/en/admin` 会转到相应语言的 `/two-factor/setup`，这是预期行为。本轮不修改 `deploy/**` 或种子数据中的账号、密码。
+2. 每人使用自己的运营账号和密码管理器生成的独立强密码。密码登录仍需通过 Turnstile；首次设置要求有效的 ACTIVE ADMIN 会话，并再次输入当前密码。
+3. 点击「生成验证密钥」，在可信的验证器中选择手动添加，导入页面显示的密钥，使用基于时间的六位动态验证码。页面没有扫码流程，不把密钥、动态验证码或备用码放入工单、聊天、日志、截图或 AI 会话。
+4. 将页面提供的备用码保存到受访问控制且设备丢失后仍可取用的安全位置。每个备用码只能使用一次；当前版本没有重新查看密钥、重新生成备用码或自助关闭 2FA 的入口。确认安全保存后勾选确认框，输入当前六位验证码，点击「验证并进入后台」。仅生成密钥尚未完成开通。
+5. 退出后重新登录，确认密码之后必须输入动态验证码；也可使用一个备用码验证备用恢复入口，该码随即失效。部署现场验收还应确认未设置账号无法进入后台、未完成第二因素时没有已登录会话，且敏感动作的过期提示正常。记录版本、执行人、时间与结果，只记录账号内部 ID，不记录凭据。
+
+### 日常登录与过期提示
+
+- 每次运营密码登录后都需完成 TOTP 或备用码验证，不提供「信任此设备」跳过流程。登录挑战默认有效期为 10 分钟，超时后重新进行密码登录。
+- 同账号登录时连续输错第二因素 5 次会锁定 15 分钟，TOTP 与备用码共同计数；成功验证后重置失败计数。设置、TOTP 验证、备用码验证各自还有每 IP 每端点 60 秒 5 次请求限制，第 6 次返回 429。遇到锁定先停止重试，等待锁定结束后重新登录；不要人工清空计数来继续尝试。
+- ADMIN 会话从创建起最长 12 小时，页面活动或自动续期不会延长。运营查看学生联系方式、调整企业点数要求最近一次成功第二因素验证在 10 分钟以内；出现新鲜会话提示时重新登录并完成第二因素，再重试原操作。M8 的订单确认尚未实现，上线该功能时必须沿用相同要求。
+- 每周复核运营账号的 `auth.login` 记录，关注异常时段和来源。强制 2FA 上线后仍保留独立强密码与不共用账号的要求；TM-026 须在部署及现场验收后复评，不能因本地实现而标记线上已消除。
+
+### 验证器或备用码丢失
+
+1. **验证器不可用但仍有备用码**：在密码登录后的验证页点击「使用备用码」，输入一个未使用的备用码。若只是设备时间偏差，先校准设备时间。若验证器永久丢失，应联系技术负责人安排重新绑定；一次备用码登录并不会自动更换旧密钥，当前没有自助重新绑定入口。
+2. **验证器和备用码全部丢失，或怀疑凭据泄露**：停止登录重试，建立账号恢复或安全事故记录。技术负责人通过事先登记的独立联系方式核验本人，由另一位授权人员复核，不能仅凭当前恢复请求提供的邮箱、电话或账号密码批准。
+3. **批准受审计的恢复方案后执行**：先撤销该账号全部会话及未完成的验证挑战，记录会话撤销审计 `auth.session.revoke`。专项恢复方案须使旧 TOTP 密钥和备用码失效，让账号重新进入设置流程；疑似泄露时同时处理密码重置。记录批准人、执行人、复核人、账号内部 ID、原因、时间及结果，审计和事故记录不包含任何密钥或验证码。
+4. **当前实现边界**：M6-T09 未提供人工恢复工具或后台重置端点。需要执行上一项时，由技术负责人先提交并审阅专项恢复工具或修复方案；不得直接修改 `twoFactorEnabled`、伪造 `twoFactorVerifiedAt`、关闭守卫或使用绕过 SQL 恢复后台访问。恢复后由本人完成首次设置步骤，复核旧会话失效及重新登录仍要求第二因素，再关闭恢复记录。
+
 ## 部署
 
 技术负责人通过 SSH 执行：
@@ -443,8 +469,10 @@ unset RESTORE_S3_ACCESS_KEY_ID RESTORE_S3_SECRET_ACCESS_KEY RESTORE_ADMIN_DATABA
    GROUP BY w.id, w."companyId", w.balance
    HAVING w.balance <> COALESCE(SUM(l.delta), 0);
    ```
-2. **不要直接修改 CreditWallet.balance**；只通过 `adminAdjust`（填原因）补差值，所有操作写 AuditLog。
-3. 追查不一致的来源（并发 bug、事务意外回滚等），记录事故并安排代码修复。
+2. **先停止相关扣点入口并保留证据，不要直接改余额或追加猜测的补差值。** `adminAdjust` 同时改变余额和账本总和，二者的差不会改变，因此不能用它修平对账差异。
+3. 追查不一致来源，核对原始订单、解锁、账本及审计，确定真实应有余额和缺失或重复的业务事件。已提交账本保持只追加，不更新或删除历史行。
+4. 技术负责人和财务/运营复核具体修复方案，先在隔离副本验证，并批准带来源凭据、预期差值及前置断言的专项修复。涉及余额投影重建或补记历史事实的修复工具须单独审查；本手册不授权临时 SQL 改账。
+5. 执行获批方案后，再以同一条对账 SQL 验证差值为零、相关业务幂等及审计完整，记录事故和代码修复后恢复入口。正常业务的人工加减点仍走 `adminAdjust`，不把它用作历史差额修复。
 
 #### 场景 4：整站不可用
 
@@ -595,3 +623,261 @@ COMMIT;
 
 **记录**
 - [ ] 记一行检查结果到 `docs/incidents/weekly-checks.md`（日期、执行人、发现的问题编号；无问题写「无」）
+
+## CSP 强制模式与 E3 前 HSTS 切换（M7-T15）
+
+页面响应使用强制 `Content-Security-Policy`，不再发送 Report-Only。连续访问同一页面两次，应看到不同 nonce；每次原始 HTML 的 script nonce 应匹配该次响应。注册/登录的 Turnstile 脚本使用当前文档 nonce，页面内导航不更换它。Next 动态加载的同源 chunks 由 strict-dynamic 授信，可能使用 RSC 请求 nonce；不要仅凭导航后 DOM 中框架脚本 nonce 不同判为 CSP 失败，需同时检查原始 HTML、应用脚本和浏览器实际 CSP 违规。
+
+根布局读取请求头使页面动态渲染；不得缓存并跨请求复用带 nonce 的 HTML。`APP_ENV=production` 时 script-src 不含 unsafe-eval。Sentry 的允许连接 origin 来自构建时内联的公开 DSN，变更 DSN 后须重新构建。API/附件保留各自的安全头和 sandbox。生产构建回归命令为 `pnpm test:e2e:prod`，与 Vitest 和其他 E2E 串行执行；使用合成测试配置。正式 key、浏览器真机及生产环境验收仍在上线闸门完成。
+
+**E3 前、确认所有子域都是 HTTPS 之后，由部署会话把正式生产环境的 `HSTS_MAX_AGE` 设为 `31536000`。** `deploy/Caddyfile` 默认 `300` 保持不变，不把一年配置带到 staging，不添加 includeSubDomains 或 preload。部署会话变更后检查正式域名的 `Strict-Transport-Security: max-age=31536000`，记录执行人、时间与证据；本次本地代码任务不执行该切换。
+
+## 增长与风控后台（M6-T08）
+
+运营须使用自己的 ACTIVE ADMIN 账号并完成双重验证。`/admin/growth` 的注册数与试点上限口径一致；作废邀请需填写原因，提交后邀请人的新职位浏览额度立即按剩余有效邀请重算。历史 JobView、已有投递和邀请豁免保留。重复作废不覆盖首个原因，也不生成重复审计。
+
+`/admin/reports` 默认显示待处理举报，可按状态查看结果。处理或驳回只记录结论，不自动关闭职位或停用企业；需要处置时另走职位/企业管理。已处理结果不能反向修改；并发冲突时刷新查看实际结论。举报按用户、KL 自然日计数，跨职位共用 `limits.jobReportsPerDay`，处理完的举报仍计入当天次数。通知失败不撤销已经提交的举报，可直接查看队列。M7-T09 交付公开入口之前，后台联调使用合成举报，不向生产插演示数据。
+
+`/admin/synonyms` 保存时去空格、转小写并去重，需至少两个不同词语；停用保留记录。当前进程在提交后更新缓存，其他实例最长约 60 秒后读取新值；确认所有实例生效时至少覆盖该窗口。不要为加快更新修改数据库历史记录或全局关闭缓存。EXACT 模式不因同义词改动扩展结果。
+
+`/admin/articles` 新文章默认草稿，勾选发布后才对公开读取可见，取消发布即可撤回。正文可填写中文、英文或双语；界面语言不自动翻译正文。Markdown 预览不加载图片、HTML 或嵌入播放器，视频仅用 http/https 外链打开。发布前核实案例来源、个人信息和号码：PRD 指定马来西亚报警电话 999；领事保护电话及 seed 中额外热线须由运营独立核实并保存来源、核实日期，不以仓库已有内容视为已核实。正式内容验收与上线闸门由人签字。
+
+## 公开反诈内容与举报（M7-T09）
+
+`/safety` 无需登录，按内容类别显示已发布文章。正文及联系方式由运营维护，不随界面语言自动翻译。发布/撤回后，下一次访问应反映当前状态；草稿不得进入公开 HTML 或 RSC。无效筛选和游标会给出重置入口，查询结果为空不表示页面故障。紧急危险请使用页面提示的 999；领事保护等号码必须独立核实后发布。
+
+已登录的正常账号可以在职位详情或额度锁定卡片上举报。入口只传职位 ID、原因和可选说明，隐藏正文不会随表单发送。单日额度按 KL 自然日、同一用户跨职位计算，默认第 11 次返回限流；运营处理后也不释放当天次数。重复点击提交期间禁用按钮，但用户再次主动提交属于新的举报并占用次数。
+
+成功提交只关闭弹窗、显示持久提示并把焦点还给举报按钮，不刷新详情以触发额外浏览计数。失败保留输入，网络结果不确定时避免连续提交，可先联系运营核查。收到举报后运营在 `/admin/reports` 查看、处理或驳回，按上一节规则记录审计，必要时另行下架职位。
+
+## 套餐管理与占位定价（M8-T01）
+
+完成二因素认证的运营可在 `/admin/plans` 新增或编辑企业套餐，以整数 sen 输入金额（100 sen = MYR 1.00）。代码和商品类型创建后固定；变更类型应另建商品。明确选择“不限”才会保存无限权益，点数包的空订阅字段表示不含订阅。FREE 不能停用或删除，旧学生商品只保留历史。普通套餐管理使用常规管理员会话，到账确认将单独要求新鲜二因素认证。
+
+多人编辑冲突会保留当前输入；确认放弃草稿并加载最新版本后重新编辑。已被任何订单或订阅引用的套餐无法删除，应停用以停止新销售；不得删除历史订单来绕过限制。新增、更新、停用、删除分别记录 plan.* 审计。后台变价后，下一次公开访问 `/pricing` 可读到新配置。
+
+`billing.enabled=false` 时公开页只展示免费方案及公益说明，不展示付费草案或购买入口。四个 seed 套餐为商业方案占位值，重跑仅补缺失代码，不覆盖运营配置；不要为更改价格重跑全部 seed。本轮只用合成数据验收，不执行真实 seed、不开启收费。正式价目、银行/支付账户、税务信息和上线闸门继续按收费前清单确认。
+
+## 订单、收款配置与人工核款（M8-T02）
+
+银行资料在 `/admin/settings` 的专用表单维护，账号按字符串保存，保留前导零。三个必需字段全部填齐才可创建新银行单；全部字段清空可停止新银行单。创始优惠默认关闭，启用前须确认真实资格、适用商品和时间窗；不能在普通设置文本框直接编辑对象。正式启用收费、真实银行资料及对外价目仍须完成 GATE-M8。
+
+企业 OWNER 从 `/pricing` 查看报价并明确创建订单，GET 报价不建单。报价过期时保留已展示金额，须获取新报价并再次确认。网络结果不确定时先查 `/e/billing`，避免重复下单。订单金额为净应付，折扣不能再扣一次。未认证企业可以购买，但其他企业能力仍遵守各自认证规则。
+
+上传回单与提交核款是两步。上传成功不代表付款成功，替换回单在再次提交前不会改变已绑定凭证。待付款且尚未提交回单的订单可由 OWNER 取消；已提交或已付款订单不在该自助取消范围。关闭收费或清空银行资料后，历史订单仍可查看并提交合法凭证；尚未付款时应先向运营核实付款资料。
+
+运营在 `/admin/orders` 按实际银行到账核款；查看回单与确认都要求最近10分钟内完成二因素验证。金额手动输入 MYR，两位小数以内，不接受指数/逗号/负值；核款备注不填账号或其他个人资料，系统仅保留已填写的审计事实。回单走受控字节预览，不分发存储签名地址。会话过期、凭证被替换或权限撤销时重新登录并重新核对。
+
+成功确认后订单、点数账本、订阅与 order.confirm 审计一并提交。重复确认不会再次发点，金额冲突不会被当作成功重放。通知失败不改变已付款结果，可查看订单与账本确认；不要通过重复核款来重发通知。资金对账继续使用既有 reconcile-wallets。历史缺快照订单不能从当前套餐补造权益，应人工核查原始合同和入账记录。
+
+## Stripe Checkout 与到账恢复（M8-T03）
+
+线上配置与测试账户联调需单独批准。先在 Stripe 测试账户确认马来西亚商户资格、card/FPX 可见性及实际金额边界；不要用离线测试替代真实测试模式联调。固定 API 版本为 `2026-10-28.endive`，端点为 `POST /api/payments/stripe/webhook`，订阅 `checkout.session.completed`、`checkout.session.async_payment_succeeded`、`checkout.session.async_payment_failed`、`checkout.session.expired`。端点签名密钥与 CLI 转发密钥不可混用。`STRIPE_MODE` 默认 test；正式模式及真实配置按 GATE-M8 确认。
+
+OWNER 先创建本地订单，再明确启动安全结账；允许的托管目的地只有 `https://checkout.stripe.com`。订单详情只读取本地状态，成功/取消回跳参数不证明付款。FPX 待处理时等待到账通知；已付款页展示来自实际 Charge 的交易时间、净金额、Seller Order No.、FPX 交易号、银行名称和状态，缺失字段标注暂未提供，不以本地订单号补造银行回执。
+
+同一订单仅一个持久支付尝试，超时后沿原订单恢复，不另建会话或改写幂等键。尚未绑定会话且首次请求超过23小时会转 `RECONCILIATION_REQUIRED`：需在商户后台核对原会话、实际收款和本地账本后，制定专项处理；禁止删除attempt或改付款状态来强行重收款。FAILED/EXPIRED不自动重开会话，Stripe订单不适用银行回单或银行取消/核款操作。
+
+暂态服务/数据库故障返回503，可重投；错误签名或永久绑定/金额不一致返回400，检查安全告警及内部订单/attempt ID。关闭新销售不阻止已有attempt的恢复和合法到账履约。不得将原始事件、签名、密钥、完整SDK错误或付款资料复制到日志/工单；只记录内部ID和错误类别。重复事件不重复发点；通知失败也不能用重新结算重发通知。
+
+## 套餐权益与到期（M8-T04）
+
+职位、团队和邀请页面展示当前使用量与限额。到期后已有资源保留，超额只限制新增；职位关闭、成员移除和草稿编辑仍可操作。普通成员联系 OWNER，当前 OWNER 且销售开启时可查看方案与账单。关闭销售不会撤销仍有效的已付合同；有效期结束后按当前公益或免费规则计算，不依赖后台任务及时运行。不要通过改动历史订单快照或删除用量记录解除限制。
+
+`expire-subscriptions` 每天 00:30 吉隆坡时间执行，停机后补跑一次。每批最多 50 家公司，每家公司独立事务；一家公司失败时其他公司继续，任务最后失败以便重试。到期前 7 天只向当前 ACTIVE OWNER 发站内通知；连续同档已付续期按最终连续覆盖尾段提醒，未付款或中间断档不能延后提醒。持久标记与通知同事务，重复运行及清理旧通知不会重发。
+
+告警 `Subscription entitlement fallback` 只含内部公司 ID 和固定原因。遇到 INVALID_SNAPSHOT/OVERLAP，应核对原始订单、付款与续期关系；不得用当前商品信息自动补写合同。FREE或配置损坏时使用有限安全默认值，修复应通过既有后台设置/套餐入口。不要重置 expiryReminderAt 来补发历史通知；确需补发应另行安排有审计的运营流程。
+
+## 发票发行、PDF 与恢复（M8-T05）
+
+管理员在 `/admin/settings` 专用开票主体表单填写法定名称、地址及配置版本；注册号可留空，全部清空可暂停新发行。正式主体、税务处理与对外开票资格须完成收费上线闸门。当前 PDF 标题为 Invoice / 发票，标明 SST 未单独列示，不声称税额为零或 MyInvois 已验证。`einvoiceRef` 仅预留，尚未接通官方电子发票。
+
+已付款订单由系统发行一次；开票故障不改变付款、点数或订阅。`invoice-tasks` 每分钟先补发缺失发票，再处理最多 50 个 PDF 候选；坏历史订单会报固定错误但不阻塞后续订单。缺失开票主体时先配置，再等待任务恢复。历史订单快照无效时核查原合同，不按当前套餐补造。若已有发票而编号计数器缺失，停止自动发行并由授权财务人员核对历史最大编号，通过经审查的维护流程初始化；不得删除发票或从 1 重启。
+
+企业当前 OWNER 在已付款订单详情查看发票，准备完成后显式下载。页面刷新和 GET 不生成 PDF。关闭新销售、停用套餐或更新开票主体不会改动旧文档。成员撤权后旧页面按钮仍可能可见，但实际下载会拒绝。不要共享私有对象路径或签名 URL。
+
+PDF 最多三次尝试，失败退避 1/5 分钟，崩溃由 60 秒租约恢复。暂态下载失败保留原 READY 引用，可稍后重试；明确对象缺失或损坏按剩余预算重建，不自动重置次数。`PDF_FONT_UNAVAILABLE` 应核对部署包 `assets/fonts/` 的字体、许可和 manifest，禁止临时换系统字体。`PDF_CANDIDATE_CLEANUP_REQUIRED` 或 `PDF_PUBLICATION_OUTCOME_UNKNOWN` 要核对数据库当前引用与内部任务 ID；不要整目录清理，不能删除当前已发布 key。终止失败应先查固定错误类别并人工决定恢复方案，不直接改编号、快照或账本。
+
+## 公益转收费演练（M8-T06）
+
+正式切换须先完成 GATE-M8，并确认商品、创始合作伙伴名单/折扣窗口、收款账户、开票主体、备份与恢复证据。此次代码交付只在隔离的本地合成库演练。获准后由管理员通过 `/admin/settings` 设置 `billing.enabled=true` 并保留 `setting.update` 审计；学生收费保持关闭，不迁移或清零现有钱包。
+
+切换完成后，新认证企业仍创建钱包但不发公益点；月度任务及已预选的公司都在最终 CREDIT 锁后重新读取开关。只有有效 boolean false 允许公益发点，坏配置停止发点且不消耗月份标记。管理员设置提交与所有公司发点事务没有全局原子屏障；严格运营切换应先暂停/排空公益任务，再切换并核对余额与账本。
+
+验证现有余额不变、既有职位/成员保留，OWNER 余额不足时可进入账单购买，其他成员收到联系所有者提示。创始优惠必须同时满足已审名单、商品、时间窗和首次资格；净应付金额已经扣除折扣，核款和发票不得二次减扣。回单到账确认或 Stripe 合法到账后仅增加一次点数和订阅。
+
+`billing.enabled=false` 同时关闭新销售并恢复公益模式资格，不能作为独立的“只暂停收款”开关。回退前应明确是否恢复公益补发；若仅验证历史履约，保持公益任务暂停。关闭新销售后，旧订单仍可按原冻结净额结算、发行及下载发票，有效已付权益保持到期；不得改写订单、删除账本或撤销已交付点数。隔离演练覆盖旧余额 23、原价 299901 sen、折扣 149950 sen、净额 149951 sen、到账后余额 143，以及续年恢复原价。
+
+## 私有简历解析与导出切换（M9-T01）
+
+以下是 T01 合并后的配置与部署要求，不构成已部署、测试通过或真实外发获准的记录。代码、依赖和迁移验收与真实账户/法律/外发启用分开；默认保持关闭，不批量回填或发送历史简历。
+
+### 默认关闭、政策版本与 epoch
+
+- `ai.resumeParse` 是一个严格对象：`enabled` 为 boolean、`legalVersion` 为 null 或已批准版本、`epoch` 为服务器生成的 UUID。缺配置、对象无效或 `enabled` 非 true 均关闭，不在模块导入或 seed 时创建可用授权。初始关闭配置可使用 `enabled:false, legalVersion:null`；epoch 由受控 ADMIN 更新入口生成，不能从文档复制固定值。
+- 配置更新通过专用 ADMIN 服务校验并写 `setting.update`，每次更新都生成新 epoch，包括禁用和重新启用；不能从客户端传入或复用旧 epoch。启用要求 `legalVersion` 非空且等于 fresh 读取的 `legal.currentVersion`。更新法律正文不等于发布新版本；律师/负责人确认后，法律版本另走既有受审流程，不因合并本文自动改值。
+- `ANTHROPIC_API_KEY` 与明确的 `AI_MODEL_PARSE` 均由人工配置项目凭据和已核验模型；缺项失败关闭，不回退 Claude Code/CLI 登录、开发中转或任意 base URL。候选固定直连 `https://api.anthropic.com`。密钥按既有秘密管理要求保存，不进入日志、工单或 AI 会话。
+- 每次解析冻结模型、prompt/schema 版本、来源 hash、同意来源及 epoch。只修改环境模型不会自动废弃已冻结的旧任务；需要废弃旧代次时必须通过受控配置更新旋转 epoch，再由用户明确重新请求，不复用旧 grant/epoch。
+- 注册、普通条款、人才库同意和上传不代替 `AI_RESUME_PARSE` 独立同意；同意本身也不触发外发。只有本人明确解析请求才入队。关闭功能时保留普通上传、手工编辑、本人已有草稿读取、放弃和撤回，停止新解析和确认。撤回/关闭不能收回 provider 已接受的文本，也不能据取消结果断言对方未处理或未计费。
+
+### 发布前核验与任务关闭
+
+上线前核对 SUBPROCESSORS 和双语政策中 Anthropic 的实际地区、合同/DPA、保留/删除、日志例外、训练使用和跨境依据；未核实不以“脱敏”或“结构化输出可支持零保留”代替批准。确认专用同意、请求/确认、撤回、删除、导出和企业出口的实际验收记录，再另行批准受控启用。此手册不指定测试已经通过，也不授权用真实用户简历联调。
+
+部署包必须包含固定 PDF child 入口和同一已审 PDF.js 版本的本地 worker、CMaps、字体及 WASM 资源；页数使用当前 `resume.maxPages`（默认 20，合法范围 1–100）。只有取得资源槽后才读取 PDF。子进程 15 秒触发终止后仍须等实际 `close`；provider 45 秒取消后仍须等调用实际 settle；解析 attempt 总预算为 90 秒。这些预算不等于远端操作已撤销。V8 old-space 限额不是 RSS/ArrayBuffer/native 硬额度，独立 child 也不是文件系统/网络沙箱；OS/容器资源限制、父进程退出后的子进程清理和目标平台资源打包须在启用前实际验收。
+
+| T01 队列 | 运行要求 |
+| --- | --- |
+| `resume-parse` | 本进程 `localConcurrency:1,batchSize:1`；合并 shutdown 与 pg-boss job signal，沿 storage/extractor/provider 传递。无 cron。 |
+| `dispatch-resume-parses` | 每分钟、missed:once，并发/batch 均 1；恢复持久解析意图。 |
+| `recover-data-exports` | 每分钟、missed:once，并发/batch 均 1；独立于账户 purge 持续恢复 artifact。 |
+
+SIGINT/SIGTERM 首次进入关闭流程时立即停止新 T01 admission 并取消解析；重复信号复用同一个关闭 Promise。并行等待实际未 settle 的 T01 解析/dispatcher/export recovery、`boss.stop({graceful:true})` 和已开始的 startup/registry，三者 settle 后再等待 Sentry 收尾并退出。没有 abort port 的恢复服务继续 drain，不能看到 signal 已取消就假定远端 I/O 结束。pg-boss 默认 30 秒 graceful timeout 不能替代这条实际完成屏障。
+
+上述独立 drain 只覆盖新接线的 T01 三类任务；既有任务仍按原 pg-boss 关闭语义处理。进程管理器 SIGKILL 不在应用保证内。核对实际队列 expiry（新队列依赖默认 15 分钟，但旧部署可能覆盖），并给停止宽限留出 child close、已开始的恢复操作、数据库等待与遥测收尾时间；不要把 90 秒预算或 30 秒 grace 当成无条件安全的强杀时点。
+
+### 旧导出的人工切换闸门
+
+新导出 artifact 协议不能直接接管历史固定 key。在允许新导出请求/worker/recovery 消费旧队列之前，技术负责人须按以下顺序留存审批和执行记录；临时 legacy 清理队列默认不注册，不能仅因 AI 开关关闭而跳过这道与导出有关的闸门。
+
+1. 暂停旧 export 的入队入口和 worker，禁止旧二进制自动重启、重试或补发；核清已被远端接受的旧 PUT，并证明这些写入已静止。进程死亡、HTTP 超时、队列 ACK 或租约到期都不是远端不会迟到写入的证明。无法证明时保留全部旧 key 引用，不启用会最终清除引用的 legacy sweep，也不让新 worker 消费旧 OPEN 请求。
+2. 审阅并记录一个固定 UTC `cutoverAt`。在正常迁移审批记录下执行一次性旧请求清单：使旧未被 artifact 管理的请求过期为 REJECTED、推进 generation，并保留实际非空 key。对旧 null-resultKey 请求，按已确认的旧公式 `exports/<userId>/<requestId>.zip` 留下待清理引用，覆盖 PUT 成功但 DB 尚未确认的情形；不得伪造新 artifact UUID key，也不授予新 PUT 或下载权限。
+3. 在开始新导出前完成这次清单；清理成功后不重复执行清单，以免重新补回已清理引用。旧下载链接作废，用户须重新请求新导出；不绕过新 artifact 授权静默继续提供旧 key。
+4. 只有完成旧写入静止和清单核验后，才人工接入临时 `cleanup-legacy-data-exports`。其 `cleanupLegacyDataExports({cutoverAt,oldWritersQuiesced:true})` 参数是受审部署事实，不来自队列或用户，不在每次运行时用当前时间替代固定 cutoff。任务仅清理 cutoff 前、符合旧确定 key 规则且没有 artifact 的记录；失败保留引用，成功后再次校验请求/key/generation 才清除引用。
+5. 非规范旧 key 保留在清单中人工核实来源，不因带有 `exports/` 前缀就删除或改写。未解决旧引用前，不硬删承载引用的 DataRequest/User；需要硬删除时先另行设计持久迁移记录。清单耗尽且异常 key 全部解决后再移除临时队列，正常 `recover-data-exports` 继续保留。
+
+新导出每次应用级 PUT 使用独立 artifact/key，`DataRequest.resultKey` 只是发布指针；artifact 清理账本不随账户/请求级联删除。`UNKNOWN` 远端写入结果在成功 DELETE、租约到期或账户匿名化后仍不能标记终态 CLEANED，需保留并持续恢复。不要用任意年龄阈值删掉这些账本行，也不要把已静止的 legacy 清理规则套用到未知的新 PUT。
+
+本人导出只包含同一数据库快照里的正式资料和经校验的本人 READY 建议，非 READY 不含 payload；不包含旧 parsedJson、原模型响应、source key、grant/epoch/lease 等内部信息。AI 关闭不妨碍本人导出。撤回/放弃发生在快照前会反映在新快照中；已生成的导出副本不会仅因随后撤回就自动回溯修改，既已发送的邮件/下载链接或已下载文件不能召回。账号删除会另行使未来下载授权失效并安排对象清理；不要把 DB 权限失效当成远端文件已全部删除的证明。
+
+### 排障与记录边界
+
+只记录固定失败码、内部 ID、代次和必要计数；查看 `resume.parse.consent`、`resume.parse.confirm`、`resume.parse.discard` 及受控 `setting.update` 的最小元数据，不复制 PDF 文本、建议正文、provider 原始响应/错误正文或对象路径到日志/Sentry/工单。保留 UNKNOWN 清理和失败重试记录，先查当前授权、来源、版本与租约，不用直接 SQL 改 READY、复用旧 token/key 或抹除账本来绕过失败。普通源简历删除仍沿既有 postcommit 存储失败策略；本次导出 artifact 协议不意味着所有源 PDF 删除也已具备同样的持久恢复能力。
+
+## M9-T02 JD 助手的启用与停用
+
+默认不创建或启用 `ai.jdAssistant`。真实外发前核对 Anthropic 项目账号、明确的 `AI_MODEL_JD`、成本限额、数据区域/保留条款与 SUBPROCESSORS；完成法律审阅及披露版本发布，让相关用户重新接受当前 TERMS/PRIVACY。不得用本地合成 SDK/E2E 通过替代这些步骤。
+
+专用 `saveJdAssistantSettingsAction` 只接受 `{enabled,legalVersion}`，要求近期二因素管理员身份，启用时核对最新 `legal.currentVersion`；每次保存由服务器生成新的 UUID epoch。通用设置写入不允许写此 gate。关闭时保存 `enabled:false`，旧页面之后的请求仍由服务 fresh 检查拒绝；已被外部提供方接受的请求不能因此被召回，不能承诺零处理/零费用。关闭后原手工职位编辑、保存草稿和审核继续使用。
+
+`limits.aiJdPerUserPerHour` / `limits.aiJdPerCompanyPerHour` 默认 10 / 30，受控整数 1..1000，采用持久固定小时窗口。预检失败不占额；通过预检后预占，提供方失败/超时仍计次，不自动退款或重试。公司额度拒绝前用户预占可能已经成功。该计数是本地请求控制，不是外部账单计费证明。
+
+只传经 redact 的 title/points；redact 不能保证匿名化。单次 SDK 请求使用明确模型、固定系统提示、结构化输出、20 秒预算和零自动重试；原始请求、输出与错误正文不进入日志/Sentry/审计。`ai.jd.generate` 只含内部 companyId、固定结果类别和 schema/prompt 版本。排障按固定错误码、当前成员状态、最新法律 grant、gate epoch 和模型配置检查，不复制岗位正文或 API 原始错误到工单。
+
+生成结果仍需人工核对事实及中英文一致性。应用只替换本地正文，关闭页面会丢失未保存编辑；替换已有内容须确认，若内容在确认期间变化会要求重新确认。只有原有保存/提交审核动作会持久化；助手不直接发布职位。浏览器关闭弹窗会丢弃迟到结果，并不证明服务端或远端已停止处理。
+
+## 语义推荐（M9-T03）
+
+ai.matching 缺失、禁用或格式非法时关闭。先完成独立法律披露、政策发布和重新同意，再由具有新鲜会话的管理员通过 saveMatchingSettingsAction 提交 enabled/legalVersion/configurationId；epoch 只由服务器生成，每次保存包括关闭均轮换。不得通过 generic setting writer 或直接复用 T01/T02 gate。VOYAGE_API_KEY 与 AI_MODEL_EMBED 仅由人工秘密管理配置；不在报告、日志、工单展示。当前交付不改 legal.currentVersion，不启用任何 gate。
+
+Prisma 先独立 enum create-only，再生成metadata扩展、审SQL、附加CHECK；使用真实生成client。普通PostgreSQL应可运行。vector能力另按 t03-pgvector-environment 的独立库和固定镜像digest审部署，单独建 side table；普通迁移、应用启动、测试setup不得安装extension。未具备vector不得调用provider。
+
+matching-index 每次处理单一 indexId/generation；dispatch-matching-indexes 每分钟恢复已有QUEUED、过期PROCESSING并清CANCELLED旧向量。reconcile-matching-corpus 默认每5分钟按独立student/job游标扫描每类25项；ai.matching.reconcileBatchSize 为1..50，reconcileEveryMinutes为1..30，后者需重启worker。scanner只做短DB事务、不调用provider/queue。关闭gate先停止新外发；旧epoch立即失效，但远端已经接受的请求不保证撤回或免计费。
+
+停止worker沿T01先abort→等待全部活动promise与boss.stop/startup结算→关闭telemetry→退出。dispatcher从registry接收当前已启动boss的send port和合成signal，逐条前检查signal；已发send真实await结算，abort后不发下一条，不启全局sendBoss，不用race判断settle。pg-boss grace结束仍不能宣称业务已停。send无公开AbortSignal，未结算操作继续等待；若连接始终不结算，需部署/基础设施处理，不把超时冒充完成。进程强杀会留下lease，待过期后由dispatcher恢复；不得清generation、attempts或重置grant来强行成功。检查固定failureCode与队列、metadata数量，不打印职业文本、vector、key或原始错误。回滚保持gate关闭，部署上个兼容镜像；metadata按前滚迁移保留，不删除既有迁移或数据库卷。
+
+导出privacy.json包含全部AI_MATCHING同意历史；matching.json只包含本人kind/state/generation/sourceRevision及时间，不含vector、sourceHash、model、epoch、grant/lease、provider文本。账户删除与purge的既有T03生命周期使metadata取消，源物理删除由外键cascade清除metadata和可选vector。完成普通库fallback、独立vector SQL/CAS/rollback/删除、provider synthetic、UI/a11y与shutdown回归后才能另行批准启用。
+
+### T03 review: cancelled-vector probes and real provider settlement
+
+CANCELLED nextAttemptAt is the next physical cleanup probe time, not a deletion-completion marker. Every dispatcher tick selects at most 50 due/null probes in nextAttemptAt NULLS FIRST / id order. A confirmed idempotent DELETE schedules a 24-hour repeat probe; a delete/transaction failure schedules a 5-minute retry in a separate short transaction with the same source→metadata order and exact CANCELLED generation. No embedding attempt/generation/completedAt/failureCode is reset. Cleaned rows remain CANCELLED and are probed again, so this trades up to one idempotent DELETE per retained row per day (plus retries) for a schema-free recovery mechanism. A finite backlog advances across ticks; overload and outages are not a cleanup SLA.
+
+Missing vector capability skips physical cleanup without a success stamp; loss between probes raises the existing controlled store-unavailable error and uses retry rotation. On capability recovery persistent CANCELLED/due rows resume. A DB outage can also prevent retry timestamp persistence; those rows remain pending and the next healthy tick retries. Regrant/new generation resets nextAttemptAt through the existing request helper; old cleanup cannot delete READY or a different generation. Logical eligibility still excludes CANCELLED immediately, independently of physical cleanup.
+
+The worker aborts promptly but now awaits the actual embedding adapter promise, including pending fetch/body cancellation cleanup, before returning to registry/lifecycle. A timeout sentinel is not proof of settlement. Unresponsive transport cleanup can exceed the attempt budget; local runner ownership is retained, while existing lease/generation fences still reject a late publication. No guarantee is made that an upstream request was recalled or not charged; another process can recover an expired lease under the existing at-least-once protocol. Do not reset leases/attempts or mark unknown outcomes as cancelled remotely.
+
+## M9-T04 release and recovery gate
+Final preparation serializes talentPool.searchEnabled and talentPool.minCompleteness with their controlled setSetting writer using SYSTEM_SETTING namespace 1011, including the first insert when a key is absent. Keep the source → MARKETING → sorted setting keys → configuration rows order in future writers. Missing talent-pool rows retain the established true/60 defaults; the three matching/legal/marketing configuration rows must exist. Legal appenders use the source lock and monotonic database timestamps. No provider request runs inside these transactions.
+
+Keep marketing.weekly absent or disabled. Before any activation, obtain explicit approval for real marketing/provider account use, resolve lawyer draft markers, publish both reviewed privacy policies under one new legal version, set the release-owned marketing-disclosure manifest to that version and exact UTF-8 SHA256 hashes, provision a dedicated >=32-byte MARKETING_UNSUBSCRIBE_SECRET outside the repository, and verify authenticated and token withdrawal with synthetic recipients. Never commit secrets or tokens. Activation uses only saveMarketingSettingsAction with recent two-factor admin authentication; clients cannot select epoch. Disabling also rotates epoch and requires no legal/publication/secret prerequisite.
+
+Generate ordinary Prisma migration with create-only after merging T01–T04 metadata; inspect the generated SQL, append the reviewed ordinary constraint fragment, then run the authorized migration workflow. No vector deployment is implied. Run weekly and recovery schedules on the existing pg-boss connection. Monitor only internal IDs/fixed error codes and counts; do not log token URLs, email bodies, addresses or provider errors.
+
+UNKNOWN is terminal for automation. Do not reset attempts, requeue UNKNOWN, backfill old weeks or infer non-acceptance from silence. Manual reconciliation needs provider evidence and separate authorization. Withdrawal/deletion cannot recall an accepted/in-flight email. SIGTERM aborts admission and waits owned callbacks and timeout tails before exit; process termination remains the operator emergency boundary. Registry weekly schedules pass the current already-started boss.send port and combined shutdown/job signal, await real pending sends, and stop before the next recipient after abort. The existing worker owns and closes this boss. The default sendBoss port remains only for isolated/direct compatibility calls; that caller owns producer close and actual drain and must not treat a response timeout as cancellation. The production registry creates no second producer. No production smoke send or gate change is authorized by this candidate.
+
+Weekly sender also awaits the configured provider instance's optional settle() in finally. This waits for its actual send promise after the 20-second UNKNOWN deadline; late acceptance never converts UNKNOWN to automatic retry. SMTP close is invoked through the public API; promise settlement is not proof of remote cancellation or inbox delivery. An indefinitely pending provider can keep graceful shutdown pending; operators retain the explicit process-termination boundary and must not replay that row.
+
+## 本地隔离的解锁 / 投递负载验证（M7-T18 修复）
+
+本流程只运行本机合成数据与现有 UI，不连接 staging / production，不签署 M7-H02 的外部容量或人工演练。先读 [CAPACITY.md 的 M7-T18 记录](CAPACITY.md#本地解锁--投递验证m7-t18)：2026-11-10 的本地smoke、最终full和四类负例已完成，结论限于所记构建与环境。所有配置由操作者显式提供；不读取 `.env*`、旧 `load/*.local.json`、备份或真实用户资料。代码、依赖和待验证构建须保持稳定，不同时运行会改动相同构建或数据库的测试。
+
+### 独立数据库与迁移前置
+
+使用已有本地 `findmyjob_owner` / `findmyjob_app` 角色，在 loopback PostgreSQL 新建独立 `findmyjob_m7_mutations_20261110_test`，不得复用开发库、父线程测试库或恢复演练库。目标库必须由 `findmyjob_owner` 持有；以本机 postgres 管理连接，仅对这个新库执行 `docker/postgres/db-setup.sql`，设置 app 权限、owner 的默认权限及 pgboss schema。不要运行会修改其他数据库的 `scripts/db/apply-roles.sh`，也不重新应用会改动现有角色密码的 `roles.sql`。缺少本地角色时，先由负责人准备隔离实例及角色。
+
+以下 PowerShell 示例从仓库根目录执行。`$loadAdminMaintenanceUrl`、`$loadAdminTargetUrl`、`$loadOwnerDatabaseUrl`、`$loadAppDatabaseUrl` 与 `$loadParentDatabaseUrls` 由操作者在当前会话安全提供：分别是本机管理库、新目标库的管理/owner/app 连接，以及明确禁止使用的所有父线程/开发/其他测试库 URL 数组。当前 Prisma6 schema 没有配置 `shadowDatabaseUrl`；`migrate dev` 使用已有本地 owner 的 CREATEDB 权限自动创建独立临时 shadow，完成后由 Prisma 删除。单独设置 `SHADOW_DATABASE_URL` 不会绑定本命令的 shadow（它只在显式消费该参数的 db:check 等流程中生效）。不要把任何已有应用/父线程库指定为 shadow。示例只引用变量，不填入密码；不要将连接值写进文档、共享命令记录或提交。目标库已经创建时不重复执行 createdb；先核对隔离身份和状态，禁止 reset 修复漂移或清理已有数据。
+
+```powershell
+rtk createdb --maintenance-db $loadAdminMaintenanceUrl --owner=findmyjob_owner findmyjob_m7_mutations_20261110_test
+rtk psql --dbname $loadAdminTargetUrl --set ON_ERROR_STOP=1 --file docker/postgres/db-setup.sql
+```
+
+迁移仅应用仓库已有且已审阅的迁移，沿用受控的 `migrate dev --skip-seed`；不调用旧 seed、reset、db push、deploy 或 resolve。Prisma CLI 会自动寻找环境文件，因此使用现有 `isolated-process.cjs` preload 阻止 `.env*` 读取。为迁移单独创建一个私有临时目录；它必须已存在，且不能作为后续 load 的输出目录。preload 所需的 INTERNAL_BASE_URL / SMTP_URL 只是明确的 loopback 允许地址，不启动应用或 SMTP 服务。按本地凭据规则确认临时目录权限。
+
+```powershell
+$m7MigrationId = 'm7-migration-' + [guid]::NewGuid().ToString('N')
+$m7MigrationDir = Join-Path ([IO.Path]::GetTempPath()) $m7MigrationId
+New-Item -ItemType Directory -Path $m7MigrationDir | Out-Null
+$env:APP_ENV = 'ci'
+$env:LOAD_RUN_ID = $m7MigrationId
+$env:LOAD_RUN_DIR = $m7MigrationDir
+$env:DATABASE_URL = $loadOwnerDatabaseUrl
+$env:MIGRATE_DATABASE_URL = $loadOwnerDatabaseUrl
+$env:INTERNAL_BASE_URL = 'http://127.0.0.1:3991'
+$env:SMTP_URL = 'smtp://127.0.0.1:2525'
+$m7Preload = (Resolve-Path scripts/load/isolated-process.cjs).Path
+$m7PrismaCli = (Resolve-Path node_modules/prisma/build/index.js).Path
+rtk node --require $m7Preload $m7PrismaCli migrate dev --skip-seed
+if ($LASTEXITCODE -ne 0) { throw 'Isolated migration failed; inspect before continuing' }
+```
+
+若要求新建迁移、reset 或修复其他库则停止检查，不能用自动确认继续。普通 M7-T18 不安装可选 pgvector。迁移过程本身不产生 fixture；生成客户端须对应当前已审 schema。
+
+### 显式输入与 fresh smoke / full
+
+本机需有当前依赖、Docker Desktop 和可用的 Chromium 容器资源。runner 固定使用 `grafana/k6:0.54.0-with-browser@sha256:5c86c85ca978549352bdec7b8192adf0db2cdf6e942d1d19c87e077f90dd0c48`，不替换为 latest 或其他镜像。选择一个空闲应用端口，示例为 3991。fixture 使用 owner 连接，应用使用 app 连接；二者必须是同一个独立 loopback `_test` 库，用户名/密码不同不构成数据库隔离。禁止库比较忽略凭据并归一化 loopback 身份，`LOAD_DISALLOWED_DATABASE_URLS` 必须为非空 JSON 数组。
+
+```powershell
+$env:LOAD_DATABASE_URL = $loadAppDatabaseUrl
+$env:LOAD_FIXTURE_DATABASE_URL = $loadOwnerDatabaseUrl
+$env:LOAD_DISALLOWED_DATABASE_URLS = ConvertTo-Json -Compress -InputObject @($loadParentDatabaseUrls)
+$env:LOAD_BASE_URL = 'http://127.0.0.1:3991'
+$env:LOAD_RUN_ID = 'm7-' + [guid]::NewGuid().ToString()
+$env:LOAD_RUN_DIR = Join-Path ([IO.Path]::GetTempPath()) $env:LOAD_RUN_ID
+# 不创建 LOAD_RUN_DIR；runner 负责独占创建，已有路径会拒绝。
+rtk node --import tsx --conditions=react-server scripts/load/run-mutations.mjs --profile=smoke --build
+if ($LASTEXITCODE -ne 0) { throw 'Smoke failed; inspect the private run evidence' }
+```
+
+smoke 为 3 企业 / 32 学生 / 5 职位，20 个独立投递客户端各执行一次；另外执行两场各 10 客户端解锁与 2 客户端重复投递。成功后换新的 run ID 和不存在的输出目录运行 full。full 为 **100 企业 / 5,000 学生 / 500 职位**，投递采用 **20 VU、2 分钟**，每次迭代消耗一个新学生的固定排程；排程用尽直接失败，不循环使用。其余两个解锁场景和重复投递控制仍独立运行，投递允许最多 2 分钟 gracefulStop 排空已开始的迭代。
+
+```powershell
+$env:LOAD_RUN_ID = 'm7-' + [guid]::NewGuid().ToString()
+$env:LOAD_RUN_DIR = Join-Path ([IO.Path]::GetTempPath()) $env:LOAD_RUN_ID
+rtk node --import tsx --conditions=react-server scripts/load/run-mutations.mjs --profile=full
+if ($LASTEXITCODE -ne 0) { throw 'Full run failed; inspect the private run evidence' }
+```
+
+不带 `--build` 时，只接受同源码 hash / BUILD_ID 的 runner 自建构建；未知或变化的构建须在新的 run 上加 `--build`，不能跳过核对。原 runner 检查的两条不存在的旧 mutation API 必须仍是 404；真实变更通过现有页面、按钮、确认弹窗和 Server Action 完成，不补测试专用业务端点。
+
+runner 先强制验证 Docker Desktop 从 `host.docker.internal` 到宿主协调器的路由，再使用同别名和应用端口作为浏览器 origin，并给自建应用设置一致的 APP_URL / BETTER_AUTH_URL。`LOAD_BASE_URL` 仍须是 `http://127.0.0.1:<port>`；不要自行传外部 URL 或更改 CSRF、CSP、allowedOrigins。路由 probe 失败即停止，不将容器自身 localhost 当作宿主地址。runner 创建独立合成会话 secret、PII key 与本机 SMTP sink，清空外部 AI/支付/邮件 provider key；SMTP 只接受当前 run 的 `example.test` 收件人。不要启动后台 worker 或启用 AI / 营销 gate 来帮助本流程。
+
+### 初始数据、屏障与验收
+
+新 fixture 以 School 主键独占 run namespace；所有实体、会话、当前 TERMS/PRIVACY 与两笔公益 grant 一次事务创建，不授予 MARKETING / AI 同意。PUBLIC、学校已认证、完整度70的学生及 ACTIVE、已认证 OWNER 企业满足现有资格；所有职位已发布、未过期且不属于两家 race 企业。前11名学生仅用于解锁，最后一名用于重复投递，其余为唯一投递排程。初始 JobView 必须不存在，由真实职位详情导航创建。余额为3和100，两笔 grant 通过 credits 服务追加，其他钱包为0且没有账本历史。开启解锁、单价1、成员解锁限额至少10、档案查看限额足够、投递/人才池最低完整度不超过70、正常学生配额至少1次，均作为 prerequisite 检查，fixture 不修改这些设置。
+
+每个 burst 使用独立浏览器客户端。显式 `/api/auth/get-session` 预检在每个 VU 内只做一次，用于核对传输与签名；它不替代后续学生的鉴权。每个 fresh 页面仍带该次学生自己的 cookie，通过真实页面和 Server Action 独立鉴权，最终只读 SQL 核对精确的学生/职位/公司配对。全部 burst 客户端进入真实页面的确认就绪状态后，由仅处理 run/scenario/slot 的协调器发布共同的**未来 epoch**；客户端等待该时点，协调器核对确认落在有限窗口。屏障不持有 cookie，不调用业务变更。未就绪、错误页面、会话/法律版本不符、未完成尝试、排程耗尽或窗口错过均使整轮失败。HTTP 200、k6 进程退出或单个成功样本都不能单独证明业务成功。
+
+最终 verdict 由实际 UI 终态、完整 slot/时间记录及 `verify-mutations.ts` 的只读、参数化、全 run scope SQL 一同决定：余额竞争须为3成功/7余额不足、3笔一一对应扣点；同学生竞争10个客户端均到解锁态，但只有1条解锁/1笔扣点，余额99；每个完成投递对有且仅有 Application/初始 APPLIED event/真实 JobView，以及零扣点的 APPLICATION unlock。重复投递控制2个客户端最终只有1份申请；每笔扣点必须对应正确 wallet 和 unlock。缺失测量或孤立账本、额外申请、未完成尝试均失败。
+
+负例采用 `--profile=smoke --negative=unsigned`、`stale-consent`、`missing-target`、`unready`，**每个控制均换 fresh run ID / 不存在的目录**，并继续使用同一已核验构建。负例预期 runner 非零退出，须再检查私有 `negative-proof.json` 的 `proven:true`、10个失败尝试与零 unlock/application；任意非零退出不等于控制有效。最终full与四项负例的run ID、实测计数和限制已记入CAPACITY/TASKS；今后复测仍须独立满足全部条件。
+
+### 私有输出与失败处理
+
+浏览器驱动完整等待异步 HTTP 与计时器。协调器的 started/completed 记账事件，在 HTTP 0 的未知传输结果下可按同一报文最多发送3次、每次5秒；协调器按场景/slot核对完全相同证据，重传不新增行、不改原始时间，冲突永久使本轮失败。只读会话 GET 预检同样仅对 HTTP 0 重试，保持同一 cookie，最多3次、每次5秒，间隔100/200毫秒；任何非200响应（含429）、坏JSON或身份/角色不符立即失败。预检须成功核对身份后才在该 VU 内缓存。ready、clicked、明确HTTP拒绝及页面业务操作都不重试。协调器 keep-alive 为300秒；协调记账和会话预检的重传次数分别写入汇总。成功计数必须等到UI成功、context关闭和完成回执全部结束，并满足完成数=尝试数=迭代数=协调器唯一记录数；回执持续失败不能按数据库已有结果补算成功。
+
+`LOAD_RUN_DIR` 位于操作系统临时目录并独占创建；`manifest.json` 含有效合成 cookie，按私有文件处理，绝不提交或公开。`run-metadata.json` 保存构建、源码/工具/锁文件 hash 和 k6/Chromium/镜像身份，场景 summary、outcomes、transport/app/build 日志及最终 summary 留在同一私有目录。分享时仅提取 run ID、合成内部 ID、聚合结果与计时/资源数据，不复制 manifest、连接串、会话值或完整日志。
+
+失败 run 不重用；若 fixture 提交后发生输出/验收错误，也不删除旧数据、不重置钱包或账本来重跑。保留私有证据，按 scope 只读诊断后用新 run。runner 等待自己启动的 app、协调器、SMTP sink 与资源采样实际结束；不要因一个进程的超时自行宣称其他工作已结束。成功记录与待补项见 CAPACITY，外部 staging 压测及 M7-H02 人工演练仍需原有授权和现场证据。
+
+旧 browse/upload 脚本和其验收范围保持原状。`prisma/seed-load.ts` 仍是旧 staging CLI，现要求显式、匹配目标应用的 BETTER_AUTH_SECRET / BETTER_AUTH_URL 才能生成签名 cookie；它保留旧输出和历史重置行为，**不属于这个 fresh mutation 工作流，也不在此运行**。不要用旧 seed 或旧 `.local.json` 补齐新 manifest。

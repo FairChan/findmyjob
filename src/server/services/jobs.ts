@@ -1,10 +1,15 @@
 import 'server-only'
 import { z } from 'zod'
-import type { Job, JobStatus } from '@prisma/client'
+import type { Job, JobStatus, Prisma } from '@prisma/client'
 import { db } from '../db'
 import { getSetting } from './settings'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import type { CompanyCtx } from '../authz'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { assertJobCapacity, consumesJobSlot } from './subscription-entitlements'
+import { invalidateJobMatchingIndexTx } from './semantic-matching'
+
+const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 15_000 }
 
 export const jobFormSchema = z.object({
   title: z.string().min(1).max(200),
@@ -82,16 +87,34 @@ function hasSensitiveChange(
   return false
 }
 
-async function resolveSubmitStatus(companyId: string): Promise<JobStatus> {
-  const company = await db.company.findUnique({
+async function assertCompanyWriter(tx: Prisma.TransactionClient, ctx: CompanyCtx): Promise<void> {
+  const member = await tx.companyMember.findUnique({
+    where: { companyId_userId: { companyId: ctx.companyId, userId: ctx.userId } },
+    select: {
+      user: { select: { role: true, status: true } },
+      company: { select: { isActive: true } },
+    },
+  })
+  if (!member || member.user.role !== 'EMPLOYER' || member.user.status !== 'ACTIVE'
+    || !member.company.isActive) throw new ForbiddenError()
+}
+
+async function autoPublishThreshold(tx: Prisma.TransactionClient): Promise<number> {
+  const configured = await getSetting<unknown>('jobs.autoPublishAfter', 1000, { tx, fresh: true })
+  const parsed = z.number().int().min(0).max(2_147_483_647).safeParse(configured)
+  return parsed.success ? parsed.data : 1000
+}
+
+async function resolveSubmitStatus(tx: Prisma.TransactionClient, companyId: string): Promise<JobStatus> {
+  const company = await tx.company.findUnique({
     where: { id: companyId },
-    select: { verificationStatus: true, approvedJobCount: true },
+    select: { verificationStatus: true, approvedJobCount: true, isActive: true },
   })
   if (!company) throw new NotFoundError()
-  if (company.verificationStatus !== 'VERIFIED') {
-    throw new ForbiddenError('Company must be verified to submit jobs for review')
+  if (!company.isActive || company.verificationStatus !== 'VERIFIED') {
+    throw new ForbiddenError('Company must be verified and active to submit jobs for review')
   }
-  const autoPublishAfter = await getSetting<number>('jobs.autoPublishAfter', 1000)
+  const autoPublishAfter = await autoPublishThreshold(tx)
   return company.approvedJobCount >= autoPublishAfter ? 'PUBLISHED' : 'PENDING_REVIEW'
 }
 
@@ -136,23 +159,32 @@ function toEndOfDayKL(isoDatetime: string): Date {
 }
 
 export async function createJob(ctx: CompanyCtx, input: JobFormInput) {
-  const { submit, deadline, ...fields } = input
-  const status: JobStatus = submit ? await resolveSubmitStatus(ctx.companyId) : 'DRAFT'
-
-  return db.job.create({
-    data: {
-      ...fields,
-      companyId: ctx.companyId,
-      createdById: ctx.userId,
-      status,
-      publishedAt: status === 'PUBLISHED' ? new Date() : null,
-      deadline: deadline ? toEndOfDayKL(deadline) : null,
-    },
-  })
+  const { submit, deadline, updatedAt: _clientUpdatedAt, ...fields } = input
+  return db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, ctx.companyId)
+    const now = new Date()
+    await assertCompanyWriter(tx, ctx)
+    const status: JobStatus = submit ? await resolveSubmitStatus(tx, ctx.companyId) : 'DRAFT'
+    const targetDeadline = deadline ? toEndOfDayKL(deadline) : null
+    if (consumesJobSlot({ status, deadline: targetDeadline }, now)) {
+      await assertJobCapacity(tx, { companyId: ctx.companyId, now })
+    }
+    return tx.job.create({
+      data: {
+        ...fields, companyId: ctx.companyId, createdById: ctx.userId,
+        status, publishedAt: status === 'PUBLISHED' ? now : null,
+        deadline: targetDeadline, createdAt: now,
+      },
+    })
+  }, TRANSACTION_OPTIONS)
 }
 
 export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormInput) {
   return db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, ctx.companyId)
+    const now = new Date()
+    await assertCompanyWriter(tx, ctx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${jobId} AND "companyId" = ${ctx.companyId} FOR UPDATE`
     const existing = await tx.job.findFirst({
       where: { id: jobId, companyId: ctx.companyId },
     })
@@ -163,6 +195,9 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
     }
 
     const { submit, deadline, updatedAt: clientUpdatedAt, ...rawFields } = input
+    if (clientUpdatedAt && existing.updatedAt.getTime() !== new Date(clientUpdatedAt).getTime()) {
+      throw new ValidationError('职位已被修改，请刷新后再改')
+    }
 
     // Explicitly null out cleared optional fields so clearing a value is saved.
     const fields = {
@@ -181,7 +216,7 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
 
     if (existing.status === 'PUBLISHED') {
       if (hasSensitiveChange(existing, rawFields)) {
-        const autoPublishAfter = await getSetting<number>('jobs.autoPublishAfter', 1000)
+        const autoPublishAfter = await autoPublishThreshold(tx)
         const company = await tx.company.findUnique({
           where: { id: ctx.companyId },
           select: { approvedJobCount: true },
@@ -206,22 +241,24 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
       }
     } else if (existing.status === 'DRAFT' || existing.status === 'PENDING_REVIEW') {
       if (submit) {
-        const company = await tx.company.findUnique({
-          where: { id: ctx.companyId },
-          select: { verificationStatus: true, approvedJobCount: true },
-        })
-        if (!company) throw new NotFoundError()
-        if (company.verificationStatus !== 'VERIFIED') {
-          throw new ForbiddenError('Company must be verified to submit jobs for review')
-        }
-        const autoPublishAfter = await getSetting<number>('jobs.autoPublishAfter', 1000)
-        newStatus = company.approvedJobCount >= autoPublishAfter ? 'PUBLISHED' : 'PENDING_REVIEW'
+        newStatus = await resolveSubmitStatus(tx, ctx.companyId)
       }
+    }
+
+    const targetDeadline = deadline ? toEndOfDayKL(deadline) : null
+    if (!consumesJobSlot(existing, now) && consumesJobSlot({ status: newStatus, deadline: targetDeadline }, now)) {
+      const company = await tx.company.findUnique({
+        where: { id: ctx.companyId }, select: { verificationStatus: true, isActive: true },
+      })
+      if (!company?.isActive || company.verificationStatus !== 'VERIFIED') {
+        throw new ForbiddenError('Company must be verified and active to publish jobs')
+      }
+      await assertJobCapacity(tx, { companyId: ctx.companyId, now })
     }
 
     let publishedAt: Date | null
     if (newStatus === 'PUBLISHED' && existing.status !== 'PUBLISHED') {
-      publishedAt = new Date()
+      publishedAt = now
     } else {
       // Preserve existing publishedAt when going back to PENDING_REVIEW.
       // approveJob only increments approvedJobCount when publishedAt is null,
@@ -229,6 +266,11 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
       publishedAt = existing.publishedAt
     }
 
+    const matchingChanged = newStatus !== existing.status ||
+      targetDeadline?.getTime() !== existing.deadline?.getTime() ||
+      (['title', 'type', 'category', 'workMode', 'state', 'city'] as const).some(key => fields[key] !== existing[key]) ||
+      JSON.stringify(fields.skills) !== JSON.stringify(existing.skills) ||
+      JSON.stringify(fields.languages) !== JSON.stringify(existing.languages)
     const updateResult = await tx.job.updateMany({
       where: {
         id: jobId,
@@ -239,7 +281,8 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
         ...fields,
         status: newStatus,
         publishedAt,
-        deadline: deadline ? toEndOfDayKL(deadline) : null,
+        deadline: targetDeadline,
+        ...(matchingChanged ? { matchingRevision: { increment: 1 } } : {}),
         ...(existing.status === 'REJECTED' && newStatus !== 'REJECTED' ? { reviewNote: null } : {}),
       },
     })
@@ -247,9 +290,10 @@ export async function updateJob(ctx: CompanyCtx, jobId: string, input: JobFormIn
     if (updateResult.count !== 1) {
       throw new ValidationError('职位已被修改，请刷新后再改')
     }
+    if (matchingChanged) await invalidateJobMatchingIndexTx(tx, jobId)
 
     return tx.job.findUniqueOrThrow({ where: { id: jobId } })
-  })
+  }, TRANSACTION_OPTIONS)
 }
 
 export async function copyJob(ctx: CompanyCtx, jobId: string, copySuffix = ' (复制)') {
@@ -265,6 +309,7 @@ export async function copyJob(ctx: CompanyCtx, jobId: string, copySuffix = ' (�
     closedAt: _closedAt,
     reviewNote: _reviewNote,
     viewCount: _viewCount,
+    matchingRevision: _matchingRevision,
     createdAt: _createdAt,
     updatedAt: _updatedAt,
     ...rest
@@ -282,24 +327,28 @@ export async function copyJob(ctx: CompanyCtx, jobId: string, copySuffix = ' (�
       closedAt: null,
       reviewNote: null,
       viewCount: 0,
+      matchingRevision: 0,
       createdById: ctx.userId,
     },
   })
 }
 
 export async function closeJob(ctx: CompanyCtx, jobId: string) {
-  const existing = await db.job.findFirst({
-    where: { id: jobId, companyId: ctx.companyId },
-  })
-  if (!existing) throw new NotFoundError()
-
-  if (existing.status === 'CLOSED') return existing
-  if (existing.status === 'DRAFT' || existing.status === 'REJECTED') {
-    throw new ValidationError('Cannot close a draft or rejected job')
-  }
-
-  return db.job.update({
-    where: { id: jobId },
-    data: { status: 'CLOSED', closedAt: new Date() },
-  })
+  return db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, ctx.companyId)
+    const now = new Date()
+    await assertCompanyWriter(tx, ctx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${jobId} AND "companyId" = ${ctx.companyId} FOR UPDATE`
+    const existing = await tx.job.findFirst({ where: { id: jobId, companyId: ctx.companyId } })
+    if (!existing) throw new NotFoundError()
+    if (existing.status === 'CLOSED') return existing
+    if (existing.status === 'DRAFT' || existing.status === 'REJECTED') {
+      throw new ValidationError('Cannot close a draft or rejected job')
+    }
+    const closed = await tx.job.update({
+      where: { id: existing.id }, data: { status: 'CLOSED', closedAt: now, matchingRevision: { increment: 1 } },
+    })
+    await invalidateJobMatchingIndexTx(tx, existing.id)
+    return closed
+  }, TRANSACTION_OPTIONS)
 }

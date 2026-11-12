@@ -4,39 +4,39 @@ import type { Components } from 'react-markdown'
 
 const components: Components = {
   h1: ({ children }) => (
-    <h1 className="text-3xl font-bold tracking-tight text-foreground mb-6">
+    <h1 className="mb-8 text-headline text-balance">
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2 className="text-xl font-semibold text-foreground mt-10 mb-4 border-b pb-2">
+    <h2 className="mb-4 mt-12 text-title">
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="text-base font-semibold text-foreground mt-6 mb-2">
+    <h3 className="mb-2 mt-8 text-body font-semibold">
       {children}
     </h3>
   ),
   p: ({ children }) => (
-    <p className="text-sm text-muted-foreground leading-7 mb-4">{children}</p>
+    <p className="mb-4 text-body text-foreground/80">{children}</p>
   ),
   ul: ({ children }) => (
-    <ul className="list-disc list-outside ml-6 mb-4 space-y-1 text-sm text-muted-foreground">
+    <ul className="mb-4 ml-6 list-outside list-disc space-y-1 text-body text-foreground/80">
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal list-outside ml-6 mb-4 space-y-1 text-sm text-muted-foreground">
+    <ol className="mb-4 ml-6 list-outside list-decimal space-y-1 text-body text-foreground/80">
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="leading-7">{children}</li>,
+  li: ({ children }) => <li>{children}</li>,
   strong: ({ children }) => (
     <strong className="font-semibold text-foreground">{children}</strong>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="my-4 border-l-4 border-amber-400 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 rounded-r-md">
+    <blockquote className="my-6 rounded-card bg-warning-muted px-5 py-4 text-warning [&_p]:mb-0 [&_p]:text-sm [&_p]:text-warning">
       {children}
     </blockquote>
   ),

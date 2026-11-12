@@ -399,9 +399,10 @@ describe('unlockStudent: notification rows', () => {
     expect(unlockNotifs).toHaveLength(1)
     expect(unlockNotifs[0].userId).toBe(student.userId)
     expect(unlockNotifs[0].type).toBe('talent.unlock')
-    const payload = unlockNotifs[0].payload as Record<string, unknown>
-    expect(payload.companyId).toBe(emp.companyId)
-    expect(payload.unlockId).toBe(result.unlockId)
+    expect(unlockNotifs[0].payload).toEqual({
+      companyId: emp.companyId,
+      unlockId: result.unlockId,
+    })
   })
 
   it('company member has no talent.unlock notification for the student unlock', async () => {

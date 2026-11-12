@@ -140,7 +140,8 @@ flowchart LR
 - 只有 `services/contact-access.ts` 能调用 `decryptField`（ESLint override 保证）。企业侧入口是 `getContactForCompany(companyId, studentId)`，内部检查：存在 TalentUnlock、学生没有屏蔽该企业、学生账号未删除。学生本人读写自己的联系方式走 `getOwnContact` / `updateOwnContact`。
 - 企业侧拿到的学生数据**只能**经 `serializers/talent-card.ts` 的 `toTalentCard()` / `toTalentDetail()` 输出。企业侧通知和邮件的 payload 也只放 serializer 的输出；只有已解锁或学生已投递时才放全名。
 - 可见性只有一处判断：`services/talent-visibility.ts` 的 `isStudentVisibleToCompany`，搜索、详情、解锁、收藏、邀请都调用它；不满足时返回 404。
-- `lib/redact.ts`：把自由文本中的邮箱、电话（+60 / 01x、+86 1xx、通用格式）、URL、微信号模式替换为「[已隐藏]」。覆盖范围：headline、summary、每个技能标签、Education 的 major 和 description、Experience 的 title、organization 和 description、结构化简历预览。
+- `lib/redact.ts`：把自由文本中的邮箱、电话（+60 / 01x、+86 1xx、通用格式）、URL、微信号模式替换为「[已隐藏]」。覆盖范围：headline、summary、每个技能标签、Education 的 major 和 description、Experience 的 title、organization 和 description。
+- M9-T01 简历解析建议只经学生本人读取和本人数据导出提供；ADMIN 角色不自动获得草稿读取权限。企业人才/申请者详情不查询 `ResumeFile.parsedJson` 或私有草稿，`resumePreview` 保留 DTO 字段但始终为 null；正式档案、简历 ID 与下载沿原授权规则。只有学生选择并确认的字段才在同一事务写入正式档案，worker 不自动发布或改写档案。文本脱敏不等于匿名化，外发仍按个人资料处理。
 - **防泄漏测试**（必须存在，不得删除或放宽）：
   - 单元：构造一个所有 PII 字段都有值的学生，断言未解锁时序列化结果的 JSON 字符串里不出现任何 PII 值（全名、电话、邮箱、WhatsApp、微信、LinkedIn、简历 storageKey）。
   - E2E（M4-T13）：未解锁的企业访问搜索页和详情页，收集全部 HTML、RSC、JSON 响应，断言都没有哨兵值；职位侧用例见 M5-T03。
@@ -186,10 +187,10 @@ flowchart LR
 
   文件头：`%PDF-`、`89 50 4E 47`、`FF D8 FF`；SVG、HTML、XML 一律拒收。
 - **PDF 解析入口**：所有用 pdf-lib 解析用户 PDF 的地方（上传检查、下载水印）都必须经过 `src/server/lib/pdf-worker.ts` 的 `runCappedPdfWorker`，以防止解压炸弹。
-- **下载**：服务端先校验权限，再生成有效期不超过 300 秒的签名 GET，带 `Content-Disposition: attachment`，文件名按 RFC 5987 编码。企业下载简历走 `/api/resumes/[id]/download`：服务端读取 PDF → 用 `PDFDocument.create()` + `copyPages()` 重建文档（丢掉 OpenAction、JavaScript、附件）→ 每页加水印 → 流式返回，不暴露原始 URL；每个企业成员同时最多 2 个水印任务。
+- **下载**：服务端先校验权限，再生成有效期不超过 300 秒的签名 GET，带 `Content-Disposition: attachment`，文件名按 RFC 5987 编码。企业下载简历走 `/api/resumes/[id]/download`：有界读取 PDF → `sanitizePdf` 重建并严格清理危险动作、注释及附件 → 按页面旋转加水印 → 分块流式返回，不暴露原始 URL。PostgreSQL ConcurrencyLease 协调跨实例容量，每个成员最多 2 个，全局默认 4；60 秒租约、15 秒续租，取消/失租停止底层处理，响应结束后释放。PDF 处理仍需完整有界缓冲区，响应分块避免额外整份复制；详细截止与故障语义见 M4-T17 决策。
 - **Logo**：走 `/api/logos/[companyId]` 代理，设 public 长缓存（P1：M7-T17）。
 - **存储桶**：私有并阻止公共访问；开启版本控制，非当前版本 30 天后过期。删除用户数据时用 ListObjectVersions + DeleteObjects 删掉全部版本。
-- **Key 规则**：`resumes/{studentId}/{cuid}.pdf`、`verifications/{companyId}/{cuid}.{ext}`、`logos/{companyId}/{cuid}.{ext}`、`exports/{userId}/{cuid}.zip`。
+- **Key 规则**：`resumes/{studentId}/{cuid}.pdf`、`verifications/{companyId}/{cuid}.{ext}`、`logos/{companyId}/{cuid}.{ext}`；M9-T01 新导出使用 `exports/{userId}/{requestId}/{artifactId}.zip`，每次 PUT 独立 key。旧固定导出 key 的一次性清单、过期及清理须先完成 RUNBOOK 的人工切换闸门。
 
 ### 5.6 后台任务（pg-boss）
 - worker 在 M0 就启动（`src/worker.ts`，M0-T11），连 `WORKER_DATABASE_URL`，`connection_limit=3`、`max=4`；Next 进程里只负责 send 的实例 `max=2`，关掉维护和调度。
@@ -206,11 +207,24 @@ flowchart LR
 | `reconcile-wallets` | 每天 03:00 |
 | `purge-deleted-accounts` | 每天 04:00，清理软删除满 30 天、仍有 PII 的账号（可重复执行） |
 | `employer-daily-digest` | 每天 09:00，新投递汇总 |
-| `expire-subscriptions`（M8） | 每天 00:30 |
+| `resume-parse`（M9-T01） | 明确请求后入队；本进程消费并发 1、batchSize 1，不设 cron |
+| `dispatch-resume-parses`（M9-T01） | 每分钟，missed:once；恢复可处理的持久解析意图 |
+| `recover-data-exports`（M9-T01） | 每分钟，missed:once；按 artifact 独立恢复，不依赖已删除账号的 purge 筛选 |
+| `expire-subscriptions` | 每天 00:30 Asia/Kuala_Lumpur，missed:once；按公司主键每批 50，逐公司 CREDIT 事务过期并持久去重到期前 7 天站内提醒 |
 | `prune-rate-limit`（P1，M7-T14） | 定期清理限流桶 |
 
+套餐权益由 `subscription-entitlements.ts` 在调用方事务内统一解析：半开有效期 `[startsAt, endsAt)` 内已付款商业快照优先，关闭新销售不撤销已付权益。无有效段时，公益期沿现有配置，收费期用有限 FREE；异常快照不从当前商品补造。发布职位、席位预留/接受及学生邀请在同公司 CREDIT 锁后采样时间、复查身份与容量，再完成写入。邀请进一步按 CREDIT → INVITATION 取锁，并以吉隆坡自然月上下界计数。到期不删除职位/成员、不清空余额、不重置月用量；PENDING_REVIEW 不预留职位，已过期 PUBLISHED 重新开放须重新占位。显示层只读取 `getCompanyEntitlementUsage` 的来源、有效期、计数、限额及购买能力白名单；执行入口始终再次检查。
+
 ### 5.7 必须写审计日志的动作
-`auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`order.confirm`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
+`auth.login`、`auth.session.revoke`、`student.visibility.change`、`student.block_company`、`student.unblock_company`、`talent.view`、`talent.unlock`、`talent.limit.hit`、`contact.read`、`resume.download`、`resume.parse.consent`、`resume.parse.confirm`、`resume.parse.discard`、`ai.jd.generate`、`matching.consent`、`marketing.consent`、`upload.reject`、`credits.adjust`、`company.verify`、`company.reject`、`company.invite.accept`、`company.verification.doc_view`、`company.managed.create`、`company.managed.post`、`company.managed.transfer`、`job.review`、`job.report.resolve`、`referral.void`、`article.save`、`search.synonym.save`、`plan.create`、`plan.update`、`plan.deactivate`、`plan.delete`、`order.create`、`order.proof.attach`、`order.proof.view`、`order.cancel`、`order.confirm`、`invoice.issue`、`setting.update`、`user.suspend`、`data.export`、`data.delete`
+
+M9-T01 新增 `resume.parse.consent`、`resume.parse.confirm`、`resume.parse.discard`，与对应同意/确认/放弃事务一起提交。只记录同意布尔值及版本，或内部简历编号、代次、字段名、集合数量、schema 版本及结果 revision 等必要元数据；不得写入简历文本、建议正文、来源 key、provider 原始响应或错误正文。
+
+M9-T02 的 `ai.jd.generate` 仅记录企业编号、固定结果及 schema/prompt 版本，不记录职位名称、岗位要点、中英建议或 provider 原始信息。JD 助手复用官方 Anthropic SDK，使用独立的 `ai.jdAssistant` gate 和 `AI_MODEL_JD`；每次生成重新检查企业权限、最新条款/隐私同意、法律版本、epoch 及模型。逐次 acknowledged 不写长期 Consent；默认用户/企业每小时 10/30 次，持久限流拒绝或 provider 失败不退款重试。建议只返回 `{zh,en}`，不建草稿表或队列，不直接写 Job；应用时以本地正文 revision 再确认替换，保存仍走原职位 action 与 updatedAt CAS。
+
+M9-T03 的 `matching.consent` 与独立 AI_MATCHING 同意事务提交，只记录 granted/version。`setting.update` 对 ai.matching 只记前后 enabled，不记 epoch、模型或任何职业正文。语义匹配只提供可选推荐，保留 EXACT/RELATED 搜索；Voyage 固定端点、1024 float32/cosine、显式 AI_MODEL_EMBED、无模型回退。纯 schema 位于 src/schemas/semantic-matching.ts。学生仅传 limit，企业仅传 owned jobId/limit，动作经标准 wrapper，服务重查授权与来源。普通迁移只有 SemanticIndex 元数据与 Job.matchingRevision，optional semantic_vectors 单独部署；无 vector 时不可用且不外发。
+
+锁顺序沿用 CREDIT(1003)→Job 行→metadata；学生 STUDENT_DATA(1008)→metadata，导出 STUDENT_DATA→DATA_EXPORT(1051)。不新增 namespace，不重排 INVOICE_NUMBER(1009)。事务内无外部 IO。matching-index、dispatch-matching-indexes 和 reconcile-matching-corpus 共用 T01 lifecycle；worker shutdown 先 abort 后等待真实 settle，再退出。dispatcher 负责现有 QUEUED/过期 lease 恢复及 CANCELLED 物理清理；scanner 独立推进两类有界游标。
 
 ### 5.8 安全清单
 - 所有外部输入用 zod 校验，Server Actions 也不例外（经 `action()` / `route()`）。
@@ -274,6 +288,14 @@ flowchart LR
 - `/api/health`：`SELECT 1`，2 秒超时，返回 `{ status, version }`，带 no-store；外部 uptime 监控它（D16）。定时任务和备份成功后 ping 各自的 healthchecks 地址。
 - 日志、AuditLog.metadata、Sentry 和 Notification 里不能出现解密后的联系方式、OTP 或令牌。
 
+### 5.14 不可变发票与受控下载（M8-T05）
+
+付款事务提交后 await `ensureInvoiceForPaidOrder`，失败只记录固定错误并由每分钟 `invoice-tasks` 恢复，不逆转到账；重放也可补发。发行先持 CREDIT，再持 INVOICE_NUMBER（1009）全局编号锁，同事务冻结订单商业快照、开票主体和买方资料、分配连续 FMJ-INV 编号并写 invoice.issue。已有 Invoice 不变。历史发票存在而计数器缺失时拒绝自动从一开始。开票主体通过独立管理员设置表单校验；空配置禁止新发行，不影响已发行文档。
+
+新发票 QUEUED；迁移默认 READY 保留旧 PDF。PDF worker 最多三次持久尝试、60 秒租约，token/attempt/租约与完整快照 CAS 发布。生成和 S3 I/O 在事务外，取消后等待实际退出；未知发布结果不删对象。候选 key 含独立 token，仅清理当前失败候选，绝不删除已发布赢家。原始快照不随套餐、主体或销售开关变化；完整嵌入固定 SHA-256 的 OFL 静态中文字体，关闭无 Unicode 映射的局部字形与连字替换，不依赖宿主字体。字体版本和派生过程见资产 manifest；真实像素与精确文字提取共同验收。
+
+下载只接受当前 ACTIVE 企业 OWNER，在读私有对象前后复查所属关系与权限，返回字节而非签名 URL。路由输出 attachment/private/no-store/nosniff/noindex；页面仅传编号、时间和 PDF 状态。GET 不发行、不渲染、不重置尝试。暂态读取失败保留 READY/key/hash/size；确证缺失或损坏才按原预算恢复。日志不含买方、主体、PDF 文本或对象路径。
+
 ## 6. 环境变量（`env.example`）
 
 本地由人执行 `cp env.example .env` 后填假值；AI 不读、不写任何 `.env*` 文件。生产环境的值只放在主机的 `/opt/findmyjob/env/*.env`（按服务拆分：app.env、db.env、migrate.env、backup.env，权限 600、属主 deploy），不放进 GitHub Secrets。
@@ -311,9 +333,10 @@ APP_TAG=                     # 镜像 tag（40 位 sha），部署脚本写入
 SEED_ADMIN_EMAIL=
 SEED_ADMIN_PASSWORD=
 ANTHROPIC_API_KEY=           # M9
-AI_MODEL_PARSE=claude-haiku-5-5      # M9，可换 claude-sonnet-5-5
+AI_MODEL_PARSE=             # M9-T01；人工核验项目可用的明确模型 ID，无 SDK/CLI 默认回退
 STRIPE_SECRET_KEY=           # M8
 STRIPE_WEBHOOK_SECRET=       # M8
+STRIPE_MODE=test             # test/live；与密钥、事件、Session/PI/Charge模式一致
 ```
 
 ## 7. 部署
@@ -324,3 +347,6 @@ STRIPE_WEBHOOK_SECRET=       # M8
 - **密钥存放**（A19）：PII_KEYS 和 BETTER_AUTH_SECRET 存两个人的密码管理器；age 私钥只做两份离线介质，不放进密码管理器，也不放到 VM 上；GitHub Secrets 里没有任何应用密钥。
 - **分阶段放量**：用 `signup.studentCap` 控制每个阶段的人数；扩量前按 E5 的 go/no-go 判断，包括最近 14 天内 k6 压测（按「1.2 × 下一阶段人数」）达标。
 - **增长后**：数据库迁到托管 PostgreSQL，app 多实例，搜索加 Meilisearch；限流继续用 PostgreSQL 限流桶，不引入新的中间件。
+
+### M9-T04 weekly marketing integration
+WeeklyDigestDelivery is a narrow durable dedupe/recovery record, not a general mail outbox. All six DateTime columns use Timestamptz(3); companyId has its own leading FK index. MARKETING=1010 follows source locks. Audit marketing.consent records only granted/version. Owner export whitelists kind/weekKey/state/sentAt. Unsubscribe route uses the shared route wrapper, strict bounded token-only POST and exact proxy exception; authenticated exact localized privacy/preferences GET/HEAD/RSC remain reachable for withdrawal, while grant services enforce fresh current legal consent. Generic consent/settings cannot write controlled marketing permissions or gate.

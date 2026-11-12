@@ -191,6 +191,7 @@ echo "[drill] drill database created"
 
 # ── 3. decrypt stream → pg_restore (no plaintext on disk) ────────────────────
 # S3 object is streamed through age decryption directly into pg_restore.
+# Omit the filename to read stdin: pg_restore treats '-' as a literal filename.
 # Private key is passed via process substitution (no temp file on disk).
 # When VERSION_ID is set, aws s3 cp does not support --version-id for streaming;
 # use s3api get-object to download the encrypted dump to a temp file instead
@@ -206,8 +207,7 @@ if [ -n "$VERSION_ID" ]; then
     | pg_restore -d "$DB_NAME" \
         --no-acl \
         --role=findmyjob_owner \
-        --single-transaction \
-        -
+        --single-transaction
   rm -f "$_DUMP_TMP"
   unset _DUMP_TMP _S3API_DL_ARGS
 else
@@ -216,8 +216,7 @@ else
     | pg_restore -d "$DB_NAME" \
         --no-acl \
         --role=findmyjob_owner \
-        --single-transaction \
-        -
+        --single-transaction
 fi
 
 # Private key no longer needed after restore

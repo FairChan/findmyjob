@@ -9,8 +9,16 @@ const mockEnv = vi.hoisted(() => {
 
 vi.mock('@/env', () => ({ env: mockEnv }))
 
+const mockRecalcMatchingEligibilityTx = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
+vi.mock('@/server/services/student-profile', () => ({ recalcMatchingEligibilityTx: mockRecalcMatchingEligibilityTx }))
+
 // Mock db
 const mockDb = vi.hoisted(() => ({
+  $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
+  user: {
+    findUnique: vi.fn(),
+  },
   studentProfile: {
     findUnique: vi.fn(),
   },
@@ -35,6 +43,9 @@ const ctx = { userId: USER_ID }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockDb.$transaction.mockImplementation((work: (tx: typeof mockDb) => Promise<unknown>) => work(mockDb))
+  mockDb.$executeRaw.mockResolvedValue(0)
+  mockDb.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
   mockDb.studentProfile.findUnique.mockResolvedValue({ id: STUDENT_ID })
 })
 
@@ -91,6 +102,7 @@ describe('updateOwnContact', () => {
     expect(create.wechat).toMatch(/^enc:v1:/)
     expect(create.whatsapp).toBeNull()
     expect(create.linkedinUrl).toBeNull()
+    expect(mockRecalcMatchingEligibilityTx).toHaveBeenCalledExactlyOnceWith(mockDb, STUDENT_ID)
   })
 
   it('stores enc:v1: prefix — database value starts with enc:v', async () => {
@@ -98,6 +110,7 @@ describe('updateOwnContact', () => {
     await updateOwnContact(ctx, { phone: '+8613800138000' })
     const { create } = mockDb.studentContact.upsert.mock.calls[0][0]
     expect(create.phone.startsWith('enc:v')).toBe(true)
+    expect(mockRecalcMatchingEligibilityTx).toHaveBeenCalledExactlyOnceWith(mockDb, STUDENT_ID)
   })
 
   it('round-trips: written value decrypts back to plaintext', async () => {
@@ -108,6 +121,7 @@ describe('updateOwnContact', () => {
     const { decryptField } = await import('@/server/lib/crypto')
     const plaintext = decryptField(create.phone, `StudentContact.phone:${STUDENT_ID}`)
     expect(plaintext).toBe('+60 12-000 0420')
+    expect(mockRecalcMatchingEligibilityTx).toHaveBeenCalledExactlyOnceWith(mockDb, STUDENT_ID)
   })
 })
 

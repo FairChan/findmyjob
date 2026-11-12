@@ -1220,10 +1220,11 @@
 > 完成 2026-11-07：src/server/services/managed-company.ts（createManagedCompany/postJobAsPlatform/transferCompany/acceptManagedTransfer 四个函数，每步写对应审计日志）；scripts/import-companies.ts（zod 校验，dry-run 只统计不写 DB，实际导入用自己的 PrismaClient）；tests/integration/managed-company.test.ts（21 个用例，全部通过）；authz-matrix 补充 managed-company authz 段（4 个用例）；DECISIONS 新增 M6-T07 条目（平台账号不加入 CompanyMember 以支持批量导入，移交后 isManaged=false 让 postJobAsPlatform 被拒，满足「平台账号再操作被拒」验收标准）；pnpm lint/typecheck/test 全部通过（883 tests）；偏差：「删除平台账号的 CompanyMember」一步变为无需操作（admin 本来不是成员，见 DECISIONS M6-T07），移交完成通过 isManaged=false 保证
 > 修复 2026-11-07：修正完成说明里「每步写对应审计日志」的不实表述——原始代码的 acceptManagedTransfer 没有写审计。本轮补全：(1) acceptManagedTransfer 在事务后写 company.managed.transfer（phase:completed）和 company.invite.accept 两条审计，metadata 不含邮箱；(2) transferInputSchema 新增 verificationMethod 字段（DOMAIN_MATCH/PHONE_CALLBACK），DOMAIN_MATCH 时在服务端验证邮箱域名与官网域名一致，记入审计 metadata（TM-008）；(3) team.acceptInvite 遇到 isManaged=true 的 OWNER 邀请时改走 acceptManagedTransfer，非代管企业的 OWNER 邀请直接拒绝；(4) acceptManagedTransfer 事务内用带条件的 updateMany 防并发双移交，同时撤销其他待接受邀请；(5) 新增 src/server/actions/managed-company.ts 的 transferManagedCompanyAction（admin-only，token 不回传客户端，邮件 fire-and-forget）；运营后台暂无代管企业页面，待后续任务排入。pnpm lint/typecheck/test（managed-company + authz-matrix + team 共 146 tests）全部通过。
 
-#### [ ] M6-T08 增长与风控页（P1，可在试点后做）
+#### [x] M6-T08 增长与风控页（P1，可在试点后做）
 依赖：M6-T01
 做：注册数和上限进度、邀请记录（可作废）、举报队列、同义词表、反诈内容。
 验收：作废邀请后，邀请人的额度立刻重算；处理举报写审计 `job.report.resolve`
+> 完成 2026-11-09：新增增长/邀请、举报、同义词和反诈内容四个双语后台；邀请作废共用额度锁、审计同事务且保留历史访问，举报按 KL 自然日并发限流并原子处理，文章仅发布可公开读取，安全 Markdown 与提交后同义词缓存失效供 M7 复用。独立复核后修复成功反馈/焦点和 sticky 页头对比度。全量 Vitest 2511 passed / 4 既有性能基准 skipped，定向 E2E 12/12、完整 E2E 311/311，lint/typecheck/build 通过；48 张最终截图已留存。真实反诈内容与号码仍需人工核实，公开入口属于 M7-T09。
 
 ---
 
@@ -1322,11 +1323,12 @@
 验收：手机可「添加到主屏幕」；学生端所有页面在 375px 宽度下无横向滚动
 > 完成 2026-11-09：manifest.ts + gen-icons.mjs（纯 Node zlib）+ sw.js + ServiceWorkerRegistrar；修复 footer/StudentNav/ProfileEditor/LocaleForm/StudentRegisterForm/job-form-client/company-form/resume-client/verification-form/admin-nav-links/admin-layout 的 375px 触控目标和溢出问题；44 个 E2E + 12 个单元测试全绿。
 
-#### [ ] M7-T09 反诈专区与职位举报（P1，可在试点后做）
+#### [x] M7-T09 反诈专区与职位举报（P1，可在试点后做）
 依赖：M7-T01
 做：`/safety` 反诈专区页（内容来自 Article）；职位详情页「举报」按钮，按用户限流每天 `limits.jobReportsPerDay` 次；`services/reports.ts`、`services/articles.ts`。
 验收：举报出现在运营队列里；处理时写审计 `job.report.resolve`；第 11 次举报被拒
 > M5-T08 已备好：举报建好之后，调用 `src/server/services/notify.ts` 的 `notifyNewReport(reportId)`（给运营发站内 report.new）。
+> 完成 2026-11-10：双语反诈页复用已发布文章分页与安全 Markdown；完整/额度锁定职位均可举报，成功不重复读取职位，运营通知/处理审计与第 11 次限流已验证。全量 Vitest 2544 passed / 4 既有性能基准 skipped，定向 33/33、最终 M7 E2E 9/9、既有导航和 375px 回归 48/48，lint/typecheck/build 通过；20 张截图已检查，独立复核 clean。真实反诈内容与联系方式仍由人工核实。
 
 #### [x] M7-T10 k6 压测脚本（browse+search 和 smoke）
 依赖：M7-T06
@@ -1436,7 +1438,7 @@
 > 修复 2026-11-07（合并前复查）：proxy.ts checkReconsent 改用固定 INTERNAL_BASE_URL（默认 127.0.0.1:3000）取代 request.nextUrl.origin，消除 Host 头注入可能把 session cookie 发送到攻击者控制的 host 的漏洞；env.ts 和 env.example 同步新增 INTERNAL_BASE_URL 可选字段；新增 tests/unit/proxy-reconsent.test.ts 3 条测试锁住行为。失败输出见提交说明。
 > 修复 2026-11-07（合并前全量 E2E）：(1) proxy.ts 增加 isPageNavigation 判断，Server Action (POST+Next-Action) 不做重新同意跳转；(2) auth.ts 修复 legalVersion 默认值与 needsReconsent 不一致（'1.0'→'2026-11-draft'）；(3) E2E fixture 写入当前版本同意记录（helpers/consent.ts, loginAs consent 选项, global-setup 清理+写入）；新增 reconsent.spec.ts。全量 E2E 104/104 通过。失败输出见提交说明。自查：1.鉴权在服务端：符合，proxy.ts 只改方法判断不改鉴权；2.输入走 zod：不适用，无新增输入；3.越权有测试：不适用；4.加锁和并发：不适用；5.测试能失败：符合，见提交说明；6.页面冒烟：不适用，无新增页面；7-12.见提交说明。注：global-setup.ts 是 M4-T15 的文件，合并 M4 时可能有冲突。
 
-#### [ ] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
+#### [x] M6-T09 运营账号强制 2FA，敏感操作要求新鲜会话（P1，E3 之前必须完成）
 依赖：M6-T02
 做：
 - 启用 Better Auth 的 twoFactor 插件。requireAdmin 检查 2FA，没开就跳转到设置页。试点期间先用密码管理器生成的独立强密码作为补偿控制。
@@ -1447,6 +1449,7 @@
 > - staging 上已有的演示运营账号，上线后第一次进 /admin 会被引导去设置 2FA，这是预期行为。轮次不改 `deploy/**` 和种子数据里的账号或密码；合并前由总控先通知部署会话。
 > - E2E 不能为了好跑而关掉 2FA 检查：`loginAs(page, { role: 'ADMIN' })` 要改成给测试运营账号写好已启用 2FA 的状态并走一次真实的 TOTP 验证（或者等价的服务端会话标记），让现有用到 ADMIN 的 spec 全部继续通过。TOTP 计算优先用 Better Auth 自带的工具；要加新依赖，先在 DECISIONS 记一行。
 > - 「实现方式待核实」：照 `node_modules/better-auth` 里 twoFactor 插件和 session 配置（freshAge、expiresIn）的实际导出来实现，不要凭记忆写选项名。新鲜会话检查放在 `requireAdmin` 或者 action 的 auth 层，`authz-matrix.test.ts` 给需要新鲜会话的动作加「会话太旧 → 被拒」的行。
+> 完成 2026-11-09：接入 Better Auth 官方 TOTP／单次备用码，运营未开通时引导设置，每次登录必须验证第二因素；5 次错误锁定 15 分钟且按 IP 限流。服务端验证标记防旧会话绕过，ADMIN 绝对期限 12 小时（含核心认证 API），查看联系方式／调点要求 10 分钟内验证；密码恢复不被旧 cookie 阻断。订单确认尚未实现，M8 必须沿用 admin-fresh。新增迁移仅应用到独立合成测试库；强密码要求、首次设置和人工恢复边界已记入 DECISIONS／RUNBOOK。最终全量 Vitest 2057 passed / 4 skipped（默认关闭的性能基准）/ 0 failed，完整 E2E 300 passed / 0 failed / 0 skipped（含 375/1280px），lint、typecheck、build、db:check 及容器外键索引补查通过。报告：`../findmyjob-plan/.reports/2026-11-09-m6-t09/summary.md`。未推送、合并或部署。
 > - 验收里的「输错 5 次被限流」要有集成测试或 E2E。
 
 #### [x] M7-T14 止血开关、PostgreSQL 限流桶、任务心跳、邮件日上限（P1，E2 之前）
@@ -1464,7 +1467,7 @@
 > 修复 2026-11-05：assertFeatureEnabled 改 enabled !== true 防字符串 "false" 放行；checkEmailCap critical 参数改为 template 白名单（CRITICAL_TEMPLATES），alert 只在 count===cap+1 时触发一次；db-rate-limit 列名加双引号；rate-limit.ts 改为 async 基于 hitBucket，clearRateLimit 改写为 DELETE；HEALTHCHECKS_* 加入 env.ts；开关已就绪，待各入口实现时调用（见 DECISIONS 开发中决策）
 > 修复 2026-11-05（二）：env.ts 的 HEALTHCHECKS_* 改用 z.preprocess 将空字符串转 undefined 再做 URL 校验（防 env.example 直接用时报错）；email-cap 的 template 参数改为 EMAIL_TEMPLATES 常量派生的封闭联合类型 EmailTemplate（CRITICAL_TEMPLATES 通过 satisfies 从常量派生）；集成限流测试改为直接调用 hitBucket/checkRateLimit（不再复制 SQL），新增真实计数、第 6 次拒绝、新 PrismaClient 验证、key 隔离、resetAt 在未来、clearRateLimit 六个场景；新增 tests/unit/env.test.ts 验证空字符串→undefined 和非法 URL 报错；全部 526 个测试通过
 
-#### [ ] M7-T15 CSP 改为 nonce 强制模式，HSTS 改为一年（P1，E3 之前）
+#### [x] M7-T15 CSP 改为 nonce 强制模式，HSTS 改为一年（P1，E3 之前）
 依赖：M7-T05
 做：
 - middleware 为每个请求生成 nonce；script-src 写 self、nonce 和 strict-dynamic，再加 challenges.cloudflare.com；frame-src 只放 Turnstile；生产环境不允许 unsafe-eval。
@@ -1474,6 +1477,7 @@
 > - HSTS 现在由 `deploy/Caddyfile` 的 `{$HSTS_MAX_AGE:300}` 控制。默认值保持 300，不改 Caddyfile 的默认、不加 includeSubDomains 和 preload：一年的 HSTS 落到 staging 域名上很难撤回。这一条只在 RUNBOOK 写清楚「E3 前、确认所有子域都是 https 之后，由部署会话把生产环境的 HSTS_MAX_AGE 设为 31536000」，`tests/unit/caddyfile-headers.test.ts` 的现有断言不放宽。
 > - CSP 在 M7-T05 之后已经由应用发 Report-Only（看 next.config 和 proxy）。这一条改成强制模式时，开发环境（`pnpm dev`、E2E）仍要能跑：dev 需要的 unsafe-eval 只在非生产放行，生产判断只看 `APP_ENV=production`。
 > - 「每次请求 nonce 都不同」要有测试：连续请求两次同一页面，响应头里的 nonce 不同，并且页面里的 script 标签带的是同一个 nonce。
+> 完成 2026-11-09：proxy 每页面请求生成 nonce 并覆盖请求/响应 CSP，根布局动态渲染及根 Provider 固定文档 nonce，语言切换不影响 Turnstile；生产 APP_ENV 禁 eval，Sentry 仅允许构建期 DSN 精确 origin，API 附件 sandbox 保留。RUNBOOK 记录 E3 前生产 HSTS=31536000 的人工部署步骤，Caddy 默认300及其测试不改。lint/typecheck/build通过；Vitest 2077通过、4性能基准跳过；开发E2E300通过；next start专项14通过（含375/1280真实Cloudflare测试控件和注册到持久化上传/删除），增补Service Worker激活后导航专项1通过。独立复查无待修重要问题。尚未部署、未验证正式key/真机、未执行生产HSTS切换。
 
 #### [x] M7-T16 CI 扩展扫描（P1，M7 之后）
 依赖：M7-T06
@@ -1510,6 +1514,7 @@
 验收：跑完后用 SQL 核对：成功的解锁数等于 UNLOCK 账本条数，余额 ≥0
 > 完成 2026-11-07：load/k6/unlock.js（balance_race 10 VU 抢余额 3、idempotent_unlock 10 VU 解锁同一学生，含 SQL 核对查询注释）；load/k6/upload.js（20 VU，读 load/fixtures/minimal.pdf）；load/k6/apply.js（20 VU，读 jobs.local.json）；prisma/seed-load.ts 扩到 100 家企业、5000 名学生（批量并发 20）、500 个已发布职位，race 企业余额 reset 为 3、idempotent 企业 100；load/*.local.json 和 load/fixtures/ 加入 .gitignore；SQL 核对为在 staging 运行 k6 后的人工步骤（无法在 CI vitest 中自动化）；unlock/apply 端点为后续里程碑实现，当前脚本会收到 404，属预期。失败输出见提交说明。
 > 修复 2026-11-07（合并前复查）：load/k6/*.js 注释中的 `grafana/k6:latest` 改为固定版本 `grafana/k6:0.54.0`；prisma/seed-load.ts 会话有效期从 30 天缩短为 1 天（staging 负载测试会话无需长期存活）。需要第一次 CI 运行来验证。
+> 收尾完成 2026-11-10：以上“unlock/apply 404属预期”仅为历史未接线状态，不能作为验收。现已改为固定k6/browser镜像点击现有UI→Server Action，配套fresh隔离fixture、真实签名会话、未来epoch就绪屏障、完整结果计数及全scope只读SQL双向对账；无生产API或安全豁免，未执行旧seed。最终full `m7-6f36ec12-06f0-44f5-9869-d3df0cf07a91`：100企业/5000学生/500职位，20VU投递2分钟完成282次，加重复控制最终283份申请/初始事件/真实JobView；两场10VU解锁共4条付费解锁/4笔扣点，余额0/99，wrapper退出0。四类fresh负例unsigned/stale-consent/missing-target/unready均非零退出且proven:true、10失败/零解锁申请。专用Node52/52、scoped lint/typecheck和独立复核通过；性能/版本/资源/历史失败见CAPACITY。旧browse/upload未在本次重验，UI p95只作诊断；本地结果不代签M7-H02或外部容量/上线闸门。
 
 #### [x] M7-T19 lane B 收尾遗留项（P1，M7-H02 之前）
 依赖：M7-T04、M7-T06、M7-T11、M7-T12、M7-T14
@@ -1694,7 +1699,7 @@
 
 > —— 公益试点运行约 3 个月：修 bug、按反馈迭代、同时做 M8。每次放量（E2 内测 200 人 → E3 本校公开 500 人 → E4 扩大 3000 人）之前按 E5 的 go/no-go 判断，记录写进 `docs/CAPACITY.md` ——
 
-#### [ ] M7-T20 线 B 用户可见 P1 修复（M5-T07 / M6-T01 复查遗留）
+#### [x] M7-T20 线 B 用户可见 P1 修复（M5-T07 / M6-T01 复查遗留）
 依赖：M5-T07、M6-T01
 > 线 B 2026-11-09 写入，没开工，交给 Codex。只修下面两条，不碰计费、2FA、强制 CSP。
 做：
@@ -1706,8 +1711,9 @@
 - 第 1 条：集成测试覆盖「再发邀请被拒」「接受第二个邀请不报 500」，以及并发接受两个邀请；文案中英两份 messages 都有。
 - 第 2 条：每个序列都等于直接查库算出来的结果（集成测试），并且测周边界。
 - （原来的第 3 条「proxy 对 /admin 匹配太宽」已经在 M7-T05 里改成按路径段匹配，不用再做。）
+> 完成 2026-11-09：已有非撤回投递拒绝再邀，历史双邀请顺序／并发接受共用投递且不再触发 applicationId 唯一冲突；补齐后台投递、解锁、发布职位的 12 周 KL 趋势和中英文提示，修复手机图表裁切及日期省略。新增集成测试先红 8 条、修复后相关 35/35；全量 Vitest 2030 passed / 4 skipped（默认关闭的性能基准）。lint、typecheck、build 通过；db:check 通过并以容器 psql 补查外键索引（0 缺失）。全量 E2E 296 passed / 1 failed，失败为新增 spec 使用固定种子邮箱冲突；改为独立邮箱后仅重跑该 spec，6/6 通过（含 3 项登录 setup）。报告与截图：`../findmyjob-plan/.reports/2026-11-09-codex-takeover/summary.md`；决策 D-INV-03、D-DASH-01。未推送或部署。
 
-#### [ ] M4-T17 点数与解锁加固（P1，收费前，即 M8 之前）
+#### [x] M4-T17 点数与解锁加固（P1，收费前，即 M8 之前）
 依赖：M4-T16
 > 总控 2026-11-07 加入：来自 M4-T06/T07 复查的 Medium 和 Low，按收尾规则不挡 GATE-M4。
 做 / 验收：
@@ -1726,6 +1732,8 @@
 13. 来自 M4 修复任务的最终核对（Low）：`credits.adjust` 审计写入失败时整笔回滚的测试；解锁后查学生 userId 的那次 `studentProfile.findUnique` 也放进通知的 try/catch；global-setup 里补账本行和改余额放进同一个事务；水印考虑页面 /Rotate；format-date 的断言改成完整字符串比较，admin 页面的日期也走 format-date；mark-as-read action 加「传别人的通知 id 不生效」的测试；解锁通知 payload 断言完整形状；StudentNav 的 aria-label 改成导航用途的名字。
 14. 来自 GATE-M4 取证（2026-11-08）：「列表悬停 3 秒 ProfileView 不变」的 E2E 跑在 next dev 上（dev 不做 prefetch），也不数 ProfileView 行数，去掉 `prefetch={false}` 时没有测试会失败；改用 next start 跑这一条，或者加一条断言 Link 带 `prefetch={false}` 的组件测试。上传拒绝补路由级测试（断言 putObject 没被调用），`resumeFile.create` 失败时删掉已上传的对象；补「被移除的成员下一次请求被拒」的测试，以及只删掉 team.ts 里已用邀请检查时会失败的测试；补 `student.visibility.change` 审计的断言；pii-leak 断言响应里没有 `/api/resumes/`。另外，sanitizePdf 的 Dest/Rect 尾部元素现在只要求不是 PDFRef，按 M4-T25 原规格收紧为只能是 PDFName、PDFNumber、PDFNull（处理好 CJS 导出下的 instanceof）。
 
+> 完成 2026-11-09：14 项实现/既有功能核销完成；资金原子更新、事务内可见性、精确唯一冲突恢复、只读解密降级、PDF 跨实例租约/取消/旋转/白名单、上传失败补偿、隐私来源与 KL 日期均有守护。全量 Vitest 2268 通过、4 个既有性能基准跳过，另补跑隐私 UI 2/2；lint/typecheck/build/db:check 通过，容器补查外键索引 0 缺失。首轮全量 E2E 302/302；截图复核修复 Tailwind 4 语义颜色缺失后全量 284 通过、2 失败、16 未执行，随后修正对比度并完成全部相关页面复验：最终 a11y+中英375px流程 22/22、后台审计页 8/8（不将分次结果冒充新一轮全量）。10 张最终截图与逐项证据见 `../findmyjob-plan/.reports/2026-11-09-m4-t17/summary.md`。PDF 仍有有界完整缓冲；未 push、部署或代签闸门。
+
 #### [x] M6-T11 运营后台加固（P1，首次使用之后）
 依赖：M6-T04、M6-T10
 > 总控 2026-11-08 加入：来自 M6-T02、M6-T04 复查的 Medium 和 Low，按「先能用」的规则放到首次使用之后再做。
@@ -1741,36 +1749,42 @@
 
 ## M8 · 商业化（约 2 天）
 
-#### [ ] M8-T01 套餐与定价页
+#### [x] M8-T01 套餐与定价页
 依赖：GATE-M7
 做：后台 Plan 增删改；seed 写入 business/01 §5.3 的占位套餐；`/pricing`（`billing.enabled=false` 时显示「公益期免费」）。
 验收：定价页内容随后台配置变化
+> 完成 2026-11-10：管理员套餐 CRUD、CAS 冲突/历史引用保护、占位套餐 seed 和双语定价页；公益期只公开 FREE，公开 HTML/RSC 不泄漏隐藏商品。96 个新增服务/schema/seed 测试、10 个 action 权限测试及 2650 全量 Vitest 通过（4 个既有性能基准跳过），相关 E2E、lint/typecheck/build/db:check 和独立审查通过。用户授权提前完成代码；GATE-M7 未代签，未启用真实收费或运行完整 seed。
 
-#### [ ] M8-T02 订单与银行转账
+#### [x] M8-T02 订单与银行转账
 依赖：M8-T01
 做：`services/billing.ts`：创建订单（orderNo 格式 `FMJ-YYYYMMDD-XXXX`）→ 显示收款信息 → 企业上传回单（经 `/api/uploads/PAYMENT_PROOF`，AWAITING_CONFIRMATION）→ 运营确认 → 同一事务内：订单 PAID + 发点（PURCHASE / PLAN_GRANT）+ 开通或续期订阅；审计 `order.confirm`。
 验收：重复确认不会重复发点；只有 OWNER 能下单
 > M5-T08 已备好：确认到账、事务提交之后，调用 `src/server/services/notify.ts` 的 `notifyOrderConfirmed(companyId, { orderId, amountSen })`（站内 order.confirmed + 邮件）。
+> 完成 2026-11-10：OWNER 报价确认/下单/持久回单归属及安全预览，近期二因素管理员核款；冻结净额和权益，订单/账本/连续订阅/审计同事务且重放幂等，通知失败不撤销到账。2817 全量 Vitest 通过（4 个既有性能基准跳过），八个业务 E2E、既有定价导航回归、375px 中英页面、lint/typecheck/build/db:check/FK 索引检查及独立复核通过。仅合成数据，真实收款信息、正式价格和开启收费另行确认。
 
-#### [ ] M8-T03 在线支付
+#### [x] M8-T03 在线支付
 依赖：M8-T02
 做：`PaymentProvider` 接口；Stripe Checkout 实现（卡 + FPX）；webhook 验签 + 按 externalRef 幂等；用测试模式密钥验证。
 验收：同一个 webhook 重放多次只入账一次；验签失败返回 400
+> 完成 2026-11-10（代码）：托管卡/FPX Checkout、持久尝试与原键恢复、原始请求验签、锁内完整付款核验和一次交付、白名单 FPX 回执及双语重试界面。3056 全量 Vitest 通过（4 个既有性能基准跳过），支付相关 E2E 14/14、lint/typecheck/build/db:check/FK 索引检查及独立审查通过。只用合成数据与隔离的 SDK；真实商户测试模式卡/FPX 联调、外部账号及上线闸门按用户要求另行确认。未知结果超窗或终态年单按 RUNBOOK 人工核对恢复，不自动重新收费。
 
-#### [ ] M8-T04 套餐权益执行
+#### [x] M8-T04 套餐权益执行
 依赖：M8-T02
 做：职位数、席位数、邀请配额按当前有效订阅计算（没有订阅 = 免费版）；`expire-subscriptions` 任务；到期前 7 天提醒。
 验收：超过限额时给出升级引导；到期后自动降为免费版
+> 完成 2026-11-10（代码）：有效已付快照优先、公益/FREE 回退、职位/席位/邀请增长锁内校验、KL 月度配额及到期前 7 天持久去重提醒；到期保留资源与余额。全量 Vitest 3196 通过（4 个既有性能基准跳过），最终 T04 E2E 5/5、相关既有流程 13 项、lint/typecheck/build/db:check 与两份独立复核通过。8 张中英移动/桌面截图已检查；真实收费启用与上线闸门另行确认。
 
-#### [ ] M8-T05 发票
+#### [x] M8-T05 发票
 依赖：M8-T02
 做：PDF 发票（公司抬头、SST 字段预留、MyInvois 字段预留）；企业在账单页下载。
 验收：发票号唯一且连续；金额与订单一致
+> 完成 2026-11-10（代码）：付款后幂等发行、连续编号、冻结抬头/金额/税务预留、中文 PDF 与当前 OWNER 安全下载；失败重试和恢复不逆转付款。全量 Vitest 3427 通过（4 个既有性能基准跳过），最终 UI 43/43、真实 renderer 10/10、中英 E2E 6/6、lint/typecheck/build/db:check/FK 检查和独立复核通过。已检查 10 张截图、4 份下载 PDF 及实际字形栅格，生产 standalone 字体/许可/依赖验证通过。正式发行主体资料与上线闸门另行确认。
 
-#### [ ] M8-T06 转收费切换
+#### [x] M8-T06 转收费切换
 依赖：M8-T04
 做：`billing.enabled=true` 时：停止公益发点；余额不足时引导购买；创始合作伙伴折扣（记录在 Order.discountSen）。写一份切换演练测试（false → true）。
 验收：切换后现有余额保留；所有付费入口正常工作
+> 完成 2026-11-10（代码）：公益发点入口和 CREDIT 锁后均 fresh 校验严格布尔开关；收费期余额不足时按 OWNER/成员身份引导购买。真实 false→true 演练保留余额，停售后历史订单仍按冻结净额履约并下载发票。全量 Vitest 3468 通过（4 个既有性能基准跳过），定向78/78、中英 E2E5/5、lint/typecheck/build及独立复核通过；16张截图和2份PDF已保全。线上收费开关与GATE-M8另行确认。
 
 #### [ ] 🚦 GATE-M8 · 开启收费前（见文末清单）
 
@@ -1778,25 +1792,29 @@
 
 ## M9 · AI 增强（约 2 天）
 
-#### [ ] M9-T01 简历解析
+#### [x] M9-T01 简历解析
 依赖：M2-T05
 做：上传 PDF → worker 提取文本 → 调用 Claude API，输出符合 zod schema 的结构化 JSON（模型 ID 读 `AI_MODEL_PARSE`）→ 预填档案，学生确认后才保存。
 验收：解析失败不影响上传；未经学生确认不写入档案
+> 完成 2026-11-10：隔离PDF提取、独立解析同意、可撤回草稿和学生确认保存；补齐版本/配额/生命周期及导出清理边界。完整Vitest 3881通过/4既有性能基准跳过，最终E2E 5/5及lint/typecheck/build/db:check、独立复核通过；实际AI账号、法律版本发布和启用另行确认。
 
-#### [ ] M9-T02 JD 助手
+#### [x] M9-T02 JD 助手
 依赖：M5-T01
 做：企业输入岗位要点 → 生成中英双语职位描述（可编辑后发布）。
 验收：生成内容进入编辑框，不会直接发布
+> 2026-11-10：双语建议需逐次确认，可编辑、确认替换后再显式保存；默认关闭且不直接发布。完整 Vitest 4039通过/4既有性能基准跳过，T02浏览器9/9、8份Dialog axe零违规，lint/typecheck/build/gitleaks及独立复核通过；12张截图已检查。真实AI账号、法律发布和开启另行确认。
 
-#### [ ] M9-T03 语义匹配
+#### [x] M9-T03 语义匹配
 依赖：M4-T03
 做：启用 pgvector；为档案和职位生成 embedding（embedding 服务需另选，例如 Voyage AI，写入 DECISIONS）；企业职位页「推荐人才」、学生端「推荐职位」。
 验收：推荐结果同样遵守人才库排除规则（`isStudentVisibleToCompany`）
+> 完成 2026-11-10（代码）：独立匹配同意、默认关闭的双向语义推荐、受控索引与生命周期失效，沿用可见性和隐私过滤；普通元数据迁移与可选向量部署分离。全量 Vitest 4375 通过/4既有性能基准跳过，独立 pgvector 11/11、普通与向量浏览器各5/5、20份局部axe零违规；lint/typecheck/build/db:check/FK及独立复核通过，20张截图已检查。真实AI账户、法律发布、生产vector部署和启用另行确认。
 
-#### [ ] M9-T04 周报邮件
+#### [x] M9-T04 周报邮件
 依赖：M9-T03
 做：学生每周推荐职位邮件；企业每周人才库简报。可退订（MARKETING Consent）。
 验收：退订后不再发送
+> 完成 2026-11-10（代码）：独立 MARKETING 同意、学生职位周报与雇主匿名人才简报、周内去重和 UNKNOWN 不自动重发；最终发送前重新校验同意、可见性、人才池设置与源数据，并提供双语偏好和匿名签名退订。全量 Vitest 4608通过/4既有性能基准跳过；随后加固冷加载假时钟同步，T04独立适配器与共享工作区各24/24。浏览器5/5、28份axe零违规，28张截图已逐张检查；lint/typecheck/build/db:check/FK和独立复核通过。撤回阻止后续合格发送，已提交SENDING/已被服务商接受的邮件不能召回。真实营销发布、账户与签名配置、法律版本发布和上线闸门另行确认。
 
 > 注意：AI 输出同样要经过 redact；把用户数据发给 AI 服务之前，要在隐私政策中披露（更新 `legal.currentVersion`），并加进 SUBPROCESSORS。
 
@@ -1850,7 +1868,7 @@
 - [ ] 回滚演练由运维备份人独立完成：部署 A、部署 B、回滚，每一步都在 2 分钟内；有待执行迁移但没加 `--approve-migrations` 时，脚本在迁移前停下
 - [ ] 恢复演练：restore-drill.sh 的检查全部通过，实测 RTO ≤4 小时并已记录；healthchecks 显示绿色；备份文件前 21 字节是 `age-encryption.org/v1`；两个桶都开了版本控制
 - [ ] 伪造 X-Real-IP 或 X-Forwarded-For 后，仍按真实 IP 计数，第 6 次返回 429；AuditLog.ip 记录的是真实来源；停用一个已登录的学生后，他的下一次请求回到登录页；企业成员看其他企业的职位详情只显示锁定卡片；学校 OTP 第 6 次发送返回 429
-- [ ] 用 `curl -sI` 检查：HSTS max-age=300、nosniff、X-Frame-Options DENY、Referrer-Policy、Report-Only CSP 都在；私有页带 noindex 和 no-store；`APP_ENV=production` 时，用测试 Turnstile secret 或 http 的 BETTER_AUTH_URL 都无法启动
+- [ ] 用 `curl -sI` 检查：HSTS max-age=300（E3 前按 RUNBOOK 正式生产切换为 31536000）、nosniff、X-Frame-Options DENY、Referrer-Policy、强制 nonce CSP 都在；私有页带 noindex 和 no-store；`APP_ENV=production` 时，用测试 Turnstile secret 或 http 的 BETTER_AUTH_URL 都无法启动
 - [ ] Sentry：人为抛错产生的事件 JSON 里，没有邮箱、手机号、cookie 和 token；没有开 Replay；数据区域和 D14 一致；告警能送到 2 个人
 - [ ] 停掉 app 容器，10 分钟内两个人都收到 uptime 告警；日志轮转和 mem_limit 都已生效；k6 跑完后 dmesg 里没有 oom
 - [ ] k6 的 browse-search 达到阈值（p95 < 800ms，错误率 < 1%），结果记进 CAPACITY.md（M7-T10、M7-H02）；上线后 smoke.js 跑通

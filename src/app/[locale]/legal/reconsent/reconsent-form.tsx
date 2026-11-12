@@ -51,7 +51,7 @@ export default function ReconsentForm({ locale, version, messages }: ReconsentFo
 
   if (done) {
     return (
-      <p className="text-sm text-green-700 dark:text-green-400 font-medium">
+      <p className="text-sm text-success dark:text-success font-medium">
         {messages.reconsentSuccess}
       </p>
     )
@@ -101,7 +101,7 @@ export default function ReconsentForm({ locale, version, messages }: ReconsentFo
       <button
         type="submit"
         disabled={isPending}
-        className="inline-flex h-9 items-center justify-center rounded-md bg-brand px-4 text-sm font-semibold text-brand-foreground hover:bg-brand/90 disabled:opacity-50 transition-colors"
+        className="inline-flex h-9 items-center justify-center rounded-control bg-brand px-4 text-sm font-semibold text-brand-foreground hover:bg-brand/90 disabled:opacity-50 transition-colors"
       >
         {messages.reconsentSubmit}
       </button>

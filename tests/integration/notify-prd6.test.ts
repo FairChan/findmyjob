@@ -66,6 +66,7 @@ vi.mock('@/server/lib/healthchecks', () => ({
 
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createAdmin } from '../factories'
+import { seedApplicationMaterials } from '../helpers/application-materials'
 import { createNotification } from '@/server/services/notifications'
 import { clearSettingsCache } from '@/server/services/settings'
 import { createEmailProvider } from '@/lib/email'
@@ -275,6 +276,7 @@ describe('PRD §6 — new application received', () => {
     const job = await makePublishedJob(emp.companyId, emp.userId)
     const student = await createStudent(testDb, { completeness: 100 })
     // Create a JobView first so canApplyToJob returns true (quota bypass protection)
+    await seedApplicationMaterials(testDb, student.profileId)
     await testDb.jobView.create({ data: { studentId: student.profileId, jobId: job.id } })
     const { applyToJob } = await import('@/server/services/applications')
 
@@ -295,6 +297,7 @@ describe('PRD §6 — new application received', () => {
     await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
     const job = await makePublishedJob(emp.companyId, emp.userId)
     const student = await createStudent(testDb, { completeness: 100 })
+    await seedApplicationMaterials(testDb, student.profileId)
     await testDb.jobView.create({ data: { studentId: student.profileId, jobId: job.id } })
     const { applyToJob } = await import('@/server/services/applications')
 
@@ -317,6 +320,7 @@ describe('PRD §6 — application status changed', () => {
     await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
     const job = await makePublishedJob(emp.companyId, emp.userId)
     const student = await createStudent(testDb, { completeness: 100 })
+    await seedApplicationMaterials(testDb, student.profileId)
     // Create a JobView so canApplyToJob returns true (quota bypass protection)
     await testDb.jobView.create({ data: { studentId: student.profileId, jobId: job.id } })
     const { applyToJob } = await import('@/server/services/applications')
@@ -496,6 +500,7 @@ describe('PRD §6 — invitation accepted / declined', () => {
     await testDb.company.update({ where: { id: emp.companyId }, data: { verificationStatus: 'VERIFIED' } })
     const job = await makePublishedJob(emp.companyId, emp.userId)
     const student = await createStudent(testDb, { completeness: 100 })
+    await seedApplicationMaterials(testDb, student.profileId)
     await testDb.studentProfile.update({
       where: { userId: student.userId },
       data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() },
@@ -584,7 +589,7 @@ describe('PRD §6 — credits granted', () => {
     await testDb.creditWallet.create({ data: { companyId: emp.companyId, balance: 0 } })
     await testDb.user.update({ where: { id: emp.userId }, data: { locale: 'zh' } })
 
-    const { grantPilotCreditsOnVerification } = await import('@/server/jobs/pilot-monthly-credits')
+    const { grantPilotCreditsOnVerification } = await import('@/server/services/pilot-credits')
     await grantPilotCreditsOnVerification(emp.companyId)
 
     const notif = await testDb.notification.findFirst({

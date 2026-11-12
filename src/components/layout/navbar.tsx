@@ -1,51 +1,30 @@
 import { getTranslations } from 'next-intl/server'
-import { Link } from '@/i18n/navigation'
 import type { Locale } from '@/i18n/routing'
+import { Navbar1 } from '@/components/ui/navbar-1'
 import LocaleSwitcher from './locale-switcher'
-import MobileMenu from './mobile-menu'
+import { Wordmark } from './wordmark'
+import { getMemberIdentity } from '@/server/services/member-identity'
+import { MemberNavigation } from './member-navigation'
 
 export default async function Navbar({ locale }: { locale: Locale }) {
   const t = await getTranslations('nav')
+  const member = await getMemberIdentity()
+  if (member && member.role !== 'ADMIN') return <MemberNavigation locale={locale} />
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto flex h-14 max-w-5xl items-center justify-between px-4">
-        <Link href="/" className="font-bold text-xl text-brand">
-          FindMYJob
-        </Link>
-
-        {/* Desktop nav */}
-        <nav className="hidden md:flex items-center gap-6" aria-label={t('home')}>
-          <Link href="/" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            {t('home')}
-          </Link>
-          <Link href="/jobs" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            {t('jobs')}
-          </Link>
-          <Link href="/companies" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            {t('companies')}
-          </Link>
-          <Link href="/for-employers" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            {t('forEmployers')}
-          </Link>
-          <Link href="/partners" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            {t('partners')}
-          </Link>
-        </nav>
-
-        <div className="hidden md:flex items-center gap-4">
-          <LocaleSwitcher currentLocale={locale} />
-          <Link href="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            {t('login')}
-          </Link>
-          <Link href="/register" className="rounded-md bg-brand px-3 py-1.5 text-sm font-medium text-brand-foreground hover:bg-brand/90 transition-colors">
-            {t('register')}
-          </Link>
-        </div>
-
-        {/* Mobile */}
-        <MobileMenu locale={locale} />
-      </div>
-    </header>
+    <Navbar1
+      brand={<Wordmark prominent />}
+      brandLabel="FindMYJob"
+      links={[
+        { href: '/jobs', label: t('jobs') },
+        { href: '/companies', label: t('companies') },
+        { href: '/for-employers', label: t('forEmployers') },
+        { href: '/safety', label: t('safety') },
+      ]}
+      login={{ href: '/login', label: t('login') }}
+      cta={{ href: '/register', label: t('register') }}
+      extra={<LocaleSwitcher currentLocale={locale} />}
+      labels={{ primaryNavigation: t('primaryNavigation'), openMenu: t('openMenu') }}
+    />
   )
 }

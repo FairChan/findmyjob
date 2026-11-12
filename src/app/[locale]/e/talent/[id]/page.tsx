@@ -3,18 +3,23 @@ import { notFound, redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
+import { ChevronLeft } from 'lucide-react'
 import type { DegreeLevel, ExperienceKind } from '@prisma/client'
 import { requireCompanyMember } from '@/server/authz'
 import { ForbiddenError, NotFoundError, RateLimitedError } from '@/server/errors'
 import { db } from '@/server/db'
 import { viewTalentProfile } from '@/server/services/talent-view'
 import { getSetting } from '@/server/services/settings'
+import { getValidatedUnlockSettings } from '@/server/services/unlock'
 import type { TalentDetail, TalentEducation, TalentExperience } from '@/server/serializers/talent-card'
+import { BACK_LINK_CLASS } from '@/components/layout/workspace-page'
+import { WorkspaceNotice } from '@/components/layout/workspace-notice'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { SaveToFolderButton } from '@/components/talent/SaveToFolderButton'
-import { UnlockButton } from '@/components/talent/UnlockButton'
+import { UnlockButton, type UnlockCreditsAdvice } from '@/components/talent/UnlockButton'
 import { InviteButton } from '@/components/invitations/InviteButton'
-import { getMonthlyInvitationUsage } from '@/server/services/invitations'
+import { getCompanyEntitlementUsage } from '@/server/services/subscription-entitlements'
 
 // ---- Label maps ----
 
@@ -55,12 +60,12 @@ function EducationList({
   if (educations.length === 0) return null
   return (
     <section aria-labelledby="edu-heading">
-      <h2 id="edu-heading" className="mb-3 text-base font-semibold">
+      <h2 id="edu-heading" className="mb-3 text-title">
         {tLabel('sectionEducation')}
       </h2>
       <ul className="space-y-3">
         {educations.map((edu) => (
-          <li key={edu.id} className="rounded-lg border bg-card p-3">
+          <li key={edu.id} className="rounded-card bg-muted p-4">
             <p className="font-medium">{edu.schoolName}</p>
             {(edu.degreeLevel || edu.major) && (
               <p className="mt-0.5 text-sm text-muted-foreground">
@@ -98,17 +103,15 @@ function ExperienceList({
   if (experiences.length === 0) return null
   return (
     <section aria-labelledby="exp-heading">
-      <h2 id="exp-heading" className="mb-3 text-base font-semibold">
+      <h2 id="exp-heading" className="mb-3 text-title">
         {tLabel('sectionExperience')}
       </h2>
       <ul className="space-y-3">
         {experiences.map((exp) => (
-          <li key={exp.id} className="rounded-lg border bg-card p-3">
-            <div className="flex flex-wrap items-center gap-x-2">
+          <li key={exp.id} className="rounded-card bg-muted p-4">
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <p className="font-medium">{exp.title}</p>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                {tLabel(EXP_KIND_LABELS[exp.kind])}
-              </span>
+              <Badge tone="plain">{tLabel(EXP_KIND_LABELS[exp.kind])}</Badge>
             </div>
             {exp.organization && (
               <p className="mt-0.5 text-sm text-muted-foreground">{exp.organization}</p>
@@ -143,32 +146,36 @@ function TalentDetailBody({
   tLabel,
   tFolders,
   costCredits,
+  unlockEnabled,
+  billingEnabled,
+  insufficientCreditsAdvice,
   inviteJobs,
   inviteUsed,
   inviteQuota,
+  canPurchase,
 }: {
   detail: TalentDetail
   locale: string
   tLabel: (key: string, values?: Record<string, string | number>) => string
   tFolders: (key: string) => string
   costCredits: number
+  unlockEnabled: boolean
+  billingEnabled: boolean
+  insufficientCreditsAdvice?: UnlockCreditsAdvice
   inviteJobs: InviteJob[]
   inviteUsed: number
-  inviteQuota: number
+  inviteQuota: number | null
+  canPurchase: boolean
 }) {
   return (
     <div className="space-y-6">
       {/* Header card */}
-      <div className="rounded-lg border bg-card p-5">
+      <div className="rounded-card bg-muted p-5 sm:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <h1 className="text-xl font-bold">{detail.name}</h1>
-              {detail.unlocked && (
-                <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-700">
-                  {tLabel('unlocked')}
-                </span>
-              )}
+              <h1 className="text-headline [overflow-wrap:anywhere]">{detail.name}</h1>
+              {detail.unlocked && <Badge tone="success">{tLabel('unlocked')}</Badge>}
             </div>
             {detail.headline && (
               <p className="mt-1 text-sm text-muted-foreground">{detail.headline}</p>
@@ -211,18 +218,18 @@ function TalentDetailBody({
                 errorOccurred: tFolders('errorOccurred'),
               }}
             />
-            {!detail.unlocked && (
+            {!detail.unlocked && unlockEnabled && (
               <UnlockButton
                 studentId={detail.id}
-                costCredits={costCredits}
+                insufficientCreditsAdvice={insufficientCreditsAdvice}
                 labels={{
-                  button: tLabel('unlockButton'),
+                  button: tLabel('unlockButton', { cost: costCredits }),
                   confirmTitle: tLabel('unlockConfirmTitle'),
                   confirmDesc: tLabel('unlockConfirmDesc'),
                   confirmCost: tLabel('unlockConfirmCost', { cost: costCredits }),
                   confirmOk: tLabel('unlockConfirmOk'),
                   confirmCancel: tLabel('unlockConfirmCancel'),
-                  errorInsufficient: tLabel('unlockErrorInsufficient'),
+                  errorInsufficient: tLabel(billingEnabled ? 'unlockErrorInsufficient' : 'unlockErrorInsufficientPilot'),
                   errorRateLimit: tLabel('unlockErrorRateLimit'),
                   errorGeneric: tLabel('unlockErrorGeneric'),
                 }}
@@ -233,20 +240,18 @@ function TalentDetailBody({
               jobs={inviteJobs}
               usedQuota={inviteUsed}
               totalQuota={inviteQuota}
+              canPurchase={canPurchase}
             />
           </div>
         </div>
 
         {/* Skills */}
         {detail.skills.length > 0 && (
-          <div className="mt-3 flex flex-wrap gap-1.5">
+          <div className="mt-4 flex flex-wrap gap-1.5">
             {detail.skills.map((skill) => (
-              <span
-                key={skill}
-                className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-              >
+              <Badge key={skill} tone="plain">
                 {skill}
-              </span>
+              </Badge>
             ))}
           </div>
         )}
@@ -255,10 +260,10 @@ function TalentDetailBody({
       {/* Summary */}
       {detail.summary && (
         <section aria-labelledby="summary-heading">
-          <h2 id="summary-heading" className="mb-2 text-base font-semibold">
+          <h2 id="summary-heading" className="mb-2 text-title">
             {tLabel('sectionSummary')}
           </h2>
-          <p className="text-sm">{detail.summary}</p>
+          <p className="whitespace-pre-wrap text-body">{detail.summary}</p>
         </section>
       )}
 
@@ -268,10 +273,10 @@ function TalentDetailBody({
       {/* Contact details — only shown when unlocked */}
       {detail.unlocked && detail.contact && (
         <section aria-labelledby="contact-heading">
-          <h2 id="contact-heading" className="mb-3 text-base font-semibold">
+          <h2 id="contact-heading" className="mb-3 text-title">
             {tLabel('sectionContact')}
           </h2>
-          <div className="rounded-lg border bg-card p-4 space-y-2 text-sm">
+          <div className="space-y-2 rounded-card bg-muted p-5 text-sm">
             {detail.contact.phone && (
               <div className="flex gap-2">
                 <span className="w-20 shrink-0 text-muted-foreground">{tLabel('contactPhone')}</span>
@@ -318,7 +323,7 @@ function TalentDetailBody({
       {/* Resume download */}
       {detail.resumeCount > 0 && (
         <section aria-labelledby="resume-heading">
-          <h2 id="resume-heading" className="mb-2 text-base font-semibold">
+          <h2 id="resume-heading" className="mb-2 text-title">
             {tLabel('sectionResume')}
           </h2>
           {detail.unlocked && detail.resumeIds.length > 0 ? (
@@ -328,7 +333,7 @@ function TalentDetailBody({
                   <a
                     href={`/api/resumes/${resumeId}/download`}
                     download="resume.pdf"
-                    className="inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-md border bg-card px-4 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center gap-2 rounded-full border border-input bg-background px-5 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground"
                     data-testid={`resume-download-${idx}`}
                   >
                     {tLabel('resumeDownload')}
@@ -365,7 +370,7 @@ export default async function TalentDetailPage({
   const tFoldersMsg = await getTranslations('talentFolders')
   const tFolders = (key: string) => tFoldersMsg(key as Parameters<typeof tFoldersMsg>[0])
 
-  let ctx: { userId: string; companyId: string }
+  let ctx: Awaited<ReturnType<typeof requireCompanyMember>>
   try {
     ctx = await requireCompanyMember('RECRUITER', await headers())
   } catch (err) {
@@ -380,25 +385,26 @@ export default async function TalentDetailPage({
 
   if (company?.verificationStatus !== 'VERIFIED') {
     return (
-      <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
-        <div
-          role="alert"
-          className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center"
-        >
-          <h1 className="text-xl font-semibold text-amber-900">{tLabel('verifyRequired')}</h1>
-          <p className="mt-2 text-sm text-amber-700">{tLabel('verifyDesc')}</p>
-          <Button asChild className="mt-6">
-            <Link href={`/${locale}/e/onboarding`}>{tLabel('verifyAction')}</Link>
-          </Button>
-        </div>
-      </main>
+      <WorkspaceNotice
+        title={tLabel('verifyRequired')}
+        description={tLabel('verifyDesc')}
+        action={{ label: tLabel('verifyAction'), href: `/${locale}/e/onboarding` }}
+      />
     )
   }
 
-  const [costCredits, inviteUsage] = await Promise.all([
-    getSetting<number>('unlock.costCredits', 1),
-    getMonthlyInvitationUsage(ctx.companyId),
+  const [unlockSettings, unlockEnabled, billingSetting, inviteUsage] = await Promise.all([
+    getValidatedUnlockSettings(),
+    getSetting<boolean>('unlock.enabled', true),
+    getSetting<unknown>('billing.enabled', false, { fresh: true }),
+    getCompanyEntitlementUsage(ctx),
   ])
+  const billingEnabled = billingSetting === true
+  const insufficientCreditsAdvice: UnlockCreditsAdvice | undefined = billingEnabled
+    ? ctx.role === 'OWNER'
+      ? { text: tLabel('unlockPurchaseCredits'), href: `/${locale}/e/billing` }
+      : { text: tLabel('unlockAskOwnerToPurchase') }
+    : undefined
 
   // Fetch published jobs for this company (for the invite dialog)
   const now = new Date()
@@ -418,32 +424,29 @@ export default async function TalentDetailPage({
   } catch (err) {
     if (err instanceof NotFoundError) notFound()
     if (err instanceof RateLimitedError) {
+      // Kept as a paragraph, not a heading: this state had no h1 before and tests read it as text.
       return (
-        <main id="main-content" className="container mx-auto max-w-2xl px-4 py-12">
-          <div
-            role="alert"
-            className="rounded-lg border p-8 text-center text-muted-foreground"
-          >
-            <p className="font-medium">{tLabel('limitReached')}</p>
-            <p className="mt-1 text-sm">{tLabel('limitReachedDesc')}</p>
+        <div className="mx-auto w-full max-w-2xl px-4 pb-20 pt-8 sm:px-6 md:pt-12">
+          <div role="alert" className="rounded-card bg-muted p-8 text-center sm:p-10">
+            <p className="text-title">{tLabel('limitReached')}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{tLabel('limitReachedDesc')}</p>
             <Button asChild variant="outline" className="mt-6">
               <Link href={`/${locale}/e/talent`}>{tLabel('backToSearch')}</Link>
             </Button>
           </div>
-        </main>
+        </div>
       )
     }
     throw err
   }
 
   return (
-    <main id="main-content" className="container mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto w-full max-w-3xl px-4 pb-20 pt-8 sm:px-6 md:pt-12">
       <nav aria-label="breadcrumb" className="mb-4">
-        <Button asChild variant="ghost" size="sm" className="-ml-2">
-          <Link href={`/${locale}/e/talent`} prefetch={false}>
-            ← {tLabel('backToSearch')}
-          </Link>
-        </Button>
+        <Link href={`/${locale}/e/talent`} prefetch={false} className={BACK_LINK_CLASS}>
+          <ChevronLeft aria-hidden="true" className="size-4" />
+          {tLabel('backToSearch')}
+        </Link>
       </nav>
 
       <TalentDetailBody
@@ -451,11 +454,15 @@ export default async function TalentDetailPage({
         locale={locale}
         tLabel={tLabel}
         tFolders={tFolders}
-        costCredits={costCredits}
+        costCredits={unlockSettings.costCredits}
+        unlockEnabled={unlockEnabled}
+        billingEnabled={billingEnabled}
+        insufficientCreditsAdvice={insufficientCreditsAdvice}
         inviteJobs={publishedJobs}
-        inviteUsed={inviteUsage.used}
-        inviteQuota={inviteUsage.quota}
+        inviteUsed={inviteUsage.invitations.used}
+        inviteQuota={inviteUsage.invitations.limit}
+        canPurchase={inviteUsage.canPurchase}
       />
-    </main>
+    </div>
   )
 }

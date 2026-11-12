@@ -1,10 +1,64 @@
 import 'server-only'
 import { randomBytes } from 'node:crypto'
+import { z } from 'zod'
+import type { Prisma, ReferralStatus } from '@prisma/client'
+import type { UserCtx } from '../authz'
 import { db } from '../db'
+import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { getSetting } from './settings'
 import { logAudit } from './audit'
 import { createNotification } from './notifications'
 import { logger } from '../lib/logger'
+
+const referralIdSchema = z.string().trim().min(1).max(128)
+const referralCursorSchema = z.object({
+  createdAt: z.string().datetime(),
+  id: referralIdSchema,
+}).strict()
+
+function decodeReferralCursor(raw: string): z.infer<typeof referralCursorSchema> | null {
+  try {
+    if (!/^[A-Za-z0-9_-]+$/.test(raw)) return null
+    const json = Buffer.from(raw, 'base64url').toString('utf8')
+    const parsed = referralCursorSchema.safeParse(JSON.parse(json) as unknown)
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+export const voidReferralSchema = z.object({
+  referralId: referralIdSchema,
+  reason: z.string().trim().min(1).max(500),
+})
+
+export const listReferralsSchema = z.object({
+  cursor: z.string().trim().min(1).max(1024)
+    .refine((value) => decodeReferralCursor(value) !== null, 'Invalid cursor').optional(),
+  limit: z.number().int().min(1).max(50).default(25),
+  status: z.enum(['PENDING', 'QUALIFIED', 'VOID']).optional(),
+  referrerId: referralIdSchema.optional(),
+})
+
+export type ListReferralsInput = z.input<typeof listReferralsSchema>
+
+function parseAdminInput<T extends z.ZodType>(schema: T, raw: unknown): z.output<T> {
+  const parsed = schema.safeParse(raw)
+  if (!parsed.success) {
+    throw new ValidationError(parsed.error.issues[0]?.message ?? 'Invalid input')
+  }
+  return parsed.data
+}
+
+async function assertAdmin(client: Prisma.TransactionClient, userId: string): Promise<void> {
+  const actor = await client.user.findUnique({
+    where: { id: userId }, select: { role: true, status: true },
+  })
+  if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') {
+    throw new ForbiddenError()
+  }
+}
 
 /** Normalize email for self-referral detection: lowercase; for Gmail, remove dots and +tag from local part */
 export function normalizeEmail(email: string): string {
@@ -141,16 +195,37 @@ export async function qualifyReferral(inviteeStudentId: string): Promise<void> {
 
 /** Void a referral (admin operation). Writes a referral.void audit entry. */
 export async function voidReferral(id: string, reason: string, actorId: string): Promise<void> {
-  await db.referral.update({
-    where: { id },
-    data: { status: 'VOID', voidReason: reason },
-  })
-  await logAudit({
-    actorId,
-    action: 'referral.void',
-    targetType: 'Referral',
-    targetId: id,
-    metadata: { reason },
+  const input = parseAdminInput(voidReferralSchema, { referralId: id, reason })
+  await db.$transaction(async (tx) => {
+    await assertAdmin(tx, actorId)
+    const existing = await tx.referral.findUnique({
+      where: { id: input.referralId }, select: { referrerId: true },
+    })
+    if (!existing) throw new NotFoundError()
+    await lockXact(tx, LOCK_NS.JOB_VIEW_QUOTA, existing.referrerId)
+
+    // Qualification can race the initial read. Compare the precise status so the
+    // audit describes the transition actually made, and never resurrect VOID.
+    for (;;) {
+      const referral = await tx.referral.findUnique({
+        where: { id: input.referralId }, select: { status: true },
+      })
+      if (!referral) throw new NotFoundError()
+      if (referral.status === 'VOID') return
+      const updated = await tx.referral.updateMany({
+        where: { id: input.referralId, status: referral.status },
+        data: { status: 'VOID', voidReason: input.reason },
+      })
+      if (updated.count === 0) continue
+      await logAudit({
+        actorId,
+        action: 'referral.void',
+        targetType: 'Referral',
+        targetId: input.referralId,
+        metadata: { fromStatus: referral.status, toStatus: 'VOID', reasonLength: input.reason.length },
+      }, tx)
+      return
+    }
   })
 }
 
@@ -226,4 +301,56 @@ export async function requalifyReferrals(): Promise<{ qualified: number }> {
   }
 
   return { qualified }
+}
+
+export type AdminReferralRow = {
+  id: string
+  referrerId: string
+  inviteeId: string
+  referrerName: string
+  inviteeName: string
+  status: ReferralStatus
+  qualifiedAt: Date | null
+  voidReason: string | null
+  createdAt: Date
+}
+
+export async function listReferrals(
+  ctx: UserCtx,
+  rawInput: ListReferralsInput = {},
+): Promise<{ items: AdminReferralRow[]; nextCursor: string | null }> {
+  await assertAdmin(db, ctx.userId)
+  const input = parseAdminInput(listReferralsSchema, rawInput)
+  const cursor = input.cursor ? decodeReferralCursor(input.cursor) : null
+  const rows = await db.referral.findMany({
+    where: {
+      ...(input.status ? { status: input.status } : {}),
+      ...(input.referrerId ? { referrerId: input.referrerId } : {}),
+      ...(cursor ? {
+        OR: [
+          { createdAt: { lt: new Date(cursor.createdAt) } },
+          { createdAt: new Date(cursor.createdAt), id: { lt: cursor.id } },
+        ],
+      } : {}),
+    },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: input.limit + 1,
+    select: {
+      id: true, referrerId: true, inviteeId: true, status: true,
+      qualifiedAt: true, voidReason: true, createdAt: true,
+      referrer: { select: { fullName: true } },
+      invitee: { select: { fullName: true } },
+    },
+  })
+  const page = rows.slice(0, input.limit)
+  const last = page.at(-1)
+  const nextCursor = rows.length > input.limit && last
+    ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id })).toString('base64url')
+    : null
+  return {
+    items: page.map(({ referrer, invitee, ...row }) => ({
+      ...row, referrerName: referrer.fullName, inviteeName: invitee.fullName,
+    })),
+    nextCursor,
+  }
 }

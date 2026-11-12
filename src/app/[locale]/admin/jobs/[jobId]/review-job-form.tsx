@@ -13,6 +13,7 @@ interface Props {
 
 export function ReviewJobForm({ jobId, updatedAt }: Props) {
   const t = useTranslations('adminJobs')
+  const quotas = useTranslations('entitlements')
   const router = useRouter()
 
   const [rejectNote, setRejectNote] = useState('')
@@ -31,7 +32,7 @@ export function ReviewJobForm({ jobId, updatedAt }: Props) {
         router.push('.')
         router.refresh()
       } else {
-        setApproveError(res.code === 'VALIDATION_ERROR' ? t('errorStale') : t('errorFailed'))
+        setApproveError(res.code === 'JOB_POST_LIMIT_EXCEEDED' ? quotas('reviewJobLimit') : res.code === 'VALIDATION_ERROR' ? t('errorStale') : t('errorFailed'))
       }
     } finally {
       setApproveLoading(false)
@@ -62,16 +63,16 @@ export function ReviewJobForm({ jobId, updatedAt }: Props) {
   return (
     <div className="grid gap-8 md:grid-cols-2 mt-6">
       {/* Approve section */}
-      <form onSubmit={handleApprove} className="space-y-4 rounded-lg border p-5">
+      <form onSubmit={handleApprove} className="space-y-4 rounded-card border p-5">
         <h3 className="font-semibold text-base">{t('approveTitle')}</h3>
-        {approveError && <p className="text-sm text-destructive">{approveError}</p>}
+        {approveError && <p role="alert" className="text-sm text-destructive">{approveError}</p>}
         <Button type="submit" disabled={approveLoading} className="w-full">
           {approveLoading ? '…' : t('approveSubmit')}
         </Button>
       </form>
 
       {/* Reject section */}
-      <form onSubmit={handleReject} className="space-y-4 rounded-lg border p-5">
+      <form onSubmit={handleReject} className="space-y-4 rounded-card border p-5">
         <h3 className="font-semibold text-base">{t('rejectTitle')}</h3>
 
         <div className="space-y-1">
@@ -84,7 +85,7 @@ export function ReviewJobForm({ jobId, updatedAt }: Props) {
             onChange={e => setRejectNote(e.target.value)}
             placeholder={t('rejectNotePlaceholder')}
             rows={3}
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
 

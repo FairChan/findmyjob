@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server'
 import { z } from 'zod'
 import { requireAdmin } from '@/server/authz'
 import { searchStudents, searchStudentsSchema } from '@/server/services/admin-users'
+import { formatKLDate } from '@/lib/format-date'
 
 const listParamsSchema = z.object({
   q: z.string().max(200).optional(),
@@ -30,7 +31,7 @@ export default async function AdminStudentsPage({
   const totalPages = Math.ceil(total / pageSize)
 
   return (
-    <main id="main-content" className="p-6 max-w-6xl mx-auto">
+    <div className="p-6 max-w-6xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">{t('title')}</h1>
 
       {/* Search bar */}
@@ -40,12 +41,12 @@ export default async function AdminStudentsPage({
           name="q"
           defaultValue={q}
           placeholder={t('searchPlaceholder')}
-          className="flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="flex-1 rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
         <select
           name="status"
           defaultValue={status ?? ''}
-          className="rounded-md border border-input bg-background px-3 py-2 text-sm"
+          className="rounded-control border border-input bg-background px-3 py-2 text-sm"
         >
           <option value="">{t('statusAll')}</option>
           <option value="ACTIVE">{t('statusActive')}</option>
@@ -53,7 +54,7 @@ export default async function AdminStudentsPage({
         </select>
         <button
           type="submit"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
           {t('searchBtn')}
         </button>
@@ -87,10 +88,10 @@ export default async function AdminStudentsPage({
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs ${
                         s.status === 'ACTIVE'
-                          ? 'bg-green-100 text-green-800'
+                          ? 'bg-success-muted text-success'
                           : s.status === 'SUSPENDED'
-                          ? 'bg-red-100 text-red-800'
-                          : 'bg-gray-100 text-gray-600'
+                          ? 'bg-destructive-muted text-destructive'
+                          : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       {t(`status_${s.status.toLowerCase()}` as 'status_active')}
@@ -98,7 +99,7 @@ export default async function AdminStudentsPage({
                   </td>
                   <td className="p-3 text-muted-foreground">
                     {s.schoolVerifiedAt
-                      ? new Date(s.schoolVerifiedAt).toLocaleDateString(locale)
+                      ? formatKLDate(s.schoolVerifiedAt, locale)
                       : '—'}
                   </td>
                   <td className="p-3">{s.completeness}%</td>
@@ -139,6 +140,6 @@ export default async function AdminStudentsPage({
           ))}
         </div>
       )}
-    </main>
+    </div>
   )
 }

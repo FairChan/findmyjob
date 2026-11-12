@@ -28,7 +28,7 @@ export default async function TermsPage({
   const content = readLegalMarkdown('terms', locale)
 
   return (
-    <article className="container mx-auto max-w-3xl px-4 py-12">
+    <article className="page-shell max-w-3xl py-12 md:py-16">
       <div className="mb-6 text-xs text-muted-foreground">
         {t('lastUpdated', { version })}
       </div>
@@ -36,7 +36,7 @@ export default async function TermsPage({
       <div className="mt-12 text-center">
         <a
           href={`/${locale}`}
-          className="text-sm text-brand underline underline-offset-4 hover:text-brand/80"
+          className="inline-flex min-h-6 items-center text-sm text-brand underline-offset-4 hover:underline"
         >
           {t('backToHome')}
         </a>

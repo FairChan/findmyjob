@@ -1,10 +1,13 @@
 import 'server-only'
 import { InvitationStatus, Prisma } from '@prisma/client'
+import { z } from 'zod'
 import { db } from '../db'
 import { NotFoundError, ForbiddenError, InvitationQuotaError, DuplicateApplicationError } from '../errors'
 import { applyToJob } from './applications'
 import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { getSetting } from './settings'
+import { resolveCompanyEntitlements } from './subscription-entitlements'
+import { klMonthBounds } from '../lib/kl-month'
 import { isStudentVisibleToCompany } from './talent-visibility'
 import { canSeeIdentity, canSeeIdentityMany } from './contact-access'
 import { toTalentCard } from '../serializers/talent-card'
@@ -12,14 +15,6 @@ import { createNotification, buildEmployerStudentPayload } from './notifications
 import { sendNotificationEmail } from './notify'
 import { logger } from '../lib/logger'
 import type { TalentCard } from '../serializers/talent-card'
-
-/** Returns start of current month in Asia/Kuala_Lumpur (UTC+8) expressed as UTC. */
-function klMonthStartUtc(): Date {
-  const now = new Date()
-  const klMs = now.getTime() + 8 * 60 * 60 * 1000
-  const klNow = new Date(klMs)
-  return new Date(Date.UTC(klNow.getUTCFullYear(), klNow.getUTCMonth(), 1) - 8 * 60 * 60 * 1000)
-}
 
 export interface SendInvitationInput {
   studentId: string
@@ -43,25 +38,33 @@ export async function sendInvitation(
 ): Promise<SendInvitationResult> {
   const message = input.message?.trim() ?? null
 
-  // Verify job belongs to this company and is published + not past deadline
-  const now = new Date()
-  const job = await db.job.findUnique({
-    where: { id: input.jobId },
-    select: { id: true, companyId: true, status: true, deadline: true },
-  })
-  if (!job || job.companyId !== ctx.companyId || job.status !== 'PUBLISHED' || (job.deadline !== null && job.deadline <= now)) {
-    throw new NotFoundError('Job not found or not accepting invitations')
-  }
-
-  // Visibility check: same error as "student not found" to avoid leaking existence
-  const visible = await isStudentVisibleToCompany(input.studentId, ctx.companyId)
-  if (!visible) throw new NotFoundError('Student not found')
-
-  const quota = await getSetting<number>('invitations.freeMonthlyQuota', 20)
-  const expireDays = await getSetting<number>('invitations.expireDays', 14)
-
   const result = await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.CREDIT, ctx.companyId)
     await lockXact(tx, LOCK_NS.INVITATION, ctx.companyId)
+    const now = new Date()
+    const member = await tx.companyMember.findUnique({
+      where: { companyId_userId: { companyId: ctx.companyId, userId: ctx.userId } },
+      select: {
+        user: { select: { status: true, role: true } },
+        company: { select: { isActive: true, verificationStatus: true } },
+      },
+    })
+    if (!member || member.user.status !== 'ACTIVE' || member.user.role !== 'EMPLOYER'
+      || !member.company.isActive || member.company.verificationStatus !== 'VERIFIED') throw new ForbiddenError()
+    const job = await tx.job.findUnique({
+      where: { id: input.jobId }, select: { companyId: true, status: true, deadline: true },
+    })
+    if (!job || job.companyId !== ctx.companyId || job.status !== 'PUBLISHED'
+      || (job.deadline !== null && job.deadline <= now)) throw new NotFoundError('Job not found or not accepting invitations')
+    if (!await isStudentVisibleToCompany(input.studentId, ctx.companyId, tx)) throw new NotFoundError('Student not found')
+
+    const application = await tx.application.findUnique({
+      where: { jobId_studentId: { jobId: input.jobId, studentId: input.studentId } },
+      select: { status: true },
+    })
+    if (application && application.status !== 'WITHDRAWN') {
+      throw new DuplicateApplicationError()
+    }
 
     // Idempotency: return existing SENT invitation for same company+student+job
     const existing = await tx.invitation.findFirst({
@@ -70,6 +73,7 @@ export async function sendInvitation(
         studentId: input.studentId,
         jobId: input.jobId,
         status: InvitationStatus.SENT,
+        expiresAt: { gt: now },
       },
       select: { id: true },
     })
@@ -78,14 +82,19 @@ export async function sendInvitation(
     }
 
     // Count quota: invitations created this KL month (any status counts towards quota)
-    const monthStart = klMonthStartUtc()
+    const { invitationQuota: quota } = await resolveCompanyEntitlements(tx, { companyId: ctx.companyId, now })
+    const { start, end } = klMonthBounds(now)
     const usedThisMonth = await tx.invitation.count({
-      where: { companyId: ctx.companyId, createdAt: { gte: monthStart } },
+      where: { companyId: ctx.companyId, createdAt: { gte: start, lt: end } },
     })
-    if (usedThisMonth >= quota) {
+    if (quota !== null && usedThisMonth >= quota) {
       throw new InvitationQuotaError()
     }
 
+    const expiry = z.number().int().positive().max(365).safeParse(
+      await getSetting<unknown>('invitations.expireDays', 14, { tx, fresh: true }),
+    )
+    const expireDays = expiry.success ? expiry.data : 14
     const expiresAt = new Date(now.getTime() + expireDays * 24 * 60 * 60 * 1000)
 
     const inv = await tx.invitation.create({
@@ -97,12 +106,13 @@ export async function sendInvitation(
         message,
         status: InvitationStatus.SENT,
         expiresAt,
+        createdAt: now,
       },
       select: { id: true },
     })
 
     return { invitationId: inv.id, alreadyExists: false }
-  })
+  }, { maxWait: 10_000, timeout: 15_000 })
 
   // Post-commit: notify student about new invitation (skip if idempotent return)
   if (!result.alreadyExists) {
@@ -190,11 +200,22 @@ export async function acceptInvitation(
     applicationId = existing.id
   }
 
-  // Conditional update: a concurrent accept/decline or the expiry job may have got there first.
-  const updated = await db.invitation.updateMany({
+  // Keep the unique application link on the first invitation. A losing concurrent accept
+  // can still accept its own invitation, but must re-check status and expiry on the retry.
+  const markAccepted = (linkedApplicationId: string | null) => db.invitation.updateMany({
     where: { id: inv.id, status: InvitationStatus.SENT, expiresAt: { gt: new Date() } },
-    data: { status: InvitationStatus.ACCEPTED, applicationId, respondedAt: new Date() },
+    data: { status: InvitationStatus.ACCEPTED, applicationId: linkedApplicationId, respondedAt: new Date() },
   })
+  let updated
+  try {
+    updated = await markAccepted(applicationId)
+  } catch (err) {
+    if (!(err instanceof Prisma.PrismaClientKnownRequestError) || err.code !== 'P2002' ||
+      !Array.isArray(err.meta?.target) || !err.meta.target.includes('applicationId')) {
+      throw err
+    }
+    updated = await markAccepted(null)
+  }
   if (updated.count === 0) {
     throw new ForbiddenError('Invitation already responded to')
   }
@@ -482,11 +503,14 @@ export async function listCompanyInvitations(ctx: { userId: string; companyId: s
 }
 
 /** Returns how many invitations this company has sent in the current KL calendar month. */
-export async function getMonthlyInvitationUsage(companyId: string): Promise<{ used: number; quota: number }> {
-  const quota = await getSetting<number>('invitations.freeMonthlyQuota', 20)
-  const monthStart = klMonthStartUtc()
-  const used = await db.invitation.count({
-    where: { companyId, createdAt: { gte: monthStart } },
+export async function getMonthlyInvitationUsage(companyId: string): Promise<{ used: number; quota: number | null }> {
+  return db.$transaction(async tx => {
+    const now = new Date()
+    const { invitationQuota: quota } = await resolveCompanyEntitlements(tx, { companyId, now })
+    const { start, end } = klMonthBounds(now)
+    const used = await tx.invitation.count({
+      where: { companyId, createdAt: { gte: start, lt: end } },
+    })
+    return { used, quota }
   })
-  return { used, quota }
 }

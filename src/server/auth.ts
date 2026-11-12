@@ -1,9 +1,10 @@
 import 'server-only'
 import { after } from 'next/server'
 import { betterAuth } from 'better-auth'
-import { createAuthMiddleware, APIError } from 'better-auth/api'
+import { createAuthMiddleware, APIError, getSessionFromCtx, setShouldSkipSessionRefresh } from 'better-auth/api'
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { emailOTP } from 'better-auth/plugins/email-otp'
+import { twoFactor } from 'better-auth/plugins/two-factor'
 import { db } from './db'
 import { env } from '@/env'
 import { createEmailProvider } from '@/lib/email'
@@ -19,6 +20,11 @@ import { logger } from './lib/logger'
 import { alert } from './lib/alert'
 
 const emailProvider = createEmailProvider()
+const emailVerificationProvider = createEmailProvider({
+  provider: env.EMAIL_VERIFICATION_PROVIDER,
+  apiKey: env.EMAIL_VERIFICATION_RESEND_API_KEY,
+  from: env.EMAIL_VERIFICATION_FROM,
+})
 
 // Wraps after() with a fallback for non-request contexts (worker, scripts, tests that don't mock next/server).
 function sendEmailAfterResponse(fn: () => Promise<void>): void {
@@ -79,6 +85,37 @@ const beforeHook = createAuthMiddleware(async (ctx) => {
   // --- Force revokeOtherSessions for /change-password regardless of client input ---
   if (path === '/change-password' && typeof body === 'object' && body !== null) {
     ;(body as Record<string, unknown>).revokeOtherSessions = true
+  }
+
+  // Enforce the absolute lifetime on Better Auth's endpoints, including legacy
+  // seven-day sessions, while keeping credential-based recovery available.
+  const recoveryPath = ['/sign-in/email', '/sign-out', '/request-password-reset', '/reset-password', '/reset-password/:token'].includes(path)
+  const session = recoveryPath ? null : await getSessionFromCtx(ctx, { disableCookieCache: true, disableRefresh: true })
+  if (session?.user.role === 'ADMIN') {
+    const age = Date.now() - new Date(session.session.createdAt).getTime()
+    if (!Number.isFinite(age) || age < 0 || age >= 12 * 3600_000) {
+      throw new APIError('UNAUTHORIZED', { code: 'ADMIN_SESSION_EXPIRED', message: 'Admin session expired' })
+    }
+    // The global seven-day refresh calculation would otherwise write on every
+    // twelve-hour admin session read. This flag is local to the current request.
+    await setShouldSkipSessionRefresh(true)
+  } else {
+    // The probe must not change student/employer sliding-session behavior.
+    ctx.context.session = null
+  }
+
+  // Enrollment is password-confirmed and requires an existing admin session.
+  // Verification uses the plugin's signed challenge cookie after Turnstile-protected login.
+  if (path === '/two-factor/enable') {
+    const user = session && await db.user.findUnique({ where: { id: session.user.id }, select: { role: true, status: true } })
+    if (!session || !user || user.role !== 'ADMIN' || user.status !== 'ACTIVE' ||
+      Date.now() - new Date(session.session.createdAt).getTime() >= 12 * 3600_000) {
+      throw new APIError('FORBIDDEN', { code: 'FORBIDDEN', message: 'Admin session required' })
+    }
+  }
+  if (path.startsWith('/two-factor/') && body) {
+    // Every admin login must complete its second factor; never issue trusted-device cookies.
+    body.trustDevice = false
   }
 })
 
@@ -154,6 +191,12 @@ export const auth = betterAuth({
     // changeEmail plugin paths: not wired in UI; disable so they don't route
     '/email-otp/request-email-change',
     '/email-otp/change-email',
+    '/two-factor/disable',
+    '/two-factor/get-totp-uri',
+    '/two-factor/send-otp',
+    '/two-factor/verify-otp',
+    '/two-factor/generate-backup-codes',
+    '/two-factor/view-backup-codes',
   ],
 
   // Connect Better Auth's internal logger to the app logger (suppresses raw messages in prod).
@@ -215,7 +258,7 @@ export const auth = betterAuth({
   emailVerification: {
     sendVerificationEmail: async ({ user, url }) => {
       sendEmailAfterResponse(async () => {
-        await emailProvider
+        await emailVerificationProvider
           .sendEmail({
             to: user.email,
             subject: 'Verify your FindMYJob account',
@@ -269,6 +312,10 @@ export const auth = betterAuth({
   },
 
   session: {
+    freshAge: 600,
+    additionalFields: {
+      twoFactorVerifiedAt: { type: 'date', required: false, input: false },
+    },
     // cookieCache disabled per ARCHITECTURE §5.11
     cookieCache: { enabled: false },
   },
@@ -305,10 +352,18 @@ export const auth = betterAuth({
       '/email-otp/send-verification-otp': { window: 60, max: 3 },
       '/request-password-reset': { window: 60, max: 3 },
       '/send-verification-email': { window: 60, max: 3 },
+      '/two-factor/enable': { window: 60, max: 5 },
+      '/two-factor/verify-totp': { window: 60, max: 5 },
+      '/two-factor/verify-backup-code': { window: 60, max: 5 },
     },
   },
 
   plugins: [
+    twoFactor({
+      issuer: 'FindMYJob',
+      accountLockout: { enabled: true, maxFailedAttempts: 5, durationSeconds: 900 },
+      backupCodeOptions: { storeBackupCodes: 'encrypted' },
+    }),
     emailOTP({
       sendVerificationOTP: async ({ email, otp }) => {
         sendEmailAfterResponse(async () => {
@@ -374,20 +429,32 @@ export const auth = betterAuth({
     session: {
       create: {
         // Reject session creation for non-ACTIVE users (suspended/deleted accounts)
-        before: async (data) => {
+        before: async (data, ctx) => {
           const user = await db.user.findUnique({
             where: { id: data.userId },
-            select: { status: true },
+            select: { status: true, role: true },
           })
           if (!user || user.status !== 'ACTIVE') {
             throw new APIError('FORBIDDEN', { message: 'Account suspended', code: 'ACCOUNT_SUSPENDED' })
           }
+          const verified = ctx?.path === '/two-factor/verify-totp' || ctx?.path === '/two-factor/verify-backup-code'
+          const now = new Date()
+          return { data: {
+            ...data,
+            twoFactorVerifiedAt: verified ? now : null,
+            ...(user.role === 'ADMIN' ? { expiresAt: new Date(Math.min(data.expiresAt.getTime(), new Date(data.createdAt).getTime() + 12 * 3600_000)) } : {}),
+          } }
         },
         after: async (session, ctx?: any) => {
           if (!session.userId) return
           // Sessions created during /change-password are not new logins.
           const path: string = ctx?.path ?? ''
           if (path === '/change-password') return
+          // The plugin discards this provisional password session when a second factor is required.
+          if (path === '/sign-in/email') {
+            const user = await db.user.findUnique({ where: { id: session.userId }, select: { twoFactorEnabled: true } })
+            if (user?.twoFactorEnabled) return
+          }
           // Prefer ctx.headers (top-level in newer BA versions) before ctx.request.headers.
           // session.ipAddress may be empty string or a /64-truncated IPv6 depending on BA version.
           const reqHeaders: Headers | undefined = ctx?.headers ?? ctx?.request?.headers
@@ -409,6 +476,18 @@ export const auth = betterAuth({
           ])
         },
       },
+      update: {
+        before: async (data, ctx) => {
+          const active = ctx?.context.session
+          if (!active || !data.expiresAt) return
+          const user = await db.user.findUnique({ where: { id: active.user.id }, select: { role: true } })
+          if (user?.role !== 'ADMIN') return
+          return { data: {
+            ...data,
+            expiresAt: new Date(Math.min(new Date(data.expiresAt).getTime(), new Date(active.session.createdAt).getTime() + 12 * 3600_000)),
+          } }
+        },
+      },
     },
   },
 })
@@ -416,5 +495,10 @@ export const auth = betterAuth({
 export type Session = typeof auth.$Infer.Session
 
 export async function getSession(headers: Headers) {
-  return auth.api.getSession({ headers })
+  try {
+    return await auth.api.getSession({ headers })
+  } catch (error) {
+    if (error instanceof APIError && error.body?.code === 'ADMIN_SESSION_EXPIRED') return null
+    throw error
+  }
 }

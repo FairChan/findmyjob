@@ -5,7 +5,14 @@ import crypto from 'crypto'
 vi.mock('@/env', () => ({ env: {} }))
 
 // ---- Mock db ----
+const mockTx = vi.hoisted(() => ({
+  $executeRaw: vi.fn(),
+  user: { findUnique: vi.fn() },
+  studentProfile: { update: vi.fn() },
+  semanticIndex: { updateMany: vi.fn() },
+}))
 const mockDb = vi.hoisted(() => ({
+  $transaction: vi.fn(),
   school: { findUnique: vi.fn() },
   studentProfile: {
     findFirst: vi.fn(),
@@ -71,6 +78,11 @@ function hashOtp(otp: string) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockDb.$transaction.mockImplementation(async (fn: (tx: typeof mockTx) => Promise<void>) => fn(mockTx))
+  mockTx.$executeRaw.mockResolvedValue(1)
+  mockTx.user.findUnique.mockResolvedValue({ role: 'STUDENT', status: 'ACTIVE' })
+  mockTx.studentProfile.update.mockResolvedValue({})
+  mockTx.semanticIndex.updateMany.mockResolvedValue({ count: 0 })
   mockGetSetting.mockResolvedValue(5)
   mockCheckRateLimit.mockResolvedValue({ allowed: true, remaining: 4, resetAt: 0, count: 1 })
   mockHitBucket.mockResolvedValue({ allowed: true, remaining: 4, resetAt: 0, count: 1 })
@@ -188,10 +200,19 @@ describe('verifySchoolOtp', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(makeOtpRow(CORRECT_OTP))
     await expect(verifySchoolOtp(ctx, { otp: CORRECT_OTP })).resolves.toBeUndefined()
-    expect(mockDb.studentProfile.update).toHaveBeenCalledOnce()
-    const call = mockDb.studentProfile.update.mock.calls[0][0]
+    expect(mockDb.$transaction).toHaveBeenCalledOnce()
+    expect(mockTx.user.findUnique).toHaveBeenCalledExactlyOnceWith({ where: { id: USER_ID }, select: { role: true, status: true } })
+    expect(mockTx.studentProfile.update).toHaveBeenCalledOnce()
+    expect(mockDb.studentProfile.update).not.toHaveBeenCalled()
+    const call = mockTx.studentProfile.update.mock.calls[0][0]
     expect(call.data.schoolVerifiedAt).toBeInstanceOf(Date)
     expect(call.data.schoolEmail).toBe('student@xmu.edu.my')
+    expect(call.where).toEqual({ userId: USER_ID })
+    expect(call.data.schoolId).toBe(SCHOOL_ID)
+    expect(call.data.editRevision).toEqual({ increment: 1 })
+    expect(mockTx.semanticIndex.updateMany).toHaveBeenCalledExactlyOnceWith({
+      where: { student: { userId: USER_ID } }, data: expect.objectContaining({ state: 'CANCELLED', generation: { increment: 1 } }),
+    })
     expect(mockClearRateLimit).toHaveBeenCalledOnce()
   })
 
@@ -240,6 +261,8 @@ describe('verifySchoolOtp', () => {
     })
     await expect(verifySchoolOtp(ctx, { otp: CORRECT_OTP })).rejects.toThrow(RateLimitedError)
     expect(mockDb.studentProfile.update).not.toHaveBeenCalled()
+    expect(mockDb.$transaction).not.toHaveBeenCalled()
+    expect(mockTx.studentProfile.update).not.toHaveBeenCalled()
   })
 
   it('throws ValidationError when unique constraint is violated (another account verified same email)', async () => {
@@ -247,8 +270,11 @@ describe('verifySchoolOtp', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(makeOtpRow(CORRECT_OTP))
     const prismaErr = Object.assign(new Error('Unique constraint'), { code: 'P2002' })
-    mockDb.studentProfile.update.mockRejectedValue(prismaErr)
+    mockTx.studentProfile.update.mockRejectedValue(prismaErr)
     await expect(verifySchoolOtp(ctx, { otp: CORRECT_OTP })).rejects.toThrow(ValidationError)
+    expect(mockDb.$transaction).toHaveBeenCalledOnce()
+    expect(mockTx.studentProfile.update).toHaveBeenCalledOnce()
+    expect(mockTx.semanticIndex.updateMany).not.toHaveBeenCalled()
   })
 
   it('requestSchoolOtp expiresAt is ~10 minutes from now', async () => {

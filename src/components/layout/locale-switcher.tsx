@@ -14,15 +14,15 @@ export default function LocaleSwitcher({ currentLocale }: { currentLocale: Local
   }
 
   return (
-    <div className="flex items-center gap-1" aria-label={t('label')}>
+    <div className="flex items-center rounded-full bg-muted p-0.5" aria-label={t('label')}>
       {routing.locales.map((locale) => (
         <button
           key={locale}
           onClick={() => handleChange(locale)}
           className={
             locale === currentLocale
-              ? 'text-sm font-medium text-brand'
-              : 'text-sm text-muted-foreground hover:text-foreground'
+              ? 'min-h-7 rounded-full bg-background px-2.5 text-xs font-medium text-foreground shadow-sm'
+              : 'min-h-7 rounded-full px-2.5 text-xs text-muted-foreground transition-colors hover:text-foreground'
           }
           aria-current={locale === currentLocale ? 'true' : undefined}
         >

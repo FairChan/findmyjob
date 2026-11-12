@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import { requireAdmin } from '@/server/authz'
 import { getJobForReview } from '@/server/services/review-jobs'
 import { ReviewJobForm } from './review-job-form'
+import { formatKLDate } from '@/lib/format-date'
 
 export default async function AdminJobReviewPage({
   params,
@@ -20,7 +21,7 @@ export default async function AdminJobReviewPage({
   if (!job) return notFound()
 
   return (
-    <main id="main-content" className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-4xl mx-auto">
       <Link
         href={`/${locale}/admin/jobs`}
         className="text-sm text-muted-foreground hover:underline mb-4 inline-block"
@@ -30,7 +31,7 @@ export default async function AdminJobReviewPage({
 
       <h1 className="text-2xl font-bold mb-6">{t('detailTitle')}</h1>
 
-      <section className="rounded-lg border p-5 mb-6 space-y-3">
+      <section className="rounded-card border p-5 mb-6 space-y-3">
         <dl className="grid grid-cols-[auto,1fr] gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">{t('titleLabel')}</dt>
           <dd className="font-medium">{job.title}</dd>
@@ -80,7 +81,7 @@ export default async function AdminJobReviewPage({
           {job.deadline && (
             <>
               <dt className="text-muted-foreground">{t('deadlineLabel')}</dt>
-              <dd>{job.deadline.toLocaleDateString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' })}</dd>
+              <dd>{formatKLDate(job.deadline, locale)}</dd>
             </>
           )}
 
@@ -132,6 +133,6 @@ export default async function AdminJobReviewPage({
       ) : (
         <p className="text-sm text-muted-foreground">{t('noJob')}</p>
       )}
-    </main>
+    </div>
   )
 }

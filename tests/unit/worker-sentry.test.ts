@@ -17,9 +17,15 @@ vi.mock('@/server/lib/healthchecks', () => ({
 
 const mockExecuteRaw = vi.fn()
 
+vi.mock('@/server/jobs/export-user-data', () => ({ runExportUserData: vi.fn() }))
+vi.mock('@/server/jobs/purge-deleted-accounts', () => ({ runPurgeDeletedAccounts: vi.fn() }))
+
 vi.mock('@/server/db', () => ({
   db: {
     $executeRaw: mockExecuteRaw,
+    systemSetting: {
+      findUnique: vi.fn().mockResolvedValue(null),
+    },
   },
 }))
 
@@ -36,8 +42,8 @@ describe('registerJobs error capture', () => {
     const mockBoss = {
       createQueue: vi.fn().mockResolvedValue(undefined),
       schedule: vi.fn().mockResolvedValue(undefined),
-      work: vi.fn().mockImplementation(async (queue: string, handler: (jobs: unknown[]) => Promise<void>) => {
-        workHandlers[queue] = handler
+      work: vi.fn().mockImplementation(async (queue: string, optionsOrHandler: unknown, handler?: (jobs: unknown[]) => Promise<void>) => {
+        workHandlers[queue] = (handler ?? optionsOrHandler) as (jobs: unknown[]) => Promise<void>
       }),
     }
 
@@ -56,8 +62,8 @@ describe('registerJobs error capture', () => {
     const mockBoss = {
       createQueue: vi.fn().mockResolvedValue(undefined),
       schedule: vi.fn().mockResolvedValue(undefined),
-      work: vi.fn().mockImplementation(async (queue: string, handler: (jobs: unknown[]) => Promise<void>) => {
-        workHandlers[queue] = handler
+      work: vi.fn().mockImplementation(async (queue: string, optionsOrHandler: unknown, handler?: (jobs: unknown[]) => Promise<void>) => {
+        workHandlers[queue] = (handler ?? optionsOrHandler) as (jobs: unknown[]) => Promise<void>
       }),
     }
 

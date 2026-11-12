@@ -1,9 +1,14 @@
 'use client'
 import { useState, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
+import { BadgeCheck } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { FIELD_COMPACT_CLASS } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { cn } from '@/lib/utils'
 import {
   requestSchoolOtpAction,
   verifySchoolOtpAction,
@@ -91,28 +96,29 @@ export default function SchoolVerifyForm({ schools, locale, initiallyVerified, v
 
   if (step === 'done') {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-6">
-        <p className="font-medium text-green-800">
+      <Card>
+        <Badge tone="success">
+          <BadgeCheck aria-hidden="true" />
           {initiallyVerified && !sentEmail ? t('alreadyVerified') : t('successMessage')}
-        </p>
+        </Badge>
         {(verifiedEmail || sentEmail) && (
-          <p className="mt-1 text-sm text-green-700">{verifiedEmail ?? sentEmail}</p>
+          <p className="mt-3 break-all text-body font-medium">{verifiedEmail ?? sentEmail}</p>
         )}
-        <Button variant="ghost" size="sm" className="mt-3" onClick={handleResend}>
+        <Button variant="outline" size="sm" className="mt-5" onClick={handleResend}>
           {t('changeEmail')}
         </Button>
-      </div>
+      </Card>
     )
   }
 
   if (step === 'otp') {
     return (
       <form onSubmit={handleVerify} className="space-y-6">
-        <p className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+        <p className="rounded-control bg-brand-muted p-4 text-sm text-brand-muted-foreground">
           {t('otpSent', { email: sentEmail })}
         </p>
 
-        <div>
+        <Card>
           <Label htmlFor="school-otp">{t('otpLabel')}</Label>
           <Input
             id="school-otp"
@@ -126,12 +132,21 @@ export default function SchoolVerifyForm({ schools, locale, initiallyVerified, v
             className="mt-1"
             required
           />
-        </div>
+        </Card>
 
-        {error && <p className="text-sm text-red-600">{t(error as Parameters<typeof t>[0])}</p>}
+        {error && (
+          <p role="alert" className="text-sm text-destructive">
+            {t(error as Parameters<typeof t>[0])}
+          </p>
+        )}
 
-        <div className="flex items-center gap-3">
-          <Button type="submit" disabled={pendingVerify || otp.trim().length === 0} className="min-w-24">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="submit"
+            variant="brand"
+            disabled={pendingVerify || otp.trim().length === 0}
+            className="h-11 min-w-28"
+          >
             {pendingVerify ? t('verifyPending') : t('verifyButton')}
           </Button>
           <Button type="button" variant="ghost" onClick={handleResend}>
@@ -144,46 +159,53 @@ export default function SchoolVerifyForm({ schools, locale, initiallyVerified, v
 
   return (
     <form onSubmit={handleSend} className="space-y-6">
-      <div>
-        <Label htmlFor="school-select">{t('schoolLabel')}</Label>
-        <select
-          id="school-select"
-          value={schoolId}
-          onChange={(e) => setSchoolId(e.target.value)}
-          required
-          className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <option value="" disabled>
-            {t('schoolPlaceholder')}
-          </option>
-          {schools.map((s) => (
-            <option key={s.id} value={s.id}>
-              {locale === 'zh' ? s.nameZh : s.nameEn}
+      <Card className="space-y-4">
+        <div>
+          <Label htmlFor="school-select">{t('schoolLabel')}</Label>
+          <select
+            id="school-select"
+            value={schoolId}
+            onChange={(e) => setSchoolId(e.target.value)}
+            required
+            className={cn(FIELD_COMPACT_CLASS, 'mt-1')}
+          >
+            <option value="" disabled>
+              {t('schoolPlaceholder')}
             </option>
-          ))}
-        </select>
-      </div>
+            {schools.map((s) => (
+              <option key={s.id} value={s.id}>
+                {locale === 'zh' ? s.nameZh : s.nameEn}
+              </option>
+            ))}
+          </select>
+        </div>
 
-      <div>
-        <Label htmlFor="school-email">{t('emailLabel')}</Label>
-        <Input
-          id="school-email"
-          type="email"
-          value={schoolEmail}
-          onChange={(e) => setSchoolEmail(e.target.value)}
-          placeholder={t('emailPlaceholder')}
-          autoComplete="email"
-          className="mt-1"
-          required
-        />
-      </div>
+        <div>
+          <Label htmlFor="school-email">{t('emailLabel')}</Label>
+          <Input
+            id="school-email"
+            type="email"
+            value={schoolEmail}
+            onChange={(e) => setSchoolEmail(e.target.value)}
+            placeholder={t('emailPlaceholder')}
+            autoComplete="email"
+            className="mt-1"
+            required
+          />
+        </div>
+      </Card>
 
-      {error && <p className="text-sm text-red-600">{t(error as Parameters<typeof t>[0])}</p>}
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {t(error as Parameters<typeof t>[0])}
+        </p>
+      )}
 
       <Button
         type="submit"
+        variant="brand"
         disabled={pendingSend || !schoolId || !schoolEmail.trim()}
-        className="min-w-36"
+        className="h-11 min-w-36"
       >
         {pendingSend ? t('sendOtpPending') : t('sendOtpButton')}
       </Button>

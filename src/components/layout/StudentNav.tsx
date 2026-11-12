@@ -1,14 +1,15 @@
 import { getTranslations } from 'next-intl/server'
-import { Link } from '@/i18n/navigation'
 import { db } from '@/server/db'
+import { AppNav, type AppNavItem } from './app-nav'
 
 interface Props {
   userId: string
   locale: string
 }
 
-export default async function StudentNav({ userId, locale }: Props) {
+export default async function StudentNav({ userId }: Props) {
   const t = await getTranslations('nav')
+  const tApp = await getTranslations('appNav')
   const tInv = await getTranslations('invitations')
 
   const [unreadCount, pendingInvitationCount] = await Promise.all([
@@ -19,69 +20,33 @@ export default async function StudentNav({ userId, locale }: Props) {
     }),
   ])
 
-  return (
-    <nav
-      aria-label={t('notifications')}
-      className="border-b bg-muted/40"
-    >
-      <div className="container mx-auto flex max-w-5xl items-center gap-4 overflow-x-auto px-4 py-1 text-sm">
-        <Link
-          href="/s/profile"
-          className="py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('myProfile')}
-        </Link>
-        <Link
-          href="/s/invitations"
-          className="relative py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
-          aria-label={
-            pendingInvitationCount > 0
-              ? `${tInv('navInvitations')} (${pendingInvitationCount})`
-              : tInv('navInvitations')
-          }
-        >
-          {tInv('navInvitations')}
-          {pendingInvitationCount > 0 && (
-            <span
-              aria-hidden="true"
-              className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-medium text-destructive-foreground"
-            >
-              {pendingInvitationCount > 99 ? '99+' : pendingInvitationCount}
-            </span>
-          )}
-        </Link>
-        <Link
-          href="/s/notifications"
-          className="relative py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
-          aria-label={
-            unreadCount > 0
-              ? `${t('notifications')} (${unreadCount})`
-              : t('notifications')
-          }
-        >
-          {t('notifications')}
-          {unreadCount > 0 && (
-            <span
-              aria-hidden="true"
-              className="ml-1.5 inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground"
-            >
-              {unreadCount > 99 ? '99+' : unreadCount}
-            </span>
-          )}
-        </Link>
-        <Link
-          href="/s/applications"
-          className="py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('myApplications')}
-        </Link>
-        <Link
-          href="/s/privacy"
-          className="py-1 shrink-0 font-medium text-muted-foreground hover:text-foreground transition-colors"
-        >
-          {t('privacy')}
-        </Link>
-      </div>
-    </nav>
-  )
+  const items: AppNavItem[] = [
+    { href: '/s', label: tApp('dashboard'), icon: 'dashboard', exact: true },
+    { href: '/jobs', label: tApp('findJobs'), icon: 'search' },
+    { href: '/s/profile', label: t('myProfile'), icon: 'profile' },
+    { href: '/s/resume', label: tApp('resume'), icon: 'resume' },
+    { href: '/s/applications', label: t('myApplications'), icon: 'applications' },
+    {
+      href: '/s/invitations',
+      label: tInv('navInvitations'),
+      icon: 'invitations',
+      count: pendingInvitationCount,
+      ariaLabel:
+        pendingInvitationCount > 0
+          ? `${tInv('navInvitations')} (${pendingInvitationCount})`
+          : undefined,
+    },
+    {
+      href: '/s/notifications',
+      label: t('notifications'),
+      icon: 'notifications',
+      count: unreadCount,
+      ariaLabel: unreadCount > 0 ? `${t('notifications')} (${unreadCount})` : undefined,
+    },
+    { href: '/s/invite', label: tApp('inviteFriends'), icon: 'invite' },
+    { href: '/s/privacy', label: t('privacy'), icon: 'privacy' },
+    { href: '/s/settings', label: tApp('settings'), icon: 'settings' },
+  ]
+
+  return <AppNav label={t('studentNavigation')} items={items} />
 }

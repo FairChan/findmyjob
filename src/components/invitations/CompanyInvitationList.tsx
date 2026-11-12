@@ -7,10 +7,10 @@ function formatDate(d: Date): string {
 }
 
 const STATUS_CLASSES: Record<string, string> = {
-  SENT: 'bg-orange-100 text-orange-700',
-  ACCEPTED: 'bg-green-100 text-green-700',
-  DECLINED: 'bg-gray-100 text-gray-600',
-  EXPIRED: 'bg-gray-100 text-gray-400',
+  SENT: 'bg-warning-muted text-warning',
+  ACCEPTED: 'bg-success-muted text-success',
+  DECLINED: 'bg-muted text-muted-foreground',
+  EXPIRED: 'bg-muted text-muted-foreground',
 }
 
 interface Props {
@@ -30,7 +30,7 @@ export function CompanyInvitationList({ invitations, locale }: Props) {
 
   if (invitations.length === 0) {
     return (
-      <div className="rounded-lg border p-8 text-center text-muted-foreground">
+      <div className="rounded-card border p-8 text-center text-muted-foreground">
         <p className="font-medium">{t('companyEmpty')}</p>
       </div>
     )
@@ -39,7 +39,7 @@ export function CompanyInvitationList({ invitations, locale }: Props) {
   return (
     <ul className="space-y-3">
       {invitations.map((inv) => (
-        <li key={inv.id} className="rounded-lg border bg-card p-4">
+        <li key={inv.id} className="rounded-card border bg-card p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{inv.student.name}</p>
@@ -59,7 +59,7 @@ export function CompanyInvitationList({ invitations, locale }: Props) {
             </span>
           </div>
           {inv.message && (
-            <blockquote className="mt-2 rounded-md bg-muted/40 p-2 text-sm italic text-muted-foreground">
+            <blockquote className="mt-2 rounded-control bg-muted/40 p-2 text-sm italic text-muted-foreground">
               &ldquo;{inv.message}&rdquo;
             </blockquote>
           )}

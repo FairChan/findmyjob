@@ -1,7 +1,9 @@
 'use client'
 import { useState, useTransition, KeyboardEvent, DragEvent } from 'react'
 import { useTranslations } from 'next-intl'
+import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
+import { FIELD_COMPACT_CLASS, TEXTAREA_CLASS } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { handleTagKeyDown } from '@/lib/tag-input'
@@ -40,6 +42,7 @@ type ExperienceEntry = {
 }
 
 function useSectionSave() {
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle')
 
@@ -48,6 +51,7 @@ function useSectionSave() {
     startTransition(async () => {
       const result = await fn()
       setStatus(result.ok ? 'success' : 'error')
+      if (result.ok) router.refresh()
     })
   }
 
@@ -64,7 +68,7 @@ function SectionStatus({
   errorLabel: string
 }) {
   if (status === 'success') {
-    return <span className="text-sm text-green-600" role="status">{successLabel}</span>
+    return <span className="text-sm text-success" role="status">{successLabel}</span>
   }
   if (status === 'error') {
     return <span className="text-sm text-destructive" role="alert">{errorLabel}</span>
@@ -277,15 +281,15 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
     return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value]
   }
 
-  const selectClass =
-    'mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring'
+  const selectClass = `mt-1 ${FIELD_COMPACT_CLASS}`
+  const textareaClass = `mt-1 ${TEXTAREA_CLASS}`
 
   return (
     <div className="space-y-8">
       {/* ---- Basic Info Section ---- */}
       <section aria-labelledby="section-basic">
         <div className="flex items-center justify-between mb-4">
-          <h2 id="section-basic" className="text-lg font-semibold">{t('sectionBasicInfo')}</h2>
+          <h2 id="section-basic" className="text-title">{t('sectionBasicInfo')}</h2>
           <div className="flex items-center gap-3">
             <SectionStatus
               status={basic.status}
@@ -302,7 +306,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
             </Button>
           </div>
         </div>
-        <div className="space-y-4 rounded-lg border p-4">
+        <div className="space-y-4 rounded-card bg-muted p-4 sm:p-6">
           <div>
             <Label htmlFor="pf-fullName">{tOb('fullNameLabel')} *</Label>
             <Input
@@ -433,7 +437,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
       {/* ---- Job Preferences Section ---- */}
       <section aria-labelledby="section-jobpref">
         <div className="flex items-center justify-between mb-4">
-          <h2 id="section-jobpref" className="text-lg font-semibold">{t('sectionJobPreferences')}</h2>
+          <h2 id="section-jobpref" className="text-title">{t('sectionJobPreferences')}</h2>
           <div className="flex items-center gap-3">
             <SectionStatus
               status={jobPref.status}
@@ -450,7 +454,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
             </Button>
           </div>
         </div>
-        <div className="space-y-4 rounded-lg border p-4">
+        <div className="space-y-4 rounded-card bg-muted p-4 sm:p-6">
           <div>
             <Label>{tOb('intentsLabel')} *</Label>
             <div className="mt-2 flex flex-col gap-2">
@@ -540,7 +544,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
       {/* ---- Skills & Languages Section ---- */}
       <section aria-labelledby="section-skills">
         <div className="flex items-center justify-between mb-4">
-          <h2 id="section-skills" className="text-lg font-semibold">{t('sectionSkills')}</h2>
+          <h2 id="section-skills" className="text-title">{t('sectionSkills')}</h2>
           <div className="flex items-center gap-3">
             <SectionStatus
               status={skillsSec.status}
@@ -552,7 +556,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
             </Button>
           </div>
         </div>
-        <div className="space-y-4 rounded-lg border p-4">
+        <div className="space-y-4 rounded-card bg-muted p-4 sm:p-6">
           <div>
             <Label>{tOb('languagesLabel')}</Label>
             <div className="mt-2 space-y-2">
@@ -571,7 +575,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                     onChange={(e) =>
                       setLanguages(languages.map((l, idx) => (idx === i ? { ...l, level: e.target.value } : l)))
                     }
-                    className="h-10 rounded-md border border-input bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="h-10 rounded-control border border-input bg-background px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
                   >
                     <option value="BASIC">{tOb('langLevelBasic')}</option>
                     <option value="CONVERSATIONAL">{tOb('langLevelConversational')}</option>
@@ -601,17 +605,17 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
           </div>
           <div>
             <Label>{tOb('skillsLabel')}</Label>
-            <div className="mt-1 flex flex-wrap gap-1 p-2 border rounded-md min-h-[42px]">
+            <div className="mt-1 flex min-h-[42px] flex-wrap gap-1 rounded-control border border-input bg-background p-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30">
               {skills.map((skill) => (
                 <span
                   key={skill}
-                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary"
+                  className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-foreground"
                 >
                   {skill}
                   <button
                     type="button"
                     onClick={() => setSkills(skills.filter((s) => s !== skill))}
-                    className="ml-0.5 text-primary/70 hover:text-primary min-w-[24px] min-h-[24px] flex items-center justify-center"
+                    className="ml-0.5 text-muted-foreground hover:text-foreground min-w-[24px] min-h-[24px] flex items-center justify-center"
                     aria-label={tOb('removeSkill', { skill })}
                   >
                     ×
@@ -649,7 +653,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
               placeholder={tOb('summaryPlaceholder')}
               maxLength={2000}
               rows={5}
-              className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              className={textareaClass}
             />
           </div>
         </div>
@@ -658,7 +662,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
       {/* ---- Education & Experience Section ---- */}
       <section aria-labelledby="section-experience">
         <div className="flex items-center justify-between mb-4">
-          <h2 id="section-experience" className="text-lg font-semibold">{t('sectionExperience')}</h2>
+          <h2 id="section-experience" className="text-title">{t('sectionExperience')}</h2>
           <div className="flex items-center gap-3">
             <SectionStatus
               status={expSec.status}
@@ -670,7 +674,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
             </Button>
           </div>
         </div>
-        <div className="space-y-6 rounded-lg border p-4">
+        <div className="space-y-6 rounded-card bg-muted p-4 sm:p-6">
           {/* Educations */}
           <div>
             <Label>{tOb('educationsLabel')}</Label>
@@ -683,7 +687,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                   onDragOver={educationDnd.handleDragOver}
                   onDrop={(e) => educationDnd.handleDrop(e, i)}
                   onDragEnd={educationDnd.handleDragEnd}
-                  className={`rounded-md border p-4 space-y-3 cursor-grab active:cursor-grabbing ${
+                  className={`rounded-control bg-background p-4 space-y-3 cursor-grab active:cursor-grabbing ${
                     educationDnd.dragSrcIdx === i ? 'opacity-50' : ''
                   }`}
                 >
@@ -758,7 +762,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                             ),
                           )
                         }
-                        className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        className={selectClass}
                       >
                         <option value=""></option>
                         <option value="FOUNDATION">{tOb('degreeLevelFoundation')}</option>
@@ -843,7 +847,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                       }
                       rows={2}
                       maxLength={1000}
-                      className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      className={textareaClass}
                     />
                   </div>
                 </div>
@@ -876,7 +880,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                   onDragOver={experienceDnd.handleDragOver}
                   onDrop={(e) => experienceDnd.handleDrop(e, i)}
                   onDragEnd={experienceDnd.handleDragEnd}
-                  className={`rounded-md border p-4 space-y-3 cursor-grab active:cursor-grabbing ${
+                  className={`rounded-control bg-background p-4 space-y-3 cursor-grab active:cursor-grabbing ${
                     experienceDnd.dragSrcIdx === i ? 'opacity-50' : ''
                   }`}
                 >
@@ -936,7 +940,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                             ),
                           )
                         }
-                        className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                        className={selectClass}
                       >
                         <option value="INTERNSHIP">{tOb('kindInternship')}</option>
                         <option value="WORK">{tOb('kindWork')}</option>
@@ -1020,7 +1024,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                       }
                       rows={2}
                       maxLength={1000}
-                      className="mt-1 flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      className={textareaClass}
                     />
                   </div>
                 </div>

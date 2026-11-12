@@ -1,7 +1,9 @@
 import { headers } from 'next/headers'
 import { notFound } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
+import { ChevronLeft } from 'lucide-react'
 import { Link } from '@/i18n/navigation'
+import { BACK_LINK_CLASS, WorkspacePage } from '@/components/layout/workspace-page'
 import { requireVerifiedCompany } from '@/server/authz'
 import { listJobApplicants } from '@/server/services/applicants'
 import { NotFoundError } from '@/server/errors'
@@ -30,17 +32,16 @@ export default async function ApplicantsPage({
   const { applicants, jobTitle } = result
 
   return (
-    <div className="container mx-auto max-w-6xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-3">
-        <Link
-          href={`/e/jobs`}
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          ← {t('backToJobs')}
+    <WorkspacePage
+      width="board"
+      title={t('title', { jobTitle })}
+      eyebrow={
+        <Link href={`/e/jobs`} className={BACK_LINK_CLASS}>
+          <ChevronLeft aria-hidden="true" className="size-4" />
+          {t('backToJobs')}
         </Link>
-      </div>
-      <h1 className="mb-6 text-2xl font-bold">{t('title', { jobTitle })}</h1>
-
+      }
+    >
       <ApplicantsBoard
         applicants={applicants}
         locale={locale}
@@ -89,6 +90,6 @@ export default async function ApplicantsPage({
         updateNoteAction={updateNoteAction}
         markViewedAction={markViewedAction}
       />
-    </div>
+    </WorkspacePage>
   )
 }

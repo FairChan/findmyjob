@@ -110,10 +110,29 @@ What we **do not** do:
 - We do not currently send marketing emails. If we introduce them (for example weekly job recommendations), we will ask for your separate consent, and you can unsubscribe at any time.
 - We do not currently send your data to any AI service. Before we do, we will update this policy and ask you to agree again.
 
+### 4.1 Optional AI resume parsing (off by default)
+
+This feature remains off by default. Once the provider, transfer arrangements and this policy have been reviewed and activation approved, you can give separate consent on the "My resume" page and explicitly request parsing of a particular resume. Declining does not affect manual profile editing, ordinary uploads or other job-seeking features. Registration, agreeing to this policy, joining the talent pool or uploading a file does not give consent to AI parsing. Consent alone sends no resume, and earlier uploads are not processed automatically.
+
+- We extract career-related text from your chosen PDF on our server and mask common contact details and URLs before sending it directly to the Anthropic API for suggestions, without the development-time AI relay. The request does not attach the original PDF, file name, storage path, internal platform IDs, full profile or data decrypted from the contact-details table. Automatic masking does not guarantee anonymity: text may still contain names, schools, employers or personal information that was not recognised. Please leave out the unnecessary data listed in section 3.4.
+- Suggestions cover only your headline, summary, skills, languages, education and experience, and may be wrong. You review, edit and select fields to save; only your confirmation puts those fields into your profile under its existing visibility rules. Completing a parse does not publish a profile automatically. Employer unlocks, applications and an administrator role do not grant access to private suggestions. You can view them yourself and receive available suggestions that still exist at the snapshot time in your own data export.
+- You can withdraw consent or discard a suggestion in the parsing area of "My resume". Deleting the source resume or requesting account deletion also clears related unconfirmed suggestions and invalidates unfinished tasks. Withdrawal remains available while the feature is off, but cannot recall text already sent to the provider or undo processing it has already accepted. To change or remove content you have confirmed into your profile, use ordinary profile editing.
+- We do not persist the full extracted text or the provider's raw reply in drafts, logs or notifications. Suggestion content is cleared after confirmation, discard or withdrawal, while necessary status and consent/audit records remain; see section 10 for retention. An export package already created may contain a snapshot from before withdrawal. Copies already downloaded, or download links already issued, cannot be recalled by withdrawing consent.
+- Anthropic's actual processing locations, retention, deletion arrangements, training use and transfer conditions still require verification; see sections 8 and 9. This feature is not a guarantee of zero retention or complete anonymity. This section covers optional resume parsing only; other AI uses would be disclosed separately.
+
+### 4.2 Optional AI job description assistant (off by default)
+
+Company members can choose this assistant when creating or editing a job. Disclosure and activation review must be completed first. Before each generation, you must read the notice and confirm that request. This confirmation applies only to that generation; it does not create continuing AI consent or use a student's resume-parsing consent. Declining or a generation failure does not affect manual job editing and saving.
+
+- The request sends only the current job title and the role notes you enter. Our server masks common contact details and URLs, then calls the Anthropic API directly without the development-time AI relay. Do not enter personal information, customer details or confidential material; automatic masking does not guarantee anonymity. Existing job-description text, student profiles, resumes and contact-table data are not sent automatically.
+- The Chinese and English text is a suggestion for human review, and you can edit each language. It fills the job description only after you click Apply, and you must still use the existing save or review-submission action. Generation and application never publish a job automatically. Unapplied suggestions remain only in this page's memory; the platform does not store a separate AI draft. A saved job follows the ordinary job-record rules.
+- Cancelling or closing the assistant discards the response from an unfinished request, but cannot recall text already sent to the provider or guarantee that its processing stops. Provider locations, retention, deletion, training use and transfer arrangements remain subject to verification under sections 8 and 9, 【TO VERIFY V9】. We do not promise zero retention or anonymity.
+
 ## 5. Legal basis and your consent
 
 - We mainly process your data on the basis of your consent. At sign-up you must tick to agree to the Terms of Use and this policy.
 - "Join the talent pool" is a separate, optional consent. It is unticked by default.
+- AI resume parsing requires its own separate, withdrawable consent and an explicit request; it is not bundled with registration, uploads or talent-pool consent (see 4.1).
 - The PDPA allows some processing without separate consent, for example to perform our contract with you (providing the service you asked for) or to comply with a legal obligation.
 - Each time you give or withdraw consent, we record the document version, time, IP address and browser information.
 - How to withdraw consent is explained in section 12.
@@ -125,7 +144,7 @@ What we **do not** do:
 You appear in the talent pool only if all of these are true: you chose to join it, your school is verified, your profile completeness is at least 60 points (may change), and your account is in good standing. Companies you have blocked cannot find you.
 
 - **Search card**: student ID, masked name (Chinese names show the surname plus "同学", including compound surnames; other names show initials only), school, level of study, major, graduation month and year, work authorisation, languages, skills, headline, last active time.
-- **Detail page**: the card, plus your experience (education, internships / work, projects, campus activities, awards) and a preview of your structured resume.
+- **Detail page**: the card, plus experience saved in your profile (education, internships / work, projects, campus activities, awards); private AI suggestions and historical machine-parsed content are not provided.
 - Any email address, phone number, URL or WeChat ID in free text is shown as "[已隐藏]" (hidden).
 - Employers cannot see your full name, contact details or original resume PDF.
 - Employers can filter by school, major, level of study, graduation year, job type wanted, languages, work authorisation, skills, preferred states, earliest start date and last active time. Some of these are not shown on the card, but employers can infer them from filter results.
@@ -136,6 +155,8 @@ You appear in the talent pool only if all of these are true: you chose to join i
 ### 6.2 After an employer unlocks you
 
 When a verified employer unlocks you using credits (given free during the pilot), it can see your full name and contact details and download your resume PDFs. Every page of a downloaded resume carries a watermark: "For {company name} recruitment only · {date} · {operator ID}".
+
+An unlock or application does not grant access to private AI suggestions or historical machine-parsed content. Your confirmed profile and original resume remain subject to the existing access rules.
 
 - A company needs to unlock a student only once; the unlock is shared within that company's team.
 - You are notified; "Who unlocked me" in your Privacy Centre lists the companies that unlocked you, and when.
@@ -190,7 +211,7 @@ If you think a company has misused your data, please tell us (【TO FILL F4: pri
 
 ## 8. Service providers (sub-processors)
 
-We give service providers only the data they need for their task. No service provider receives decrypted student contact details.
+We give service providers only the data they need for their task, without data decrypted from the student contact-details table. Personal information you write in resume text and the limits of automatic masking are described in section 4.1.
 
 **Providers that process personal data**
 
@@ -215,14 +236,15 @@ We give service providers only the data they need for their task. No service pro
 | Provider | Planned use | Before enabling |
 |---|---|---|
 | Stripe | Online payments in the paid phase; employers enter payment details on Stripe's page | Update this policy |
-| Anthropic API | Resume parsing, generating job descriptions | Update this policy and ask you to agree again |
+| Anthropic API | Optional private resume parsing (section 4.1); optional Chinese and English job-description suggestions using only the current job title and role notes (section 4.2) | Review and publish this policy; parsing needs separate consent and the job assistant needs confirmation for each generation; 【TO VERIFY V9: the project's actual processing/storage locations, retention and deletion, training use, logging exceptions and transfer arrangements】. The official [API data-retention documentation](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention.md) is a verification reference, not a conclusion about this project's contract |
 
 ## 9. Cross-border transfers
 
 - The database, files and backups are all kept in a Malaysia region.
 - The following data goes outside Malaysia: error reports sent to Sentry (European Union); for Resend and Cloudflare, it depends on where they actually process data (【TO VERIFY V1】【TO VERIFY V2】). GitHub and the development-time AI service only handle code and fictional data.
+- If optional AI resume parsing or the job description assistant is approved for activation, text sent to Anthropic may be processed outside Malaysia. Complete 【TO VERIFY V9】 and 【TBD T16】 for the actual locations, transfer basis and safeguards before activating each feature, then update this disclosure; the API domain does not establish a processing location.
 - Basis for transfer: 【TBD T16: which ground under section 129 of the PDPA (as amended in 2024) the transfers rely on, and whether your separate consent is needed】.
-- Our safeguards: we send only what is needed; error reports are stripped of personal data before sending; contact details are never given to any service provider.
+- Our safeguards: we send only what is needed; error reports are stripped of personal data before sending; we do not attach contact-table data for service providers. Automatic masking of resume text does not guarantee removal of all personal information (see 4.1).
 
 ## 10. How long we keep data
 
@@ -231,6 +253,7 @@ We give service providers only the data they need for their task. No service pro
 | Sign-ups whose email is not verified | Deleted if not verified within 48 hours |
 | Email verification codes | Expire after 10 minutes; stored only as hashes |
 | Profile, resumes and contact details while your account exists | Until you change or delete them, or request account deletion |
+| Private AI resume suggestions (after activation) | Available unconfirmed content remains until you confirm, discard, withdraw parsing consent, delete the source resume or request account deletion. Confirmation clears the suggestion content; saved fields become ordinary profile data. Retention of necessary status, consent and audit records remains subject to 【TBD T8】【TBD T9】; provider retention is covered by 【TO VERIFY V9】 |
 | After you request account deletion | Your account is deactivated and removed from the talent pool immediately, and employers can no longer see your full name or contact details on the platform. After 30 days we permanently delete your contact details, resume files (including every stored historical version), name and email, cover notes, notes employers wrote about you, notification content and export packages, and anonymise the rest of your profile. 【TBD T13: whether a deletion request can be cancelled within these 30 days】 |
 | Credit ledger and audit logs | After account deletion, only internal IDs remain, without your name or contact details. 【TBD T8: how long audit logs (including IP addresses) are kept, and whether IP addresses are anonymised on account deletion (D22)】 |
 | Backups | The database is backed up daily in encrypted form and backups are kept for 30 days. Deleted data may remain in backups for up to 30 more days and disappears as the backups expire |
@@ -265,10 +288,10 @@ No system can guarantee perfect security. If a data breach happens, we will noti
 | Correct your data | Edit your profile directly; for anything you cannot change yourself (for example a verified school email), write to 【TO FILL F4: privacy contact email】 |
 | Delete your data | "Request account deletion" in your Privacy Centre; the effect is described in section 10 |
 | Withdraw talent-pool consent | Turn off the talent-pool switch in your Privacy Centre at any time (effect described in 6.4) |
+| Withdraw AI resume-parsing consent or discard suggestions | After activation, use the parsing area of "My resume"; withdrawal remains available while the feature is temporarily off. Effects on text already sent, confirmed profile content and existing export copies are explained in 4.1 |
 | Withdraw consent to the Terms of Use and this policy | You can no longer use your account; please request account deletion |
 | Limit which employers can see you | Block companies, or turn off the talent pool |
 | See who viewed or unlocked you | "Who viewed me" and "Who unlocked me" in your Privacy Centre |
-| Refuse marketing | We do not currently send marketing emails; when we do, you can unsubscribe at any time |
 | Complain | Contact us first (【TO FILL F4】); you can also complain to Malaysia's Personal Data Protection Commissioner |
 
 - Self-service actions in the Privacy Centre are free.
@@ -284,6 +307,12 @@ If a data breach happens that may cause you significant harm, we will:
 - tell affected users within 7 days, by email and in-app notification: what happened, what data was involved, what we have done and what you can do.
 
 【TBD T26: these deadlines are subject to the lawyer's advice (D10 ③)】
+
+### Optional career recommendations (disabled by default)
+
+After your separate AI_MATCHING consent, FindMYJob may send a minimal career projection from your confirmed profile directly to Voyage AI for embeddings and job recommendations: headline, major, degree level, skills, job intents and preferred states, with local redaction of common identity and contact details. Only public profiles meeting talent-pool eligibility can be indexed for verified employers. This consent does not publish your profile or unlock your identity or contact details. We do not attach school identity, resumes, private drafts, contact records, education/experience bodies or platform IDs. Published jobs use only title, type, category, work mode, state/city, skills and languages; job bodies and salary are excluded.
+
+Career free text can still contain personal data. The actual model, account, processing/storage regions, retention, logs, training use and deletion terms must be verified and disclosed before activation; this draft does not authorize external transfer. Recommendations show no embeddings, similarity scores or inferred explanations and do not change detail quotas or contact permissions. Ordinary search remains available. You may withdraw this separate consent; platform indexes become invalid and cleanup is scheduled, but withdrawal cannot guarantee recall of requests already accepted remotely, immediate backup deletion or cancellation of charges. A later grant cannot resume old work.
 
 ## 14. Cookies and similar technologies
 
@@ -318,3 +347,11 @@ If you are a parent or guardian and find that a child under 18 has signed up, pl
 - Address: 【TO FILL F3: registered address】
 - Privacy matters: 【TO FILL F4: privacy contact email】
 - Data Protection Officer: 【TBD T2】
+
+### Optional weekly recommendation emails (M9-T04 release draft)
+
+Weekly emails are disabled until a separately approved release publishes this bilingual disclosure. Students may separately opt in to up to five current job recommendations per Kuala Lumpur week; employers may separately opt in to an anonymous talent digest as the OWNER of a verified active company with an eligible published job. Current legal and AI matching consent and the existing employer search quota also apply. Marketing consent does not grant AI matching, resume parsing, talent visibility or contact access.
+
+We use the configured email service already listed below, with one recipient per message. Student emails omit salary and job descriptions. Employer emails omit name, school, CGPA, contacts and resumes, including for previously unlocked students. Links return to authenticated platform views and their current permissions. We store minimal weekly delivery state and permission/source fingerprints to prevent duplicates and recover known failures; no rendered body, email address or unsubscribe token is stored in the delivery record. Your own data export includes kind, week, state and acceptance time. Delivery metadata is removed when account deletion is completed after the existing 30-day period.
+
+Each message contains a signed unsubscribe link in both formats. Opening it shows confirmation; only submitting the form withdraws marketing consent. Personal preferences remain accessible when the feature is disabled or policies change. Withdrawal stops eligible unsent attempts and does not change other permissions. A message already accepted or in flight cannot be recalled. SENT means acceptance by the configured provider, not inbox delivery; uncertain outcomes are not automatically resent.

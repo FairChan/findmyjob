@@ -47,7 +47,7 @@ export default defineConfig({
   // M4-T14/T15：准备人才库的企业、学生、收藏夹（只写测试库，密码每次随机）
   globalSetup: './tests/e2e/global-setup.ts',
   // Runs only against a production build (playwright.prod.config.ts, `pnpm test:e2e:prod`).
-  testIgnore: ['**/security-headers.spec.ts'],
+  testIgnore: ['**/security-headers.spec.ts', '**/csp-registration-upload.spec.ts'],
   // M4-T26：在全部 spec 结束后检查服务端日志没有 PII 哨兵
   globalTeardown: './tests/e2e/global-teardown.ts',
   testDir: './tests/e2e',

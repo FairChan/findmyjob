@@ -38,7 +38,7 @@ export default async function AdminDashboardPage({
   ]
 
   return (
-    <main id="main-content" className="p-4 md:p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <h1 className="text-xl font-semibold">{t('title')}</h1>
       </div>
@@ -48,12 +48,12 @@ export default async function AdminDashboardPage({
         {metricCards.map((card) => (
           <div
             key={card.label}
-            className="rounded-xl border border-gray-200 bg-white p-4"
+            className="rounded-card border border-border bg-card p-4"
           >
-            <p className="text-xs text-gray-500 mb-1">{card.label}</p>
+            <p className="text-xs text-muted-foreground mb-1">{card.label}</p>
             <p className="text-2xl font-semibold tabular-nums">{card.value.toLocaleString()}</p>
             {card.href && (
-              <Link href={card.href} className="text-xs text-[var(--color-brand-500,#3b82f6)] mt-1 inline-block">
+              <Link href={card.href} className="text-xs text-brand mt-1 inline-block">
                 {t('actionReview')} →
               </Link>
             )}
@@ -61,63 +61,68 @@ export default async function AdminDashboardPage({
         ))}
       </div>
 
-      {/* Weekly chart + signup progress */}
-      <div className="grid gap-5 lg:grid-cols-2">
+      {/* Weekly activity */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <WeeklyBars
           title={t('weeklyRegistrations')}
           data={stats.weeklyRegistrations}
         />
+        <WeeklyBars title={t('weeklyApplications')} data={stats.weeklyApplications} />
+        <WeeklyBars title={t('weeklyUnlocks')} data={stats.weeklyUnlocks} />
+        <WeeklyBars title={t('weeklyPublishedJobs')} data={stats.weeklyPublishedJobs} />
+      </div>
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         {/* Signup progress */}
-        <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="rounded-card border border-border bg-card p-5">
           <p className="font-semibold">{t('signupProgress')}</p>
-          <p className="mt-1 text-sm text-gray-500">{t('signupProgressDesc')}</p>
+          <p className="mt-1 text-sm text-muted-foreground">{t('signupProgressDesc')}</p>
           <div className="mt-4">
             <div className="flex justify-between text-sm mb-1.5">
-              <span className="text-gray-600">{stats.studentCount.toLocaleString()} {t('signupUnit')}</span>
-              <span className="tabular-nums text-gray-900">
+              <span className="text-muted-foreground">{stats.studentCount.toLocaleString()} {t('signupUnit')}</span>
+              <span className="tabular-nums text-foreground">
                 {t('signupCapLabel', { cap: stats.signupCap.toLocaleString() })}
               </span>
             </div>
-            <div className="h-3 w-full rounded-full bg-gray-100">
+            <div className="h-3 w-full rounded-full bg-muted">
               <div
                 className={`h-full rounded-full transition-all ${
-                  signupPct >= 90 ? 'bg-amber-500' : 'bg-[var(--color-brand-500,#3b82f6)]'
+                  signupPct >= 90 ? 'bg-warning' : 'bg-brand'
                 }`}
                 style={{ width: `${signupPct}%` }}
               />
             </div>
-            <p className="mt-1.5 text-sm text-gray-500 tabular-nums">{signupPct}%</p>
+            <p className="mt-1.5 text-sm text-muted-foreground tabular-nums">{signupPct}%</p>
           </div>
         </div>
       </div>
 
       {/* School distribution */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
+      <div className="rounded-card border border-border bg-card p-5">
         <p className="font-semibold">{t('schoolDistribution')}</p>
         {stats.schoolDistribution.length === 0 ? (
-          <p className="mt-4 text-sm text-gray-400">{t('noSchoolData')}</p>
+          <p className="mt-4 text-sm text-muted-foreground">{t('noSchoolData')}</p>
         ) : (
           <div className="mt-4 space-y-2.5">
             {(() => {
               const maxCount = Math.max(...stats.schoolDistribution.map((s) => s.count), 1)
               return stats.schoolDistribution.map((school) => (
                 <div key={school.schoolNameZh} className="flex items-center gap-3 text-sm">
-                  <span className="w-28 shrink-0 truncate text-gray-600" title={school.schoolNameZh}>
+                  <span className="w-28 shrink-0 truncate text-muted-foreground" title={school.schoolNameZh}>
                     {school.schoolNameZh}
                   </span>
-                  <div className="h-3 flex-1 rounded bg-gray-100">
+                  <div className="h-3 flex-1 rounded bg-muted">
                     <div
-                      className="h-full rounded bg-[var(--color-brand-500,#3b82f6)]"
+                      className="h-full rounded bg-brand"
                       style={{ width: `${(school.count / maxCount) * 100}%` }}
                     />
                   </div>
-                  <span className="w-8 text-right tabular-nums text-gray-500">{school.count}</span>
+                  <span className="w-8 text-right tabular-nums text-muted-foreground">{school.count}</span>
                 </div>
               ))
             })()}
           </div>
         )}
       </div>
-    </main>
+    </div>
   )
 }

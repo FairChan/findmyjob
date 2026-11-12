@@ -3,7 +3,7 @@ import { runCappedPdfWorker } from './pdf-worker'
 
 export type SanitizeResult =
   | { ok: true; pdf: Buffer }
-  | { ok: false; reason: 'too_large' | 'timeout' | 'malformed' | 'encrypted' }
+  | { ok: false; reason: 'too_large' | 'timeout' | 'malformed' | 'encrypted' | 'aborted' }
 
 // SECURITY: script must be a static string constant. Caller-supplied values must
 // come through `params` only — never interpolated into the script string.
@@ -21,7 +21,7 @@ export type SanitizeResult =
 //      only /Type /Annot, /Subtype /Link, /Rect, /Border [0 0 0], and /Dest —
 //      stripping /AA, /PA, /Next chains, and any other extra keys.
 const SANITIZE_PDF_SCRIPT = `
-const { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef } = pdfLib;
+const { PDFDocument, PDFName, PDFArray, PDFDict, PDFRef, PDFNumber, PDFNull } = pdfLib;
 const srcDoc = await PDFDocument.load(input, { ignoreEncryption: true, updateMetadata: false });
 if (srcDoc.isEncrypted) return { kind: 'encrypted' };
 const outDoc = await PDFDocument.create();
@@ -51,24 +51,26 @@ for (let i = 0; i < pageCount; i++) {
 
 // Validate that a destination array is acceptable:
 //   element 0 must be a PDFRef pointing to a page in this document;
-//   elements 1+ must NOT be PDFRef (scalars only: name, number, null, bool).
-// Using a negative PDFRef check avoids a dependency on PDFNumber/PDFNull which
-// may not be in scope in every pdf-lib CJS build variant used by the worker.
+//   elements 1+ must be names, finite numbers, or the PDFNull singleton.
+// Direct dictionaries/arrays/strings/bools can carry unexpected data too.
 function validateDestArr(ctx, arr) {
   if (!arr || arr.size() === 0) return false;
   const first = arr.get(0);
   if (!(first instanceof PDFRef) || !srcRefToIdx.has(first.toString())) return false;
   for (let k = 1; k < arr.size(); k++) {
-    if (arr.get(k) instanceof PDFRef) return false;
+    const value = arr.get(k);
+    if (!(value instanceof PDFName) && value !== PDFNull &&
+        !(value instanceof PDFNumber && Number.isFinite(value.asNumber()))) return false;
   }
   return true;
 }
 
-// Validate /Rect: must be exactly 4 elements, none of which is a PDFRef.
+// Rectangles have exactly four finite numeric coordinates, not destination tokens.
 function validateRectArr(arr) {
   if (!arr || arr.size() !== 4) return false;
   for (let k = 0; k < 4; k++) {
-    if (arr.get(k) instanceof PDFRef) return false;
+    const value = arr.get(k);
+    if (!(value instanceof PDFNumber) || !Number.isFinite(value.asNumber())) return false;
   }
   return true;
 }
@@ -218,23 +220,24 @@ type SanitizeScriptResult =
 
 export async function sanitizePdf(
   input: Buffer,
-  opts?: { timeoutMs?: number },
+  opts?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<SanitizeResult> {
   const result = await runCappedPdfWorker<SanitizeScriptResult>(
     SANITIZE_PDF_SCRIPT,
     input,
     undefined,
-    { timeoutMs: opts?.timeoutMs ?? 10_000 },
+    { timeoutMs: opts?.timeoutMs ?? 10_000, signal: opts?.signal },
   )
 
   if (!result.ok) {
     if (result.reason === 'too_large') return { ok: false, reason: 'too_large' }
     if (result.reason === 'timeout') return { ok: false, reason: 'timeout' }
+    if (result.reason === 'aborted') return { ok: false, reason: 'aborted' }
     return { ok: false, reason: 'malformed' }
   }
 
   const inner = result.result
   if (inner.kind === 'encrypted') return { ok: false, reason: 'encrypted' }
 
-  return { ok: true, pdf: Buffer.from(inner.bytes) }
+  return { ok: true, pdf: Buffer.from(inner.bytes.buffer, inner.bytes.byteOffset, inner.bytes.byteLength) }
 }

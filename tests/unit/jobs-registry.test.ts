@@ -1,3 +1,4 @@
+vi.mock('@/server/services/settings', () => ({ getSetting: vi.fn().mockResolvedValue(5) }))
 /**
  * Unit tests for job registry schedule options (M4-T20 task 3).
  * Verifies pilot-monthly-credits and reconcile-wallets use KL timezone + missed:'once'.
@@ -16,6 +17,10 @@ vi.mock('@/server/jobs/purge-unverified', () => ({ runPurgeUnverified: vi.fn() }
 vi.mock('@/server/jobs/requalify-referrals', () => ({ runRequalifyReferrals: vi.fn() }))
 vi.mock('@/server/jobs/pilot-monthly-credits', () => ({ runPilotMonthlyCredits: vi.fn() }))
 vi.mock('@/server/jobs/reconcile-wallets', () => ({ runReconcileWallets: vi.fn() }))
+vi.mock('@/server/jobs/expire-subscriptions', () => ({ runExpireSubscriptions: vi.fn() }))
+vi.mock('@/server/jobs/invoice-tasks', () => ({ runInvoiceTasks: vi.fn() }))
+vi.mock('@/server/jobs/export-user-data', () => ({ runExportUserData: vi.fn() }))
+vi.mock('@/server/jobs/purge-deleted-accounts', () => ({ runPurgeDeletedAccounts: vi.fn() }))
 vi.mock('@/server/lib/healthchecks', () => ({ pingHealthcheck: vi.fn() }))
 
 import { registerJobs } from '@/server/jobs/registry'

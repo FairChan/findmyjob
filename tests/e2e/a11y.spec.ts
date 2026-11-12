@@ -21,8 +21,6 @@ import { loginAs } from './helpers/session'
 import { expectPageHealthy } from './helpers/smoke'
 import { e2eDb as db } from './helpers/db'
 
-test.describe.configure({ mode: 'serial' })
-
 type AxeViolation = Awaited<ReturnType<AxeBuilder['analyze']>>['violations'][number]
 
 function formatViolations(violations: AxeViolation[]): string {
@@ -41,7 +39,7 @@ function criticalOrSerious(violations: AxeViolation[]): AxeViolation[] {
 // ---------------------------------------------------------------------------
 test.describe('a11y: public pages', () => {
   const publicPages: { path: string; h1Pattern?: RegExp }[] = [
-    { path: '/zh', h1Pattern: /FindMYJob/ },
+    { path: '/zh', h1Pattern: /找到我的第一份工作/ },
     { path: '/zh/for-employers' },
     { path: '/zh/partners' },
     { path: '/zh/jobs' },

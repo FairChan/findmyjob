@@ -23,7 +23,7 @@ export function DataRequestActions({ requestId, locale }: Props) {
     }
   }
 
-  if (done) return <span className="text-sm text-green-600">✓</span>
+  if (done) return <span className="text-sm text-success">✓</span>
 
   return (
     <div className="flex flex-col gap-1 items-end min-w-48">
@@ -39,14 +39,14 @@ export function DataRequestActions({ requestId, locale }: Props) {
         <button
           onClick={() => handle('DONE')}
           disabled={pending}
-          className="text-xs px-2 py-1 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
+          className="text-xs px-2 py-1 rounded-full bg-success text-primary-foreground hover:bg-success/90 disabled:opacity-50"
         >
           Done
         </button>
         <button
           onClick={() => handle('REJECTED')}
           disabled={pending}
-          className="text-xs px-2 py-1 rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+          className="text-xs px-2 py-1 rounded-full bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
         >
           Reject
         </button>

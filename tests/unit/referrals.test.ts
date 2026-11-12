@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 vi.mock('@/env', () => ({ env: {} }))
 
 const mockDb = vi.hoisted(() => ({
+  $transaction: vi.fn(),
+  $executeRaw: vi.fn(),
   studentProfile: {
     findUnique: vi.fn(),
     update: vi.fn(),
@@ -347,22 +349,32 @@ describe('requalifyReferrals — cross-day requalification with fake time (M2-T1
 })
 
 describe('voidReferral', () => {
-  beforeEach(() => vi.resetAllMocks())
-
-  it('updates status to VOID and writes audit log', async () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+    mockDb.$transaction.mockImplementation(async (work: (tx: typeof mockDb) => Promise<unknown>) => work(mockDb))
+    mockDb.$executeRaw.mockResolvedValue(1)
+    mockDb.user.findUnique.mockResolvedValue({ id: 'admin1', role: 'ADMIN', status: 'ACTIVE' })
+    mockDb.referral.findUnique.mockResolvedValue({
+      id: 'r1', referrerId: 'sp1', inviteeId: 'sp2', status: 'QUALIFIED',
+      qualifiedAt: new Date('2026-11-01T00:00:00Z'), voidReason: null,
+      createdAt: new Date('2026-11-01T00:00:00Z'),
+    })
+    mockDb.referral.updateMany.mockResolvedValue({ count: 1 })
     mockDb.referral.update.mockResolvedValue({})
     mockDb.auditLog.create.mockResolvedValue({})
+  })
+
+  // Real transaction, concurrency and rollback behavior is covered by integration tests.
+  it('writes a redacted audit for the active admin', async () => {
     await voidReferral('r1', 'fraud', 'admin1')
-    expect(mockDb.referral.update).toHaveBeenCalledWith({
-      where: { id: 'r1' },
-      data: { status: 'VOID', voidReason: 'fraud' },
-    })
+    expect(mockDb.auditLog.create).toHaveBeenCalledTimes(1)
     expect(mockDb.auditLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         actorId: 'admin1',
         action: 'referral.void',
         targetType: 'Referral',
         targetId: 'r1',
+        metadata: { fromStatus: 'QUALIFIED', toStatus: 'VOID', reasonLength: 5 },
       }),
     })
   })

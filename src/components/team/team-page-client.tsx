@@ -1,5 +1,7 @@
 'use client'
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
+import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
 import type { TeamMember } from '@/server/services/team'
 import {
   inviteMemberAction,
@@ -17,6 +19,7 @@ import {
 import { Button } from '@/components/ui/button'
 
 interface Props {
+  canPurchase?: boolean
   members: TeamMember[]
   currentUserId: string
   currentRole: 'OWNER' | 'ADMIN' | 'RECRUITER'
@@ -44,11 +47,13 @@ interface Props {
   }
 }
 
-export default function TeamPageClient({ members: initialMembers, currentUserId, currentRole, t }: Props) {
+export default function TeamPageClient({ members: initialMembers, currentUserId, currentRole, t, canPurchase = false }: Props) {
+  const router = useRouter()
   const [members, setMembers] = useState(initialMembers)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<'ADMIN' | 'RECRUITER'>('RECRUITER')
   const [inviteError, setInviteError] = useState('')
+  const [seatLimitReached, setSeatLimitReached] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null)
@@ -58,7 +63,6 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
 
   function mapError(code: string): string {
     if (code === 'FORBIDDEN') return t.errorForbidden
-    if (code === 'VALIDATION_ERROR') return t.errorLimitReached
     return t.errorUnknown
   }
 
@@ -66,14 +70,17 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
     e.preventDefault()
     if (!inviteEmail) return
     setInviteError('')
+    setSeatLimitReached(false)
     setInviteSuccess(false)
     startTransition(async () => {
       const res = await inviteMemberAction({ email: inviteEmail, role: inviteRole })
       if (res.ok) {
         setInviteSuccess(true)
         setInviteEmail('')
+        router.refresh()
       } else {
-        setInviteError(mapError(res.code))
+        if (res.code === 'SEAT_LIMIT_EXCEEDED') setSeatLimitReached(true)
+        else setInviteError(mapError(res.code))
       }
     })
   }
@@ -90,6 +97,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
       const res = await removeMemberAction({ memberId })
       if (res.ok) {
         setMembers(prev => prev.filter(m => m.id !== memberId))
+        router.refresh()
       }
     })
   }
@@ -124,7 +132,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
         </DialogContent>
       </Dialog>
       {/* Member list */}
-      <div className="mb-8 overflow-x-auto rounded-lg border">
+      <div className="mb-8 overflow-x-auto rounded-card border">
         <table className="min-w-full divide-y divide-border">
           <thead className="bg-muted">
             <tr>
@@ -176,8 +184,8 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
 
       {/* Invite form (OWNER/ADMIN only) */}
       {canManage && (
-        <div className="rounded-lg border p-4">
-          <h2 className="mb-4 text-lg font-semibold">{t.invite}</h2>
+        <div className="rounded-card border p-4">
+          <h2 className="mb-4 text-title">{t.invite}</h2>
           <form onSubmit={handleInvite} className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
               <label className="mb-1 block text-sm font-medium">{t.emailLabel}</label>
@@ -206,17 +214,18 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
             <button
               type="submit"
               disabled={isPending}
-              className="rounded bg-brand px-4 py-2 text-sm text-white hover:bg-brand-hover disabled:opacity-50"
+              className="min-h-10 rounded-full bg-brand px-5 py-2 text-sm font-medium text-brand-foreground hover:bg-brand/90 disabled:opacity-50"
             >
               {t.inviteSubmit}
             </button>
           </form>
           {inviteSuccess && (
-            <p className="mt-2 text-sm text-green-600">{t.inviteSent}</p>
+            <p className="mt-2 text-sm text-success">{t.inviteSent}</p>
           )}
           {inviteError && (
-            <p className="mt-2 text-sm text-destructive">{inviteError}</p>
+            <p role="alert" className="mt-2 text-sm text-destructive">{inviteError}</p>
           )}
+          {seatLimitReached && <EntitlementLimitNotice resource="seats" canPurchase={canPurchase && currentRole === 'OWNER'} />}
         </div>
       )}
     </div>

@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef } from 'react'
+import { useNonce } from './NonceProvider'
 
 interface Props {
   siteKey: string
@@ -34,6 +35,7 @@ declare global {
 }
 
 export default function TurnstileWidget({ siteKey, action, onToken, onExpire, onError }: Props) {
+  const nonce = useNonce()
   const containerRef = useRef<HTMLDivElement>(null)
   const widgetIdRef = useRef<string | null>(null)
 
@@ -67,6 +69,7 @@ export default function TurnstileWidget({ siteKey, action, onToken, onExpire, on
       if (!document.getElementById(scriptId)) {
         const script = document.createElement('script')
         script.id = scriptId
+        if (nonce) script.nonce = nonce
         script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=onloadTurnstileCallback'
         script.async = true
         script.defer = true
@@ -84,7 +87,7 @@ export default function TurnstileWidget({ siteKey, action, onToken, onExpire, on
         widgetIdRef.current = null
       }
     }
-  }, [siteKey, action, onToken, onExpire, onError])
+  }, [siteKey, action, onToken, onExpire, onError, nonce])
 
   return <div ref={containerRef} />
 }

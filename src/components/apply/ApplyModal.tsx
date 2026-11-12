@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { applyToJobAction, withdrawApplicationAction } from '@/server/actions/applications'
+import type { ApplicationBlocker } from '@/lib/application-readiness'
 
 export interface ResumeOption {
   id: string
@@ -25,32 +26,41 @@ interface ApplyModalProps {
   resumes: ResumeOption[]
   locale: string
   incompleteStepPath: string | null
+  blocker?: ApplicationBlocker | null
 }
 
-export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath }: ApplyModalProps) {
+export function ApplyModal({ jobId, resumes, locale, incompleteStepPath, blocker }: ApplyModalProps) {
   const t = useTranslations('publicJobs')
   const router = useRouter()
   const [open, setOpen] = useState(false)
-  const [resumeId, setResumeId] = useState<string>('')
+  const [resumeId, setResumeId] = useState<string>(() => resumes.find(r => r.isPrimary)?.id ?? resumes[0]?.id ?? '')
   const [coverNote, setCoverNote] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [applied, setApplied] = useState(false)
+  const [repairPath, setRepairPath] = useState<string | null>(null)
 
   if (incompleteStepPath) {
     return (
-      <a
-        href={incompleteStepPath}
-        className="inline-flex items-center rounded-md bg-muted px-4 py-2 text-sm font-semibold text-muted-foreground border hover:bg-muted/80 transition-colors min-h-[36px]"
-      >
-        {t('completeProfileButton')}
-      </a>
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          {t(blocker === 'contactAndResume' ? 'applyBlockedContactAndResume'
+            : blocker === 'contact' ? 'applyBlockedContact'
+              : blocker === 'resume' ? 'applyBlockedResume' : 'applyBlockedProfile')}
+        </p>
+        <a
+          href={incompleteStepPath}
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/85"
+        >
+          {t('completeProfileButton')}
+        </a>
+      </div>
     )
   }
 
   if (applied) {
     return (
-      <span className="inline-flex items-center rounded-md bg-green-100 text-green-800 px-4 py-2 text-sm font-semibold min-h-[36px]">
+      <span className="inline-flex min-h-9 items-center rounded-full bg-success-muted px-4 text-sm font-semibold text-success">
         ✓ {t('appliedBadge')}
       </span>
     )
@@ -59,6 +69,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
   async function handleSubmit() {
     setLoading(true)
     setError(null)
+    setRepairPath(null)
     try {
       const result = await applyToJobAction({
         jobId,
@@ -74,7 +85,11 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
         setApplied(true)
         setOpen(false)
       } else if (result.code === 'COMPLETENESS_LOW') {
-        router.push(`/${_locale}/s/onboarding`)
+        setError(t('applyBlockedProfile'))
+        setRepairPath(`/${locale}/s/profile`)
+      } else if (result.code === 'CONTACT_REQUIRED' || result.code === 'RESUME_REQUIRED') {
+        setError(t(result.code === 'CONTACT_REQUIRED' ? 'applyBlockedContact' : 'applyBlockedResume'))
+        setRepairPath(`/${locale}/s/onboarding`)
       } else {
         setError(t('applyErrorGeneral'))
       }
@@ -86,8 +101,10 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
   return (
     <>
       <Button
-        onClick={() => { setOpen(true); setError(null) }}
-        className="min-h-[36px]"
+        variant="brand"
+        size="lg"
+        onClick={() => { setOpen(true); setError(null); setRepairPath(null) }}
+        className="w-full"
       >
         {t('applyButton')}
       </Button>
@@ -106,9 +123,8 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
                   id="apply-resume"
                   value={resumeId}
                   onChange={(e) => setResumeId(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring min-h-[36px]"
+                  className="flex h-9 w-full rounded-control border border-input bg-transparent px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring min-h-[36px]"
                 >
-                  <option value="">{t('applyDialogNoResume')}</option>
                   {resumes.map((r) => (
                     <option key={r.id} value={r.id}>
                       {r.fileName}{r.isPrimary ? ' ★' : ''}
@@ -116,6 +132,12 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
                   ))}
                 </select>
               </div>
+            )}
+            {resumes.length === 0 && (
+              <p className="text-sm text-destructive">
+                {t('applyBlockedResume')}{' '}
+                <a href={`/${locale}/s/onboarding`} className="underline">{t('completeProfileButton')}</a>
+              </p>
             )}
 
             <div className="space-y-1.5">
@@ -127,13 +149,16 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
                 onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setCoverNote(e.target.value)}
                 maxLength={500}
                 rows={4}
-                className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+                className="flex w-full rounded-control border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
               />
               <p className="text-xs text-muted-foreground text-right">{coverNote.length}/500</p>
             </div>
 
             {error && (
-              <p className="text-sm text-destructive">{error}</p>
+              <div role="alert" className="space-y-2 text-sm text-destructive">
+                <p>{error}</p>
+                {repairPath && <a href={repairPath} className="underline">{t('completeProfileButton')}</a>}
+              </div>
             )}
           </div>
 
@@ -141,7 +166,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
             <Button variant="outline" onClick={() => setOpen(false)} disabled={loading} className="min-h-[36px]">
               {t('applyDialogCancel')}
             </Button>
-            <Button onClick={handleSubmit} disabled={loading} className="min-h-[36px]">
+            <Button onClick={handleSubmit} disabled={loading || resumes.length === 0 || !!repairPath} className="min-h-[36px]">
               {loading ? '…' : t('applyDialogSubmit')}
             </Button>
           </DialogFooter>
@@ -154,7 +179,7 @@ export function ApplyModal({ jobId, resumes, locale: _locale, incompleteStepPath
 export function WithdrawnStatus() {
   const t = useTranslations('publicJobs')
   return (
-    <span className="inline-flex items-center rounded-md bg-muted text-muted-foreground px-4 py-2 text-sm font-semibold min-h-[36px]">
+    <span className="inline-flex min-h-9 items-center rounded-full bg-background px-4 text-sm font-semibold text-muted-foreground">
       {t('withdrawnBadge')}
     </span>
   )
@@ -193,7 +218,7 @@ export function AppliedStatus({ applicationId }: AppliedStatusProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <span className="inline-flex items-center rounded-md bg-green-100 text-green-800 px-4 py-2 text-sm font-semibold min-h-[36px]">
+      <span className="inline-flex min-h-9 items-center rounded-full bg-success-muted px-4 text-sm font-semibold text-success">
         ✓ {t('appliedBadge')}
       </span>
       <Button

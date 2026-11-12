@@ -36,6 +36,7 @@ vi.mock('next/headers', () => ({
 
 import { setupTestDb, testDb } from '../setup/db'
 import { createStudent, createEmployer, createEmployerWithoutCompany, createJob } from '../factories'
+import { seedApplicationMaterials } from '../helpers/application-materials'
 import { requireUser, requireStudent, requireEmployer, requireCompanyMember, requireVerifiedCompany, requireAdmin } from '@/server/authz'
 import { ForbiddenError, NotFoundError, ValidationError } from '@/server/errors'
 import { createCompany, updateCompany } from '@/server/services/company'
@@ -53,9 +54,40 @@ import {
 
 setupTestDb()
 
+describe('private resume parsing actions (M9-T01)', () => {
+  const operations = [
+    'setResumeParseConsentAction', 'requestResumeParseAction', 'getResumeParseDraftAction',
+    'confirmResumeParseAction', 'discardResumeParseDraftAction',
+  ] as const
+  const resumeId = 'c' + '1'.repeat(24)
+  for (const operation of operations) {
+    it.each(['anonymous', 'employer', 'suspended-student'] as const)(operation + ' denies %s', async actor => {
+      clearSettingsCache()
+      if (actor === 'anonymous') mockSession(null)
+      else {
+        const user = actor === 'employer' ? await createEmployer(testDb) : await createStudent(testDb)
+        if (actor === 'suspended-student') await testDb.user.update({ where: { id: user.userId }, data: { status: 'SUSPENDED' } })
+        mockSession(user.userId)
+      }
+      const actions = await import('@/server/actions/resume-parsing')
+      const input = operation === 'setResumeParseConsentAction'
+        ? { granted: false }
+        : { resumeId, generation: 1, expectedProfileRevision: 0, patch: { headline: 'Synthetic action' } }
+      await expect(actions[operation](input)).resolves.toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.resumeParseDraft.count()).toBe(0)
+      expect(await testDb.consent.count({ where: { type: 'AI_RESUME_PARSE' } })).toBe(0)
+    })
+  }
+})
+
 const noHeaders = new Headers()
 
-function mockSession(userId: string | null) {
+type MockSessionOptions = {
+  createdAt?: Date
+  twoFactorVerifiedAt?: Date | null
+}
+
+function mockSession(userId: string | null, options: MockSessionOptions = {}) {
   if (userId === null) {
     vi.mocked(authMod.getSession).mockResolvedValue(null)
   } else {
@@ -79,12 +111,33 @@ function mockSession(userId: string | null) {
         expiresAt: new Date(Date.now() + 86_400_000),
         ipAddress: null,
         userAgent: null,
-        createdAt: new Date(),
+        createdAt: options.createdAt ?? new Date(),
         updatedAt: new Date(),
+        twoFactorVerifiedAt: options.twoFactorVerifiedAt ?? null,
       },
     })
   }
 }
+
+function createTwoFactorAdmin(twoFactorEnabled = true) {
+  return testDb.user.create({
+    data: {
+      name: 'Two Factor Admin',
+      email: 'admin-two-factor-matrix@example.test',
+      emailVerified: true,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      twoFactorEnabled,
+    },
+  })
+}
+
+const adminSessionDenials = [
+  { scenario: '2FA not enabled', enabled: false, verified: true, ageMinutes: 0, code: 'TWO_FACTOR_REQUIRED' },
+  { scenario: '2FA not verified for this session', enabled: true, verified: false, ageMinutes: 0, code: 'FORBIDDEN' },
+  { scenario: 'session older than 12 hours', enabled: true, verified: true, ageMinutes: 721, code: 'FORBIDDEN' },
+  { scenario: 'session older than 10 minutes', enabled: true, verified: true, ageMinutes: 11, code: 'FRESH_SESSION_REQUIRED' },
+] as const
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -93,6 +146,107 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 // requireUser
 // ---------------------------------------------------------------------------
+
+describe('growth and risk management actions (M6-T08)', () => {
+  const operations = ['voidReferral', 'resolveReport', 'saveArticle', 'saveSynonym'] as const
+  type Operation = (typeof operations)[number]
+
+  async function fixture(operation: Operation) {
+    if (operation === 'voidReferral') {
+      const referrer = await createStudent(testDb)
+      const invitee = await createStudent(testDb)
+      const row = await testDb.referral.create({
+        data: { referrerId: referrer.profileId, inviteeId: invitee.profileId, status: 'QUALIFIED' },
+      })
+      return { id: row.id, input: { referralId: row.id, reason: 'synthetic moderation' } }
+    }
+    if (operation === 'resolveReport') {
+      const employer = await createEmployer(testDb)
+      const job = await createJob(testDb, employer.companyId, employer.userId)
+      const student = await createStudent(testDb)
+      const row = await testDb.jobReport.create({
+        data: { jobId: job.id, reporterId: student.userId, reason: 'ASKS_PAYMENT' },
+      })
+      return { id: row.id, input: { reportId: row.id, status: 'RESOLVED' } }
+    }
+    if (operation === 'saveArticle') {
+      return { id: '', input: { category: 'GUIDE', title: 'Synthetic guide', body: 'Synthetic safe body', sortOrder: 0, published: false } }
+    }
+    return { id: '', input: { terms: ['synthetic-alias', 'synthetic-match'], active: true } }
+  }
+
+  async function invoke(operation: Operation, input: unknown) {
+    if (operation === 'voidReferral') {
+      return (await import('@/server/actions/admin-growth')).voidReferralAction(input)
+    }
+    if (operation === 'resolveReport') {
+      return (await import('@/server/actions/admin-reports')).resolveReportAction(input)
+    }
+    if (operation === 'saveArticle') {
+      return (await import('@/server/actions/admin-articles')).saveArticleAction(input)
+    }
+    return (await import('@/server/actions/admin-growth')).saveSynonymGroupAction(input)
+  }
+
+  async function state() {
+    return {
+      referrals: await testDb.referral.findMany({ orderBy: { id: 'asc' } }),
+      reports: await testDb.jobReport.findMany({ orderBy: { id: 'asc' } }),
+      articles: await testDb.article.findMany({ orderBy: { id: 'asc' } }),
+      synonyms: await testDb.searchSynonymGroup.findMany({ orderBy: { id: 'asc' } }),
+      audits: await testDb.auditLog.findMany({ orderBy: { id: 'asc' } }),
+    }
+  }
+
+  for (const operation of operations) {
+    it.each([
+      'guest', 'STUDENT', 'EMPLOYER', 'suspended-admin', 'deleted-admin',
+      'unverified-2fa', 'disabled-2fa', 'expired-admin',
+    ] as const)(operation + ': %s is rejected without mutations', async (actor) => {
+      const sample = await fixture(operation)
+      if (actor === 'guest') {
+        mockSession(null)
+      } else {
+        const admin = await createTwoFactorAdmin(actor !== 'disabled-2fa')
+        await testDb.user.update({
+          where: { id: admin.id },
+          data: {
+            role: actor === 'STUDENT' || actor === 'EMPLOYER' ? actor : 'ADMIN',
+            status: actor === 'suspended-admin' ? 'SUSPENDED' : actor === 'deleted-admin' ? 'DELETED' : 'ACTIVE',
+          },
+        })
+        mockSession(admin.id, {
+          createdAt: new Date(Date.now() - (actor === 'expired-admin' ? 721 : 0) * 60_000),
+          twoFactorVerifiedAt: actor === 'unverified-2fa' ? null : new Date(),
+        })
+      }
+      const before = await state()
+      const result = await invoke(operation, sample.input)
+      expect(result).toMatchObject({
+        ok: false,
+        code: actor === 'disabled-2fa' ? 'TWO_FACTOR_REQUIRED' : 'FORBIDDEN',
+      })
+      expect(await state()).toEqual(before)
+    })
+
+    it(operation + ': an active verified admin may operate after the sensitive fresh window', async () => {
+      const sample = await fixture(operation)
+      const admin = await createTwoFactorAdmin()
+      const verifiedAt = new Date(Date.now() - 11 * 60_000)
+      mockSession(admin.id, { createdAt: verifiedAt, twoFactorVerifiedAt: verifiedAt })
+      const result = await invoke(operation, sample.input)
+      expect(result.ok).toBe(true)
+      const events = await testDb.auditLog.findMany({ where: { actorId: admin.id } })
+      expect(events).toHaveLength(1)
+      expect(events[0].action).toBe({
+        voidReferral: 'referral.void',
+        resolveReport: 'job.report.resolve',
+        saveArticle: 'article.save',
+        saveSynonym: 'search.synonym.save',
+      }[operation])
+    })
+  }
+})
 
 describe('requireUser', () => {
   it('guest (no session) → ForbiddenError', async () => {
@@ -272,11 +426,53 @@ describe('requireAdmin', () => {
 
   it('admin user → pass', async () => {
     const admin = await testDb.user.create({
-      data: { name: 'Admin', email: 'admin2-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+      data: { name: 'Admin', email: 'admin2-matrix@example.test', emailVerified: true, role: 'ADMIN', status: 'ACTIVE', twoFactorEnabled: true },
     })
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const ctx = await requireAdmin(noHeaders)
     expect(ctx.userId).toBe(admin.id)
+  })
+
+  it('admin without enabled 2FA → TWO_FACTOR_REQUIRED', async () => {
+    const admin = await createTwoFactorAdmin(false)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    await expect(requireAdmin(noHeaders)).rejects.toMatchObject({ code: 'TWO_FACTOR_REQUIRED' })
+  })
+
+  it('enabled admin without session verification → ForbiddenError', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id)
+    await expect(requireAdmin(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('verified admin within 12 hours can use ordinary admin operations', async () => {
+    const admin = await createTwoFactorAdmin()
+    const createdAt = new Date(Date.now() - (12 * 60 - 1) * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: createdAt })
+    await expect(requireAdmin(noHeaders)).resolves.toEqual({ userId: admin.id })
+  })
+
+  it('admin session older than 12 hours is denied despite recent update and verification', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, {
+      createdAt: new Date(Date.now() - (12 * 60 + 1) * 60_000),
+      twoFactorVerifiedAt: new Date(),
+    })
+    await expect(requireAdmin(noHeaders)).rejects.toBeInstanceOf(ForbiddenError)
+  })
+
+  it('fresh admin verification within 10 minutes → pass', async () => {
+    const admin = await createTwoFactorAdmin()
+    const createdAt = new Date(Date.now() - 9 * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: createdAt })
+    await expect(requireAdmin(noHeaders, { fresh: true })).resolves.toEqual({ userId: admin.id })
+  })
+
+  it('admin verification older than 10 minutes → FRESH_SESSION_REQUIRED', async () => {
+    const admin = await createTwoFactorAdmin()
+    const createdAt = new Date(Date.now() - 11 * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: createdAt })
+    await expect(requireAdmin(noHeaders, { fresh: true })).rejects.toMatchObject({ code: 'FRESH_SESSION_REQUIRED' })
   })
 
   it('suspended admin → ForbiddenError', async () => {
@@ -411,6 +607,20 @@ describe('talent.view: viewTalentProfile authz', () => {
 // ---------------------------------------------------------------------------
 
 describe('team management authz (M3-T04)', () => {
+  it('removed member is denied on the next action even with the same valid session', async () => {
+    const { userId: ownerId, companyId } = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: companyId }, data: { verificationStatus: 'VERIFIED' } })
+    const { userId } = await createEmployerWithoutCompany(testDb)
+    const member = await testDb.companyMember.create({ data: { userId, companyId, role: 'RECRUITER' } })
+    const { createFolderAction } = await import('@/server/actions/folders')
+    const { removeMember } = await import('@/server/services/team')
+    mockSession(userId)
+    expect((await createFolderAction({ name: 'Before removal' })).ok).toBe(true)
+    await removeMember({ userId: ownerId, companyId, role: 'OWNER' }, { memberId: member.id })
+    expect(await createFolderAction({ name: 'After removal' })).toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.talentFolder.count({ where: { companyId, name: 'After removal' } })).toBe(0)
+  })
+
   async function seedTeamSettings() {
     for (const [key, val] of [['team.maxMembers', 3], ['team.maxInvitesPerDay', 3]] as const) {
       await testDb.systemSetting.upsert({
@@ -1545,10 +1755,14 @@ describe('resume.download (M4-T09)', () => {
     mockSession(emp.userId)
     const { GET } = await import('@/app/api/resumes/[id]/download/route')
     const res = await GET(new Request(`http://localhost/api/resumes/${resumeId}/download`))
-    expect(res.status).toBe(200)
-    expect(res.headers.get('content-type')).toBe('application/pdf')
-    expect(res.headers.get('cache-control')).toContain('no-store')
-    expect(res.headers.get('x-robots-tag')).toBe('noindex')
+    try {
+      expect(res.status).toBe(200)
+      expect(res.headers.get('content-type')).toBe('application/pdf')
+      expect(res.headers.get('cache-control')).toContain('no-store')
+      expect(res.headers.get('x-robots-tag')).toBe('noindex')
+    } finally {
+      await res.body?.cancel()
+    }
   }, 30_000)
 
   it('resume not in DB → 404', async () => {
@@ -1670,6 +1884,7 @@ describe('application authz (M5-T04): applyToJobAction / withdrawApplicationActi
 
   async function makeStudentWithJob() {
     const { userId, profileId } = await createStudent(testDb, { completeness: 70 })
+    await seedApplicationMaterials(testDb, profileId)
     const emp = await createEmployer(testDb)
     const job = await createJob(testDb, emp.companyId, emp.userId, { status: 'PUBLISHED' })
     // M5-T12: pre-seed JobView so canApplyToJob returns true (quota bypass fix)
@@ -2067,10 +2282,10 @@ describe('admin-users authz (M6-T02)', () => {
 
   it('suspendUserAction: admin → ok, user SUSPENDED, sessions deleted', async () => {
     const admin = await testDb.user.create({
-      data: { name: 'Admin M6', email: `admin-m6t02-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+      data: { name: 'Admin M6', email: `admin-m6t02-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE', twoFactorEnabled: true },
     })
     const { userId: targetId } = await makeStudentWithSession()
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const { suspendUserAction } = await import('@/server/actions/admin-users')
     const result = await suspendUserAction({ targetUserId: targetId, reason: 'authz test' })
     expect(result.ok).toBe(true)
@@ -2123,10 +2338,10 @@ describe('admin-users authz (M6-T02)', () => {
 
   it('readStudentContactAdminAction: admin → ok, writes contact.read audit', async () => {
     const admin = await testDb.user.create({
-      data: { name: 'Admin Contact', email: `admin-contact-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE' },
+      data: { name: 'Admin Contact', email: `admin-contact-${Date.now()}@example.test`, emailVerified: true, role: 'ADMIN', status: 'ACTIVE', twoFactorEnabled: true },
     })
     const { userId: targetId, profileId } = await createStudent(testDb)
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
     const result = await readStudentContactAdminAction({ studentUserId: targetId })
     expect(result.ok).toBe(true)
@@ -2134,6 +2349,21 @@ describe('admin-users authz (M6-T02)', () => {
       where: { actorId: admin.id, action: 'contact.read', targetId: profileId },
     })
     expect(audits.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it.each(adminSessionDenials)('readStudentContactAdminAction: $scenario → $code, no contact audit', async ({ enabled, verified, ageMinutes, code }) => {
+    const admin = await createTwoFactorAdmin(enabled)
+    const { userId: targetId, profileId } = await createStudent(testDb)
+    const createdAt = new Date(Date.now() - ageMinutes * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: verified ? createdAt : null })
+
+    const { readStudentContactAdminAction } = await import('@/server/actions/admin-users')
+    const result = await readStudentContactAdminAction({ studentUserId: targetId })
+
+    expect(result).toEqual({ ok: false, code })
+    expect(await testDb.auditLog.count({
+      where: { actorId: admin.id, action: 'contact.read', targetId: profileId },
+    })).toBe(0)
   })
 
   it('createSchoolAction: student → FORBIDDEN', async () => {
@@ -2255,6 +2485,37 @@ describe('admin-companies authz (M6-T03)', () => {
     const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'test' })
     expect(result.ok).toBe(false)
   })
+
+  it('adjustCompanyCreditsAction: fresh verified admin → balance, ledger and audit updated', async () => {
+    const admin = await createTwoFactorAdmin()
+    const company = await testDb.company.create({ data: { legalName: 'Fresh session credits company' } })
+    const wallet = await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { adjustCompanyCreditsAction } = await import('@/server/actions/admin-companies')
+
+    const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'fresh session test' })
+
+    expect(result).toEqual({ ok: true, data: { balanceAfter: 150 } })
+    expect(await testDb.creditWallet.findUnique({ where: { id: wallet.id } })).toMatchObject({ balance: 150 })
+    expect(await testDb.creditLedger.count({ where: { walletId: wallet.id, actorId: admin.id, reason: 'ADMIN_ADJUST' } })).toBe(1)
+    expect(await testDb.auditLog.count({ where: { actorId: admin.id, action: 'credits.adjust', targetId: company.id } })).toBe(1)
+  })
+
+  it.each(adminSessionDenials)('adjustCompanyCreditsAction: $scenario → $code, no balance/ledger/audit changes', async ({ enabled, verified, ageMinutes, code }) => {
+    const admin = await createTwoFactorAdmin(enabled)
+    const company = await testDb.company.create({ data: { legalName: 'Denied session credits company' } })
+    const wallet = await testDb.creditWallet.create({ data: { companyId: company.id, balance: 50 } })
+    const createdAt = new Date(Date.now() - ageMinutes * 60_000)
+    mockSession(admin.id, { createdAt, twoFactorVerifiedAt: verified ? createdAt : null })
+    const { adjustCompanyCreditsAction } = await import('@/server/actions/admin-companies')
+
+    const result = await adjustCompanyCreditsAction({ companyId: company.id, delta: 100, note: 'denied session test' })
+
+    expect(result).toEqual({ ok: false, code })
+    expect(await testDb.creditWallet.findUnique({ where: { id: wallet.id } })).toMatchObject({ balance: 50 })
+    expect(await testDb.creditLedger.count({ where: { walletId: wallet.id } })).toBe(0)
+    expect(await testDb.auditLog.count({ where: { actorId: admin.id, action: 'credits.adjust', targetId: company.id } })).toBe(0)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -2290,9 +2551,10 @@ describe('admin-settings authz (M6-T05)', () => {
         emailVerified: true,
         role: 'ADMIN',
         status: 'ACTIVE',
+        twoFactorEnabled: true,
       },
     })
-    mockSession(admin.id)
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
     const { updateSettingAction } = await import('@/app/[locale]/admin/settings/actions')
     // number out of range
     const result = await updateSettingAction({ key: 'pilot.monthlyCredits', value: -100 })
@@ -2487,5 +2749,532 @@ describe('listAuditLogs authz (M6-T06)', () => {
     const { listAuditLogs } = await import('@/server/services/admin-audit')
     const result = await listAuditLogs({ userId: admin.id }, {})
     expect(Array.isArray(result.items)).toBe(true)
+  })
+})
+
+describe('public job reporting action (M7-T09)', () => {
+  async function publishedJob() {
+    const employer = await createEmployer(testDb)
+    return createJob(testDb, employer.companyId, employer.userId, { status: 'PUBLISHED' })
+  }
+
+  it.each(['guest', 'suspended', 'deleted', 'missing', 'expired-admin'] as const)(
+    '%s cannot submit a report or notification', async (actor) => {
+      const job = await publishedJob()
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'missing') mockSession('missing-report-user')
+      else if (actor === 'expired-admin') {
+        const admin = await createTwoFactorAdmin()
+        mockSession(admin.id, {
+          createdAt: new Date(Date.now() - 13 * 3600_000), twoFactorVerifiedAt: new Date(),
+        })
+      } else {
+        const student = await createStudent(testDb)
+        await testDb.user.update({ where: { id: student.userId }, data: {
+          status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+        } })
+        mockSession(student.userId)
+      }
+      const before = await testDb.notification.count()
+      const { createReportAction } = await import('@/server/actions/reports')
+      expect(await createReportAction({ jobId: job.id, reason: 'OTHER' }))
+        .toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.jobReport.count()).toBe(0)
+      expect(await testDb.notification.count()).toBe(before)
+    },
+  )
+
+  it.each(['STUDENT', 'EMPLOYER', 'ADMIN'] as const)(
+    '%s submits using its session identity, never client-supplied identity', async (role) => {
+      const job = await publishedJob()
+      const student = await createStudent(testDb)
+      await testDb.user.update({ where: { id: student.userId }, data: { role } })
+      mockSession(student.userId)
+      const { createReportAction } = await import('@/server/actions/reports')
+      const result = await createReportAction({
+        jobId: job.id, reason: 'MISMATCH', note: '  synthetic report  ',
+        reporterId: 'forged-reporter', userId: 'forged-user', resolverId: 'forged-resolver',
+      })
+      expect(result).toMatchObject({ ok: true, data: { reportId: expect.any(String) } })
+      const reports = await testDb.jobReport.findMany()
+      expect(reports).toHaveLength(1)
+      expect(reports[0]).toMatchObject({
+        jobId: job.id, reporterId: student.userId, reason: 'MISMATCH',
+        note: 'synthetic report', resolverId: null, status: 'OPEN',
+      })
+      expect(await testDb.jobView.count()).toBe(0)
+      expect(await testDb.application.count()).toBe(0)
+    },
+  )
+
+  it('invalid payload is rejected before mutation', async () => {
+    const student = await createStudent(testDb)
+    mockSession(student.userId)
+    const { createReportAction } = await import('@/server/actions/reports')
+    expect(await createReportAction({ jobId: '', reason: 'FAKE_REASON' }))
+      .toEqual({ ok: false, code: 'VALIDATION_ERROR' })
+    expect(await testDb.jobReport.count()).toBe(0)
+  })
+
+  it('the eleventh submission returns the domain limit code', async () => {
+    const student = await createStudent(testDb)
+    const job = await publishedJob()
+    await testDb.systemSetting.upsert({ where: { key: 'limits.jobReportsPerDay' },
+      create: { key: 'limits.jobReportsPerDay', value: 10 }, update: { value: 10 },
+    })
+    clearSettingsCache()
+    mockSession(student.userId)
+    const { createReportAction } = await import('@/server/actions/reports')
+    for (let index = 0; index < 10; index++) {
+      expect(await createReportAction({ jobId: job.id, reason: 'OTHER' })).toMatchObject({ ok: true })
+    }
+    expect(await createReportAction({ jobId: job.id, reason: 'OTHER' }))
+      .toEqual({ ok: false, code: 'RATE_LIMITED' })
+    expect(await testDb.jobReport.count({ where: { reporterId: student.userId } })).toBe(10)
+  })
+})
+
+describe('plan management actions (M8-T01)', () => {
+  const terms = {
+    code: 'MATRIX_PLAN', kind: 'PLAN' as const, nameZh: '合成套餐', nameEn: 'Synthetic plan',
+    priceSen: 299900, credits: 120, durationDays: 365, jobPostLimit: 10,
+    seatLimit: 3, invitationQuota: 200, isActive: true, isPublic: true, sortOrder: 0,
+  }
+
+  it.each(['guest', 'student', 'employer', 'suspended', 'deleted', 'no-2fa', 'unverified-2fa', 'expired'] as const)(
+    '%s cannot create, update or delete a plan', async (actor) => {
+      const row = await testDb.plan.create({ data: terms })
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else if (actor === 'employer') mockSession((await createEmployer(testDb)).userId)
+      else {
+        const admin = await createTwoFactorAdmin(actor !== 'no-2fa')
+        if (actor === 'suspended' || actor === 'deleted') {
+          await testDb.user.update({ where: { id: admin.id }, data: {
+            status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+          } })
+        }
+        mockSession(admin.id, {
+          createdAt: new Date(Date.now() - (actor === 'expired' ? 13 * 3600_000 : 0)),
+          twoFactorVerifiedAt: actor === 'unverified-2fa' ? null : new Date(),
+        })
+      }
+      const { createPlanAction, updatePlanAction, deletePlanAction } = await import('@/server/actions/admin-plans')
+      const expected = { ok: false, code: actor === 'no-2fa' ? 'TWO_FACTOR_REQUIRED' : 'FORBIDDEN' }
+      expect(await createPlanAction({ ...terms, code: 'UNAUTHORIZED_PLAN' })).toEqual(expected)
+      expect(await updatePlanAction({ ...terms, id: row.id, expectedUpdatedAt: row.updatedAt.toISOString(), priceSen: 1 }))
+        .toEqual(expected)
+      expect(await deletePlanAction({ id: row.id })).toEqual(expected)
+      expect(await testDb.plan.findMany()).toEqual([row])
+      expect(await testDb.auditLog.count({ where: { targetType: 'Plan' } })).toBe(0)
+    },
+  )
+
+  it('verified ordinary admin uses the session actor for all three mutations', async () => {
+    const admin = await createTwoFactorAdmin()
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60_000)
+    mockSession(admin.id, { createdAt: thirtyMinutesAgo, twoFactorVerifiedAt: thirtyMinutesAgo })
+    const { createPlanAction, updatePlanAction, deletePlanAction } = await import('@/server/actions/admin-plans')
+    const result = await createPlanAction({ ...terms, actorId: 'forged', userId: 'forged' })
+    expect(result).toMatchObject({ ok: true, data: { id: expect.any(String) } })
+    if (!result.ok) throw new Error('Expected a successful authorized create')
+    const row = await testDb.plan.findUniqueOrThrow({ where: { id: result.data.id } })
+    expect(await updatePlanAction({ ...terms, id: row.id, expectedUpdatedAt: row.updatedAt.toISOString(), priceSen: 399901 }))
+      .toEqual({ ok: true, data: { id: row.id } })
+    expect(await testDb.plan.findUnique({ where: { id: row.id } })).toMatchObject({ priceSen: 399901 })
+    expect(await deletePlanAction({ id: row.id })).toEqual({ ok: true, data: undefined })
+    expect(await testDb.plan.findUnique({ where: { id: row.id } })).toBeNull()
+    const audits = await testDb.auditLog.findMany({ where: { targetId: row.id, targetType: 'Plan' } })
+    expect(audits.map((entry) => entry.action).sort()).toEqual(['plan.create', 'plan.delete', 'plan.update'])
+    expect(audits.every((entry) => entry.actorId === admin.id)).toBe(true)
+  })
+
+  it('invalid inputs are rejected by the wrapper without writes', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { createPlanAction, updatePlanAction, deletePlanAction } = await import('@/server/actions/admin-plans')
+    for (const result of [
+      await createPlanAction({ ...terms, priceSen: -1 }),
+      await updatePlanAction({ id: 'missing-plan', priceSen: 1 }),
+      await deletePlanAction({ id: '' }),
+    ]) expect(result).toEqual({ ok: false, code: 'VALIDATION_ERROR' })
+    expect(await testDb.plan.count()).toBe(0)
+    expect(await testDb.auditLog.count({ where: { targetType: 'Plan' } })).toBe(0)
+  })
+})
+
+describe('Stripe checkout action (M8-T03)', () => {
+  it.each(['guest', 'student', 'recruiter', 'company-admin', 'suspended', 'deleted', 'inactive-company'] as const)(
+    'rejects %s before checkout service dispatch', async actor => {
+      const employer = await createEmployer(testDb)
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else {
+        mockSession(employer.userId)
+        if (actor === 'recruiter' || actor === 'company-admin') {
+          await testDb.companyMember.updateMany({ where: { userId: employer.userId }, data: {
+            role: actor === 'recruiter' ? 'RECRUITER' : 'ADMIN',
+          } })
+        } else if (actor === 'inactive-company') {
+          await testDb.company.update({ where: { id: employer.companyId }, data: { isActive: false } })
+        } else {
+          await testDb.user.update({ where: { id: employer.userId }, data: {
+            status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+          } })
+        }
+      }
+      const service = await import('@/server/services/stripe-payments')
+      const start = vi.spyOn(service, 'startStripeCheckout')
+      try {
+        const { startStripeCheckoutAction } = await import('@/server/actions/billing')
+        expect(await startStripeCheckoutAction({ orderId: 'synthetic-order', locale: 'en' }))
+          .toEqual({ ok: false, code: 'FORBIDDEN' })
+        expect(start).not.toHaveBeenCalled()
+        expect(await testDb.stripeCheckoutAttempt.count()).toBe(0)
+      } finally { start.mockRestore() }
+    },
+  )
+
+  it('dispatches only the current OWNER identity and the narrow validated input', async () => {
+    const employer = await createEmployer(testDb)
+    mockSession(employer.userId)
+    const service = await import('@/server/services/stripe-payments')
+    const result = { orderId: 'synthetic-order', checkoutUrl: 'https://checkout.stripe.com/c/pay/synthetic' }
+    const start = vi.spyOn(service, 'startStripeCheckout').mockResolvedValue(result)
+    try {
+      const { startStripeCheckoutAction } = await import('@/server/actions/billing')
+      expect(await startStripeCheckoutAction({ orderId: result.orderId, locale: 'zh' }))
+        .toEqual({ ok: true, data: result })
+      expect(start).toHaveBeenCalledExactlyOnceWith(
+        { userId: employer.userId, companyId: employer.companyId, role: 'OWNER' },
+        { orderId: result.orderId, locale: 'zh' },
+      )
+    } finally { start.mockRestore() }
+  })
+
+  it('rejects client identity, amount and return-url fields before checkout dispatch', async () => {
+    const employer = await createEmployer(testDb)
+    mockSession(employer.userId)
+    const service = await import('@/server/services/stripe-payments')
+    const start = vi.spyOn(service, 'startStripeCheckout')
+    try {
+      const { startStripeCheckoutAction } = await import('@/server/actions/billing')
+      expect(await startStripeCheckoutAction({
+        orderId: 'synthetic-order', locale: 'en', companyId: 'forged', userId: 'forged',
+        amountSen: 1, successUrl: 'https://external.example.test',
+      })).toMatchObject({ ok: false, code: 'VALIDATION_ERROR' })
+      expect(start).not.toHaveBeenCalled()
+    } finally { start.mockRestore() }
+  })
+})
+
+describe('billing actions (M8-T02)', () => {
+  it.each(['guest', 'student', 'recruiter', 'company-admin', 'suspended', 'deleted', 'inactive-company'] as const)(
+    '%s cannot quote, create, attach or cancel company orders', async actor => {
+      const { billingFixture } = await import('../helpers/billing-t02')
+      const f = await billingFixture()
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else {
+        mockSession(f.ctx.userId)
+        if (actor === 'recruiter' || actor === 'company-admin') {
+          await testDb.companyMember.updateMany({ where: { userId: f.ctx.userId }, data: {
+            role: actor === 'recruiter' ? 'RECRUITER' : 'ADMIN',
+          } })
+        } else if (actor === 'inactive-company') {
+          await testDb.company.update({ where: { id: f.ctx.companyId }, data: { isActive: false } })
+        } else {
+          await testDb.user.update({ where: { id: f.ctx.userId }, data: {
+            status: actor === 'suspended' ? 'SUSPENDED' : 'DELETED',
+          } })
+        }
+      }
+      const actions = await import('@/server/actions/billing')
+      for (const result of [
+        await actions.quoteOrderAction({ planId: f.plan.id }),
+        await actions.createOrderAction({ planId: f.plan.id }),
+        await actions.attachBankProofAction({ orderId: 'missing', proofKey: 'forged' }),
+        await actions.cancelPendingOrderAction({ orderId: 'missing' }),
+      ]) expect(result).toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.order.count()).toBe(0)
+      expect(await testDb.creditLedger.count()).toBe(0)
+      expect(await testDb.auditLog.count({ where: { action: 'order.confirm' } })).toBe(0)
+    },
+  )
+
+  it('uses the current OWNER and company, ignoring forged identity fields', async () => {
+    const { billingFixture } = await import('../helpers/billing-t02')
+    const f = await billingFixture()
+    const other = await createEmployer(testDb)
+    mockSession(f.ctx.userId)
+    const { quoteOrderAction, createOrderAction, cancelPendingOrderAction } = await import('@/server/actions/billing')
+    const quote = await quoteOrderAction({ planId: f.plan.id, companyId: other.companyId })
+    expect(quote).toMatchObject({ ok: true })
+    if (!quote.ok) throw new Error('Expected the owner quote')
+    const created = await createOrderAction({
+      planId: f.plan.id, method: 'BANK_TRANSFER', acceptedQuote: quote.data,
+      companyId: other.companyId, userId: other.userId,
+    })
+    expect(created).toMatchObject({ ok: true })
+    if (!created.ok) throw new Error('Expected the owner order')
+    expect(await testDb.order.findUnique({ where: { id: created.data.orderId } })).toMatchObject({
+      companyId: f.ctx.companyId, createdById: f.ctx.userId, status: 'PENDING',
+    })
+    mockSession(other.userId)
+    expect(await cancelPendingOrderAction({ orderId: created.data.orderId, companyId: f.ctx.companyId }))
+      .toEqual({ ok: false, code: 'NOT_FOUND' })
+    mockSession(f.ctx.userId)
+    expect(await cancelPendingOrderAction({ orderId: created.data.orderId })).toMatchObject({ ok: true })
+    expect(await testDb.order.findUnique({ where: { id: created.data.orderId } })).toMatchObject({ status: 'CANCELLED' })
+  })
+
+  it.each([
+    { name: 'no two factor', enabled: false, verified: true, sessionHours: 0, verificationMinutes: 0, code: 'TWO_FACTOR_REQUIRED' },
+    { name: 'unverified session', enabled: true, verified: false, sessionHours: 0, verificationMinutes: 0, code: 'FORBIDDEN' },
+    { name: 'expired session', enabled: true, verified: true, sessionHours: 13, verificationMinutes: 0, code: 'FORBIDDEN' },
+    { name: 'stale verification', enabled: true, verified: true, sessionHours: 0, verificationMinutes: 10, code: 'FRESH_SESSION_REQUIRED' },
+  ])('$name cannot confirm bank receipt', async scenario => {
+    const admin = await createTwoFactorAdmin(scenario.enabled)
+    mockSession(admin.id, {
+      createdAt: new Date(Date.now() - scenario.sessionHours * 3600_000),
+      twoFactorVerifiedAt: scenario.verified ? new Date(Date.now() - scenario.verificationMinutes * 60_000) : null,
+    })
+    const { confirmBankOrderAction } = await import('@/server/actions/billing')
+    expect(await confirmBankOrderAction({ orderId: 'missing', receivedAmountSen: 1, note: 'Synthetic receipt check' }))
+      .toEqual({ ok: false, code: scenario.code })
+    expect(await testDb.order.count()).toBe(0)
+    expect(await testDb.creditLedger.count()).toBe(0)
+    expect(await testDb.subscription.count()).toBe(0)
+    expect(await testDb.auditLog.count({ where: { action: 'order.confirm' } })).toBe(0)
+  })
+
+  it('fresh ADMIN confirmation uses its session actor and commits once', async () => {
+    const { billingFixture, awaitingOrder, PROOF_BYTES } = await import('../helpers/billing-t02')
+    const storage = await import('@/lib/storage')
+    vi.mocked(storage.getObjectBytes).mockResolvedValue(PROOF_BYTES)
+    const f = await billingFixture()
+    const order = await awaitingOrder(f)
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { confirmBankOrderAction } = await import('@/server/actions/billing')
+    const input = { orderId: order.id, receivedAmountSen: order.amountSen, note: 'SYNTHETIC RECEIPT', actorId: 'forged' }
+    expect(await confirmBankOrderAction(input)).toMatchObject({ ok: true, data: { alreadyPaid: false } })
+    expect(await confirmBankOrderAction(input)).toMatchObject({ ok: true, data: { alreadyPaid: true } })
+    expect(await testDb.order.findUnique({ where: { id: order.id } })).toMatchObject({
+      status: 'PAID', confirmedById: admin.id,
+    })
+    expect(await testDb.creditLedger.count({ where: { refType: 'Order', refId: order.id } })).toBe(1)
+    expect(await testDb.auditLog.findMany({ where: { action: 'order.confirm', targetId: order.id } }))
+      .toEqual([expect.objectContaining({ actorId: admin.id })])
+  })
+})
+
+describe('invoice routes and issuer settings (M8-T05)', () => {
+  const invoiceId = 'cmw00000000000000000000001'
+  const issuer = {
+    schemaVersion: 1, version: 'SYNTHETIC_MATRIX_V1', legalName: 'SYNTHETIC Matrix Issuer',
+    address: 'SYNTHETIC Matrix Address', registrationNo: null,
+  }
+
+  it.each(['guest', 'student', 'recruiter', 'company-admin'] as const)(
+    '%s cannot dispatch invoice object reads', async actor => {
+      const owner = await createEmployer(testDb)
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else {
+        await testDb.companyMember.update({ where: { userId: owner.userId }, data: {
+          role: actor === 'recruiter' ? 'RECRUITER' : 'ADMIN',
+        } })
+        mockSession(owner.userId)
+      }
+      const service = await import('@/server/services/invoice-delivery')
+      const read = vi.spyOn(service, 'getInvoiceDownload')
+      try {
+        const { GET } = await import('@/app/api/invoices/[id]/download/route')
+        const response = await GET(new Request(`http://localhost/api/invoices/${invoiceId}/download`))
+        expect(response.status).toBe(403)
+        expect(response.headers.get('cache-control')).toBe('private, no-store')
+        expect(read).not.toHaveBeenCalled()
+      } finally { read.mockRestore() }
+    },
+  )
+
+  it('dispatches invoice reads using the live OWNER identity only', async () => {
+    const owner = await createEmployer(testDb)
+    mockSession(owner.userId)
+    const service = await import('@/server/services/invoice-delivery')
+    const bytes = Buffer.from('%PDF-synthetic-route-boundary')
+    const read = vi.spyOn(service, 'getInvoiceDownload').mockResolvedValue({ bytes, invoiceNo: 'FMJ-INV-00000001' })
+    try {
+      const { GET } = await import('@/app/api/invoices/[id]/download/route')
+      const response = await GET(new Request(`http://localhost/api/invoices/${invoiceId}/download?userId=forged&companyId=forged`))
+      expect(response.status).toBe(200)
+      expect(read).toHaveBeenCalledExactlyOnceWith({ userId: owner.userId }, invoiceId)
+      expect(Buffer.from(await response.arrayBuffer())).toEqual(bytes)
+    } finally { read.mockRestore() }
+  })
+
+  it.each(['student', 'employer'] as const)('%s cannot set the invoice issuer', async actor => {
+    const user = actor === 'student' ? await createStudent(testDb) : await createEmployer(testDb)
+    mockSession(user.userId)
+    const { saveInvoiceIssuerSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveInvoiceIssuerSettingsAction(issuer)).toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'billing.invoiceIssuer' } })).toBeNull()
+  })
+
+  it('verified ADMIN can save the issuer through the dedicated action', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { saveInvoiceIssuerSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveInvoiceIssuerSettingsAction(issuer)).toMatchObject({ ok: true })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'billing.invoiceIssuer' } }))
+      .toMatchObject({ value: issuer, updatedById: admin.id })
+    const audits = await testDb.auditLog.findMany({ where: { action: 'setting.update', targetId: 'billing.invoiceIssuer' } })
+    expect(audits).toHaveLength(1)
+    expect(JSON.stringify(audits[0].metadata)).not.toContain(issuer.legalName)
+  })
+})
+
+// Append to tests/integration/authz-matrix.test.ts after T01 is committed.
+describe('JD assistant action authorization (M9-T02)', () => {
+  const input = { title: 'SYNTHETIC analyst', points: 'Prepare synthetic reports', acknowledged: true, submittedVersion: '2026-11-draft' }
+
+  it.each(['guest', 'student', 'without-company', 'removed', 'suspended', 'inactive-company'] as const)(
+    '%s cannot dispatch generation', async actor => {
+      if (actor === 'guest') mockSession(null)
+      else if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else if (actor === 'without-company') mockSession((await createEmployerWithoutCompany(testDb)).userId)
+      else {
+        const employer = await createEmployer(testDb)
+        if (actor === 'removed') await testDb.companyMember.delete({ where: { userId: employer.userId } })
+        if (actor === 'suspended') await testDb.user.update({ where: { id: employer.userId }, data: { status: 'SUSPENDED' } })
+        if (actor === 'inactive-company') await testDb.company.update({ where: { id: employer.companyId }, data: { isActive: false } })
+        mockSession(employer.userId)
+      }
+      const service = await import('@/server/services/jd-assistant')
+      const generate = vi.spyOn(service, 'generateJobDescription')
+      try {
+        const { generateJobDescriptionAction } = await import('@/server/actions/jd-assistant')
+        expect(await generateJobDescriptionAction(input)).toEqual({ ok: false, code: 'FORBIDDEN' })
+        expect(generate).not.toHaveBeenCalled()
+      } finally { generate.mockRestore() }
+    },
+  )
+
+  it.each(['OWNER', 'ADMIN', 'RECRUITER'] as const)('%s dispatches only the live company context', async role => {
+    const employer = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: employer.companyId }, data: { verificationStatus: 'UNSUBMITTED' } })
+    await testDb.companyMember.update({ where: { userId: employer.userId }, data: { role } })
+    mockSession(employer.userId)
+    const service = await import('@/server/services/jd-assistant')
+    const output = { zh: 'SYNTHETIC 中文职责', en: 'SYNTHETIC English duties' }
+    const generate = vi.spyOn(service, 'generateJobDescription').mockResolvedValue(output)
+    try {
+      const { generateJobDescriptionAction } = await import('@/server/actions/jd-assistant')
+      expect(await generateJobDescriptionAction(input)).toEqual({ ok: true, data: output })
+      expect(generate).toHaveBeenCalledExactlyOnceWith({ userId: employer.userId, companyId: employer.companyId, role }, input)
+      expect(await generateJobDescriptionAction({ ...input, companyId: 'forged' })).toMatchObject({ ok: false, code: 'VALIDATION_ERROR' })
+      expect(generate).toHaveBeenCalledTimes(1)
+      expect(await testDb.job.count()).toBe(0)
+    } finally { generate.mockRestore() }
+  })
+
+  it.each(['guest', 'student', 'employer'] as const)('%s cannot save the JD gate', async actor => {
+    if (actor === 'guest') mockSession(null)
+    else mockSession((actor === 'student' ? await createStudent(testDb) : await createEmployer(testDb)).userId)
+    const { saveJdAssistantSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveJdAssistantSettingsAction({ enabled: false, legalVersion: null })).toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'ai.jdAssistant' } })).toBeNull()
+  })
+
+  it.each([
+    { label: 'no 2FA', enabled: false, verified: true, age: 0, code: 'TWO_FACTOR_REQUIRED' },
+    { label: 'unverified 2FA', enabled: true, verified: false, age: 0, code: 'FORBIDDEN' },
+    { label: 'expired session', enabled: true, verified: true, age: 721, code: 'FORBIDDEN' },
+    { label: 'stale verification', enabled: true, verified: true, age: 11, code: 'FRESH_SESSION_REQUIRED' },
+  ])('$label cannot save the JD gate', async scenario => {
+    const admin = await createTwoFactorAdmin(scenario.enabled)
+    const at = new Date(Date.now() - scenario.age * 60_000)
+    mockSession(admin.id, { createdAt: at, twoFactorVerifiedAt: scenario.verified ? at : null })
+    const { saveJdAssistantSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveJdAssistantSettingsAction({ enabled: false, legalVersion: null })).toEqual({ ok: false, code: scenario.code })
+    expect(await testDb.systemSetting.findUnique({ where: { key: 'ai.jdAssistant' } })).toBeNull()
+  })
+
+  it('fresh ADMIN saves a disabled gate with a server-owned epoch', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { saveJdAssistantSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    expect(await saveJdAssistantSettingsAction({ enabled: false, legalVersion: null })).toMatchObject({ ok: true })
+    const setting = await testDb.systemSetting.findUniqueOrThrow({ where: { key: 'ai.jdAssistant' } })
+    expect(setting).toMatchObject({ updatedById: admin.id, value: { enabled: false, legalVersion: null, epoch: expect.any(String) } })
+    expect(await saveJdAssistantSettingsAction({ enabled: true, legalVersion: '2026-11-draft', epoch: 'forged' })).toMatchObject({ ok: false, code: 'VALIDATION_ERROR' })
+    expect(await testDb.systemSetting.findUniqueOrThrow({ where: { key: 'ai.jdAssistant' } })).toEqual(setting)
+  })
+})
+
+describe('semantic matching actions (M9-T03)', () => {
+  for (const operation of ['recommendJobsAction', 'setMatchingConsentAction'] as const) {
+    it.each(['anonymous', 'employer', 'suspended-student', 'deleted-student'] as const)(operation + ' denies %s', async actor => {
+      if (actor === 'anonymous') mockSession(null)
+      else {
+        const user = actor === 'employer' ? await createEmployer(testDb) : await createStudent(testDb)
+        if (actor === 'suspended-student' || actor === 'deleted-student') {
+          await testDb.user.update({ where: { id: user.userId }, data: { status: actor === 'deleted-student' ? 'DELETED' : 'SUSPENDED' } })
+        }
+        mockSession(user.userId)
+      }
+      const before = await testDb.consent.count({ where: { type: 'AI_MATCHING' } })
+      const actions = await import('@/server/actions/semantic-matching')
+      expect(await actions[operation](operation === 'setMatchingConsentAction' ? { granted: false } : {})).toEqual({ ok: false, code: 'FORBIDDEN' })
+      expect(await testDb.consent.count({ where: { type: 'AI_MATCHING' } })).toBe(before)
+    })
+  }
+  it.each(['anonymous', 'student', 'suspended-employer', 'unverified-company'] as const)('talent recommendation denies %s', async actor => {
+    if (actor === 'anonymous') mockSession(null)
+    else {
+      const user = actor === 'student' ? await createStudent(testDb) : await createEmployer(testDb)
+      if (actor === 'suspended-employer') await testDb.user.update({ where: { id: user.userId }, data: { status: 'SUSPENDED' } })
+      if (actor === 'unverified-company' && 'companyId' in user) await testDb.company.update({ where: { id: user.companyId }, data: { verificationStatus: 'PENDING' } })
+      mockSession(user.userId)
+    }
+    const { recommendTalentsAction } = await import('@/server/actions/semantic-matching')
+    expect(await recommendTalentsAction({ jobId: 'c' + '1'.repeat(24) })).toEqual({ ok: false, code: 'FORBIDDEN' })
+  })
+})
+
+
+describe('M9-T04 marketing sensitive action matrix', () => {
+  it.each(['anonymous', 'student', 'employer', 'suspended-admin'] as const)('marketing admin gate denies %s', async actor => {
+    if (actor === 'anonymous') mockSession(null)
+    else {
+      const user = actor === 'employer' ? await createEmployer(testDb) : await createStudent(testDb)
+      if (actor === 'suspended-admin') await testDb.user.update({ where: { id: user.userId }, data: { role: 'ADMIN', status: 'SUSPENDED' } })
+      mockSession(user.userId)
+    }
+    const { saveMarketingSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    await expect(saveMarketingSettingsAction({ enabled: false, legalVersion: '' })).resolves.toEqual({ ok: false, code: 'FORBIDDEN' })
+    expect(await testDb.systemSetting.count({ where: { key: 'marketing.weekly' } })).toBe(0)
+  })
+  it.each(['missing', 'stale'] as const)('marketing admin gate rejects %s two-factor verification', async freshness => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: freshness === 'missing' ? null : new Date(Date.now() - 600_001) })
+    const { saveMarketingSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    await expect(saveMarketingSettingsAction({ enabled: false, legalVersion: '' })).resolves.toEqual({ ok: false, code: freshness === 'missing' ? 'FORBIDDEN' : 'FRESH_SESSION_REQUIRED' })
+    expect(await testDb.systemSetting.count({ where: { key: 'marketing.weekly' } })).toBe(0)
+  })
+  it('lets a recently verified administrator disable without publication or secret', async () => {
+    const admin = await createTwoFactorAdmin()
+    mockSession(admin.id, { twoFactorVerifiedAt: new Date() })
+    const { saveMarketingSettingsAction } = await import('@/app/[locale]/admin/settings/actions')
+    await expect(saveMarketingSettingsAction({ enabled: false, legalVersion: '' })).resolves.toEqual({ ok: true, data: undefined })
+    const row = await testDb.systemSetting.findUniqueOrThrow({ where: { key: 'marketing.weekly' } })
+    expect(row.value).toMatchObject({ enabled: false, legalVersion: '', epoch: expect.any(String) })
+  })
+  it.each(['anonymous', 'suspended-student'] as const)('personal marketing withdrawal denies %s', async actor => {
+    if (actor === 'anonymous') mockSession(null)
+    else { const user = await createStudent(testDb); await testDb.user.update({ where: { id: user.userId }, data: { status: 'SUSPENDED' } }); mockSession(user.userId) }
+    const { setMarketingConsentAction } = await import('@/server/actions/marketing-consent')
+    await expect(setMarketingConsentAction({ granted: false })).resolves.toEqual({ ok: false, code: 'FORBIDDEN' })
   })
 })

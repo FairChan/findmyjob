@@ -5,9 +5,12 @@ import { ForbiddenError, NotFoundError } from '../errors'
 import { logAudit } from './audit'
 import { getContactForAdmin } from './contact-access'
 import type { UserCtx } from '../authz'
+import type { Prisma } from '@prisma/client'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 
-async function assertAdmin(userId: string): Promise<void> {
-  const user = await db.user.findUnique({
+async function assertAdmin(userId: string, tx: Prisma.TransactionClient = db): Promise<void> {
+  const user = await tx.user.findUnique({
     where: { id: userId },
     select: { role: true, status: true },
   })
@@ -202,17 +205,18 @@ export async function approveSchoolVerificationManually(
 ): Promise<void> {
   await assertAdmin(ctx.userId)
 
-  const profile = await db.studentProfile.findFirst({
-    where: { userId: studentUserId },
-    select: { id: true, schoolVerifiedAt: true },
-  })
-  if (!profile) throw new NotFoundError('Student not found')
-
   await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, studentUserId)
+    await assertAdmin(ctx.userId, tx)
+    const user = await tx.user.findUnique({ where: { id: studentUserId }, select: { role: true, status: true } })
+    if (user?.role !== 'STUDENT' || user.status !== 'ACTIVE') throw new NotFoundError('Student not found')
+    const profile = await tx.studentProfile.findUnique({ where: { userId: studentUserId }, select: { id: true } })
+    if (!profile) throw new NotFoundError('Student not found')
     await tx.studentProfile.update({
       where: { id: profile.id },
-      data: { schoolVerifiedAt: new Date() },
+      data: { schoolVerifiedAt: new Date(), editRevision: { increment: 1 } },
     })
+    await invalidateStudentMatchingIndexTx(tx, studentUserId)
     await logAudit({
       actorId: ctx.userId,
       action: 'student.school_verify',
@@ -279,18 +283,18 @@ export async function suspendUser(ctx: UserCtx, input: SuspendUserInput): Promis
   await assertAdmin(ctx.userId)
   const { targetUserId, reason } = suspendUserSchema.parse(input)
 
-  const user = await db.user.findUnique({
-    where: { id: targetUserId },
-    select: { id: true, role: true, status: true },
-  })
-  if (!user || user.role !== 'STUDENT') throw new NotFoundError('Student not found')
-  if (user.status !== 'ACTIVE') return
-
   await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, targetUserId)
+    await assertAdmin(ctx.userId, tx)
+    const user = await tx.user.findUnique({ where: { id: targetUserId }, select: { role: true, status: true } })
+    if (!user || user.role !== 'STUDENT') throw new NotFoundError('Student not found')
+    if (user.status !== 'ACTIVE') return
     await tx.user.update({
       where: { id: targetUserId },
       data: { status: 'SUSPENDED' },
     })
+    await tx.studentProfile.updateMany({ where: { userId: targetUserId }, data: { editRevision: { increment: 1 } } })
+    await invalidateStudentMatchingIndexTx(tx, targetUserId)
     await tx.session.deleteMany({ where: { userId: targetUserId } })
     await logAudit(
       { actorId: ctx.userId, action: 'user.suspend', targetType: 'User', targetId: targetUserId, metadata: { reason } },
@@ -313,18 +317,18 @@ export async function restoreUser(ctx: UserCtx, input: RestoreUserInput): Promis
   await assertAdmin(ctx.userId)
   const { targetUserId } = restoreUserSchema.parse(input)
 
-  const user = await db.user.findUnique({
-    where: { id: targetUserId },
-    select: { id: true, role: true, status: true },
-  })
-  if (!user || user.role !== 'STUDENT') throw new NotFoundError('Student not found')
-  if (user.status !== 'SUSPENDED') return
-
   await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.STUDENT_DATA, targetUserId)
+    await assertAdmin(ctx.userId, tx)
+    const user = await tx.user.findUnique({ where: { id: targetUserId }, select: { role: true, status: true } })
+    if (!user || user.role !== 'STUDENT') throw new NotFoundError('Student not found')
+    if (user.status !== 'SUSPENDED') return
     await tx.user.update({
       where: { id: targetUserId },
       data: { status: 'ACTIVE' },
     })
+    await tx.studentProfile.updateMany({ where: { userId: targetUserId }, data: { editRevision: { increment: 1 } } })
+    await invalidateStudentMatchingIndexTx(tx, targetUserId)
     await logAudit({
       actorId: ctx.userId,
       action: 'user.restore',

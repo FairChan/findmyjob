@@ -41,6 +41,7 @@ import {
 import { canApplyToJob } from '@/server/services/job-view-quota'
 import { getContactForCompany } from '@/server/services/contact-access'
 import { encryptField } from '@/server/lib/crypto'
+import { seedApplicationMaterials } from '../helpers/application-materials'
 import {
   DuplicateApplicationError,
   CompletenessLowError,
@@ -77,6 +78,7 @@ async function seedApplySettings(overrides: Record<string, unknown> = {}) {
 
 async function createStudentWithCompleteness(completeness: number) {
   const { userId, profileId } = await createStudent(testDb, { completeness })
+  await seedApplicationMaterials(testDb, profileId)
   return { userId, profileId }
 }
 
@@ -89,6 +91,21 @@ beforeEach(() => {
 })
 
 describe('applyToJob', () => {
+  it.each(['contact', 'resume'] as const)('rejects missing %s even at full completeness', async (missing) => {
+    await seedApplySettings()
+    const { userId, profileId } = await createStudentWithCompleteness(100)
+    const emp = await createEmployer(testDb)
+    const job = await createPublishedJob(emp.companyId, emp.userId)
+    await addJobView(profileId, job.id)
+    if (missing === 'contact') await testDb.studentContact.deleteMany({ where: { studentId: profileId } })
+    else await testDb.resumeFile.deleteMany({ where: { studentId: profileId } })
+    await expect(applyToJob({ userId }, { jobId: job.id })).rejects.toMatchObject({
+      code: missing === 'contact' ? 'CONTACT_REQUIRED' : 'RESUME_REQUIRED',
+    })
+    expect(await testDb.application.count()).toBe(0)
+    expect(await testDb.talentUnlock.count()).toBe(0)
+  })
+
   it('succeeds with sufficient completeness', async () => {
     await seedApplySettings()
     const { userId, profileId } = await createStudentWithCompleteness(70)
@@ -103,6 +120,7 @@ describe('applyToJob', () => {
     expect(app).not.toBeNull()
     expect(app?.status).toBe(ApplicationStatus.APPLIED)
     expect(app?.studentId).toBe(profileId)
+    expect(app?.resumeId).not.toBeNull()
 
     // ApplicationEvent created
     const events = await testDb.applicationEvent.findMany({ where: { applicationId: result.applicationId } })
@@ -140,7 +158,7 @@ describe('applyToJob', () => {
 
     // Write encrypted contact info for the student
     const encPhone = encryptField('+60123456789', `StudentContact.phone:${profileId}`)
-    await testDb.studentContact.create({ data: { studentId: profileId, phone: encPhone } })
+    await testDb.studentContact.update({ where: { studentId: profileId }, data: { phone: encPhone } })
 
     // No TalentUnlock exists yet, no credits spent
     const walletBefore = await testDb.creditWallet.findUnique({ where: { companyId: emp.companyId } })

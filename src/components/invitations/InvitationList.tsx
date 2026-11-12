@@ -4,17 +4,19 @@ import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
 import type { StudentInvitationItem } from '@/server/services/invitations'
 import { acceptInvitationAction, declineInvitationAction } from '@/server/actions/invitations'
+import { formatKLDate } from '@/lib/format-date'
+import { cn } from '@/lib/utils'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { Card } from '@/components/ui/card'
+import { EmptyState } from '@/components/ui/empty-state'
 
-function formatDate(d: Date): string {
-  return new Date(d).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
-}
-
-const STATUS_CLASSES: Record<string, string> = {
-  SENT: 'bg-orange-100 text-orange-700',
-  ACCEPTED: 'bg-green-100 text-green-700',
-  DECLINED: 'bg-gray-100 text-gray-600',
-  EXPIRED: 'bg-gray-100 text-gray-400',
+// Cards sit on the muted surface, so the closed states use the plain chip.
+const STATUS_TONE: Record<string, BadgeProps['tone']> = {
+  SENT: 'warning',
+  ACCEPTED: 'success',
+  DECLINED: 'plain',
+  EXPIRED: 'plain',
 }
 
 interface Props {
@@ -24,9 +26,10 @@ interface Props {
 
 export function InvitationList({ invitations, locale }: Props) {
   const t = useTranslations('invitations')
+  const tApply = useTranslations('publicJobs')
   const router = useRouter()
   const [pending, setPending] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ id: string; msg: string; ok: boolean } | null>(null)
+  const [toast, setToast] = useState<{ id: string; msg: string; ok: boolean; repairPath?: string } | null>(null)
 
   const statusLabel: Record<string, string> = {
     SENT: t('statusSent'),
@@ -43,10 +46,17 @@ export function InvitationList({ invitations, locale }: Props) {
         setToast({ id: invitationId, msg: t('acceptSuccess'), ok: true })
         router.refresh()
       } else {
+        const missingMaterials = result.code === 'CONTACT_REQUIRED' || result.code === 'RESUME_REQUIRED'
+        const lowCompleteness = result.code === 'COMPLETENESS_LOW'
         setToast({
           id: invitationId,
-          msg: result.code === 'INVITATION_QUOTA_EXCEEDED' ? t('inviteErrorQuota') : t('acceptError'),
+          msg: missingMaterials
+            ? tApply(result.code === 'CONTACT_REQUIRED' ? 'applyBlockedContact' : 'applyBlockedResume')
+            : lowCompleteness ? tApply('applyBlockedProfile')
+              : result.code === 'INVITATION_QUOTA_EXCEEDED' ? t('inviteErrorQuota') : t('acceptError'),
           ok: false,
+          ...(missingMaterials ? { repairPath: `/${locale}/s/onboarding` }
+            : lowCompleteness ? { repairPath: `/${locale}/s/profile` } : {}),
         })
       }
     } finally {
@@ -70,77 +80,74 @@ export function InvitationList({ invitations, locale }: Props) {
   }
 
   if (invitations.length === 0) {
-    return (
-      <div className="rounded-lg border p-8 text-center text-muted-foreground">
-        <p className="font-medium">{t('empty')}</p>
-        <p className="mt-1 text-sm">{t('emptyDesc')}</p>
-      </div>
-    )
+    return <EmptyState title={t('empty')} description={t('emptyDesc')} />
   }
 
   return (
     <ul className="space-y-3">
-      {invitations.map((inv) => (
-        <li
-          key={inv.id}
-          className={`rounded-lg border p-5${inv.status === 'SENT' ? ' border-primary/30' : ''}`}
-        >
-          {/* Toast for this item */}
-          {toast?.id === inv.id && (
-            <div
-              role="status"
-              className={`mb-3 rounded-md px-3 py-2 text-sm ${toast.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}
-            >
-              {toast.msg}
-            </div>
-          )}
+      {invitations.map((inv) => {
+        const companyName =
+          locale === 'zh'
+            ? (inv.company.displayNameZh ?? inv.company.legalName)
+            : (inv.company.displayNameEn ?? inv.company.legalName)
+        return (
+          <li key={inv.id}>
+            <Card>
+              {toast?.id === inv.id && (
+                <div
+                  role="status"
+                  className={cn(
+                    'mb-4 rounded-control px-3 py-2 text-sm',
+                    toast.ok ? 'bg-success-muted text-success' : 'bg-destructive-muted text-destructive',
+                  )}
+                >
+                  {toast.msg}
+                  {toast.repairPath && (
+                    <a href={toast.repairPath} className="ml-2 underline">{tApply('completeProfileButton')}</a>
+                  )}
+                </div>
+              )}
 
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">
-                {inv.company.displayNameZh ?? inv.company.legalName}
-                {inv.job ? `  邀请你投递「${inv.job.title}」` : ''}
-              </p>
-              <p className="mt-0.5 text-sm text-muted-foreground">
-                {t('sentAt', { date: formatDate(inv.createdAt) })}
-                {' · '}
-                {t('expiresAt', { date: formatDate(inv.expiresAt) })}
-              </p>
-            </div>
-            <span
-              className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[inv.status] ?? STATUS_CLASSES['EXPIRED']}`}
-            >
-              {statusLabel[inv.status] ?? inv.status}
-            </span>
-          </div>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-body font-semibold leading-snug">{companyName}</p>
+                  {inv.job && <p className="mt-1 text-sm">{t('invitedForJob', { job: inv.job.title })}</p>}
+                  <p className="mt-1.5 text-sm text-muted-foreground">
+                    {t('sentAt', { date: formatKLDate(inv.createdAt, locale) })}
+                    {' · '}
+                    {t('expiresAt', { date: formatKLDate(inv.expiresAt, locale) })}
+                  </p>
+                </div>
+                <Badge tone={STATUS_TONE[inv.status] ?? 'plain'} className="shrink-0">
+                  {statusLabel[inv.status] ?? inv.status}
+                </Badge>
+              </div>
 
-          {inv.message && (
-            <blockquote className="mt-3 rounded-lg bg-muted/50 p-3 text-sm italic text-muted-foreground">
-              &ldquo;{inv.message}&rdquo;
-            </blockquote>
-          )}
+              {inv.message && (
+                <blockquote className="mt-4 rounded-control bg-background p-3 text-sm text-muted-foreground">
+                  &ldquo;{inv.message}&rdquo;
+                </blockquote>
+              )}
 
-          {inv.status === 'SENT' && (
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                disabled={pending === inv.id}
-                onClick={() => handleDecline(inv.id)}
-              >
-                {t('declineButton')}
-              </Button>
-              <Button
-                size="sm"
-                disabled={pending === inv.id}
-                onClick={() => handleAccept(inv.id)}
-              >
-                {t('acceptButton')}
-              </Button>
-            </div>
-          )}
-        </li>
-      ))}
+              {inv.status === 'SENT' && (
+                <div className="mt-5 flex justify-end gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={pending === inv.id}
+                    onClick={() => handleDecline(inv.id)}
+                  >
+                    {t('declineButton')}
+                  </Button>
+                  <Button size="sm" disabled={pending === inv.id} onClick={() => handleAccept(inv.id)}>
+                    {t('acceptButton')}
+                  </Button>
+                </div>
+              )}
+            </Card>
+          </li>
+        )
+      })}
     </ul>
   )
 }

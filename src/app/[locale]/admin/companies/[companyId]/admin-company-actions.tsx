@@ -1,8 +1,9 @@
 'use client'
 
 import { useState } from 'react'
-import { useTranslations } from 'next-intl'
-import { useRouter } from 'next/navigation'
+import { useLocale, useTranslations } from 'next-intl'
+import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   deactivateCompanyAction,
   reactivateCompanyAction,
@@ -29,6 +30,9 @@ export function AdminCompanyActions({
   walletBalance,
 }: Props) {
   const t = useTranslations('adminCompanyManage')
+  const securityT = useTranslations('adminSecurity')
+  const locale = useLocale()
+  const pathname = usePathname()
   const router = useRouter()
 
   // Deactivate
@@ -57,6 +61,7 @@ export function AdminCompanyActions({
   const [creditNote, setCreditNote] = useState('')
   const [creditsLoading, setCreditsLoading] = useState(false)
   const [creditsError, setCreditsError] = useState('')
+  const [creditsAuthError, setCreditsAuthError] = useState<'FRESH_SESSION_REQUIRED' | 'TWO_FACTOR_REQUIRED' | null>(null)
   const [creditsSuccess, setCreditsSuccess] = useState('')
   const [currentBalance, setCurrentBalance] = useState(walletBalance)
 
@@ -134,6 +139,7 @@ export function AdminCompanyActions({
   async function handleCredits(e: React.FormEvent) {
     e.preventDefault()
     setCreditsError('')
+    setCreditsAuthError(null)
     setCreditsSuccess('')
     if (!creditNote.trim()) {
       setCreditsError(t('errorNoteRequired'))
@@ -153,6 +159,8 @@ export function AdminCompanyActions({
         setCreditDelta('')
         setCreditNote('')
         router.refresh()
+      } else if (!res.ok && (res.code === 'FRESH_SESSION_REQUIRED' || res.code === 'TWO_FACTOR_REQUIRED')) {
+        setCreditsAuthError(res.code)
       } else {
         setCreditsError(t('errorFailed'))
       }
@@ -180,7 +188,7 @@ export function AdminCompanyActions({
   return (
     <div className="space-y-6">
       {/* Deactivate / Reactivate */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('deactivateTitle')}</h2>
         {isActive ? (
           <form onSubmit={handleDeactivate} className="space-y-3">
@@ -198,7 +206,7 @@ export function AdminCompanyActions({
                 value={deactivateReason}
                 onChange={(e) => setDeactivateReason(e.target.value)}
                 placeholder={t('deactivateReasonPlaceholder')}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             {deactivateError && (
@@ -207,7 +215,7 @@ export function AdminCompanyActions({
             <button
               type="submit"
               disabled={deactivateLoading}
-              className="rounded-md bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
+              className="rounded-control bg-destructive px-4 py-2 text-sm font-medium text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50"
             >
               {t('deactivateBtn')}
             </button>
@@ -222,7 +230,7 @@ export function AdminCompanyActions({
               type="button"
               onClick={handleReactivate}
               disabled={reactivateLoading}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {t('reactivateBtn')}
             </button>
@@ -231,7 +239,7 @@ export function AdminCompanyActions({
       </section>
 
       {/* Founding partner */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('foundingPartnerTitle')}</h2>
         <form onSubmit={handleFoundingPartner} className="space-y-3">
           <label className="flex items-center gap-2 cursor-pointer">
@@ -247,12 +255,12 @@ export function AdminCompanyActions({
             <p className="text-sm text-destructive">{foundingPartnerError}</p>
           )}
           {foundingPartnerSuccess && (
-            <p className="text-sm text-green-700">{t('successFoundingPartner')}</p>
+            <p className="text-sm text-success">{t('successFoundingPartner')}</p>
           )}
           <button
             type="submit"
             disabled={foundingPartnerLoading}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {t('foundingPartnerSave')}
           </button>
@@ -260,7 +268,7 @@ export function AdminCompanyActions({
       </section>
 
       {/* Tags */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('tagsTitle')}</h2>
         <form onSubmit={handleTags} className="space-y-3">
           <div className="flex flex-wrap gap-2">
@@ -284,11 +292,11 @@ export function AdminCompanyActions({
             ))}
           </div>
           {tagsError && <p className="text-sm text-destructive">{tagsError}</p>}
-          {tagsSuccess && <p className="text-sm text-green-700">{t('successTags')}</p>}
+          {tagsSuccess && <p className="text-sm text-success">{t('successTags')}</p>}
           <button
             type="submit"
             disabled={tagsLoading}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
           >
             {t('tagsSave')}
           </button>
@@ -296,7 +304,7 @@ export function AdminCompanyActions({
       </section>
 
       {/* Credits */}
-      <section className="rounded-lg border p-5">
+      <section className="rounded-card border p-5">
         <h2 className="font-semibold mb-3">{t('creditsTitle')}</h2>
         {currentBalance !== null ? (
           <p className="text-sm text-muted-foreground mb-3">
@@ -316,7 +324,7 @@ export function AdminCompanyActions({
                 type="number"
                 value={creditDelta}
                 onChange={(e) => setCreditDelta(e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
             <div>
@@ -329,15 +337,31 @@ export function AdminCompanyActions({
                 value={creditNote}
                 onChange={(e) => setCreditNote(e.target.value)}
                 placeholder={t('creditsNotePlaceholder')}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-            {creditsError && <p className="text-sm text-destructive">{creditsError}</p>}
-            {creditsSuccess && <p className="text-sm text-green-700">{creditsSuccess}</p>}
+            {creditsError && <p role="alert" className="text-sm text-destructive">{creditsError}</p>}
+            {creditsAuthError && (
+              <div role="alert" className="space-y-1 text-sm">
+                <p className="text-destructive">
+                  {securityT(creditsAuthError === 'FRESH_SESSION_REQUIRED' ? 'freshSessionRequired' : 'twoFactorRequired')}
+                </p>
+                <Link
+                  href={creditsAuthError === 'FRESH_SESSION_REQUIRED'
+                    ? `/${locale}/login?redirect=${encodeURIComponent(pathname)}`
+                    : `/${locale}/two-factor/setup`}
+                  prefetch={false}
+                  className="inline-flex min-h-10 items-center text-brand underline underline-offset-4"
+                >
+                  {securityT(creditsAuthError === 'FRESH_SESSION_REQUIRED' ? 'loginAgain' : 'setupTwoFactor')}
+                </Link>
+              </div>
+            )}
+            {creditsSuccess && <p className="text-sm text-success">{creditsSuccess}</p>}
             <button
               type="submit"
               disabled={creditsLoading}
-              className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {t('creditsSubmit')}
             </button>

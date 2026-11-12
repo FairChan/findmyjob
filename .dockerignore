@@ -38,6 +38,10 @@ tests
 # Root test configs import from tests/ (excluded above); next build would type-check them and fail.
 playwright.config.ts
 playwright.prod.config.ts
+playwright.t01-ui.config.ts
+playwright.t02-success.config.ts
+playwright.t03-ui.config.ts
+playwright.t04-ui.config.ts
 vitest.config.ts
 load
 prototype

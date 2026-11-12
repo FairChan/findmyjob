@@ -141,7 +141,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
   }
 
   const inputClass =
-    'w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
+    'w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring'
   const labelClass = 'block text-sm font-medium mb-1'
 
   return (
@@ -342,7 +342,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
           <p className="text-xs text-muted-foreground mb-2">{tEdit('logoHint')}</p>
           <div className="flex items-center gap-3">
             <label className="cursor-pointer">
-              <span className="inline-flex items-center rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-accent">
+              <span className="inline-flex items-center rounded-control border border-input bg-background px-3 py-2 text-sm hover:bg-accent">
                 {logoUploading ? tEdit('logoUploading') : tEdit('logoUploadButton')}
               </span>
               <input
@@ -368,7 +368,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
       )}
 
       {success && (
-        <p role="status" className="text-sm text-green-600">{tEdit('saveSuccess')}</p>
+        <p role="status" className="text-sm text-success">{tEdit('saveSuccess')}</p>
       )}
 
       <Button type="submit" className="w-full" disabled={isPending || logoUploading}>

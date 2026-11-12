@@ -26,9 +26,9 @@ export default async function ReconsentPage({
   const currentVersion = await getSetting('legal.currentVersion', '2026-11-draft')
 
   return (
-    <section className="container mx-auto max-w-lg px-4 py-24">
-      <div className="rounded-lg border border-border bg-card p-8 shadow-sm">
-        <h1 className="text-xl font-bold text-foreground mb-3">
+    <section className="page-shell max-w-lg py-10 md:py-16">
+      <div className="auth-enter rounded-tile bg-card p-6 shadow-float sm:p-8">
+        <h1 className="mb-3 text-title">
           {t('reconsentTitle')}
         </h1>
         <p className="text-sm text-muted-foreground mb-2">

@@ -110,8 +110,8 @@ export function VerificationForm({ locale }: { locale: string }) {
 
   if (success) {
     return (
-      <div className="rounded-lg border border-green-200 bg-green-50 p-6 text-center">
-        <p className="font-medium text-green-800">{t('successMessage')}</p>
+      <div className="rounded-card border border-success/30 bg-success-muted p-6 text-center">
+        <p className="font-medium text-success">{t('successMessage')}</p>
       </div>
     )
   }
@@ -124,14 +124,14 @@ export function VerificationForm({ locale }: { locale: string }) {
         <p className="mb-3 text-xs text-muted-foreground">{t('filesHint')}</p>
 
         {files.length > 0 && (
-          <ul className="mb-3 divide-y rounded-lg border" aria-label={t('filesLabel')}>
+          <ul className="mb-3 divide-y rounded-card border" aria-label={t('filesLabel')}>
             {files.map(f => (
               <li key={f.key} className="flex items-center justify-between gap-3 px-4 py-2">
                 <span className="min-w-0 truncate text-sm">{f.name}</span>
                 <button
                   type="button"
                   onClick={() => removeFile(f.key)}
-                  className="shrink-0 text-xs text-red-600 hover:underline"
+                  className="shrink-0 text-xs text-destructive hover:underline"
                 >
                   {t('removeFile')}
                 </button>
@@ -147,7 +147,7 @@ export function VerificationForm({ locale }: { locale: string }) {
         )}
 
         {uploadError && (
-          <p role="alert" className="mb-2 text-sm text-red-600">
+          <p role="alert" className="mb-2 text-sm text-destructive">
             {uploadError}
           </p>
         )}
@@ -188,12 +188,12 @@ export function VerificationForm({ locale }: { locale: string }) {
           placeholder={t('notePlaceholder')}
           maxLength={500}
           rows={3}
-          className="w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
+          className="w-full rounded-control border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand"
         />
       </div>
 
       {submitError && (
-        <p role="alert" className="text-sm text-red-600">
+        <p role="alert" className="text-sm text-destructive">
           {submitError}
         </p>
       )}

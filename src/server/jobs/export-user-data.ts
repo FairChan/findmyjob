@@ -1,188 +1,96 @@
 import { zipSync, strToU8 } from 'fflate'
-import { db } from '../db'
 import { getObjectBytes, putObject } from '@/lib/storage'
 import { sendNotificationEmail } from '../services/notify'
 import { logger } from '../lib/logger'
+import {
+  claimDataExport, beginDataExportUpload, acknowledgeDataExportUpload, settleDataExport,
+  cleanupDataExport, reconcileExportRequest, reserveExportNotification, isExportPublished,
+  type ExportClaim, type ExportPayload,
+} from '../services/data-export-artifacts'
 
-export async function runExportUserData(payload: { requestId: string; userId: string }): Promise<void> {
-  const { requestId, userId } = payload
+const MAX_RESUME_BYTES = 20 * 1024 * 1024
+const MAX_ARCHIVE_BYTES = 128 * 1024 * 1024
+const MAX_RESUMES = 256
 
-  const req = await db.dataRequest.findUnique({
-    where: { id: requestId },
-    select: { id: true, userId: true, status: true },
-  })
+async function buildArchive(claim: ExportClaim): Promise<Buffer> {
+  const files: Record<string, Uint8Array> = {}
+  let total = 0
+  const add = (name: string, bytes: Uint8Array) => {
+    total += bytes.byteLength
+    if (total > MAX_ARCHIVE_BYTES) throw new Error('DATA_EXPORT_SIZE_LIMIT')
+    files[name] = bytes
+  }
+  for (const [name, value] of Object.entries(claim.snapshot.files)) add(name, strToU8(JSON.stringify(value, null, 2)))
+  if (claim.snapshot.resumes.length > MAX_RESUMES) throw new Error('DATA_EXPORT_SIZE_LIMIT')
+  const preparationDeadline = AbortSignal.timeout(90_000)
+  const skippedResumes: Array<{ id: string; reason: 'SOURCE_UNAVAILABLE' }> = []
+  for (const resume of claim.snapshot.resumes) {
+    if (preparationDeadline.aborted) throw new Error('DATA_EXPORT_PREPARATION_TIMEOUT')
+    let bytes: Buffer
+    try {
+      bytes = await getObjectBytes(resume.storageKey, {
+        maxBytes: MAX_RESUME_BYTES, signal: AbortSignal.any([preparationDeadline, AbortSignal.timeout(15_000)]),
+      })
+    } catch {
+      if (preparationDeadline.aborted) throw new Error('DATA_EXPORT_PREPARATION_TIMEOUT')
+      skippedResumes.push({ id: resume.id, reason: 'SOURCE_UNAVAILABLE' })
+      logger.warn({ artifactId: claim.id, code: 'DATA_EXPORT_RESUME_UNAVAILABLE' }, 'export skipped an unavailable resume')
+      continue
+    }
+    const safeName = resume.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
+    add(`resumes/${resume.id}_${safeName}`, bytes)
+  }
+  add('export-manifest.json', strToU8(JSON.stringify({ snapshotAt: claim.snapshot.snapshotAt, skippedResumes }, null, 2)))
+  const archive = Buffer.from(zipSync(files))
+  if (archive.byteLength > MAX_ARCHIVE_BYTES) throw new Error('DATA_EXPORT_SIZE_LIMIT')
+  return archive
+}
 
-  if (!req || req.userId !== userId || req.status !== 'OPEN') {
-    logger.warn({ requestId }, 'export-user-data: request not found or not OPEN, skipping')
+export async function runExportUserData(payload: ExportPayload): Promise<void> {
+  let claim: ExportClaim | null = null
+  let settlement: Awaited<ReturnType<typeof settleDataExport>> = 'MISSING'
+  let failed = false
+  try {
+    // Rejected/anonymized users and losing generations still have discoverable cleanup.
+    await reconcileExportRequest(payload)
+    claim = await claimDataExport(payload)
+    if (!claim) return
+    const archive = await buildArchive(claim)
+    if (await beginDataExportUpload(claim)) {
+      // Requires the additive shared storage fragment. No SDK retry on this physical key.
+      await putObject(claim.storageKey, archive, 'application/zip', {
+        signal: AbortSignal.timeout(60_000), maxAttempts: 1,
+      })
+      await acknowledgeDataExportUpload(claim.id, claim.userId)
+      settlement = await settleDataExport(claim.id, claim.userId, true)
+    } else {
+      settlement = await settleDataExport(claim.id, claim.userId, false)
+    }
+  } catch {
+    failed = true
+    logger.warn({ requestId: payload.requestId, code: 'DATA_EXPORT_RECONCILE' }, 'export requires persistent-state reconciliation')
+    if (!claim) throw new Error('DATA_EXPORT_RETRY_REQUIRED')
+    try {
+      // A transaction may have committed despite rejection. Never infer that its object is a loser.
+      settlement = await settleDataExport(claim.id, claim.userId, false)
+    } catch {
+      // Database unavailable: the durable ledger is the recovery route. No speculative delete.
+      throw new Error('DATA_EXPORT_RETRY_REQUIRED')
+    }
+  }
+  if (!claim) return
+  if (settlement === 'CLEANUP_REQUIRED') {
+    try { await cleanupDataExport(claim.id, claim.userId) } catch { throw new Error('DATA_EXPORT_RETRY_REQUIRED') }
+  }
+  if (settlement === 'PUBLISHED') {
+    try {
+      if (await reserveExportNotification(claim.id, claim.userId) && await isExportPublished(claim.id, claim.userId)) {
+        await sendNotificationEmail(claim.userId, { template: 'data-export-ready', requestId: claim.requestId })
+      }
+    } catch {
+      logger.warn({ requestId: claim.requestId, code: 'DATA_EXPORT_NOTIFICATION_UNCONFIRMED' }, 'export publication retained after notification failure')
+    }
     return
   }
-
-  try {
-    const files: Record<string, Uint8Array> = {}
-
-    // ── User basic info ────────────────────────────────────────────────────
-    const user = await db.user.findUnique({
-      where: { id: userId },
-      select: { id: true, name: true, email: true, role: true, createdAt: true, locale: true },
-    })
-    if (!user) return
-
-    files['user.json'] = strToU8(JSON.stringify(user, null, 2))
-
-    // ── StudentProfile ──────────────────────────────────────────────────────
-    const profile = await db.studentProfile.findUnique({
-      where: { userId },
-      select: {
-        id: true,
-        fullName: true,
-        headline: true,
-        summary: true,
-        degreeLevel: true,
-        major: true,
-        graduationYear: true,
-        graduationMonth: true,
-        cgpa: true,
-        nationality: true,
-        workAuth: true,
-        intents: true,
-        availableFrom: true,
-        preferredStates: true,
-        preferredIndustries: true,
-        expectedSalaryMin: true,
-        expectedSalaryMax: true,
-        skills: true,
-        visibility: true,
-        completeness: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    })
-
-    if (profile) {
-      files['profile.json'] = strToU8(JSON.stringify(profile, null, 2))
-
-      // ── Education ────────────────────────────────────────────────────────
-      const educations = await db.education.findMany({
-        where: { studentId: profile.id },
-        select: { id: true, schoolName: true, degreeLevel: true, major: true, startDate: true, endDate: true, gpa: true, description: true },
-        orderBy: { sortOrder: 'asc' },
-      })
-      files['educations.json'] = strToU8(JSON.stringify(educations, null, 2))
-
-      // ── Experience ────────────────────────────────────────────────────────
-      const experiences = await db.experience.findMany({
-        where: { studentId: profile.id },
-        select: { id: true, kind: true, title: true, organization: true, startDate: true, endDate: true, description: true },
-        orderBy: { sortOrder: 'asc' },
-      })
-      files['experiences.json'] = strToU8(JSON.stringify(experiences, null, 2))
-
-      // ── Languages ────────────────────────────────────────────────────────
-      const languages = await db.studentLanguage.findMany({
-        where: { studentId: profile.id },
-        select: { language: true, level: true },
-      })
-      files['languages.json'] = strToU8(JSON.stringify(languages, null, 2))
-
-      // ── Applications (student-visible fields only, no companyNote) ────────
-      const applications = await db.application.findMany({
-        where: { studentId: profile.id },
-        select: {
-          id: true,
-          jobId: true,
-          coverNote: true,
-          status: true,
-          createdAt: true,
-          updatedAt: true,
-          job: { select: { id: true, title: true } },
-          events: {
-            select: { id: true, fromStatus: true, toStatus: true, createdAt: true },
-            orderBy: { createdAt: 'asc' },
-          },
-        },
-        orderBy: { createdAt: 'desc' },
-      })
-      files['applications.json'] = strToU8(JSON.stringify(applications, null, 2))
-
-      // ── Invitations ───────────────────────────────────────────────────────
-      const invitations = await db.invitation.findMany({
-        where: { studentId: profile.id },
-        select: {
-          id: true,
-          status: true,
-          message: true,
-          createdAt: true,
-          respondedAt: true,
-          expiresAt: true,
-          job: { select: { id: true, title: true } },
-          company: { select: { id: true, legalName: true, displayNameZh: true, displayNameEn: true } },
-        },
-        orderBy: { createdAt: 'desc' },
-      })
-      files['invitations.json'] = strToU8(JSON.stringify(invitations, null, 2))
-
-      // ── Privacy settings ────────────────────────────────────────────────
-      const privacySettings = {
-        visibility: profile.visibility,
-        blockedCompanies: await db.blockedCompany.findMany({
-          where: { studentId: profile.id },
-          select: { companyId: true, createdAt: true },
-        }),
-        consents: await db.consent.findMany({
-          where: { userId },
-          select: { type: true, version: true, granted: true, createdAt: true },
-          orderBy: { createdAt: 'asc' },
-        }),
-      }
-      files['privacy.json'] = strToU8(JSON.stringify(privacySettings, null, 2))
-
-      // ── Resume files ──────────────────────────────────────────────────────
-      const resumes = await db.resumeFile.findMany({
-        where: { studentId: profile.id },
-        select: { id: true, storageKey: true, fileName: true, mimeType: true, sizeBytes: true, isPrimary: true, createdAt: true },
-      })
-
-      for (const r of resumes) {
-        try {
-          const bytes = await getObjectBytes(r.storageKey, { maxBytes: 20 * 1024 * 1024 })
-          const safeName = r.fileName.replace(/[^a-zA-Z0-9._-]/g, '_')
-          files[`resumes/${r.id}_${safeName}`] = bytes
-        } catch (err) {
-          logger.warn({ resumeId: r.id, err }, 'export-user-data: failed to fetch resume, skipping')
-        }
-      }
-    }
-
-    // ── Notifications ────────────────────────────────────────────────────────
-    const notifications = await db.notification.findMany({
-      where: { userId },
-      select: { id: true, type: true, createdAt: true, readAt: true },
-      orderBy: { createdAt: 'desc' },
-      take: 500,
-    })
-    files['notifications.json'] = strToU8(JSON.stringify(notifications, null, 2))
-
-    // ── Build zip ────────────────────────────────────────────────────────────
-    const zipBuffer = Buffer.from(zipSync(files))
-    const storageKey = `exports/${userId}/${requestId}.zip`
-
-    // Upload outside transaction
-    await putObject(storageKey, zipBuffer, 'application/zip')
-
-    // Update request
-    await db.dataRequest.update({
-      where: { id: requestId },
-      data: { status: 'DONE', resultKey: storageKey, resolvedAt: new Date() },
-    })
-
-    // Send notification email (outside transaction, non-fatal)
-    await sendNotificationEmail(userId, { template: 'data-export-ready', requestId })
-  } catch (err) {
-    logger.error({ requestId, userId, err }, 'export-user-data: failed')
-    await db.dataRequest.update({
-      where: { id: requestId },
-      data: { status: 'REJECTED', note: 'Internal error during export', resolvedAt: new Date() },
-    }).catch(() => {})
-    throw err
-  }
+  if (failed) throw new Error('DATA_EXPORT_RETRY_REQUIRED')
 }

@@ -14,9 +14,11 @@ import { randomBytes } from 'crypto'
 import type { Page } from '@playwright/test'
 import { faker } from '@faker-js/faker'
 import { hashPassword } from 'better-auth/crypto'
-import { stubTurnstile } from './turnstile'
+import { parseSetCookieHeader } from 'better-auth/cookies'
+import { DUMMY_TURNSTILE_TOKEN, stubTurnstile } from './turnstile'
 import { e2eDb as db } from './db'
 import { writeCurrentVersionConsent } from './consent'
+import { totpCode } from '../../lib/totp'
 
 export type EmployerCompanyOpts = {
   verificationStatus?: 'UNSUBMITTED' | 'PENDING' | 'VERIFIED' | 'REJECTED'
@@ -27,7 +29,7 @@ export type EmployerCompanyOpts = {
 export type LoginOpts =
   | { role: 'STUDENT'; fromCurrentPage?: boolean; consent?: boolean }
   | { role: 'EMPLOYER'; company?: EmployerCompanyOpts; fromCurrentPage?: boolean; consent?: boolean }
-  | { role: 'ADMIN'; fromCurrentPage?: boolean; consent?: boolean }
+  | { role: 'ADMIN'; fromCurrentPage?: boolean; consent?: boolean; twoFactor?: boolean }
 
 export type LoginResult = {
   userId: string
@@ -39,6 +41,49 @@ export type LoginResult = {
 function testClientIp(): string {
   const n = Math.floor(Math.random() * 2 ** 17)
   return `198.${18 + (n >> 16)}.${(n >> 8) & 255}.${n & 255}`
+}
+
+async function enrollAdminTwoFactor(page: Page, password: string, clientIp: string): Promise<void> {
+  const origin = new URL(page.url()).origin
+  const post = async (path: string, body: Record<string, unknown>) => {
+    const cookies = await page.context().cookies(origin)
+    // Native fetch keeps enrollment secrets out of Playwright network traces.
+    const response = await fetch(`${origin}/api/auth${path}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin,
+        cookie: cookies.map(({ name, value }) => `${name}=${value}`).join('; '),
+        'x-real-ip': clientIp,
+      },
+      body: JSON.stringify({ ...body, turnstileToken: DUMMY_TURNSTILE_TOKEN }),
+    })
+    if (!response.ok) throw new Error(`Admin 2FA ${path} failed (${response.status})`)
+    return response
+  }
+
+  const enabled = await post('/two-factor/enable', { password })
+  const setup = await enabled.json() as { totpURI?: string }
+  if (!setup.totpURI) throw new Error('Admin 2FA setup did not return a TOTP URI')
+  const verified = await post('/two-factor/verify-totp', { code: await totpCode(setup.totpURI) })
+
+  const sameSite = { strict: 'Strict', lax: 'Lax', none: 'None' } as const
+  for (const header of verified.headers.getSetCookie()) {
+    for (const [name, attributes] of parseSetCookieHeader(header)) {
+      await page.context().addCookies([{
+        name,
+        value: encodeURIComponent(attributes.value),
+        domain: attributes.domain ?? new URL(origin).hostname,
+        path: attributes.path ?? '/',
+        httpOnly: attributes.httponly ?? false,
+        secure: attributes.secure ?? false,
+        sameSite: sameSite[attributes.samesite ?? 'lax'],
+        ...(attributes['max-age'] !== undefined
+          ? { expires: Math.floor(Date.now() / 1000) + attributes['max-age'] }
+          : attributes.expires ? { expires: attributes.expires.getTime() / 1000 } : {}),
+      }])
+    }
+  }
 }
 
 export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult> {
@@ -99,7 +144,8 @@ export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult>
   // Each loginAs acts as its own client. Better Auth limits /sign-in/email to 5/min per IP and reads the IP only
   // from x-real-ip (written by Caddy in production; absent in local dev), so without this every test would share
   // one bucket and the full suite trips the limit. The limit itself is unchanged.
-  await page.setExtraHTTPHeaders({ 'x-real-ip': testClientIp() })
+  const clientIp = testClientIp()
+  await page.setExtraHTTPHeaders({ 'x-real-ip': clientIp })
   await stubTurnstile(page)
   if (!opts.fromCurrentPage) {
     await page.goto('/zh/login')
@@ -119,6 +165,12 @@ export async function loginAs(page: Page, opts: LoginOpts): Promise<LoginResult>
 
   // Wait until the browser leaves the login page
   await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 })
+
+  if (opts.role === 'ADMIN' && opts.twoFactor !== false) {
+    await enrollAdminTwoFactor(page, password, clientIp)
+    await page.goto('/zh/admin')
+    await page.waitForURL((url) => url.pathname === '/zh/admin', { timeout: 15000 })
+  }
 
   return { userId: user.id, email, companyId }
 }

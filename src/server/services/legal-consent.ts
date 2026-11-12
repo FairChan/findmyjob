@@ -3,6 +3,7 @@ import { db } from '../db'
 import { getSetting } from './settings'
 import { logAudit } from './audit'
 import { VersionMismatchError } from '../errors'
+import { prepareLegalConsentWriteTx } from './legal-consent-write'
 
 export async function needsReconsent(userId: string): Promise<boolean> {
   const currentVersion = await getSetting('legal.currentVersion', '2026-11-draft')
@@ -31,40 +32,37 @@ export async function recordLegalConsent(
   userId: string,
   opts: { submittedVersion: string; ip?: string; userAgent?: string },
 ): Promise<void> {
-  const currentVersion = await getSetting('legal.currentVersion', '2026-11-draft')
-
-  if (opts.submittedVersion !== currentVersion) {
-    throw new VersionMismatchError()
-  }
-
-  await db.$transaction([
-    db.consent.create({
+  await db.$transaction(async tx => {
+    const { version: currentVersion, createdAt } = await prepareLegalConsentWriteTx(tx, userId)
+    if (opts.submittedVersion !== currentVersion) throw new VersionMismatchError()
+    await tx.consent.create({
       data: {
         userId,
         type: 'TERMS',
         version: currentVersion,
         granted: true,
+        createdAt,
         ip: opts.ip,
         userAgent: opts.userAgent,
       },
-    }),
-    db.consent.create({
+    })
+    await tx.consent.create({
       data: {
         userId,
         type: 'PRIVACY',
         version: currentVersion,
         granted: true,
+        createdAt,
         ip: opts.ip,
         userAgent: opts.userAgent,
       },
-    }),
-  ])
-
-  await logAudit({
-    actorId: userId,
-    action: 'user.reconsent',
-    targetType: 'User',
-    targetId: userId,
-    metadata: { version: currentVersion },
+    })
+    await logAudit({
+      actorId: userId,
+      action: 'user.reconsent',
+      targetType: 'User',
+      targetId: userId,
+      metadata: { version: currentVersion },
+    }, tx)
   })
 }

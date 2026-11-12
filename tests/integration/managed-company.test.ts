@@ -657,6 +657,7 @@ function mockAdminSession(userId: string) {
       userAgent: null,
       createdAt: new Date(),
       updatedAt: new Date(),
+      twoFactorVerifiedAt: new Date(),
     },
   })
 }
@@ -689,6 +690,7 @@ describe('transferManagedCompanyAction', () => {
 
   it('admin action returns no token, email mock receives accept URL', async () => {
     const { userId: adminId } = await createAdmin(testDb)
+    await testDb.user.update({ where: { id: adminId }, data: { twoFactorEnabled: true } })
     mockAdminSession(adminId)
     const adminCtx = { userId: adminId }
     const company = await createManagedCompany(adminCtx, { legalName: `MCo-Act-Ok-${Date.now()}` })

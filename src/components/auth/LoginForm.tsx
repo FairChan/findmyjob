@@ -22,9 +22,60 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [turnstileToken, setTurnstileToken] = useState<string>('')
   const [turnstileKey, setTurnstileKey] = useState(0)
+  const [twoFactorRequired, setTwoFactorRequired] = useState(false)
+  const [useBackupCode, setUseBackupCode] = useState(false)
+  const [code, setCode] = useState('')
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
   const handleTurnstileError = useCallback(() => setError(t('errorTurnstileFailed')), [t])
+
+  async function finishLogin() {
+    const result = await getPostLoginRedirect({ locale, redirect })
+    router.push(result.ok ? result.data.path : `/${locale}/s`)
+  }
+
+  function restartLogin() {
+    setTwoFactorRequired(false)
+    setUseBackupCode(false)
+    setCode('')
+    setError(null)
+    setTurnstileToken('')
+    setTurnstileKey((key) => key + 1)
+  }
+
+  async function handleTwoFactorSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    setError(null)
+    const value = code.trim()
+    if (useBackupCode ? !value : !/^\d{6}$/.test(value)) {
+      setError(t(useBackupCode ? 'errorBackupCodeRequired' : 'errorTotpFormat'))
+      return
+    }
+
+    startTransition(async () => {
+      try {
+        const { error: authError } = useBackupCode
+          ? await authClient.twoFactor.verifyBackupCode({ code: value, trustDevice: false })
+          : await authClient.twoFactor.verifyTotp({ code: value, trustDevice: false })
+
+        if (authError) {
+          if (authError.status === 429 || authError.code === 'ACCOUNT_TEMPORARILY_LOCKED') {
+            setError(t('errorRateLimited'))
+          } else if (authError.code === 'INVALID_TWO_FACTOR_COOKIE') {
+            setError(t('errorTwoFactorExpired'))
+          } else {
+            setError(t(useBackupCode ? 'errorBackupCodeInvalid' : 'errorTotpInvalid'))
+          }
+          return
+        }
+
+        setCode('')
+        await finishLogin()
+      } catch {
+        setError(t('errorNetwork'))
+      }
+    })
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -36,7 +87,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
 
     startTransition(async () => {
       try {
-        const { error: authError } = await authClient.signIn.email({
+        const { data: authData, error: authError } = await authClient.signIn.email({
           email,
           password,
           // @ts-expect-error extra field consumed by hooks.before
@@ -60,12 +111,12 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
           return
         }
 
-        const result = await getPostLoginRedirect({ locale, redirect })
-        if (result.ok) {
-          router.push(result.data.path)
-        } else {
-          router.push(`/${locale}/s`)
+        if (authData && 'twoFactorRedirect' in authData && authData.twoFactorRedirect) {
+          setTwoFactorRequired(true)
+          return
         }
+
+        await finishLogin()
       } catch {
         // 网络错误时 action 或 fetch 会直接抛出：重置 Turnstile（旧 token 可能已被消耗），给出提示
         setTurnstileKey((k) => k + 1)
@@ -73,6 +124,61 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
         setError(t('errorNetwork'))
       }
     })
+  }
+
+  if (twoFactorRequired) {
+    return (
+      <form onSubmit={handleTwoFactorSubmit} noValidate className="space-y-4" aria-busy={isPending}>
+        <div className="space-y-2">
+          <h2 className="font-semibold">{t('twoFactorTitle')}</h2>
+          <p id="two-factor-description" className="text-sm text-muted-foreground">
+            {t(useBackupCode ? 'backupCodeDescription' : 'totpDescription')}
+          </p>
+        </div>
+        <div>
+          <label htmlFor="two-factor-code" className="mb-1 block text-sm font-medium">
+            {t(useBackupCode ? 'backupCodeLabel' : 'totpLabel')}
+          </label>
+          <input
+            id="two-factor-code"
+            name="code"
+            type="text"
+            inputMode={useBackupCode ? 'text' : 'numeric'}
+            autoComplete="one-time-code"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={useBackupCode ? 64 : 6}
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            aria-describedby="two-factor-description"
+            aria-invalid={!!error}
+            required
+            disabled={isPending}
+            className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-base outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+          />
+        </div>
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !code.trim()}>
+          {isPending ? t('verifying') : t('verifySubmit')}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-auto min-h-10 w-full whitespace-normal"
+          disabled={isPending}
+          onClick={() => {
+            setUseBackupCode((value) => !value)
+            setCode('')
+            setError(null)
+          }}
+        >
+          {t(useBackupCode ? 'useTotp' : 'useBackupCode')}
+        </Button>
+        <Button type="button" variant="link" className="w-full" disabled={isPending} onClick={restartLogin}>
+          {t('backToPassword')}
+        </Button>
+      </form>
+    )
   }
 
   return (
@@ -88,7 +194,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
           required
           autoComplete="email"
           placeholder={t('emailPlaceholder')}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
@@ -104,14 +210,14 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
           autoComplete="current-password"
           placeholder={t('passwordPlaceholder')}
           onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
         />
       </div>
 
       <div className="text-right">
         <Link
           href="/forgot-password"
-          className="text-sm text-brand underline-offset-4 hover:underline"
+          className="text-sm text-brand underline underline-offset-4"
         >
           {t('forgotPassword')}
         </Link>
@@ -131,13 +237,13 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
         </p>
       )}
 
-      <Button type="submit" className="w-full" disabled={isPending || !turnstileToken}>
+      <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !turnstileToken}>
         {isPending ? '...' : t('submit')}
       </Button>
 
       <div className="text-center text-sm text-muted-foreground">
         {t('registerHint')}{' '}
-        <Link href="/register/student" className="text-brand underline-offset-4 hover:underline">
+        <Link href="/register/student" className="text-brand underline underline-offset-4">
           {t('registerLink')}
         </Link>
       </div>

@@ -68,6 +68,7 @@ function mockSession(userId: string | null, role = 'ADMIN') {
         userAgent: null,
         createdAt: new Date(),
         updatedAt: new Date(),
+        twoFactorVerifiedAt: role === 'ADMIN' ? new Date() : null,
       } as never,
     })
   }
@@ -114,6 +115,7 @@ describe('M3-T07 real-PDF sanitisation (撤掉净化之后测试会失败)', () 
         emailVerified: true,
         role: 'ADMIN',
         status: 'ACTIVE',
+        twoFactorEnabled: true,
       },
     })
     const owner = await testDb.user.create({

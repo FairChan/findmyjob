@@ -7,7 +7,17 @@ import { getOrCreateReferralCode } from '@/server/services/referrals'
 import { getSetting } from '@/server/services/settings'
 import { db } from '@/server/db'
 import { maskName } from '@/lib/mask-name'
+import { cn } from '@/lib/utils'
+import { WorkspacePage } from '@/components/layout/workspace-page'
+import { Badge, type BadgeProps } from '@/components/ui/badge'
+import { Card } from '@/components/ui/card'
 import { CopyLinkButton } from './_components/CopyLinkButton'
+
+const REFERRAL_TONE: Record<string, BadgeProps['tone']> = {
+  QUALIFIED: 'success',
+  VOID: 'plain',
+  PENDING: 'warning',
+}
 
 export default async function InvitePage({
   params,
@@ -67,108 +77,120 @@ export default async function InvitePage({
   const isUnlimited = quota.limit === null
 
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-8 space-y-8">
-      <h1 className="text-2xl font-bold">{t('title')}</h1>
-
+    <WorkspacePage title={t('title')}>
       {/* Quota summary */}
-      <section aria-label={t('quotaUsed')} className="rounded-lg border p-6 space-y-3">
-        <div className="text-sm font-medium flex items-center justify-between">
-          <span>
-            {isUnlimited
-              ? t('quotaProgressUnlimited', { used: quota.used })
-              : t('quotaProgress', { used: quota.used, limit: quota.limit! })}
-          </span>
-          {!isUnlimited && (
-            <span className="text-muted-foreground text-xs">
-              {t('quotaLimit')}: {quota.limit}
-            </span>
-          )}
-        </div>
-
-        {!isUnlimited && (
-          <div
-            role="progressbar"
-            aria-valuenow={quota.used}
-            aria-valuemin={0}
-            aria-valuemax={quota.limit ?? 0}
-            aria-label={t('quotaUsed')}
-            className="h-2 w-full rounded-full bg-muted overflow-hidden"
-          >
-            <div
-              className="h-full bg-primary rounded-full transition-all"
-              style={{ width: `${Math.min(100, ((quota.used / (quota.limit ?? 1)) * 100))}%` }}
-            />
+      <section aria-label={t('quotaUsed')}>
+        <Card size="tile" className="space-y-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <p className="text-title">
+              {isUnlimited
+                ? t('quotaProgressUnlimited', { used: quota.used })
+                : t('quotaProgress', { used: quota.used, limit: quota.limit! })}
+            </p>
+            {!isUnlimited && (
+              <span className="text-sm text-muted-foreground">
+                {t('quotaLimit')}: {quota.limit}
+              </span>
+            )}
           </div>
-        )}
 
-        <p className="text-sm text-muted-foreground">
-          {isUnlimited
-            ? t('alreadyUnlimited')
-            : quota.next === unlimitedAt - quota.qualified
-              ? t('nextUnlimited', { count: quota.next })
-              : t('nextTier', { count: quota.next, bonus: tierBonus })}
-        </p>
+          {!isUnlimited && (
+            <div
+              role="progressbar"
+              aria-valuenow={quota.used}
+              aria-valuemin={0}
+              aria-valuemax={quota.limit ?? 0}
+              aria-label={t('quotaUsed')}
+              className="h-2 w-full overflow-hidden rounded-full bg-foreground/10"
+            >
+              <div
+                className="h-full rounded-full bg-foreground transition-[width] motion-reduce:transition-none"
+                style={{ width: `${Math.min(100, ((quota.used / (quota.limit ?? 1)) * 100))}%` }}
+              />
+            </div>
+          )}
+
+          <p className="text-sm text-muted-foreground">
+            {isUnlimited
+              ? t('alreadyUnlimited')
+              : quota.next === unlimitedAt - quota.qualified
+                ? t('nextUnlimited', { count: quota.next })
+                : t('nextTier', { count: quota.next, bonus: tierBonus })}
+          </p>
+        </Card>
       </section>
 
       {/* Invite link */}
-      <section className="space-y-2">
-        <p className="text-sm font-medium">{t('inviteLinkLabel')}</p>
+      <section className="space-y-3">
+        <h2 className="text-title">{t('inviteLinkLabel')}</h2>
         <CopyLinkButton link={inviteLink} />
       </section>
 
       {/* Milestone progress */}
-      <section aria-label={t('milestoneLabel')} className="space-y-2">
-        <p className="text-sm font-medium">{t('milestoneLabel')}</p>
-        <div className="flex items-center gap-2 flex-wrap">
+      <section aria-labelledby="invite-milestones" className="space-y-3">
+        <h2 id="invite-milestones" className="text-title">
+          {t('milestoneLabel')}
+        </h2>
+        <ul className="flex flex-wrap gap-2">
           {milestones.map((m) => {
             const reached = quota.qualified >= m
             const isLast = m === unlimitedAt
             return (
-              <div
+              <li
                 key={m}
-                className={[
-                  'flex flex-col items-center rounded-md border px-3 py-2 text-xs font-medium min-w-[52px]',
-                  reached ? 'bg-primary text-primary-foreground border-primary' : 'text-muted-foreground',
-                ].join(' ')}
+                className={cn(
+                  'flex min-w-[4.5rem] flex-col items-center rounded-control px-3 py-2.5 text-sm font-medium',
+                  reached ? 'bg-foreground text-background' : 'bg-muted text-muted-foreground',
+                )}
               >
                 <span>{isLast ? t('milestoneUnlimited') : `+${(m / tierSize) * tierBonus}`}</span>
-                <span className="font-normal opacity-70">{m}</span>
-              </div>
+                <span className="text-xs font-normal">{m}</span>
+                {/* Colour alone must not carry which tiers are already earned. */}
+                {reached && <span className="sr-only">{t('milestoneReached')}</span>}
+              </li>
             )
           })}
-        </div>
+        </ul>
       </section>
 
       {/* Referral list */}
       <section className="space-y-3">
-        <h2 className="text-lg font-semibold">{t('referralsTitle')}</h2>
+        <h2 id="invite-referrals" className="text-title">{t('referralsTitle')}</h2>
         {referrals.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{t('referralsEmpty')}</p>
+          <p className="rounded-card bg-muted px-5 py-6 text-sm text-muted-foreground">{t('referralsEmpty')}</p>
         ) : (
-          <div className="rounded-lg border overflow-hidden">
+          // Focusable so the table can still be scrolled by keyboard if it ever overflows.
+          <div
+            role="region"
+            aria-labelledby="invite-referrals"
+            tabIndex={0}
+            className="overflow-x-auto rounded-card bg-muted"
+          >
             <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <th className="text-left px-4 py-2 font-medium">{t('colName')}</th>
-                  <th className="text-left px-4 py-2 font-medium">{t('colCompleteness')}</th>
-                  <th className="text-left px-4 py-2 font-medium">{t('colStatus')}</th>
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th scope="col" className="px-5 py-3 font-medium">{t('colName')}</th>
+                  <th scope="col" className="px-5 py-3 font-medium">{t('colCompleteness')}</th>
+                  <th scope="col" className="px-5 py-3 font-medium">{t('colStatus')}</th>
                 </tr>
               </thead>
               <tbody>
                 {referrals.map((ref) => (
-                  <tr key={ref.id} className="border-t">
-                    <td className="px-4 py-3">
+                  <tr key={ref.id} className="border-t border-foreground/10">
+                    <td className="px-5 py-3.5">
                       {ref.invitee?.fullName ? maskName(ref.invitee.fullName) : '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-5 py-3.5 tabular-nums">
                       {ref.invitee ? `${ref.invitee.completeness}%` : '—'}
                     </td>
-                    <td className="px-4 py-3">
-                      {ref.status === 'QUALIFIED'
-                        ? t('statusQualified')
-                        : ref.status === 'VOID'
-                          ? t('statusVoid')
-                          : t('statusPending')}
+                    <td className="px-5 py-3.5">
+                      <Badge tone={REFERRAL_TONE[ref.status] ?? 'warning'}>
+                        {ref.status === 'QUALIFIED'
+                          ? t('statusQualified')
+                          : ref.status === 'VOID'
+                            ? t('statusVoid')
+                            : t('statusPending')}
+                      </Badge>
                     </td>
                   </tr>
                 ))}
@@ -177,6 +199,6 @@ export default async function InvitePage({
           </div>
         )}
       </section>
-    </div>
+    </WorkspacePage>
   )
 }

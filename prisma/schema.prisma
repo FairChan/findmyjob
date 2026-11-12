@@ -178,6 +178,21 @@ enum PaymentMethod {
   CARD
 }
 
+enum PaymentProviderKind {
+  BANK_TRANSFER
+  STRIPE
+}
+
+enum StripeCheckoutAttemptState {
+  CREATING
+  OPEN
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  EXPIRED
+  RECONCILIATION_REQUIRED
+}
+
 enum SubscriptionStatus {
   ACTIVE
   EXPIRED
@@ -189,6 +204,8 @@ enum ConsentType {
   PRIVACY
   TALENT_POOL
   MARKETING
+  AI_RESUME_PARSE
+  AI_MATCHING
 }
 
 enum PartnerType {
@@ -262,6 +279,7 @@ model User {
   name          String
   email         String     @unique
   emailVerified Boolean    @default(false)
+  twoFactorEnabled Boolean @default(false)
   image         String?
   role          UserRole   @default(STUDENT)
   locale        Locale     @default(zh)
@@ -272,12 +290,14 @@ model User {
   updatedAt     DateTime   @updatedAt @db.Timestamptz(3)
 
   sessions       Session[]
+  twoFactors     TwoFactor[]
   accounts       Account[]
   studentProfile StudentProfile?
   memberships    CompanyMember[]
   consents       Consent[]
   notifications  Notification[]
   dataRequests   DataRequest[]
+  weeklyDigestDeliveries WeeklyDigestDelivery[]
 }
 
 model Session {
@@ -286,12 +306,27 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
   expiresAt DateTime @db.Timestamptz(3)
+  twoFactorVerifiedAt DateTime? @db.Timestamptz(3)
   ipAddress String?
   userAgent String?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
 
   @@index([userId])
+}
+
+model TwoFactor {
+  id                      String    @id @default(cuid())
+  userId                  String
+  user                    User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secret                  String
+  backupCodes             String
+  verified                Boolean   @default(true)
+  failedVerificationCount Int       @default(0)
+  lockedUntil             DateTime? @db.Timestamptz(3)
+
+  @@index([userId])
+  @@index([secret])
 }
 
 model Account {
@@ -387,13 +422,15 @@ model StudentProfile {
   expectedSalaryMax   Int?
   skills              String[]
   visibility          Visibility   @default(HIDDEN)
+  editRevision        Int          @default(0)
   completeness        Int          @default(0)
-  onboardingStep      Int          @default(1) // 1–4 = 当前待完成的步骤，5 = 向导已完成
+  onboardingStep      Int          @default(1) // 1–5 = 当前待完成的步骤，6 = 向导已完成
   referralCode        String?      @unique // 邀请码，首次打开邀请页时生成
   lastActiveAt        DateTime     @default(now()) @db.Timestamptz(3)
   createdAt           DateTime     @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime     @updatedAt @db.Timestamptz(3)
 
+  semanticIndex    SemanticIndex?
   contact          StudentContact?
   languages        StudentLanguage[]
   educations       Education[]
@@ -483,7 +520,9 @@ model ResumeFile {
   sizeBytes  Int
   pageCount  Int? // 上传时用 getPageCount 写入，≤ resume.maxPages
   isPrimary  Boolean        @default(false)
-  parsedJson Json? // M9：AI 解析结果
+  contentSha256 String? @db.VarChar(64)
+  parseDraft ResumeParseDraft?
+  parsedJson Json? // Legacy only; never exposed to employers or used as confirmed AI data
   createdAt  DateTime       @default(now()) @db.Timestamptz(3)
 
   applications Application[]
@@ -528,20 +567,22 @@ model Company {
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
 
-  members       CompanyMember[]
-  invites       CompanyInvite[]
-  verifications CompanyVerification[]
-  wallet        CreditWallet?
-  jobs          Job[]
-  unlocks       TalentUnlock[]
-  views         ProfileView[]
-  folders       TalentFolder[]
-  invitations   Invitation[]
-  orders        Order[]
-  subscriptions Subscription[]
-  blockedBy     BlockedCompany[]
+  members             CompanyMember[]
+  invites             CompanyInvite[]
+  verifications       CompanyVerification[]
+  wallet              CreditWallet?
+  jobs                Job[]
+  unlocks             TalentUnlock[]
+  views               ProfileView[]
+  folders             TalentFolder[]
+  invitations         Invitation[]
+  orders              Order[]
+  subscriptions       Subscription[]
+  blockedBy           BlockedCompany[]
+  paymentProofUploads PaymentProofUpload[]
 
   @@index([industryCode])
+  weeklyDigestDeliveries WeeklyDigestDelivery[]
 }
 
 model CompanyMember {
@@ -622,10 +663,12 @@ model Job {
   publishedAt        DateTime? @db.Timestamptz(3)
   deadline           DateTime? @db.Timestamptz(3)
   closedAt           DateTime? @db.Timestamptz(3)
+  matchingRevision   Int       @default(0)
   viewCount          Int       @default(0)
   createdAt          DateTime  @default(now()) @db.Timestamptz(3)
   updatedAt          DateTime  @updatedAt @db.Timestamptz(3)
 
+  semanticIndex SemanticIndex?
   applications Application[]
   invitations  Invitation[]
   views        JobView[]
@@ -807,32 +850,63 @@ model Plan {
 }
 
 model Order {
-  id            String         @id @default(cuid())
-  orderNo       String         @unique // FMJ-YYYYMMDD-XXXX
-  companyId     String
-  company       Company        @relation(fields: [companyId], references: [id])
-  planId        String
-  plan          Plan           @relation(fields: [planId], references: [id])
-  kind          OrderKind
-  amountSen     Int
-  discountSen   Int            @default(0)
-  currency      String         @default("MYR")
-  status        OrderStatus    @default(PENDING)
-  paymentMethod PaymentMethod?
-  externalRef   String?        @unique // 支付网关交易号，用于 webhook 幂等
-  proofKey      String? // 银行转账回单
-  createdById   String
-  confirmedById String?
-  paidAt        DateTime?      @db.Timestamptz(3)
-  createdAt     DateTime       @default(now()) @db.Timestamptz(3)
-  updatedAt     DateTime       @updatedAt @db.Timestamptz(3)
+  id                 String               @id @default(cuid())
+  orderNo            String               @unique // FMJ-YYYYMMDD-XXXX
+  companyId          String
+  company            Company              @relation(fields: [companyId], references: [id])
+  planId             String
+  plan               Plan                 @relation(fields: [planId], references: [id])
+  kind               OrderKind
+  amountSen          Int
+  discountSen        Int                  @default(0)
+  currency           String               @default("MYR")
+  status             OrderStatus          @default(PENDING)
+  paymentMethod      PaymentMethod?
+  paymentProvider    PaymentProviderKind? // 历史 null 不猜通道；新订单由服务显式填写
+  commercialSnapshot Json? // 版本化商品/净额/权益快照；历史 null 不补造
+  externalRef        String?              @unique // 支付网关交易号，用于 webhook 幂等
+  proofKey           String? // 银行转账回单
+  createdById        String
+  confirmedById      String?
+  paidAt             DateTime?            @db.Timestamptz(3)
+  createdAt          DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime             @updatedAt @db.Timestamptz(3)
 
-  subscription Subscription?
-  invoice      Invoice?
+  subscription          Subscription?
+  invoice               Invoice?
+  stripeCheckoutAttempt StripeCheckoutAttempt?
 
   @@index([companyId, createdAt])
   @@index([status])
   @@index([planId])
+}
+
+model StripeCheckoutAttempt {
+  id              String                     @id @default(cuid())
+  orderId         String                     @unique
+  order           Order                      @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  idempotencyKey  String                     @unique
+  sessionId       String?                    @unique
+  paymentIntentId String?                    @unique
+  requestedAt     DateTime                   @default(now()) @db.Timestamptz(3)
+  requestSnapshot Json
+  state           StripeCheckoutAttemptState @default(CREATING)
+  fpxReceipt      Json?
+  createdAt       DateTime                   @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime                   @updatedAt @db.Timestamptz(3)
+}
+
+model PaymentProofUpload {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id])
+  uploaderId String // 历史来源 actor；当前 OWNER 可接手同公司凭证
+  storageKey String   @unique
+  mimeType   String
+  sizeBytes  Int
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([companyId, createdAt])
 }
 
 model Subscription {
@@ -847,9 +921,29 @@ model Subscription {
   endsAt    DateTime           @db.Timestamptz(3)
   status    SubscriptionStatus @default(ACTIVE)
   createdAt DateTime           @default(now()) @db.Timestamptz(3)
+  expiryReminderAt DateTime?   @db.Timestamptz(3)
 
   @@index([companyId, status, endsAt])
   @@index([planId])
+}
+
+enum InvoicePdfStatus {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+}
+
+enum InvoicePdfErrorCode {
+  PDF_RENDER_FAILED
+  PDF_STORAGE_FAILED
+  PDF_LEASE_EXPIRED
+  INVALID_INVOICE_SNAPSHOT
+  LEGACY_INVOICE_SNAPSHOT_MISSING
+  UNSUPPORTED_GLYPH
+  PDF_LAYOUT_EXCEEDED
+  PDF_TOO_LARGE
+  PDF_FONT_UNAVAILABLE
 }
 
 model Invoice {
@@ -860,6 +954,25 @@ model Invoice {
   pdfKey      String?
   einvoiceRef String? // LHDN MyInvois 文档 UUID（预留）
   issuedAt    DateTime @default(now()) @db.Timestamptz(3)
+  invoiceSnapshot Json?
+  pdfStatus InvoicePdfStatus @default(READY)
+  pdfAttempts Int @default(0)
+  pdfNextAttemptAt DateTime? @db.Timestamptz(3)
+  pdfLeaseToken String?
+  pdfLeaseExpiresAt DateTime? @db.Timestamptz(3)
+  pdfErrorCode InvoicePdfErrorCode?
+  pdfSha256 String?
+  pdfSizeBytes Int?
+
+  @@index([pdfStatus, pdfNextAttemptAt])
+  @@index([pdfStatus, pdfLeaseExpiresAt])
+}
+
+model InvoiceCounter {
+  id String @id @default(cuid())
+  scope String @unique
+  lastValue BigInt @default(0)
+  updatedAt DateTime @updatedAt @db.Timestamptz(3)
 }
 
 // ==================== 合规 / 系统 ====================
@@ -932,11 +1045,15 @@ model DataRequest {
   status     DataRequestStatus @default(OPEN)
   note       String?
   resultKey  String? // 导出文件
+  exportGeneration Int @default(0)
+  exportLeaseToken String?
+  exportLeaseExpiresAt DateTime? @db.Timestamptz(3)
   createdAt  DateTime          @default(now()) @db.Timestamptz(3)
   resolvedAt DateTime?         @db.Timestamptz(3)
 
   @@index([userId])
   @@index([status, createdAt])
+  @@index([type, status, exportLeaseExpiresAt])
 }
 
 // ==================== 查看额度 / 邀请 / 搜索 / 反诈（v0.2） ====================
@@ -1024,10 +1141,205 @@ model JobReport {
 
 // ==================== 认证限流（Better Auth rateLimit） ====================
 
+/// 跨进程容量租约；ownerKey 为内部标识，不级联删除仍在运行的任务
+model ConcurrencyLease {
+  id        String   @id @default(cuid())
+  scope     String
+  ownerKey  String
+  expiresAt DateTime @db.Timestamptz(3)
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([scope, expiresAt])
+  @@index([scope, ownerKey, expiresAt])
+}
+
 /// Better Auth database rate-limit storage（key = IP + path, lastRequest 为 Unix ms 时间戳）
 model rateLimit {
   id          String @id @default(cuid())
   key         String @unique
   count       Int
   lastRequest BigInt
+}
+
+enum ResumeParseState {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+  CANCELLED
+  CONFIRMED
+}
+
+model ResumeParseDraft {
+  id                     String           @id @default(cuid())
+  resumeId               String           @unique
+  resume                 ResumeFile       @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  generation             Int              @default(1)
+  state                  ResumeParseState @default(QUEUED)
+  sourceStorageKey       String
+  sourceSha256           String           @db.VarChar(64)
+  consentGrantId         String
+  legalVersion           String
+  gateEpoch              String
+  schemaVersion          Int              @default(1)
+  promptVersion          String
+  requestedModel         String
+  responseModel          String?
+  payload                Json?
+  failureCode            String?
+  attempts               Int              @default(0)
+  nextAttemptAt          DateTime?        @db.Timestamptz(3)
+  leaseExpiresAt         DateTime?        @db.Timestamptz(3)
+  leaseToken             String?
+  confirmationHash       String?          @db.VarChar(64)
+  appliedProfileRevision Int?
+  requestedAt            DateTime         @default(now()) @db.Timestamptz(3)
+  completedAt            DateTime?        @db.Timestamptz(3)
+  confirmedAt            DateTime?        @db.Timestamptz(3)
+  updatedAt              DateTime         @updatedAt @db.Timestamptz(3)
+
+  @@index([state, nextAttemptAt])
+  @@index([state, leaseExpiresAt])
+}
+
+enum DataExportArtifactState {
+  RESERVED
+  UPLOADING
+  UPLOADED
+  PUBLISHED
+  CLEANUP_REQUIRED
+  CLEANED
+}
+
+enum DataExportUploadOutcome {
+  NOT_STARTED
+  UNKNOWN
+  ACKNOWLEDGED
+}
+
+// Deliberately no foreign keys to User, Profile or DataRequest. Cleanup must survive
+// their hard deletion. These are opaque routing IDs, never email/name/source content.
+// Never prune UNKNOWN rows based only on elapsed time or a successful DELETE.
+model DataExportArtifact {
+  id                    String                    @id @default(uuid())
+  requestId             String
+  userId                String
+  generation            Int
+  leaseToken            String
+  leaseExpiresAt        DateTime                  @db.Timestamptz(3)
+  storageKey            String                    @unique
+  state                 DataExportArtifactState   @default(RESERVED)
+  uploadOutcome         DataExportUploadOutcome   @default(NOT_STARTED)
+  publishedAt           DateTime?                 @db.Timestamptz(3)
+  expiresAt             DateTime?                 @db.Timestamptz(3)
+  cleanupNextAt         DateTime?                 @db.Timestamptz(3)
+  cleanupLeaseToken     String?
+  cleanupLeaseExpiresAt DateTime?                 @db.Timestamptz(3)
+  lastDeleteAt          DateTime?                 @db.Timestamptz(3)
+  cleanedAt             DateTime?                 @db.Timestamptz(3)
+  // A notification reservation can lose mail on process death; it cannot produce
+  // duplicate sends from simultaneous job deliveries. No exactly-once guarantee.
+  notificationReservedAt DateTime?                @db.Timestamptz(3)
+  createdAt             DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt             DateTime                  @updatedAt @db.Timestamptz(3)
+
+  @@unique([requestId, generation])
+  @@index([userId, state])
+  @@index([requestId, state])
+  @@index([state, leaseExpiresAt])
+  @@index([state, cleanupNextAt])
+  @@index([state, expiresAt])
+}
+
+enum SemanticIndexKind {
+  STUDENT
+  JOB
+}
+
+enum SemanticIndexState {
+  QUEUED
+  PROCESSING
+  READY
+  FAILED
+  CANCELLED
+}
+
+model SemanticIndex {
+  id              String             @id @default(cuid())
+  studentId       String?            @unique
+  student         StudentProfile?   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  jobId           String?            @unique
+  job             Job?              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  kind            SemanticIndexKind
+  generation      Int                @default(1)
+  state           SemanticIndexState @default(QUEUED)
+  sourceHash      String             @db.VarChar(64)
+  sourceRevision  Int
+  configurationId String
+  model           String
+  gateEpoch       String
+  legalVersion    String
+  consentGrantId  String?
+  leaseToken      String?
+  leaseExpiresAt  DateTime?         @db.Timestamptz(3)
+  attempts        Int                @default(0)
+  nextAttemptAt   DateTime?         @db.Timestamptz(3)
+  failureCode     String?
+  requestedAt     DateTime           @default(now()) @db.Timestamptz(3)
+  completedAt     DateTime?         @db.Timestamptz(3)
+  updatedAt       DateTime           @updatedAt @db.Timestamptz(3)
+
+  @@index([state, nextAttemptAt])
+  @@index([state, leaseExpiresAt])
+}
+
+model MatchingCorpusCursor {
+  id        String            @id @default(cuid())
+  kind      SemanticIndexKind @unique
+  afterId   String?
+  updatedAt DateTime          @updatedAt @db.Timestamptz(3)
+}
+
+enum WeeklyDigestKind {
+  STUDENT_JOBS
+  EMPLOYER_TALENTS
+}
+enum WeeklyDigestState {
+  QUEUED
+  PREPARING
+  SENDING
+  SENT
+  RETRYABLE
+  SKIPPED
+  UNKNOWN
+}
+model WeeklyDigestDelivery {
+  id               String @id @default(cuid())
+  dedupeKey        String @unique
+  kind             WeeklyDigestKind
+  userId           String
+  user             User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId        String?
+  company          Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  weekKey          String
+  expiresAt        DateTime @db.Timestamptz(3)
+  state            WeeklyDigestState @default(QUEUED)
+  marketingGrantId String
+  matchingGrantId  String?
+  gateEpoch        String
+  matchingEpoch    String
+  sourceId         String
+  sourceHash       String
+  candidateIds     Json @default("[]")
+  attempts         Int @default(0)
+  nextAttemptAt    DateTime? @db.Timestamptz(3)
+  leaseToken       String?
+  leaseExpiresAt   DateTime? @db.Timestamptz(3)
+  sentAt           DateTime? @db.Timestamptz(3)
+  failureCode      String?
+  createdAt        DateTime @db.Timestamptz(3) @default(now())
+  updatedAt        DateTime @db.Timestamptz(3) @updatedAt
+  @@index([state, nextAttemptAt, expiresAt])
+  @@index([userId, weekKey])
+  @@index([companyId])
 }

@@ -16,6 +16,7 @@ async function assertAdmin(userId: string): Promise<void> {
 }
 
 type WeekBucket = { week_start: Date; cnt: bigint }
+type ActivityWeekBucket = { week_start: Date; applications: bigint; unlocks: bigint; published_jobs: bigint }
 type SchoolBucket = { nameZh: string; nameEn: string; cnt: bigint }
 
 export interface DashboardStats {
@@ -43,6 +44,10 @@ export interface DashboardStats {
   signupCap: number
   /** Last 12 natural weeks in KL timezone (Monday-based), oldest first */
   weeklyRegistrations: Array<{ label: string; value: number }>
+  weeklyApplications: Array<{ label: string; value: number }>
+  weeklyUnlocks: Array<{ label: string; value: number }>
+  /** Publication history by publishedAt, including jobs subsequently closed. */
+  weeklyPublishedJobs: Array<{ label: string; value: number }>
   /** Students per school (top 10, by count desc) */
   schoolDistribution: Array<{ schoolNameZh: string; schoolNameEn: string; count: number }>
 }
@@ -62,6 +67,7 @@ export async function getDashboardStats(ctx: UserCtx): Promise<DashboardStats> {
     creditTotals,
     signupCap,
     weeklyRaw,
+    activityWeeklyRaw,
     schoolRaw,
   ] = await Promise.all([
     db.user.count({
@@ -95,6 +101,32 @@ export async function getDashboardStats(ctx: UserCtx): Promise<DashboardStats> {
       FROM weeks w
       LEFT JOIN "StudentProfile" sp ON
         date_trunc('week', sp."createdAt" AT TIME ZONE 'Asia/Kuala_Lumpur') = w.week_start
+      GROUP BY w.week_start
+      ORDER BY w.week_start
+    `,
+    // Aggregate all activity in one snapshot; publishedAt distinguishes publication from drafting.
+    db.$queryRaw<ActivityWeekBucket[]>`
+      WITH weeks AS (
+        SELECT generate_series(
+          date_trunc('week', (NOW() AT TIME ZONE 'Asia/Kuala_Lumpur') - INTERVAL '11 weeks'),
+          date_trunc('week', NOW() AT TIME ZONE 'Asia/Kuala_Lumpur'),
+          INTERVAL '1 week'
+        ) AS week_start
+      ), activity AS (
+        SELECT "createdAt" AS occurred_at, 'application' AS kind FROM "Application"
+        UNION ALL
+        SELECT "createdAt", 'unlock' FROM "TalentUnlock"
+        UNION ALL
+        SELECT "publishedAt", 'publication' FROM "Job" WHERE "publishedAt" IS NOT NULL
+      )
+      SELECT w.week_start,
+        COUNT(*) FILTER (WHERE a.kind = 'application') AS applications,
+        COUNT(*) FILTER (WHERE a.kind = 'unlock') AS unlocks,
+        COUNT(*) FILTER (WHERE a.kind = 'publication') AS published_jobs
+      FROM weeks w
+      LEFT JOIN activity a ON
+        a.occurred_at >= w.week_start AT TIME ZONE 'Asia/Kuala_Lumpur'
+        AND a.occurred_at < (w.week_start + INTERVAL '1 week') AT TIME ZONE 'Asia/Kuala_Lumpur'
       GROUP BY w.week_start
       ORDER BY w.week_start
     `,
@@ -137,6 +169,9 @@ export async function getDashboardStats(ctx: UserCtx): Promise<DashboardStats> {
     creditsConsumed: creditTotals.consumed,
     signupCap,
     weeklyRegistrations,
+    weeklyApplications: activityWeeklyRaw.map((row) => ({ label: formatWeekLabel(row.week_start), value: Number(row.applications) })),
+    weeklyUnlocks: activityWeeklyRaw.map((row) => ({ label: formatWeekLabel(row.week_start), value: Number(row.unlocks) })),
+    weeklyPublishedJobs: activityWeeklyRaw.map((row) => ({ label: formatWeekLabel(row.week_start), value: Number(row.published_jobs) })),
     schoolDistribution,
   }
 }

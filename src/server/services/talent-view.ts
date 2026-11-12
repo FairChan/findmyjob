@@ -42,7 +42,7 @@ export async function viewTalentProfile(
       school: { select: { id: true; nameZh: true; nameEn: true } }
       educations: { select: { id: true; schoolName: true; major: true; degreeLevel: true; startDate: true; endDate: true; description: true; sortOrder: true } }
       experiences: { select: { id: true; kind: true; title: true; organization: true; startDate: true; endDate: true; description: true; sortOrder: true } }
-      resumes: { select: { id: true; storageKey: true; isPrimary: true; parsedJson: true } }
+      resumes: { select: { id: true; storageKey: true; isPrimary: true } }
     }
   }>
 
@@ -117,7 +117,6 @@ export async function viewTalentProfile(
             id: true,
             storageKey: true,
             isPrimary: true,
-            parsedJson: true,
           },
         },
       },

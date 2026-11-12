@@ -1,5 +1,6 @@
 'use client'
 import { useTransition } from 'react'
+import { Button } from '@/components/ui/button'
 import { markAllNotificationsReadAction } from '@/server/actions/notifications'
 
 interface Props {
@@ -18,12 +19,8 @@ export function MarkAllReadButton({ label }: Props) {
   }
 
   return (
-    <button
-      onClick={handleClick}
-      disabled={pending}
-      className="shrink-0 rounded-md px-3 py-1.5 text-sm text-muted-foreground ring-1 ring-border hover:bg-muted disabled:opacity-50"
-    >
+    <Button type="button" variant="outline" size="sm" onClick={handleClick} disabled={pending} className="shrink-0">
       {label}
-    </button>
+    </Button>
   )
 }

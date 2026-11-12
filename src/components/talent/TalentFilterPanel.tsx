@@ -119,7 +119,7 @@ function FilterForm({
         <Label htmlFor="filter-sort">{t('sortLabel')}</Label>
         <select
           id="filter-sort"
-          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+          className="h-9 w-full rounded-control border border-input bg-background px-3 py-1 text-sm shadow-sm"
           value={filters.sort}
           onChange={(e) => setFilters({ ...filters, sort: e.target.value })}
         >
@@ -134,7 +134,7 @@ function FilterForm({
         <Label htmlFor="filter-school">{t('schoolLabel')}</Label>
         <select
           id="filter-school"
-          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+          className="h-9 w-full rounded-control border border-input bg-background px-3 py-1 text-sm shadow-sm"
           value={filters.schoolId}
           onChange={(e) => setFilters({ ...filters, schoolId: e.target.value })}
         >
@@ -152,7 +152,7 @@ function FilterForm({
         <Label htmlFor="filter-degree">{t('degreeLevelLabel')}</Label>
         <select
           id="filter-degree"
-          className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+          className="h-9 w-full rounded-control border border-input bg-background px-3 py-1 text-sm shadow-sm"
           value={filters.degreeLevel}
           onChange={(e) => setFilters({ ...filters, degreeLevel: e.target.value })}
         >
@@ -199,7 +199,7 @@ function FilterForm({
             <label key={intent} className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-border"
                 checked={filters.intent.includes(intent)}
                 onChange={() => toggleArray('intent', intent)}
               />
@@ -217,7 +217,7 @@ function FilterForm({
             <label key={auth} className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-gray-300"
+                className="h-4 w-4 rounded border-border"
                 checked={filters.workAuth.includes(auth)}
                 onChange={() => toggleArray('workAuth', auth)}
               />
@@ -278,7 +278,8 @@ export function TalentFilterPanel({ schools, locale }: Props) {
     <>
       {/* Desktop sidebar */}
       <aside className="hidden w-64 shrink-0 lg:block">
-        <div className="sticky top-4 rounded-lg border bg-card p-4">
+        {/* Below the 48px top bar, so the panel never slides under it. */}
+        <div className="sticky top-16 rounded-card bg-muted p-5">
           <h2 className="mb-4 font-semibold">{t('filterTitle')}</h2>
           <FilterForm
             filters={filters}

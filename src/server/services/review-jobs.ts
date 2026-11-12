@@ -1,11 +1,17 @@
 import 'server-only'
 import { z } from 'zod'
+import type { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { logAudit } from './audit'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
 import { createNotification } from './notifications'
 import { sendNotificationEmail } from './notify'
 import type { UserCtx } from '../authz'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { assertJobCapacity, consumesJobSlot } from './subscription-entitlements'
+import { invalidateJobMatchingIndexTx } from './semantic-matching'
+
+const TRANSACTION_OPTIONS = { maxWait: 10_000, timeout: 15_000 }
 
 export const approveJobSchema = z.object({
   jobId: z.string().min(1),
@@ -22,9 +28,9 @@ export const rejectJobSchema = z.object({
 
 export type RejectJobInput = z.infer<typeof rejectJobSchema>
 
-async function assertAdminUser(userId: string): Promise<void> {
-  const user = await db.user.findUnique({ where: { id: userId }, select: { role: true } })
-  if (!user || user.role !== 'ADMIN') throw new ForbiddenError()
+async function assertAdminUser(userId: string, tx: Prisma.TransactionClient = db): Promise<void> {
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { role: true, status: true } })
+  if (!user || user.role !== 'ADMIN' || user.status !== 'ACTIVE') throw new ForbiddenError()
 }
 
 export async function listPendingJobs(ctx: UserCtx) {
@@ -54,26 +60,27 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
 
   const jobBase = await db.job.findUnique({
     where: { id: input.jobId },
-    select: { id: true },
+    select: { id: true, companyId: true },
   })
   if (!jobBase) throw new NotFoundError()
 
-  let companyId!: string
   let createdById!: string
 
   await db.$transaction(async tx => {
-    // Read current state inside transaction to avoid race with concurrent updates
+    await lockXact(tx, LOCK_NS.CREDIT, jobBase.companyId)
+    const now = new Date()
+    await assertAdminUser(userId, tx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${input.jobId} AND "companyId" = ${jobBase.companyId} FOR UPDATE`
+    // Read current state only after taking the shared company growth lock
     const job = await tx.job.findUnique({
       where: { id: input.jobId },
-      select: { id: true, companyId: true, createdById: true, publishedAt: true, status: true },
+      select: { id: true, companyId: true, createdById: true, publishedAt: true, status: true, deadline: true, updatedAt: true },
     })
-    if (!job) throw new NotFoundError()
-
-    companyId = job.companyId
+    if (!job || job.companyId !== jobBase.companyId) throw new NotFoundError()
     createdById = job.createdById
 
     // Status check first so callers get a consistent ValidationError for wrong-status jobs
-    if (job.status !== 'PENDING_REVIEW') {
+    if (job.status !== 'PENDING_REVIEW' || job.updatedAt.getTime() !== input.updatedAt.getTime()) {
       throw new ValidationError('职位已被修改或已处理，请刷新后再审')
     }
 
@@ -86,12 +93,17 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
       throw new ForbiddenError('Company is not verified or is inactive')
     }
 
+    if (consumesJobSlot({ status: 'PUBLISHED', deadline: job.deadline }, now)) {
+      await assertJobCapacity(tx, { companyId: job.companyId, now })
+    }
+
     const result = await tx.job.updateMany({
-      where: { id: input.jobId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
+      where: { id: input.jobId, companyId: jobBase.companyId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
       data: {
         status: 'PUBLISHED',
+        matchingRevision: { increment: 1 },
         // Preserve original publishedAt if re-approving after edit; otherwise stamp now
-        publishedAt: job.publishedAt ?? new Date(),
+        publishedAt: job.publishedAt ?? now,
         reviewNote: null,
       },
     })
@@ -99,6 +111,7 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
     if (result.count !== 1) {
       throw new ValidationError('职位已被修改或已处理，请刷新后再审')
     }
+    await invalidateJobMatchingIndexTx(tx, input.jobId)
 
     // Only increment approvedJobCount the first time the job is published
     if (job.publishedAt === null) {
@@ -111,7 +124,7 @@ export async function approveJob(ctx: UserCtx, input: ApproveJobInput): Promise<
     await createNotification(tx, job.createdById, 'job.approved', {
       jobId: job.id,
     })
-  })
+  }, TRANSACTION_OPTIONS)
 
   await logAudit({
     actorId: userId,
@@ -136,15 +149,19 @@ export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<vo
 
   const jobBase = await db.job.findUnique({
     where: { id: input.jobId },
-    select: { id: true, createdById: true },
+    select: { id: true, createdById: true, companyId: true },
   })
   if (!jobBase) throw new NotFoundError()
 
   await db.$transaction(async tx => {
+    await lockXact(tx, LOCK_NS.CREDIT, jobBase.companyId)
+    await assertAdminUser(userId, tx)
+    await tx.$queryRaw`SELECT id FROM "Job" WHERE id = ${input.jobId} AND "companyId" = ${jobBase.companyId} FOR UPDATE`
     const result = await tx.job.updateMany({
-      where: { id: input.jobId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
+      where: { id: input.jobId, companyId: jobBase.companyId, status: 'PENDING_REVIEW', updatedAt: input.updatedAt },
       data: {
         status: 'REJECTED',
+        matchingRevision: { increment: 1 },
         reviewNote: input.reviewNote,
       },
     })
@@ -152,12 +169,13 @@ export async function rejectJob(ctx: UserCtx, input: RejectJobInput): Promise<vo
     if (result.count !== 1) {
       throw new ValidationError('职位已被修改或已处理，请刷新后再审')
     }
+    await invalidateJobMatchingIndexTx(tx, input.jobId)
 
     await createNotification(tx, jobBase.createdById, 'job.rejected', {
       jobId: jobBase.id,
       reviewNote: input.reviewNote,
     })
-  })
+  }, TRANSACTION_OPTIONS)
 
   await logAudit({
     actorId: userId,

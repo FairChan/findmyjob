@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings, FileText, ClipboardList } from 'lucide-react'
+import { LayoutDashboard, BadgeCheck, Briefcase, Users, School, Handshake, Bell, Settings, FileText, ClipboardList, TrendingUp, Flag, Languages, ShieldCheck } from 'lucide-react'
 
 interface AdminNavLinksProps {
   locale: string
@@ -16,6 +16,12 @@ interface AdminNavLinksProps {
   settingsLabel: string
   dataRequestsLabel: string
   auditLabel: string
+  growthLabel: string
+  reportsLabel: string
+  synonymsLabel: string
+  articlesLabel: string
+  plansLabel: string
+  ordersLabel: string
   pendingCount: number
 }
 
@@ -30,6 +36,12 @@ const NAV_ITEMS = [
   { key: 'settings', href: (locale: string) => `/${locale}/admin/settings`, icon: Settings, end: false },
   { key: 'dataRequests', href: (locale: string) => `/${locale}/admin/data-requests`, icon: FileText, end: false },
   { key: 'audit', href: (locale: string) => `/${locale}/admin/audit`, icon: ClipboardList, end: false },
+  { key: 'growth', href: (locale: string) => `/${locale}/admin/growth`, icon: TrendingUp, end: false },
+  { key: 'reports', href: (locale: string) => `/${locale}/admin/reports`, icon: Flag, end: false },
+  { key: 'synonyms', href: (locale: string) => `/${locale}/admin/synonyms`, icon: Languages, end: false },
+  { key: 'articles', href: (locale: string) => `/${locale}/admin/articles`, icon: ShieldCheck, end: false },
+  { key: 'plans', href: (locale: string) => `/${locale}/admin/plans`, icon: ClipboardList, end: false },
+  { key: 'orders', href: (locale: string) => `/${locale}/admin/orders`, icon: FileText, end: false },
 ] as const
 
 export function AdminNavLinks({
@@ -44,6 +56,12 @@ export function AdminNavLinks({
   settingsLabel,
   dataRequestsLabel,
   auditLabel,
+  growthLabel,
+  reportsLabel,
+  synonymsLabel,
+  articlesLabel,
+  plansLabel,
+  ordersLabel,
   pendingCount,
 }: AdminNavLinksProps) {
   const pathname = usePathname()
@@ -59,10 +77,16 @@ export function AdminNavLinks({
     settings: settingsLabel,
     dataRequests: dataRequestsLabel,
     audit: auditLabel,
+    growth: growthLabel,
+    reports: reportsLabel,
+    synonyms: synonymsLabel,
+    articles: articlesLabel,
+    plans: plansLabel,
+    orders: ordersLabel,
   }
 
   return (
-    <nav className="flex flex-wrap gap-1 px-3 pb-3 lg:flex-col lg:flex-nowrap" aria-label="Admin navigation">
+    <nav className="flex gap-1 overflow-x-auto px-3 pb-3 lg:flex-col lg:overflow-visible" aria-label="Admin navigation">
       {NAV_ITEMS.map(({ key, href, icon: Icon, end }) => {
         const to = href(locale)
         const isActive = end ? pathname === to || pathname === `${to}/` : pathname.startsWith(`${to}/`) || pathname === to
@@ -71,16 +95,16 @@ export function AdminNavLinks({
             key={key}
             href={to}
             aria-current={isActive ? 'page' : undefined}
-            className={`flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm ${
+            className={`flex min-h-10 shrink-0 items-center gap-2.5 rounded-control px-3 text-sm transition-colors ${
               isActive
-                ? 'bg-[var(--color-brand-600,#2563eb)] text-white'
-                : 'text-white/75 hover:bg-white/10 hover:text-white'
+                ? 'bg-background font-medium text-foreground shadow-sm'
+                : 'text-muted-foreground hover:bg-background/60 hover:text-foreground'
             }`}
           >
-            <Icon className="size-4 shrink-0" />
+            <Icon aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.75} />
             {labels[key]}
             {key === 'dashboard' && pendingCount > 0 && (
-              <span className="ml-auto rounded-full bg-red-500 px-1.5 text-xs text-white">
+              <span className="ml-auto inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 text-[11px] font-medium text-destructive-foreground">
                 {pendingCount}
               </span>
             )}

@@ -52,20 +52,26 @@ beforeEach(() => {
   clearSettingsCache()
 })
 
-// Seed settings that the service reads via getSetting
+// Legacy team scenarios exercise pilot settings, independently of commercial FREE limits.
 async function seedSettings(overrides?: { maxMembers?: number; maxInvitesPerDay?: number }) {
   const maxMembers = overrides?.maxMembers ?? 3
   const maxInvitesPerDay = overrides?.maxInvitesPerDay ?? 3
   await testDb.systemSetting.upsert({
+    where: { key: 'billing.enabled' },
+    create: { key: 'billing.enabled', value: false },
+    update: { value: false },
+  })
+  await testDb.systemSetting.upsert({
     where: { key: 'team.maxMembers' },
-    create: { key: 'team.maxMembers', value: JSON.stringify(maxMembers) },
-    update: { value: JSON.stringify(maxMembers) },
+    create: { key: 'team.maxMembers', value: maxMembers },
+    update: { value: maxMembers },
   })
   await testDb.systemSetting.upsert({
     where: { key: 'team.maxInvitesPerDay' },
-    create: { key: 'team.maxInvitesPerDay', value: JSON.stringify(maxInvitesPerDay) },
-    update: { value: JSON.stringify(maxInvitesPerDay) },
+    create: { key: 'team.maxInvitesPerDay', value: maxInvitesPerDay },
+    update: { value: maxInvitesPerDay },
   })
+  clearSettingsCache()
 }
 
 describe('inviteMember', () => {
@@ -113,7 +119,7 @@ describe('inviteMember', () => {
 
     await expect(
       inviteMember(ctx, { email: 'x@example.test', role: 'RECRUITER' }),
-    ).rejects.toBeInstanceOf(ValidationError)
+    ).rejects.toMatchObject({ code: 'SEAT_LIMIT_EXCEEDED', httpStatus: 409 })
   })
 
   it('pending invites count toward the limit: 1 member + 2 pending at maxMembers=3 → 3rd invite rejected', async () => {
@@ -128,7 +134,7 @@ describe('inviteMember', () => {
     // invite c: 1 member + 2 pending = 3 = maxMembers → reject
     await expect(
       inviteMember(ctx, { email: 'pend-c@example.test', role: 'RECRUITER' }),
-    ).rejects.toBeInstanceOf(ValidationError)
+    ).rejects.toMatchObject({ code: 'SEAT_LIMIT_EXCEEDED', httpStatus: 409 })
   })
 
   it('expired invites do not count toward the limit', async () => {
@@ -264,7 +270,11 @@ describe('acceptInvite', () => {
     await acceptInvite({ userId: invitedUser.id }, token)
 
     // Second accept with same token → already used
-    await expect(acceptInvite({ userId: invitedUser.id }, token)).rejects.toBeInstanceOf(ValidationError)
+    // Remove membership so the separate membership guard cannot mask a missing
+    // acceptedAt guard: a used invitation must never allow the user to rejoin.
+    await testDb.companyMember.deleteMany({ where: { userId: invitedUser.id } })
+    await expect(acceptInvite({ userId: invitedUser.id }, token)).rejects.toThrow('Invite already used')
+    expect(await testDb.companyMember.count({ where: { userId: invitedUser.id } })).toBe(0)
   })
 
   it('rejects when user email does not match invite email', async () => {
@@ -298,7 +308,7 @@ describe('acceptInvite', () => {
     await expect(acceptInvite({ userId: user.id }, 'invalid_token')).rejects.toBeInstanceOf(NotFoundError)
   })
 
-  it('accept when team is full (via direct member insert) → ValidationError', async () => {
+  it('accept when team is full (via direct member insert) → SEAT_LIMIT_EXCEEDED', async () => {
     await seedSettings({ maxMembers: 2, maxInvitesPerDay: 10 })
     const { userId: ownerUserId, companyId } = await createEmployer(testDb)
     const ownerCtx = await getCtx(ownerUserId)
@@ -317,7 +327,7 @@ describe('acceptInvite', () => {
     // Now team has 2 members = maxMembers; accepting invite must fail
     await expect(
       acceptInvite({ userId: invitedUser.id }, token),
-    ).rejects.toBeInstanceOf(ValidationError)
+    ).rejects.toMatchObject({ code: 'SEAT_LIMIT_EXCEEDED', httpStatus: 409 })
 
     // Invite must NOT be marked accepted
     const invite = await testDb.companyInvite.findFirst({ where: { companyId, email: 'full@example.test' } })

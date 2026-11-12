@@ -7,9 +7,12 @@ import { logAudit } from './audit'
 import { adminAdjust } from './credits'
 import { COMPANY_TAGS } from '@/lib/company-tags'
 import type { UserCtx } from '../authz'
+import type { Prisma } from '@prisma/client'
+import { lockXact, LOCK_NS } from '../lib/advisory-locks'
+import { invalidateCompanyMatchingIndexesTx } from './matching-lifecycle'
 
-async function assertAdmin(userId: string): Promise<void> {
-  const user = await db.user.findUnique({
+async function assertAdmin(userId: string, tx: Prisma.TransactionClient = db): Promise<void> {
+  const user = await tx.user.findUnique({
     where: { id: userId },
     select: { role: true, status: true },
   })
@@ -178,18 +181,17 @@ export async function deactivateCompany(
   await assertAdmin(ctx.userId)
   const { companyId, reason } = deactivateCompanySchema.parse(input)
 
-  const company = await db.company.findUnique({
-    where: { id: companyId },
-    select: { id: true, isActive: true },
-  })
-  if (!company) throw new NotFoundError('Company not found')
-  if (!company.isActive) return
-
   await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.CREDIT, companyId)
+    await assertAdmin(ctx.userId, tx)
+    const company = await tx.company.findUnique({ where: { id: companyId }, select: { isActive: true } })
+    if (!company) throw new NotFoundError('Company not found')
+    if (!company.isActive) return
     await tx.company.update({
       where: { id: companyId },
       data: { isActive: false },
     })
+    await invalidateCompanyMatchingIndexesTx(tx, companyId)
 
     const members = await tx.companyMember.findMany({
       where: { companyId },
@@ -237,18 +239,17 @@ export async function reactivateCompany(
   await assertAdmin(ctx.userId)
   const { companyId } = reactivateCompanySchema.parse(input)
 
-  const company = await db.company.findUnique({
-    where: { id: companyId },
-    select: { id: true, isActive: true },
-  })
-  if (!company) throw new NotFoundError('Company not found')
-  if (company.isActive) return
-
   await db.$transaction(async (tx) => {
+    await lockXact(tx, LOCK_NS.CREDIT, companyId)
+    await assertAdmin(ctx.userId, tx)
+    const company = await tx.company.findUnique({ where: { id: companyId }, select: { isActive: true } })
+    if (!company) throw new NotFoundError('Company not found')
+    if (company.isActive) return
     await tx.company.update({
       where: { id: companyId },
       data: { isActive: true },
     })
+    await invalidateCompanyMatchingIndexesTx(tx, companyId)
 
     await logAudit(
       {
