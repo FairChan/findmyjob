@@ -70,7 +70,8 @@ export interface TeamLanyardRailProps extends React.ComponentProps<'section'> {
 }
 
 const RATIO = 96 / 62
-const MAX_W = 124
+const BASE_W = 124
+const MAX_W = 164
 const MIN_RAIL_W = 100
 const EM = 11.2
 const RAIL_PITCH_MIN = 1.16
@@ -175,7 +176,7 @@ function soft(distance: number, max: number) {
 }
 
 function geometry(W: number, items: LanyardMember[]) {
-  const u = W / MAX_W
+  const u = W / BASE_W
   const H = W * RATIO
   const railR = Math.max(3, 4.2 * u)
   const railY = 14 + railR
@@ -1448,14 +1449,14 @@ export function TeamLanyardRail({
         }}
       />
       {(eyebrow || heading) && (
-        <header className="relative z-10 flex flex-col items-center gap-2 px-6 pt-7 text-center">
+        <header className="relative z-10 flex flex-col items-center gap-2 px-6 pt-10 text-center md:pt-14">
           {eyebrow && (
             <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-muted-foreground">
               {eyebrow}
             </p>
           )}
           {heading && (
-            <h2 className="text-balance text-2xl font-medium tracking-tight md:text-3xl">
+            <h2 className="text-headline text-balance">
               {heading}
             </h2>
           )}
@@ -1468,7 +1469,7 @@ export function TeamLanyardRail({
         role="group"
         aria-label={heading ?? 'Team'}
         aria-roledescription="lanyard rail"
-        className="relative mt-4 w-full touch-pan-y select-none"
+        className="relative mt-8 w-full touch-pan-y select-none md:mt-10"
         style={{ height: g.height, overflowX: 'clip' }}
         onPointerMove={onPointerMove}
         onPointerDown={onPointerDown}
@@ -1878,10 +1879,10 @@ export function TeamLanyardRail({
         </div>
       )}
 
-      <div className="relative z-10 flex flex-col items-center gap-3 px-6 pb-7 pt-3 text-center">
-        <div id={`${uid}-caption`} aria-live="polite" className="min-h-[2.6rem]">
-          <p className="text-sm font-medium">{line1}</p>
-          <p className="mt-0.5 text-[13px] text-muted-foreground">{line2}</p>
+      <div className="relative z-10 flex flex-col items-center px-6 pb-10 pt-6 text-center md:pb-12 md:pt-8">
+        <div id={`${uid}-caption`} aria-live="polite" className="sr-only">
+          <p>{line1}</p>
+          <p>{line2}</p>
           {showingBack && person?.bio && <span className="sr-only">{person.bio}</span>}
         </div>
         {action}

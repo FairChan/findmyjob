@@ -12,7 +12,7 @@ interface WordmarkProps {
 }
 
 // "MY" carries both readings of the name: mine, and Malaysia's country code.
-// It is set in italics and in the colours of the Malaysian flag.
+// It is set in italics and in the theme's brand blue.
 export function Wordmark({
   className,
   symbol = true,
@@ -46,10 +46,7 @@ export function Wordmark({
       )}
       <span className={collapse ? 'sr-only sm:not-sr-only' : undefined}>
         Find
-        <span className="text-my-flag">
-          <span>M</span>
-          <span>Y</span>
-        </span>
+        <span className="ps-[0.03em] pe-[0.09em] font-bold text-brand italic">MY</span>
         Job
       </span>
     </span>

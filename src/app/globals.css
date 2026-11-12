@@ -178,20 +178,6 @@
   }
 }
 
-/* The MY of the wordmark, in the colours of the Malaysian flag: a blue M and a red Y,
-   each with the yellow of the crescent as an offset shadow; the white is the bar behind.
-   Solid colours rather than a gradient, which turns muddy across two small letters. */
-@utility text-my-flag {
-  padding-inline: 0.03em 0.09em;
-  font-style: italic;
-  font-weight: 700;
-  color: #010066;
-  text-shadow: 0.055em 0.055em 0 #ffcc00;
-  & > :last-child {
-    color: #cc0001;
-  }
-}
-
 /* Auth cards rise into place once; skipped for reduced motion. */
 @keyframes auth-enter {
   from {

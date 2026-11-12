@@ -6,7 +6,6 @@ test('HR badges support keyboard navigation, flipping and Escape', async ({ page
   await page.goto('/zh')
   const rail = page.getByTestId('recruiter-rail')
   await expect(rail).toBeVisible()
-  await expect(page.getByText('演示人物与在线状态，仅供效果预览。')).toBeVisible()
   const badges = rail.locator('[data-badge]')
   await expect(badges).toHaveCount(6)
   const portraits = rail.locator('[data-face="front"] img')

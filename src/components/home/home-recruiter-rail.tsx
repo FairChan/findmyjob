@@ -32,15 +32,13 @@ export function HomeRecruiterRail() {
   )
 
   return (
-    <div className="bg-muted py-16 md:py-24">
-      <div className="page-shell px-0 sm:px-4">
+    <div className="bg-muted py-12 md:py-16">
+      <div className="mx-auto w-full max-w-7xl sm:px-6">
         <TeamLanyardRail
           items={items}
           data-testid="recruiter-rail"
           aria-label={t('sectionLabel')}
-          eyebrow={t('eyebrow')}
           heading={t('heading')}
-          caption={t('caption')}
           autoplay={autoplay}
           onAutoplayStop={stopAutoplay}
           interval={3500}
@@ -58,20 +56,20 @@ export function HomeRecruiterRail() {
             </Link>
           }
         />
-        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 px-4 text-center text-xs text-muted-foreground">
-          <p>{t('demoNotice')}</p>
+        <div className="mt-3 flex justify-center px-4">
           <button
             type="button"
             onClick={() => setAutoplay((value) => !value)}
             aria-pressed={!autoplay}
-            className="inline-flex min-h-9 items-center gap-1.5 rounded-md px-2 hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            aria-label={autoplay ? t('pause') : t('play')}
+            title={autoplay ? t('pause') : t('play')}
+            className="inline-flex size-11 items-center justify-center rounded-full text-muted-foreground hover:bg-background focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
             {autoplay ? (
-              <Pause className="size-3" aria-hidden="true" />
+              <Pause className="size-4" aria-hidden="true" />
             ) : (
-              <Play className="size-3" aria-hidden="true" />
+              <Play className="size-4" aria-hidden="true" />
             )}
-            {autoplay ? t('pause') : t('play')}
           </button>
         </div>
       </div>
