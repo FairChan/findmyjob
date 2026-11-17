@@ -2843,7 +2843,20 @@
     },
     "profile": {
       "skillPlaceholder": "输入一项技能",
-      "addSkill": "添加技能"
+      "addSkill": "添加技能",
+      "title": "我的档案",
+      "editSection": "编辑{section}",
+      "skillsSection": "语言与技能",
+      "skills": "技能",
+      "headline": "一句话介绍",
+      "noExperience": "还没有填写教育和实习经历。",
+      "editExperienceOnWeb": "在网页版编辑教育和经历",
+      "opensWeb": "在浏览器中打开 FindMYJob 网页版",
+      "resumes": "我的简历",
+      "schoolVerification": "学校认证",
+      "contact": "联系方式（网页版）",
+      "verified": "已认证",
+      "schoolChangeWarning": "更换学校后，原来的学校邮箱认证会失效，需要重新认证。"
     },
     "onboarding": {
       "step3Title": "语言与技能",
@@ -2867,6 +2880,18 @@
       "otpRejected": "验证码错误或已过期，请重新输入或重新发送。",
       "domainHint": "请使用以 {domain} 结尾的学校邮箱",
       "resendIn": "{seconds} 秒后可重新发送"
+    },
+    "resume": {
+      "uploaded": "简历已上传",
+      "listUnavailable": "App 暂时还不能显示简历列表。上传后可以在网页版设为主简历或删除。",
+      "manageOnWeb": "在网页版管理简历（设为主简历、删除）",
+      "opensWeb": "在浏览器中打开 FindMYJob 网页版"
+    },
+    "companies": {
+      "title": "企业主页",
+      "verified": "已认证企业",
+      "foundingPartner": "创始合作企业",
+      "website": "访问企业官网"
     }
   },
   "appDownload": {

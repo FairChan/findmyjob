@@ -2843,7 +2843,20 @@
     },
     "profile": {
       "skillPlaceholder": "Enter a skill",
-      "addSkill": "Add skill"
+      "addSkill": "Add skill",
+      "title": "My profile",
+      "editSection": "Edit {section}",
+      "skillsSection": "Languages & skills",
+      "skills": "Skills",
+      "headline": "Headline",
+      "noExperience": "No education or experience added yet.",
+      "editExperienceOnWeb": "Edit education and experience on the website",
+      "opensWeb": "Opens the FindMYJob website in your browser",
+      "resumes": "My resumes",
+      "schoolVerification": "School verification",
+      "contact": "Contact details (website)",
+      "verified": "Verified",
+      "schoolChangeWarning": "Changing your school removes your current school email verification. You'll need to verify again."
     },
     "onboarding": {
       "step3Title": "Languages & skills",
@@ -2867,6 +2880,18 @@
       "otpRejected": "The code is wrong or has expired. Re-enter it or request a new one.",
       "domainHint": "Use your school email ending in {domain}",
       "resendIn": "Resend in {seconds}s"
+    },
+    "resume": {
+      "uploaded": "Resume uploaded",
+      "listUnavailable": "The app can't list your resumes yet. After uploading, you can set a primary resume or delete one on the website.",
+      "manageOnWeb": "Manage resumes on the website (primary, delete)",
+      "opensWeb": "Opens the FindMYJob website in your browser"
+    },
+    "companies": {
+      "title": "Company",
+      "verified": "Verified company",
+      "foundingPartner": "Founding partner",
+      "website": "Visit company website"
     }
   },
   "appDownload": {

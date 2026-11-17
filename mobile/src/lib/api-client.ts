@@ -1,7 +1,7 @@
 import { APP_ORIGIN_HEADER, APP_VERSION_HEADER, type ApiResult } from '@shared/mobile-api'
 import type { z } from 'zod'
 
-import { appVersion, mobileApiUrl } from './api-config'
+import { apiBaseUrl, appVersion, mobileApiUrl } from './api-config'
 import { emitAppEvent } from './app-events'
 import { appOrigin, authClient, sessionCookie } from './auth-client'
 
@@ -70,6 +70,41 @@ export async function apiFetch<T>(path: string, opts: Options<T> = {}): Promise<
   }
 
   const code = json && !json.ok ? json.code : res.ok ? 'INVALID_RESPONSE' : 'INTERNAL_ERROR'
+  await handleGlobalFailure(res.status, code)
+  throw new ApiError(code, res.status)
+}
+
+/**
+ * multipart 上传：走 Web 现有的 /api/uploads/[purpose]（不在 /api/m/v1 下，MA1-T06 给它开了 App 来源）。
+ * 头部和 apiFetch 一样带 expo-origin、x-app-version 和 Cookie；Content-Type 交给 fetch 生成（要带 boundary）。
+ * 这个端点的成功体是 { ok: true, key, resumeId }（没有 data 包一层），所以 schema 直接校验整个响应体。
+ */
+export async function apiUpload<T>(purpose: 'RESUME', form: FormData, schema: z.ZodType<T>): Promise<T> {
+  const cookie = await sessionCookie()
+  let res: Response
+  try {
+    res = await fetch(`${apiBaseUrl()}/api/uploads/${purpose}`, {
+      method: 'POST',
+      credentials: 'omit',
+      headers: {
+        Accept: 'application/json',
+        [APP_ORIGIN_HEADER]: appOrigin(),
+        [APP_VERSION_HEADER]: appVersion(),
+        ...(cookie ? { cookie } : {}),
+      },
+      body: form,
+    })
+  } catch {
+    throw new ApiError('NETWORK_ERROR', 0)
+  }
+  let json: { ok?: boolean; code?: string } | null = null
+  try {
+    json = (await res.json()) as { ok?: boolean; code?: string }
+  } catch {
+    json = null
+  }
+  if (res.ok && json?.ok) return schema.parse(json)
+  const code = json && json.ok === false && typeof json.code === 'string' ? json.code : res.ok ? 'INVALID_RESPONSE' : res.status === 413 ? 'FILE_TOO_LARGE' : 'INTERNAL_ERROR'
   await handleGlobalFailure(res.status, code)
   throw new ApiError(code, res.status)
 }
