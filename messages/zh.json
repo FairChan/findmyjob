@@ -2892,6 +2892,37 @@
       "verified": "已认证企业",
       "foundingPartner": "创始合作企业",
       "website": "访问企业官网"
+    },
+    "settings": {
+      "title": "设置",
+      "localeSyncFailed": "语言已在本机切换，但没能同步到服务器，邮件可能仍用原来的语言。",
+      "weeklyDigest": "每周职位周报邮件",
+      "weeklyDigestDesc": "每周把可能适合你的新职位发到你的邮箱，可随时关闭。",
+      "weeklyDigestUnavailable": "职位周报暂未开放。",
+      "pushLater": "App 推送通知将在后续版本提供。"
+    },
+    "privacy": {
+      "block": "屏蔽",
+      "noResults": "没有找到匹配的认证企业。",
+      "exportExisting": "24 小时内已经申请过导出，完成后会发邮件通知你。",
+      "opensWeb": "在浏览器中打开 FindMYJob 网页版",
+      "deleteConsequences": "注销后会立即退出所有设备，你的投递和简历企业将无法再查看。"
+    },
+    "invite": {
+      "share": "分享邀请",
+      "shareMessage": "我在用 FindMYJob 找马来西亚的实习和工作，用我的邀请码 {code} 注册：{link}",
+      "codeLabel": "我的邀请码"
+    },
+    "help": {
+      "title": "帮助与防骗",
+      "tipsTitle": "求职防骗要点",
+      "tip1": "正规企业不会让你先交押金、培训费或体检费。",
+      "tip2": "不要把银行卡密码、TAC 验证码或护照原件交给任何人。",
+      "tip3": "面试地点不对劲、要求转到私人聊天软件谈「高薪」，先停下来核实。",
+      "tip4": "遇到可疑职位，在职位页举报，或联系学校国际学生办公室。",
+      "moreOnWeb": "查看完整的防骗指南和真实案例",
+      "opensWeb": "在浏览器中打开 FindMYJob 网页版",
+      "call999": "拨打 999"
     }
   },
   "appDownload": {

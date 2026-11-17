@@ -6,7 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { ToastProvider } from '@/components/ui'
 import { HumanCheckProvider } from '@/features/auth/human-check'
-import { AppIntlProvider, deviceLocale } from '@/i18n/provider'
+import { PreferencesProvider } from '@/features/settings/prefs'
 import { onAppEvent } from '@/lib/app-events'
 import { authClient } from '@/lib/auth-client'
 import { bindOnlineManager } from '@/lib/online'
@@ -40,20 +40,29 @@ function AppEventBridge() {
 
 export default function RootLayout() {
   const [queryClient] = useState(createQueryClient)
-  const { colors } = useTheme()
   return (
-    <AppIntlProvider locale={deviceLocale()}>
+    <PreferencesProvider>
       <SafeAreaProvider>
         <QueryClientProvider client={queryClient}>
           <ToastProvider>
             <HumanCheckProvider>
-              <StatusBar style="auto" />
-              <AppEventBridge />
-              <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
+              <ThemedStack />
             </HumanCheckProvider>
           </ToastProvider>
         </QueryClientProvider>
       </SafeAreaProvider>
-    </AppIntlProvider>
+    </PreferencesProvider>
+  )
+}
+
+/** 放在 PreferencesProvider 里面：设置页切换深浅色后，状态栏和页面底色立即跟着变 */
+function ThemedStack() {
+  const { colors, scheme } = useTheme()
+  return (
+    <>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+      <AppEventBridge />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
+    </>
   )
 }

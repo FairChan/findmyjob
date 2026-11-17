@@ -1,6 +1,6 @@
 import { ChevronRight } from 'lucide-react-native'
 import type { ReactNode } from 'react'
-import { Pressable, StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Switch, Text, View } from 'react-native'
 
 import { useTheme } from '@/theme/use-theme'
 
@@ -38,4 +38,44 @@ const styles = StyleSheet.create({
   icon: { width: 24, alignItems: 'center' },
   label: { flex: 1, fontSize: 16 },
   value: { fontSize: 15, maxWidth: '45%' },
+  switchText: { flex: 1, gap: 2 },
+  description: { fontSize: 13, lineHeight: 18 },
 })
+
+/** 开关行：整行可点，TalkBack 读作开关并报开/关状态 */
+export function SwitchRow({ label, description, value, onChange, disabled = false, testID }: {
+  label: string
+  description?: string
+  value: boolean
+  onChange: (next: boolean) => void
+  disabled?: boolean
+  testID?: string
+}) {
+  const { colors, minTouchTarget } = useTheme()
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityHint={description}
+      accessibilityState={{ checked: value, disabled }}
+      disabled={disabled}
+      onPress={() => onChange(!value)}
+      style={[styles.row, { minHeight: minTouchTarget + 8, borderBottomColor: colors.border, opacity: disabled ? 0.5 : 1 }]}
+    >
+      <View style={styles.switchText}>
+        <Text style={[styles.label, { color: colors.foreground }]}>{label}</Text>
+        {description ? <Text style={[styles.description, { color: colors.mutedForeground }]}>{description}</Text> : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onChange}
+        disabled={disabled}
+        importantForAccessibility="no-hide-descendants"
+        accessibilityElementsHidden
+        trackColor={{ true: colors.brand, false: colors.muted }}
+        thumbColor={colors.background}
+      />
+    </Pressable>
+  )
+}

@@ -2892,6 +2892,37 @@
       "verified": "Verified company",
       "foundingPartner": "Founding partner",
       "website": "Visit company website"
+    },
+    "settings": {
+      "title": "Settings",
+      "localeSyncFailed": "The app language changed, but we couldn't sync it to the server. Emails may still use the old language.",
+      "weeklyDigest": "Weekly job digest email",
+      "weeklyDigestDesc": "A weekly email with new jobs that may suit you. Turn it off any time.",
+      "weeklyDigestUnavailable": "The weekly digest isn't available yet.",
+      "pushLater": "Push notifications are coming in a later version."
+    },
+    "privacy": {
+      "block": "Block",
+      "noResults": "No verified company matches.",
+      "exportExisting": "You already requested an export in the last 24 hours. We'll email you when it's ready.",
+      "opensWeb": "Opens the FindMYJob website in your browser",
+      "deleteConsequences": "You'll be signed out on every device, and employers will no longer see your applications or resume."
+    },
+    "invite": {
+      "share": "Share invite",
+      "shareMessage": "I'm using FindMYJob to find internships and jobs in Malaysia. Sign up with my code {code}: {link}",
+      "codeLabel": "My invite code"
+    },
+    "help": {
+      "title": "Help & safety",
+      "tipsTitle": "Stay safe when job hunting",
+      "tip1": "Real employers never ask for a deposit, training fee or medical fee up front.",
+      "tip2": "Never share your bank PIN, TAC code or original passport with anyone.",
+      "tip3": "If the interview place feels wrong, or they push you to a private chat app for a \"high salary\" offer, stop and check.",
+      "tip4": "Report suspicious jobs from the job page, or contact your school's international student office.",
+      "moreOnWeb": "Read the full safety guide and real cases",
+      "opensWeb": "Opens the FindMYJob website in your browser",
+      "call999": "Call 999"
     }
   },
   "appDownload": {
