@@ -1,0 +1,20 @@
+# 主路径 5：投递 tab → 收到的邀请 → 接受并投递 → 投递详情
+# 前提：种子数据里有一条发给 TEST_EMAIL、状态 SENT 且未过期的企业邀请
+appId: asia.findmyjob.app.dev
+---
+- runFlow: subflows/sign-in.yaml
+- tapOn:
+    id: "tab-applications"
+- tapOn:
+    id: "segment-invitations"
+- extendedWaitUntil:
+    visible:
+      id: "invitation-accept-.*"
+    timeout: 10000
+- tapOn:
+    id: "invitation-accept-.*"
+    index: 0
+- extendedWaitUntil:
+    visible:
+      id: "application-timeline"
+    timeout: 10000

@@ -5,7 +5,8 @@ const expoConfig = require('eslint-config-expo/flat')
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/**', '.expo/**', 'android/**', 'ios/**', 'node_modules/**'],
+    // .maestro/scripts 跑在 Maestro 的 JS 沙箱里（http、json、output 是它注入的全局）
+    ignores: ['dist/**', '.expo/**', 'android/**', 'ios/**', 'node_modules/**', '.maestro/**'],
   },
   {
     // 构建和测试配置文件跑在 Node 里

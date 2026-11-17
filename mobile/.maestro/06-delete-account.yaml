@@ -1,0 +1,47 @@
+# 主路径 6：我的 → 隐私 → 注销账号（输入确认词 + 最终确认）→ 回到欢迎页
+# 用流程 1 新注册的账号跑，不要用种子账号
+appId: asia.findmyjob.app.dev
+env:
+  DELETE_PHRASE: 确认删除
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "welcome-sign-in"
+- tapOn:
+    id: "sign-in-email"
+- inputText: ${NEW_EMAIL}
+- tapOn:
+    id: "sign-in-password"
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "sign-in-submit"
+- extendedWaitUntil:
+    visible:
+      id: "home-bell"
+    timeout: 15000
+- tapOn:
+    id: "tab-me"
+- tapOn:
+    id: "me-privacy"
+- scrollUntilVisible:
+    element:
+      id: "privacy-delete"
+    direction: DOWN
+- tapOn:
+    id: "privacy-delete"
+- assertVisible:
+    id: "delete-continue"
+- tapOn:
+    id: "delete-phrase"
+- inputText: ${DELETE_PHRASE}
+- hideKeyboard
+- tapOn:
+    id: "delete-continue"
+- tapOn:
+    id: "delete-final"
+- extendedWaitUntil:
+    visible:
+      id: "welcome-sign-up"
+    timeout: 15000

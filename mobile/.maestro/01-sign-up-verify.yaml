@@ -1,0 +1,48 @@
+# 主路径 1：注册 → 去邮箱验证（点邮件链接）→ 回 App 登录
+appId: asia.findmyjob.app.dev
+env:
+  MAILPIT_URL: http://10.0.2.2:8025
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "welcome-sign-up"
+- tapOn:
+    id: "sign-up-name"
+- inputText: "E2E 同学"
+- tapOn:
+    id: "sign-up-email"
+- inputText: ${NEW_EMAIL}
+- tapOn:
+    id: "sign-up-password"
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "sign-up-terms"
+- tapOn:
+    id: "sign-up-privacy"
+- tapOn:
+    id: "sign-up-submit"
+# 人机校验（Integrity 或 WebView Turnstile 测试 key）通过后进入"去邮箱验证"
+- extendedWaitUntil:
+    visible:
+      id: "check-email-sign-in"
+    timeout: 30000
+- runScript: scripts/mailpit-verify-link.js
+- openLink: ${output.verifyUrl}
+- launchApp
+- tapOn:
+    id: "check-email-sign-in"
+- tapOn:
+    id: "sign-in-email"
+- inputText: ${NEW_EMAIL}
+- tapOn:
+    id: "sign-in-password"
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "sign-in-submit"
+- extendedWaitUntil:
+    visible:
+      id: "home-bell"
+    timeout: 15000

@@ -1,0 +1,18 @@
+# Maestro 工作区配置（MA2-T10）。
+# 跑法（需要 Android 模拟器或真机 + dev 变体的 App，连本机 ergo 环境，只用合成数据）：
+#   maestro test mobile/.maestro \
+#     -e TEST_EMAIL=student+e2e@example.test -e TEST_PASSWORD=<种子账号密码> \
+#     -e NEW_EMAIL=new+$(date +%s)@example.test -e SEARCH_TEXT=实习
+# 顶层的 *.yaml 是 6 条主路径；subflows/ 和 scripts/ 只被引用，不单独跑。
+# 本机没有 Android SDK，这些流程尚未在模拟器上跑过；testID 由 __tests__/maestro-flows.test.ts 静态校验。
+flows:
+  - "*.yaml"
+executionOrder:
+  continueOnFailure: false
+  flowsOrder:
+    - 01-sign-up-verify
+    - 02-onboarding
+    - 03-search-preview-open
+    - 04-apply
+    - 05-accept-invitation
+    - 06-delete-account

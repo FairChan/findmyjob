@@ -45,13 +45,13 @@ export default function SignIn() {
   return (
     <Screen
       edges={['top', 'left', 'right', 'bottom']}
-      footer={<Button label={t('signIn')} onPress={submit} loading={busy} disabled={!email || !password} fullWidth />}
+      footer={<Button testID="sign-in-submit" label={t('signIn')} onPress={submit} loading={busy} disabled={!email || !password} fullWidth />}
     >
       <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>
         {t('signIn')}
       </Text>
-      <TextField label={t('email')} value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
-      <TextField label={t('password')} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={submit} />
+      <TextField testID="sign-in-email" label={t('email')} value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
+      <TextField testID="sign-in-password" label={t('password')} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" textContentType="password" onSubmitEditing={submit} />
       {error ? (
         <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>
           {error}

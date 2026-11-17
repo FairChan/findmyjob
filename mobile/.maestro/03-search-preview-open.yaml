@@ -1,0 +1,36 @@
+# 主路径 3：搜索 → 预览（不扣额度）→ 点"查看完整详情"→ 确认扣 1 次 → 详情
+appId: asia.findmyjob.app.dev
+---
+- runFlow: subflows/sign-in.yaml
+- tapOn:
+    id: "tab-jobs"
+- tapOn:
+    id: "jobs-search"
+- inputText: ${SEARCH_TEXT}
+- pressKey: Enter
+- extendedWaitUntil:
+    visible:
+      id: "job-card-.*"
+    timeout: 10000
+# 来回滑动列表：只读列表和预览，额度不应变化（MA2-T06 验收补充）
+- scroll
+- scroll
+- tapOn:
+    id: "job-card-.*"
+    index: 0
+- assertVisible:
+    id: "job-view-detail"
+- tapOn:
+    id: "job-view-detail"
+# 有限额度时先弹确认抽屉；opensFree 的职位直接进详情
+- runFlow:
+    when:
+      visible:
+        id: "open-confirm"
+    commands:
+      - tapOn:
+          id: "open-confirm"
+- extendedWaitUntil:
+    visible:
+      id: "job-detail"
+    timeout: 10000

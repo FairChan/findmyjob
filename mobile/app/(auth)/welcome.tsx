@@ -17,8 +17,8 @@ export default function Welcome() {
       edges={['top', 'left', 'right', 'bottom']}
       footer={
         <>
-          <Button label={t('signUp')} onPress={() => router.push('/sign-up')} fullWidth />
-          <Button label={t('signIn')} variant="secondary" onPress={() => router.push('/sign-in')} fullWidth />
+          <Button testID="welcome-sign-up" label={t('signUp')} onPress={() => router.push('/sign-up')} fullWidth />
+          <Button testID="welcome-sign-in" label={t('signIn')} variant="secondary" onPress={() => router.push('/sign-in')} fullWidth />
         </>
       }
     >

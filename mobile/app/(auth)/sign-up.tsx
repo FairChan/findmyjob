@@ -54,13 +54,14 @@ export default function SignUp() {
   )
 
   return (
-    <Screen edges={['top', 'left', 'right', 'bottom']} footer={<Button label={t('signUp')} onPress={submit} loading={busy} disabled={!canSubmit} fullWidth />}>
+    <Screen edges={['top', 'left', 'right', 'bottom']} footer={<Button testID="sign-up-submit" label={t('signUp')} onPress={submit} loading={busy} disabled={!canSubmit} fullWidth />}>
       <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>
         {t('signUp')}
       </Text>
-      <TextField label={t('name')} value={name} onChangeText={setName} autoComplete="name" textContentType="name" />
-      <TextField label={t('email')} value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
+      <TextField testID="sign-up-name" label={t('name')} value={name} onChangeText={setName} autoComplete="name" textContentType="name" />
+      <TextField testID="sign-up-email" label={t('email')} value={email} onChangeText={setEmail} autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="emailAddress" />
       <TextField
+        testID="sign-up-password"
         label={t('password')}
         value={password}
         onChangeText={setPassword}
@@ -70,8 +71,8 @@ export default function SignUp() {
         helper={t('passwordHelper')}
         error={password && !passwordOk ? t('passwordHelper') : null}
       />
-      <Checkbox checked={agreeTerms} onChange={setAgreeTerms} label={t('agreeTerms')} extra={legal('terms', t('readTerms'))} />
-      <Checkbox checked={agreePrivacy} onChange={setAgreePrivacy} label={t('agreePrivacy')} extra={legal('privacy', t('readPrivacy'))} />
+      <Checkbox testID="sign-up-terms" checked={agreeTerms} onChange={setAgreeTerms} label={t('agreeTerms')} extra={legal('terms', t('readTerms'))} />
+      <Checkbox testID="sign-up-privacy" checked={agreePrivacy} onChange={setAgreePrivacy} label={t('agreePrivacy')} extra={legal('privacy', t('readPrivacy'))} />
       <Checkbox checked={joinTalentPool} onChange={setJoinTalentPool} label={t('joinTalentPool')} />
       {error ? (
         <Text accessibilityRole="alert" style={[styles.error, { color: colors.destructive }]}>

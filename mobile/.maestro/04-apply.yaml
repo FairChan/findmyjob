@@ -1,0 +1,17 @@
+# 主路径 4：从详情投递 → 确认页（简历、防骗提醒）→ 投递成功 → 投递详情时间线
+# 前提：种子学生已有联系方式和 PDF 简历，完成度达标
+appId: asia.findmyjob.app.dev
+---
+- runFlow: 03-search-preview-open.yaml
+- tapOn:
+    id: "job-apply"
+- assertVisible:
+    id: "apply-safety"
+- tapOn:
+    id: "apply-submit"
+- extendedWaitUntil:
+    visible:
+      id: "application-timeline"
+    timeout: 10000
+- tapOn:
+    id: "top-bar-back"

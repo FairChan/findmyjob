@@ -4,17 +4,19 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 import { useTheme } from '@/theme/use-theme'
 
-export function Checkbox({ checked, onChange, label, extra }: {
+export function Checkbox({ checked, onChange, label, extra, testID }: {
   checked: boolean
   onChange: (next: boolean) => void
   label: string
   /** 标签后面的补充（如"查看用户协议"链接），不参与勾选 */
   extra?: ReactNode
+  testID?: string
 }) {
   const { colors, minTouchTarget } = useTheme()
   return (
     <View style={styles.row}>
       <Pressable
+        testID={testID}
         accessibilityRole="checkbox"
         accessibilityState={{ checked }}
         accessibilityLabel={label}

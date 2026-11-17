@@ -41,7 +41,7 @@ export default function CheckEmail() {
       edges={['top', 'left', 'right', 'bottom']}
       footer={
         <>
-          <Button label={t('signIn')} onPress={() => router.replace('/sign-in')} fullWidth />
+          <Button testID="check-email-sign-in" label={t('signIn')} onPress={() => router.replace('/sign-in')} fullWidth />
           <Button label={t('resendEmail')} variant="secondary" onPress={resend} loading={busy} disabled={!email || cooldown} fullWidth />
         </>
       }

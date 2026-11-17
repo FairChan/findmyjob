@@ -1,0 +1,30 @@
+# 主路径 2：首页建档卡片 → 四步引导（基本信息保存、意向保存、技能跳过）→ 完成
+# 前提：TEST_EMAIL 是 onboardingStep < 5、求职意向为空的种子学生
+appId: asia.findmyjob.app.dev
+---
+- runFlow: subflows/sign-in.yaml
+- tapOn:
+    id: "home-onboarding"
+- assertVisible:
+    id: "onboarding-step-1"
+- tapOn:
+    id: "field-workAuth"
+- tapOn: "学生准证|Student Pass"
+- tapOn:
+    id: "onboarding-next"
+- assertVisible:
+    id: "onboarding-step-2"
+- tapOn:
+    id: "intent-INTERNSHIP"
+- tapOn:
+    id: "onboarding-next"
+- assertVisible:
+    id: "onboarding-step-3"
+- tapOn:
+    id: "onboarding-skip"
+- assertVisible:
+    id: "onboarding-step-4"
+- tapOn:
+    id: "onboarding-finish"
+- assertVisible:
+    id: "home-bell"

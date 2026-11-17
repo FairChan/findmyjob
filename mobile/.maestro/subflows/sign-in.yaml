@@ -1,0 +1,20 @@
+# 用种子学生账号登录并停在首页
+appId: asia.findmyjob.app.dev
+---
+- launchApp:
+    clearState: true
+- tapOn:
+    id: "welcome-sign-in"
+- tapOn:
+    id: "sign-in-email"
+- inputText: ${TEST_EMAIL}
+- tapOn:
+    id: "sign-in-password"
+- inputText: ${TEST_PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: "sign-in-submit"
+- extendedWaitUntil:
+    visible:
+      id: "home-bell"
+    timeout: 15000

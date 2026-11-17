@@ -18,10 +18,10 @@ export default function TabsLayout() {
         tabBarLabelStyle: { fontSize: 12 },
       }}
     >
-      <Tabs.Screen name="home" options={{ title: t('home'), tabBarIcon: ({ color, size }) => <House color={color} size={size} /> }} />
-      <Tabs.Screen name="jobs" options={{ title: t('jobs'), tabBarIcon: ({ color, size }) => <Briefcase color={color} size={size} /> }} />
-      <Tabs.Screen name="applications" options={{ title: t('applications'), tabBarIcon: ({ color, size }) => <FileText color={color} size={size} /> }} />
-      <Tabs.Screen name="me" options={{ title: t('me'), tabBarIcon: ({ color, size }) => <UserRound color={color} size={size} /> }} />
+      <Tabs.Screen name="home" options={{ title: t('home'), tabBarButtonTestID: 'tab-home', tabBarIcon: ({ color, size }) => <House color={color} size={size} /> }} />
+      <Tabs.Screen name="jobs" options={{ title: t('jobs'), tabBarButtonTestID: 'tab-jobs', tabBarIcon: ({ color, size }) => <Briefcase color={color} size={size} /> }} />
+      <Tabs.Screen name="applications" options={{ title: t('applications'), tabBarButtonTestID: 'tab-applications', tabBarIcon: ({ color, size }) => <FileText color={color} size={size} /> }} />
+      <Tabs.Screen name="me" options={{ title: t('me'), tabBarButtonTestID: 'tab-me', tabBarIcon: ({ color, size }) => <UserRound color={color} size={size} /> }} />
     </Tabs>
   )
 }
