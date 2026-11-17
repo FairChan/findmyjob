@@ -552,6 +552,98 @@
 - **缺口**：每张表的保留期。
 - **建议去处**：D10 加律师问题「各类记录保留多久」；E4 前加清理任务。
 
+### TB8 Android App（MA，2026-11-18 追加）
+
+> 新增的信任边界：App ↔ `/api/m/v1`（自定义 scheme origin + Cookie 会话）、App ↔ Google（Play Integrity、FCM）、手机本地存储、锁屏。第 8 节的统计还没有把本节算进去，GATE-APP 前一起更新。
+
+#### TM-035 网页跨站伪造 App 请求（CSRF）
+
+- **边界**：TB8
+- **场景**：恶意网页让学生浏览器向 `/api/m/v1/*` 发带 Cookie 的请求（投递、注销、改隐私），或者在请求里同时塞一个 `expo-origin` 头冒充 App。
+- **影响**：以学生身份执行写操作。
+- **可能性**：低
+- **等级**：Low
+- **现有控制**：`route({ origin: 'app' })` 对所有方法要求 Origin 精确等于 `MOBILE_APP_ORIGINS`；有 Origin 时只看 Origin（浏览器不能伪造），没有 Origin 时才看 expo-origin；带自定义头的跨站请求会触发预检，服务端不放行；Web 路由默认仍只认网站 origin（MA1-T01，`tests/unit/route-app-origin.test.ts` 覆盖浏览器 origin、无 origin、仿冒 scheme、其他变体 scheme）。
+- **缺口**：无。
+- **建议去处**：GATE-APP 抓包抽查。
+
+#### TM-036 会话令牌落进 URL 被别的 App 截获
+
+- **边界**：TB8
+- **场景**：Expo 插件在 verify-email、OAuth 回调重定向到自定义 scheme 时，会把 Set-Cookie 拼进 URL；恶意 App 抢注同一个 scheme 后收到这条 URL。
+- **影响**：账号被接管。
+- **可能性**：低（App 不发自定义 scheme 回调）
+- **等级**：Low
+- **现有控制**：before-hook 的 `findUnsafeCallbackUrl` 拒绝所有非 http(s)、协议相对和非字符串回调（MA1-T02）；App 只用 https 回调和 App Links；没有接入任何社交登录。
+- **缺口**：App Links 真机验证在 MA3-T04 App 端完成后做。
+- **建议去处**：GATE-APP。
+
+#### TM-037 机器人批量注册、撞库（绕过人机校验）
+
+- **边界**：TB8
+- **场景**：脚本冒充 App，用伪造、重放、借来的 Play Integrity token，或者直接不带 Turnstile 打认证接口。
+- **影响**：刷注册名额、撞库。
+- **可能性**：中
+- **等级**：Medium
+- **现有控制**：只有 App origin 且三项配置齐全时才认 integrityToken；服务端解码后校验 7 项（包名、requestHash 绑定动作和邮箱、5 分钟时效、PLAY_RECOGNIZED、签名证书、设备完整性），token 一次性（RateLimitBucket 主键）；失败统一回 TURNSTILE_FAILED，Better Auth 限流照常（MA1-T03）。
+- **缺口**：直装 APK 和无 GMS 手机走 WebView Turnstile，强度与 Web 相同；没有做 Integrity 的账号级风控（`accountDetails`）。
+- **建议去处**：试点后看 TURNSTILE_FAILED 和注册曲线再定。
+
+#### TM-038 锁屏通知泄露求职信息
+
+- **边界**：TB8
+- **场景**：推送正文里出现企业名、职位、面试时间，被同屋、家人在锁屏上看到；或者推送 payload 被第三方（FCM）留存。
+- **影响**：PDPA 下的个人数据外泄，求职隐私。
+- **可能性**：中
+- **等级**：Low
+- **现有控制**：推送只有按类型的通用句子，data 只放 type、notificationId、App 路由；Android 通知可见性设为 PRIVATE；测试断言 payload 里的企业名、职位、状态不会进入推送（MA3-T02）。
+- **缺口**：`lockScreenDetails` 偏好目前不生效（始终只发通用文案）。
+- **建议去处**：需要显示详情时另开任务，先过 PDPA 评估。
+
+#### TM-039 丢失手机或共享手机后继续收到推送、看到缓存
+
+- **边界**：TB8
+- **场景**：学生丢了手机后改密码，旧手机仍收到推送；或者把手机给别人用，App 里的缓存（档案、投递）被翻看。
+- **影响**：个人数据外泄。
+- **可能性**：中
+- **等级**：Medium
+- **现有控制**：DeviceToken 绑定登录会话，会话删除时级联删除（改密码会强制踢掉其他会话）；推送只发给会话未过期的设备；Cookie 存在 SecureStore（Keystore 加密）；退出登录时清空查询缓存（MA2-T02）。
+- **缺口**：离线缓存的白名单（MA3-T05）还没做；没有 App 锁（生物识别）。
+- **建议去处**：MA3-T05；App 锁记为 P2。
+
+#### TM-040 重打包的山寨 App
+
+- **边界**：TB8
+- **场景**：有人把 App 反编译、改包、重新签名后在第三方渠道分发，收集账号密码。
+- **影响**：钓鱼。
+- **可能性**：低
+- **等级**：Medium
+- **现有控制**：服务端只认精确的 scheme origin（山寨包能伪造，所以这不算防线）；Play Integrity 会因证书不符拒绝；App 内没有任何秘密；R8 混淆（MA5-T01）。
+- **缺口**：官网 APK 需要附 SHA-256 校验值；商店外的山寨包只能靠监测。
+- **建议去处**：MA5-H01 官网下载页；GATE-APP。
+
+#### TM-041 额度被 App 误扣
+
+- **边界**：TB5、TB8
+- **场景**：App 预取、自动重取、离线重放，悄悄调用 `POST /jobs/:id/open`。
+- **影响**：学生额度被消耗，信任受损。
+- **可能性**：中
+- **等级**：Medium
+- **现有控制**：列表和 preview 不产生 JobView（MA1-T04 测试）；`apiFetch` 拒绝没有 `userInitiated: true` 的计数调用；写操作不自动重试（MA2-T02）。
+- **缺口**：没有端到端的"滑过 50 条额度不变"E2E（要有模拟器）。
+- **建议去处**：MA2-T10 / GATE-APP。
+
+#### TM-042 推送 token 和 Google 服务账号泄露
+
+- **边界**：TB8
+- **场景**：数据库被拖库，拿到 FCM token；服务器上的服务账号 JSON 泄露，被用来给所有设备群发。
+- **影响**：骚扰推送、钓鱼推送。
+- **可能性**：低
+- **等级**：Medium
+- **现有控制**：token 用 encryptField（带 AAD）存放，查重只用 sha256；服务账号文件只放 `/opt/findmyjob/secrets/`（600），不进镜像和仓库；服务账号只授 Firebase Messaging 和 Play Integrity 两个 scope。
+- **缺口**：服务账号的最小权限和轮换流程要写进 RUNBOOK。
+- **建议去处**：MA0-H01 建账号时一并完成。
+
 ## 8. 统计
 
 | 边界 | High | Medium | Low | 合计 |
