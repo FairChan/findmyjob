@@ -17,13 +17,13 @@
 | Web 框架 | Next.js 16 App Router，React 19，Tailwind 4 | App 不能复用 DOM 组件，只能复用逻辑和文案 |
 | 写操作 | 38 个 `use server` 文件，都用 `action()` 包装，返回 `ActionResult<T> = {ok,data}\|{ok:false,code}` | 原生端调不了 Server Action，**要补 JSON API**；错误码体系可以原样沿用 |
 | 读操作 | 页面在 Server Component 里直接调 services | 同上 |
-| Route Handler | 14 个，都用 `route()` 包装；**非 GET 请求强制校验 Origin** | 原生请求不带 Origin，要给 Bearer 请求单独开一条路（§4.1） |
+| Route Handler | 14 个，都用 `route()` 包装；**非 GET 请求强制校验 Origin** | App 的 Origin 是自定义 scheme，要给它单独开一条路（§4.1） |
 | 业务层 | `src/server/services/*` 约 50 个，签名是 `(ctx,{userId,companyId?}, input)` | **可以直接复用**，这是这条方案成立的前提 |
 | 校验 | zod 4，`src/schemas`、`src/server/schemas` | 不依赖 server-only 的 schema 可以直接给 App 共用 |
-| 认证 | better-auth 1.7：邮箱密码 + email OTP + 2FA；Cookie 会话；Turnstile 挡在登录、注册、发 OTP、找回密码、重发验证 5 个端点 | 原生端要用 Bearer/安全存储；**Turnstile 在原生端换成 Play Integrity**（§4.1） |
+| 认证 | better-auth 1.7：邮箱密码 + email OTP + 2FA；Cookie 会话；Turnstile 挡在登录、注册、发 OTP、找回密码、重发验证 5 个端点 | 原生端把 Cookie 存进安全存储、手动带上（@better-auth/expo）；**Turnstile 在原生端换成 Play Integrity**（§4.1） |
 | 国际化 | next-intl，`messages/zh.json` 和 `en.json` | App 用 `use-intl`（next-intl 的底层库），**直接读同一份 JSON** |
 | 通知 | 站内 `Notification` 表 + 邮件（`notify.ts`，有每日上限），**没有任何推送** | 推送整条链路都要新建（§4.3） |
-| 上传 | 只走 `/api/uploads/[purpose]`：简历 PDF，认证材料 PDF/PNG/JPEG，上限 10–11MB | App 直接用同一端点，只是换成 Bearer 认证 |
+| 上传 | 只走 `/api/uploads/[purpose]`：简历 PDF，认证材料 PDF/PNG/JPEG，上限 10–11MB | App 直接用同一端点，只在这个端点放行 App Origin |
 | PWA | 有 `manifest.ts`、`sw.js`（只做离线页） | 和 App 互不影响，保留 |
 | 品牌 | `--brand: hsl(210 100% 40%)`（约 #0066CC），有深色模式，系统字体，"苹果风"克制设计 | App 沿用同一套 token |
 | 学生页面 | `/s` 下 18 个页面：首页、职位列表/详情、企业列表/详情、投递、邀请、邀请同学、通知、建档引导、档案、简历、隐私（含导出）、学校认证、设置、联系方式 | App 的范围按这个清单裁剪（§5.3） |
@@ -73,7 +73,7 @@
 | 框架 | Expo SDK（动工时的最新稳定版）+ Expo Router（文件路由，心智和 Next 一致） | React Navigation 裸用 |
 | 服务端状态 | TanStack Query（缓存、重试、分页、离线持久化） | SWR |
 | 表单 | react-hook-form + zod resolver（共用 schema） | — |
-| 认证客户端 | better-auth 自带的 `plugins/bearer`（已核实 1.7 包里有）+ expo-secure-store；`@better-auth/expo` 只作可选项 ⚠️ | — |
+| 认证客户端 | `@better-auth/expo`（server 插件 + expoClient）+ expo-secure-store；better-auth 要升到 ^1.7.25 | bearer 插件（MA0-T04 否决：Web 响应会多带 set-auth-token，接不上 2FA） |
 | 国际化 | use-intl（读 `messages/*.json`） | i18next（要转换格式，不选） |
 | UI | 自建组件 + 品牌 token；图标用 lucide-react-native（和 Web 同一套） | react-native-paper（Material 味太重） |
 | 列表 | FlashList | FlatList |
@@ -92,12 +92,12 @@
 │ Expo Router 页面 → TanStack Query → apiClient │
 │   │ SecureStore(会话令牌)  │ FCM token        │
 └───┼────────────────────────┼──────────────────┘
-    │ HTTPS  Authorization: Bearer   X-App-Version
+    │ HTTPS  cookie(SecureStore)  expo-origin  X-App-Version
     ▼
 Caddy (TLS) ─► Next.js
-   ├─ /api/auth/*        better-auth（+ bearer/expo 插件，Play Integrity 替代 Turnstile）
+   ├─ /api/auth/*        better-auth（+ expo 插件，Play Integrity 替代 Turnstile）
    ├─ /api/m/v1/*        新增：mobileRoute() → 现有 services（零业务逻辑）
-   ├─ /api/uploads/*     现有，放开 Bearer
+   ├─ /api/uploads/*     现有，放行 App Origin
    └─ /.well-known/assetlinks.json   新增（App Links）
             │
             ▼
@@ -111,13 +111,14 @@ Caddy (TLS) ─► Next.js
 ### 4.1 认证
 
 1. **会话载体**：
-   - 启用 better-auth 的 bearer 能力（或 expo 插件），App 把会话令牌存在 expo-secure-store（Android Keystore 加密）。
+   - 用官方 `@better-auth/expo`（MA0-T04 结论，不用 bearer 插件）：App 把服务端下发的 Cookie 存进 expo-secure-store（Android Keystore 加密），之后手动带上 `cookie` 和 `expo-origin` 头，fetch 设成 `credentials: 'omit'`。
    - Web 的 Cookie 配置一行不动；CLAUDE.md 的约束继续生效：不关 useSecureCookies、不开 cookieCache、trustedOrigins 不用通配符。
-   - App 的来源标识用自定义 scheme `findmyjob://`，**只把这一个精确值**加进 trustedOrigins。
+   - App 的来源标识是各变体的自定义 scheme，用 `MOBILE_APP_ORIGINS` 配置，每个环境**只放自己那个精确值**。
+   - App 发出的请求永远不传自定义 scheme 的 callbackURL，否则 expo 插件会把 Cookie 拼进跳转 URL，被抢注同一 scheme 的 App 截获。
 2. **CSRF / Origin**：
-   - 新写 `mobileRoute()` 包装器，**只认 `Authorization: Bearer`，同时拒绝带 Cookie 的请求**。不带 Cookie 就没有 CSRF 面，所以可以免 Origin 校验。
+   - 新写 `mobileRoute()` 包装器：会话从 Cookie 读，**Origin（或 expo-origin）必须精确等于 `MOBILE_APP_ORIGINS` 里的值**。浏览器不能伪造 Origin，所以这就是 CSRF 防线。
    - 现有 `route()` 的 Origin 校验保持不变。
-   - `authz-matrix.test.ts` 加行，覆盖两条反例："Bearer + Cookie 混用 → 403"和"Cookie 访问 /api/m → 401"。
+   - `authz-matrix.test.ts` 加行，覆盖三条反例：浏览器 Origin → 403、没有 Origin → 403、前缀相同但不完全相等的 scheme → 403。
 3. **人机校验**：
    - 原生端跑不了 Turnstile 小组件（能跑也只能塞 WebView，体验差）。
    - 方案：App 在 5 个受保护端点请求前先拿 **Play Integrity token**（标准请求，nonce 绑定请求摘要），服务端用 Google API 验证；判定条件是应用正版、设备可信、包名和签名证书一致。
@@ -127,7 +128,7 @@ Caddy (TLS) ─► Next.js
 4. **2FA / OTP**：沿用现有接口；OTP 输入框开启 Android 自动填充（`textContentType=oneTimeCode` / autofill hints），但不读短信，也不申请短信权限。
 5. **会话生命周期**：
    - 设置页显示"已登录设备"，可以单独注销某一台。
-   - 改密码、注销账号时清掉所有 Bearer 会话和 DeviceToken。
+   - 改密码、注销账号时吊销该用户的所有会话和 DeviceToken；App 端同时清空 SecureStore 里的 Cookie 和会话缓存。
    - 退出登录时同时删除本机令牌，并在服务端注销 FCM token。
 6. **重新同意条款**：
    - Web 靠 `proxy.ts` 重定向，App 没有这一层。
@@ -204,7 +205,7 @@ Caddy (TLS) ─► Next.js
 - 服务端 API 只增不删。v1 存续期间不做破坏性改动；真要破坏，就开 v2 并行，等 v1 用户低于 5% 再下线。
 
 ### 4.6 其他后端小改
-- `/api/uploads/[purpose]` 接受 Bearer（走 `mobileRoute` 的认证分支），校验逻辑一字不改。
+- `/api/uploads/[purpose]` 用 `route()` 的 `allowAppOrigin` 选项放行 App Origin，校验逻辑一字不改。
 - 账号注销：Play 要求 **App 内能注销，而且有网页注销入口**（⚠️）。现有 data-rights 流程要补一个公开的注销说明页 URL，填进 Play Console。
 - `env.example` 和 `src/env.ts` 新增 `FCM_PROJECT_ID`、`FCM_SERVICE_ACCOUNT_PATH`、`PLAY_INTEGRITY_*`、`ANDROID_CERT_SHA256`、`MOBILE_MIN_VERSION`。
 

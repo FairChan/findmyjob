@@ -1863,22 +1863,23 @@
 做：MOBILE.md §5.4 的 S01–S24 低保真线框，由你和合伙人确认。
 验收：确认记录写进 DECISIONS。
 
-#### [ ] MA0-T04 认证 spike（R1）
+#### [x] MA0-T04 认证 spike（R1）
 依赖：MA0-T02
-做：在隔离的本地库上验证 better-auth `plugins/bearer` 和现有 before-hook（Turnstile、同意条款、注册名额、2FA）叠加后的行为；只出结论报告，不合进业务代码。
+做：在隔离的本地库上验证 App 会话方案（先评估 better-auth `plugins/bearer`）和现有 before-hook（Turnstile、同意条款、注册名额、2FA）叠加后的行为；只出结论报告，不合进业务代码。
 验收：`.reports/<日期>-mobile-auth-spike/` 里有报告，写明"注册 → OTP → 登录 → 2FA → 登出"每一步的结论，以及 MA1-T02 选定的做法。
+> 完成 2026-11-18：报告在计划目录 `.reports/2026-11-18-android-app/MA0-T04-auth-spike.md`。结论是不用 bearer 插件（它会让 Web 登录响应也带 set-auth-token，而且接不上 2FA 的 two_factor Cookie），改用官方 @better-auth/expo：App 把 Cookie 存进 SecureStore 后手动带上，Origin 必须精确等于 App scheme。**偏差**：只做了源码阅读（本机没有 Android SDK 和本地环境），运行时验证的 6 项清单并入 MA1-T02 验收。MA1-T01、T02、T06 已按结论改写。
 
 ### MA1 · 移动 API 与认证（约 2 周）
 
 #### [ ] MA1-T01 `mobileRoute()` 包装器
 依赖：MA0-T04
-做：在 `src/server/mobile-route.ts` 新写包装器：只认 `Authorization: Bearer`，带 Cookie 的请求一律拒绝（所以可以不查 Origin）；读 `X-App-Version`，低于 `mobile.minSupportedVersion`（getSetting）时返回 426；加 no-store 和 noindex 头、requestId，并做错误码映射。现有 `route()` 不改。
-验收：单测覆盖；authz-matrix 新增"Bearer 和 Cookie 混用 → 403""Cookie 访问 /api/m → 401"两行。
+做：在 `src/server/mobile-route.ts` 新写包装器：会话照常从 Cookie 读取（App 用 @better-auth/expo 手动带 Cookie）；Origin（或 `expo-origin`）必须精确等于环境变量 `MOBILE_APP_ORIGINS` 里的某个值，否则一律 403（浏览器不能伪造 Origin，这就是 CSRF 防线）；读 `X-App-Version`，低于 `mobile.minSupportedVersion`（getSetting）时返回 426；加 no-store 和 noindex 头、requestId，并做错误码映射。现有 `route()` 不改。
+验收：单测覆盖；authz-matrix 新增三行：浏览器 Origin 访问 /api/m → 403；没有 Origin → 403；前缀相同但不完全相等的 scheme（如 `findmyjob-evil://`）→ 403。
 
-#### [ ] MA1-T02 Bearer 会话
+#### [ ] MA1-T02 App 会话（@better-auth/expo）
 依赖：MA1-T01
-做：按 MA0-T04 的结论接入 bearer；trustedOrigins 只新增精确的 `findmyjob://`；Web 的 Cookie 配置不动。改密码和注销账号时吊销该用户的全部会话。
-验收：现有认证 E2E 全绿；集成测试覆盖 App 的登录、登出和会话刷新。
+做：better-auth 从 1.7.16 升到 ^1.7.25（@better-auth/expo 要求的版本，Web 要全量回归）；server 端加 expo 插件，App 端用 expoClient + expo-secure-store；trustedOrigins 加 `MOBILE_APP_ORIGINS`（每个环境只放自己那个变体的精确 scheme）；Web 的 Cookie 配置不动。before-hook 拒绝自定义 scheme 的 callbackURL（spike 的风险 R1-a）。改密码和注销账号时吊销该用户的全部会话。
+验收：现有认证 E2E 全绿；Web 登录响应里没有 set-auth-token；MA0-T04 报告末尾的 6 项运行时清单全部通过。
 
 #### [ ] MA1-T03 Play Integrity 替代 Turnstile
 依赖：MA1-T02
@@ -1895,10 +1896,10 @@
 做：建档的增删改、学校认证、`POST /jobs/:id/open`（只经 job-view-quota 扣额度）、投递和撤回、邀请的接受和拒绝、通知已读、隐私设置、导出申请、注销账号、语言和通知偏好。审计 metadata 加 `client: 'android'`。
 验收：额度、审计和防泄漏测试全绿；authz-matrix 加行。
 
-#### [ ] MA1-T06 上传端点放开 Bearer
+#### [ ] MA1-T06 上传端点接受 App 请求
 依赖：MA1-T01
-做：`/api/uploads/[purpose]` 接受经 mobileRoute 认证的 Bearer 请求；校验逻辑一字不改。
-验收：已有上传测试不变；新增 Bearer 上传成功和失败的用例。
+做：给 `route()` 加 `allowAppOrigin` 选项，只在 `/api/uploads/[purpose]` 上打开，让 Origin 等于 `MOBILE_APP_ORIGINS` 的请求也能通过；校验逻辑一字不改。
+验收：已有上传测试不变；新增用例：App Origin 上传成功，其他端点照样拒绝 App Origin。
 
 #### [ ] MA1-T07 重新同意与 OpenAPI
 依赖：MA1-T05
@@ -1914,7 +1915,7 @@
 
 #### [ ] MA2-T02 apiClient 与查询层
 依赖：MA1-T04、MA2-T01
-做：Bearer、版本头、错误码转成 i18n 文案、401 自动登出、409 弹出条款页、426 强制更新；配置 TanStack Query。**会计数的端点禁止预取和自动重取**。
+做：expoClient 会话（Cookie 存 SecureStore）、版本头、错误码转成 i18n 文案、401 自动登出、409 弹出条款页、426 强制更新；配置 TanStack Query。**会计数的端点禁止预取和自动重取**。
 验收：单测覆盖每种错误码；一条 lint 或单测守住"会计数的端点只能由用户点击触发"。
 
 #### [ ] MA2-T03 国际化
