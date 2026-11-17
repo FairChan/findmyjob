@@ -2660,7 +2660,8 @@
       "skip": "跳过",
       "edit": "编辑",
       "offline": "当前离线，显示的是上次加载的内容",
-      "offlineAction": "联网后才能操作"
+      "offlineAction": "联网后才能操作",
+      "none": "不选"
     },
     "tabs": {
       "home": "首页",
@@ -2808,6 +2809,33 @@
     "notificationsScreen": {
       "empty": "暂时没有通知",
       "markAllRead": "全部已读"
+    },
+    "profile": {
+      "skillPlaceholder": "输入一项技能",
+      "addSkill": "添加技能"
+    },
+    "onboarding": {
+      "step3Title": "语言与技能",
+      "step4Title": "简历与联系方式",
+      "discardTitle": "放弃未保存的修改？",
+      "discardBody": "这一步填写的内容还没有保存，离开后会丢失。",
+      "discardConfirm": "放弃修改",
+      "discardCancel": "继续填写",
+      "uploadResume": "上传 PDF 简历",
+      "fillContact": "填写联系方式",
+      "opensWeb": "在浏览器中打开 FindMYJob 网页版",
+      "verifySchool": "认证学校邮箱",
+      "experienceLater": "教育和实习经历可以稍后在档案页补充。",
+      "cardTitle": "完善档案，获得更准的推荐",
+      "cardBody": "还差几步：基本信息、求职意向和简历。",
+      "cardAction": "继续建档"
+    },
+    "school": {
+      "noSchools": "你所在的学校暂未开通邮箱认证，开通后会通知你。",
+      "sendRejected": "这个邮箱不能用于认证：后缀与所选学校不符，或已被其他账号认证。",
+      "otpRejected": "验证码错误或已过期，请重新输入或重新发送。",
+      "domainHint": "请使用以 {domain} 结尾的学校邮箱",
+      "resendIn": "{seconds} 秒后可重新发送"
     }
   },
   "appDownload": {

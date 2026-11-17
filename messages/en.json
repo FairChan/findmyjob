@@ -2660,7 +2660,8 @@
       "skip": "Skip",
       "edit": "Edit",
       "offline": "You're offline. Showing what was loaded last time.",
-      "offlineAction": "Connect to the internet to do this"
+      "offlineAction": "Connect to the internet to do this",
+      "none": "None"
     },
     "tabs": {
       "home": "Home",
@@ -2808,6 +2809,33 @@
     "notificationsScreen": {
       "empty": "No notifications yet",
       "markAllRead": "Mark all as read"
+    },
+    "profile": {
+      "skillPlaceholder": "Enter a skill",
+      "addSkill": "Add skill"
+    },
+    "onboarding": {
+      "step3Title": "Languages & skills",
+      "step4Title": "Resume & contact",
+      "discardTitle": "Discard unsaved changes?",
+      "discardBody": "What you entered on this step hasn't been saved and will be lost.",
+      "discardConfirm": "Discard",
+      "discardCancel": "Keep editing",
+      "uploadResume": "Upload a PDF resume",
+      "fillContact": "Add contact details",
+      "opensWeb": "Opens the FindMYJob website in your browser",
+      "verifySchool": "Verify your school email",
+      "experienceLater": "You can add education and internship experience later on your profile.",
+      "cardTitle": "Complete your profile for better matches",
+      "cardBody": "A few steps left: basics, job preferences and your resume.",
+      "cardAction": "Continue"
+    },
+    "school": {
+      "noSchools": "Email verification isn't available for your school yet. We'll let you know when it is.",
+      "sendRejected": "This email can't be used: it doesn't match the selected school, or another account already verified it.",
+      "otpRejected": "The code is wrong or has expired. Re-enter it or request a new one.",
+      "domainHint": "Use your school email ending in {domain}",
+      "resendIn": "Resend in {seconds}s"
     }
   },
   "appDownload": {
