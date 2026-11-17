@@ -2737,7 +2737,12 @@
       "quota": "{count} job detail views left this month",
       "inviteFriends": "Invite classmates to unlock more views",
       "safetyTip": "Stay safe: real employers never ask you to pay first.",
-      "safetyMore": "Learn more"
+      "safetyMore": "Learn more",
+      "emptyTitle": "No recommended jobs yet",
+      "emptyBody": "Complete your profile for better recommendations",
+      "seeAllJobs": "See all jobs",
+      "notifications": "Notifications",
+      "notificationsUnread": "Notifications, {count} unread"
     },
     "jobs": {
       "searchPlaceholder": "Search jobs or companies",
@@ -2755,7 +2760,19 @@
       "quotaExhausted": "You've used this month's views",
       "apply": "Apply",
       "applied": "Applied",
-      "share": "Share"
+      "share": "Share",
+      "companies": "Browse companies",
+      "clearFilters": "Clear search and filters",
+      "previewTitle": "Job preview",
+      "previewHint": "Previews don't use your views. The full description, requirements and Apply button are in the details.",
+      "detailTitle": "Job details",
+      "yes": "Yes",
+      "salaryRange": "RM {min}–{max} / month",
+      "salaryFrom": "From RM {min} / month",
+      "salaryUpTo": "Up to RM {max} / month",
+      "sort": "Sort by",
+      "sort_relevance": "Relevance",
+      "sort_salary": "Highest salary"
     },
     "apply": {
       "title": "Confirm application",

@@ -2737,7 +2737,12 @@
       "quota": "本月还可查看 {count} 个职位详情",
       "inviteFriends": "邀请同学，解锁更多额度",
       "safetyTip": "求职防骗：正规企业不会让你先交钱。",
-      "safetyMore": "了解更多"
+      "safetyMore": "了解更多",
+      "emptyTitle": "暂时没有推荐职位",
+      "emptyBody": "完善档案获得更准推荐",
+      "seeAllJobs": "查看全部职位",
+      "notifications": "通知",
+      "notificationsUnread": "通知，{count} 条未读"
     },
     "jobs": {
       "searchPlaceholder": "搜索职位或企业",
@@ -2755,7 +2760,19 @@
       "quotaExhausted": "本月查看额度已用完",
       "apply": "投递",
       "applied": "已投递",
-      "share": "分享"
+      "share": "分享",
+      "companies": "浏览企业",
+      "clearFilters": "清除搜索和筛选",
+      "previewTitle": "职位预览",
+      "previewHint": "预览不消耗查看额度。完整的职位描述、要求和投递入口在详情里。",
+      "detailTitle": "职位详情",
+      "yes": "是",
+      "salaryRange": "RM {min}–{max} / 月",
+      "salaryFrom": "RM {min} 起 / 月",
+      "salaryUpTo": "最高 RM {max} / 月",
+      "sort": "排序",
+      "sort_relevance": "相关度",
+      "sort_salary": "薪资从高到低"
     },
     "apply": {
       "title": "确认投递",

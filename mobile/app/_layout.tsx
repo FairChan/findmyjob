@@ -9,8 +9,12 @@ import { HumanCheckProvider } from '@/features/auth/human-check'
 import { AppIntlProvider, deviceLocale } from '@/i18n/provider'
 import { onAppEvent } from '@/lib/app-events'
 import { authClient } from '@/lib/auth-client'
+import { bindOnlineManager } from '@/lib/online'
 import { createQueryClient } from '@/lib/query-client'
 import { useTheme } from '@/theme/use-theme'
+
+// 离线时查询暂停、缓存照常显示，恢复联网后自动续上（MOBILE.md §5.5 离线）
+bindOnlineManager()
 
 /** API 层的全局事件 → 页面跳转；退出登录时清空所有缓存（MOBILE.md §6 本地存储） */
 function AppEventBridge() {
