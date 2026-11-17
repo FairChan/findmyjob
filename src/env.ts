@@ -58,6 +58,8 @@ const schema = z
     PLAY_INTEGRITY_PACKAGE_NAME: z.preprocess(v => (v === '' ? undefined : v), z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/).optional()),
     // 服务账号 JSON 的文件路径（生产放 /opt/findmyjob/secrets/，权限 600）；FCM（MA3）也用它
     GOOGLE_SERVICE_ACCOUNT_FILE: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
+    // FCM HTTP v1 的 Firebase 项目 ID（MA3）；和 GOOGLE_SERVICE_ACCOUNT_FILE 都配了才推送
+    FCM_PROJECT_ID: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
     // App 签名证书 SHA-256（Play Integrity 返回的 base64url 形式），逗号分隔：Play App Signing 证书 + 上传证书
     ANDROID_CERT_SHA256: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
 

@@ -135,6 +135,19 @@ const eslintConfig = [
     },
   },
 
+  // MA3：推送 token 用 encryptField 加密存放，device-tokens.ts 需要解密它交给 FCM。
+  // 只豁免 decryptField 这一条，其余 PII/账本模型限制照旧（DECISIONS 2026-11-18 MA3-T01）。
+  {
+    files: ['src/server/services/device-tokens.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        ...RAW_UNSAFE_SELECTORS,
+        ...PII_MODEL_SELECTORS.filter((s) => s.selector !== 'CallExpression[callee.name="decryptField"]'),
+      ],
+    },
+  },
+
   // Vitest：测试里必须有断言，且断言不能藏在条件分支里（M1-T11 复审发现过 `if (!x) return` 的空测试；运行时另有 tests/setup/assertions.ts 兜底）
   {
     files: ['tests/unit/**/*.ts', 'tests/integration/**/*.ts'],

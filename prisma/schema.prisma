@@ -298,6 +298,8 @@ model User {
   notifications  Notification[]
   dataRequests   DataRequest[]
   weeklyDigestDeliveries WeeklyDigestDelivery[]
+  deviceTokens   DeviceToken[]
+  pushPreference PushPreference?
 }
 
 model Session {
@@ -311,6 +313,7 @@ model Session {
   userAgent String?
   createdAt DateTime @default(now()) @db.Timestamptz(3)
   updatedAt DateTime @updatedAt @db.Timestamptz(3)
+  deviceTokens DeviceToken[]
 
   @@index([userId])
 }
@@ -1000,8 +1003,11 @@ model Notification {
   payload   Json
   readAt    DateTime? @db.Timestamptz(3)
   createdAt DateTime  @default(now()) @db.Timestamptz(3)
+  pushDeliveries PushDelivery[]
 
   @@index([userId, readAt, createdAt])
+  // 推送 worker 按时间窗扫描刚提交的通知（MA3-T02）
+  @@index([createdAt])
 }
 
 model AuditLog {
@@ -1342,4 +1348,73 @@ model WeeklyDigestDelivery {
   @@index([state, nextAttemptAt, expiresAt])
   @@index([userId, weekKey])
   @@index([companyId])
+}
+
+// ---- Android App 推送（MA3）----
+
+enum DevicePlatform {
+  ANDROID
+}
+
+enum PushDeliveryStatus {
+  SENT
+  FAILED
+  SKIPPED
+}
+
+/// 一台装了 App 的设备的 FCM token。token 本身只以 encryptField（带 AAD）密文存放，
+/// 去重用 sha256 哈希；退出登录、改密码、注销账号时吊销（revokedAt）。
+model DeviceToken {
+  id         String         @id @default(cuid())
+  userId     String
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// 注册 token 时的登录会话：会话删除（退出、改密码踢下线、过期清理、注销）时 token 随之删除，
+  /// 丢了手机改密码后旧设备也收不到推送。新行一定有值；可空只是为了这是一次纯新增的迁移。
+  sessionId  String?
+  session    Session?       @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  platform   DevicePlatform @default(ANDROID)
+  tokenHash  String         @unique
+  tokenEnc   String
+  appVersion String?
+  locale     Locale         @default(zh)
+  lastSeenAt DateTime       @default(now()) @db.Timestamptz(3)
+  revokedAt  DateTime?      @db.Timestamptz(3)
+  createdAt  DateTime       @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime       @updatedAt @db.Timestamptz(3)
+
+  pushDeliveries PushDelivery[]
+
+  @@index([userId, revokedAt])
+  @@index([sessionId])
+}
+
+/// 每条通知对每台设备的推送结果；唯一约束保证同一通知不会重复推给同一设备。
+model PushDelivery {
+  id             String             @id @default(cuid())
+  notificationId String
+  notification   Notification       @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  deviceTokenId  String
+  deviceToken    DeviceToken        @relation(fields: [deviceTokenId], references: [id], onDelete: Cascade)
+  status         PushDeliveryStatus
+  errorCode      String?
+  createdAt      DateTime           @default(now()) @db.Timestamptz(3)
+
+  @@unique([notificationId, deviceTokenId])
+  @@index([deviceTokenId])
+  @@index([createdAt])
+}
+
+/// 学生的推送偏好（没有行 = 全部默认值）。营销类推送不在这里：仍以 MARKETING Consent 为准，默认不推。
+model PushPreference {
+  userId            String   @id
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applications      Boolean  @default(true)
+  invitations       Boolean  @default(true)
+  /// 账号类：邀请同学达标、额度用完等
+  account           Boolean  @default(true)
+  /// 锁屏显示企业名等详情；默认关，锁屏只显示通用文案
+  lockScreenDetails Boolean  @default(false)
+  /// 23:00–08:00（吉隆坡时间）不推送
+  quietHours        Boolean  @default(true)
+  updatedAt         DateTime @updatedAt @db.Timestamptz(3)
 }

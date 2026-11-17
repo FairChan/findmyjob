@@ -1,10 +1,10 @@
 import 'server-only'
-import { createHash, createSign } from 'crypto'
-import { readFileSync } from 'fs'
+import { createHash } from 'crypto'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { playIntegrityHashInput } from '@/shared/mobile-api'
 import { logger } from './logger'
+import { getGoogleAccessToken, GoogleAuthError, resetGoogleTokenCache } from './google-oauth'
 
 /**
  * Play Integrity（标准请求）替代 Turnstile 的服务端校验（MA1-T03）。
@@ -49,37 +49,21 @@ export function playIntegrityRequestHash(action: string, email: string): string 
   return createHash('sha256').update(playIntegrityHashInput(action, email)).digest('base64url')
 }
 
-// ---- Google OAuth（服务账号 JWT → access token），不引入新依赖 ----
-
-type ServiceAccount = { client_email: string; private_key: string; token_uri?: string }
-let cachedToken: { value: string; expiresAt: number } | null = null
-
+// Google OAuth 由 google-oauth.ts 统一处理（FCM 也用它）
 export function resetPlayIntegrityTokenCache(): void {
-  cachedToken = null
+  resetGoogleTokenCache()
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
   return fetch(url, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) })
 }
 
-async function accessToken(cfg: Config): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value
-  const sa = JSON.parse(readFileSync(cfg.serviceAccountFile, 'utf8')) as ServiceAccount
-  const tokenUri = sa.token_uri ?? 'https://oauth2.googleapis.com/token'
-  const now = Math.floor(Date.now() / 1000)
-  const enc = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url')
-  const unsigned = `${enc({ alg: 'RS256', typ: 'JWT' })}.${enc({ iss: sa.client_email, scope: SCOPE, aud: tokenUri, iat: now, exp: now + 3600 })}`
-  const signature = createSign('RSA-SHA256').update(unsigned).sign(sa.private_key).toString('base64url')
-  const res = await fetchWithTimeout(tokenUri, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${signature}` }),
-  })
-  if (!res.ok) throw new PlayIntegrityError(`oauth ${res.status}`)
-  const data = (await res.json()) as { access_token?: string; expires_in?: number }
-  if (!data.access_token) throw new PlayIntegrityError('oauth no token')
-  cachedToken = { value: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 }
-  return cachedToken.value
+async function accessToken(): Promise<string> {
+  try {
+    return await getGoogleAccessToken(SCOPE)
+  } catch (err) {
+    throw new PlayIntegrityError(err instanceof GoogleAuthError ? err.reason : 'oauth')
+  }
 }
 
 type Payload = {
@@ -93,7 +77,7 @@ async function decode(cfg: Config, token: string): Promise<Payload> {
     `https://playintegrity.googleapis.com/v1/${encodeURIComponent(cfg.packageName)}:decodeIntegrityToken`,
     {
       method: 'POST',
-      headers: { Authorization: `Bearer ${await accessToken(cfg)}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${await accessToken()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ integrity_token: token }),
     },
   )

@@ -16,6 +16,7 @@ import { runEmployerDailyDigest } from './employer-daily-digest'
 import { runExportUserData } from './export-user-data'
 import { runPurgeDeletedAccounts } from './purge-deleted-accounts'
 import { pingHealthcheck } from '../lib/healthchecks'
+import { runPushDispatch } from './push-notifications'
 
 // Retain ownership of T01 tasks through actual settlement. A pg-boss shutdown
 // grace ending proves neither child close nor recovery/storage completion.
@@ -51,6 +52,20 @@ export async function registerJobs(boss: PgBoss, lifecycle = createJobLifecycle(
         logger.info({ jobId: job.id, name: job.name }, 'example job executed')
       }
       pingHealthcheck('example')
+    } catch (err) {
+      Sentry.captureException(err)
+      throw err
+    }
+  })
+
+  // ── push-dispatch（MA3-T02）：每分钟把刚提交的学生通知推到 App；FCM 未配置时直接返回 ──
+  await boss.createQueue('push-dispatch')
+  await boss.schedule('push-dispatch', '* * * * *', {})
+  await boss.work('push-dispatch', async () => {
+    try {
+      await lifecycle.run(async (signal) => {
+        if (!signal.aborted) await runPushDispatch()
+      })
     } catch (err) {
       Sentry.captureException(err)
       throw err
