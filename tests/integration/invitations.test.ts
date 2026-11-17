@@ -45,6 +45,7 @@ import {
   getMonthlyInvitationUsage,
 } from '@/server/services/invitations'
 import { runExpireInvitations } from '@/server/jobs/expire-invitations'
+import { withdrawApplication } from '@/server/services/applications'
 import {
   NotFoundError,
   ForbiddenError,
@@ -293,6 +294,28 @@ describe('acceptInvitation', () => {
     expect(failures).toHaveLength(1)
     expect(failures[0]!.reason).toBeInstanceOf(ForbiddenError)
     expect(await testDb.application.count()).toBe(1)
+  })
+
+  it('accepting a re-invitation brings a withdrawn application back so the company sees it', async () => {
+    await seedSettings()
+    const employer = await createVerifiedEmployerWithJob()
+    const student = await createStudent(testDb)
+    await makeStudentVisible(student.profileId)
+    const first = await sendInvitation(employer, { studentId: student.profileId, jobId: employer.jobId })
+    const { applicationId } = await acceptInvitation(student, first)
+    await withdrawApplication(student, { applicationId })
+
+    const second = await sendInvitation(employer, { studentId: student.profileId, jobId: employer.jobId })
+    const result = await acceptInvitation(student, second)
+
+    expect(result.applicationId).toBe(applicationId)
+    const app = await testDb.application.findUniqueOrThrow({ where: { id: applicationId } })
+    expect(app.status).toBe('APPLIED')
+    const events = await testDb.applicationEvent.findMany({ where: { applicationId } })
+    expect(events.map((e) => `${e.fromStatus}>${e.toStatus}`).toSorted()).toEqual(
+      ['APPLIED>WITHDRAWN', 'WITHDRAWN>APPLIED', 'null>APPLIED'].toSorted(),
+    )
+    expect(await testDb.application.count({ where: { jobId: employer.jobId, studentId: student.profileId } })).toBe(1)
   })
 
   it('accept creates application and links applicationId', async () => {

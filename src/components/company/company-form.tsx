@@ -3,6 +3,7 @@ import { useState, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
+import { normalizeWebsiteInput } from '@/lib/url-utils'
 export interface IndustryParent {
   code: string
   labelZh: string
@@ -103,7 +104,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
       ssmRegNo: (fd.get('ssmRegNo') as string).trim() || undefined,
       industryCode: (fd.get('industryCode') as string) || undefined,
       size: (fd.get('size') as string) || undefined,
-      website: (fd.get('website') as string).trim() || undefined,
+      website: normalizeWebsiteInput(fd.get('website') as string),
       state: (fd.get('state') as string) || undefined,
       city: (fd.get('city') as string).trim() || undefined,
       address: (fd.get('address') as string).trim() || undefined,
@@ -120,13 +121,14 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
       const result = await onSubmit(data)
       if (result.ok) {
         if (mode === 'create') {
-          router.push('/e/company')
+          // The jobs page carries the "submit verification" banner — the next step after creating.
+          router.push('/e/jobs')
         } else {
           setSuccess(true)
         }
       } else {
         if (result.code === 'VALIDATION_ERROR') {
-          setError(tO('errorRequired'))
+          setError(tO('errorCheckFields'))
         } else if (result.code === 'SSM_DUPLICATE') {
           setError(tO('errorSsmDuplicate'))
         } else if (result.code === 'ALREADY_MEMBER') {

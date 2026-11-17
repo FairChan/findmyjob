@@ -151,6 +151,8 @@ async function checkReconsent(
 
     const locale = extractLocale(pathname)
     const reconsentUrl = new URL(`/${locale}/legal/reconsent`, request.url)
+    // Path only (no query): the reconsent page sends the user back here after agreeing.
+    reconsentUrl.searchParams.set('next', pathname)
     return NextResponse.redirect(reconsentUrl)
   } catch {
     // Fail open: a transient error must not lock users out

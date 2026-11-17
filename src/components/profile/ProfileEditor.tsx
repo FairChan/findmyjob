@@ -206,6 +206,13 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
   }
 
   function saveSkills() {
+    // A skill typed but not confirmed with Enter is still what the student meant to save.
+    const pending = skillInput.trim()
+    const skillsToSave = pending && !skills.includes(pending) && skills.length < 30 ? [...skills, pending] : skills
+    if (skillsToSave !== skills) {
+      setSkills(skillsToSave)
+      setSkillInput('')
+    }
     skillsSec.save(() =>
       saveSkillsAction({
         languages: languages
@@ -214,7 +221,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
             language: l.language,
             level: l.level as 'BASIC' | 'CONVERSATIONAL' | 'FLUENT' | 'NATIVE',
           })),
-        skills,
+        skills: skillsToSave,
         headline: headline.trim() || undefined,
         summary: summary.trim() || undefined,
       }),

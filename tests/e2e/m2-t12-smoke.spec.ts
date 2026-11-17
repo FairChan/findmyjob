@@ -70,15 +70,17 @@ async function registerLoginAndCompleteStep1(
   await page.goto('/zh/s/onboarding')
 
   // Complete step 1 so the StudentProfile exists and /s/invite is accessible
-  await expect(page.getByText(/第 1 \/ 4 步/)).toBeVisible({ timeout: 10000 })
+  await expect(page.getByText(/第 1 \/ 5 步/)).toBeVisible({ timeout: 10000 })
   await page.fill('[id="fullName"]', 'Smoke Test Student')
   await page.selectOption('[id="workAuth"]', 'STUDENT_PASS')
   await page.click('button:has-text("下一步")')
-  await expect(page.getByText(/第 2 \/ 4 步/)).toBeVisible({ timeout: 5000 })
+  await expect(page.getByText(/第 2 \/ 5 步/)).toBeVisible({ timeout: 5000 })
 
+  // Step 2 needs a job type even for save-and-exit (see audit finding C18)
+  await page.locator('label').filter({ hasText: '实习' }).locator('input[type="checkbox"]').check()
   // Save and exit so the user can navigate freely
   await page.click('button:has-text("保存并退出")')
-  await page.waitForURL('**/s', { timeout: 10000 })
+  await page.waitForURL('**/s/jobs', { timeout: 10000 })
 }
 
 

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
-import { Button } from '@/components/ui/button'
+import { WithdrawConfirmButton } from '@/components/apply/WithdrawConfirmButton'
 import { withdrawApplicationAction } from '@/server/actions/applications'
 
 interface Props {
@@ -41,9 +41,12 @@ export function WithdrawButton({ applicationId }: Props) {
 
   return (
     <div className="flex flex-col items-start gap-1.5">
-      <Button variant="outline" size="sm" onClick={handleWithdraw} disabled={loading}>
-        {loading ? t('withdrawing') : t('withdrawButton')}
-      </Button>
+      <WithdrawConfirmButton
+        label={t('withdrawButton')}
+        pendingLabel={t('withdrawing')}
+        loading={loading}
+        onConfirm={() => void handleWithdraw()}
+      />
       {error && (
         <p role="alert" className="text-sm text-destructive">
           {error}

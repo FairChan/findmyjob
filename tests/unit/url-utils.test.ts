@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { safeWebsiteHref } from '@/lib/url-utils'
+import { normalizeWebsiteInput, safeWebsiteHref } from '@/lib/url-utils'
 
 describe('safeWebsiteHref', () => {
   it('returns http url unchanged', () => {
@@ -36,5 +36,23 @@ describe('safeWebsiteHref', () => {
 
   it('returns null for unparseable string', () => {
     expect(safeWebsiteHref('not a url at all')).toBeNull()
+  })
+})
+
+describe('normalizeWebsiteInput', () => {
+  it('assumes https:// for what people usually type', () => {
+    expect(normalizeWebsiteInput('abc.com.my')).toBe('https://abc.com.my')
+    expect(normalizeWebsiteInput('  www.example.com/careers ')).toBe('https://www.example.com/careers')
+    expect(normalizeWebsiteInput('localhost:3000')).toBe('https://localhost:3000')
+  })
+
+  it('keeps an explicit scheme so validation can still reject unsafe ones', () => {
+    expect(normalizeWebsiteInput('http://example.com')).toBe('http://example.com')
+    expect(normalizeWebsiteInput('javascript:alert(1)')).toBe('javascript:alert(1)')
+  })
+
+  it('treats blank as not provided', () => {
+    expect(normalizeWebsiteInput('   ')).toBeUndefined()
+    expect(normalizeWebsiteInput(undefined)).toBeUndefined()
   })
 })

@@ -2,7 +2,7 @@
  * M7-T07 全流程 E2E 冒烟
  *
  * Flow:
- *   学生注册 → 4 步资料 → 认证学校 → 开启人才库 → 邀请同学
+ *   学生注册 → 5 步资料（含联系方式和简历） → 认证学校 → 开启人才库 → 邀请同学
  *   企业注册 → 建公司 → 提交认证 → 运营通过
  *   搜人 → 解锁 → 学生收到通知
  *   企业发职位 → 审核 → 学生搜索+打开详情（扣额度）→ 投递 → 看板推进到 OFFER
@@ -11,6 +11,7 @@
  *   pnpm exec playwright test tests/e2e/full-flow.spec.ts --workers=1
  */
 import { test, expect } from '@playwright/test'
+import { PDFDocument } from 'pdf-lib'
 import { e2eDb as db } from './helpers/db'
 import { loginAs } from './helpers/session'
 import { stubTurnstile } from './helpers/turnstile'
@@ -151,16 +152,16 @@ test.describe.serial('M7-T07 全流程 E2E 冒烟', () => {
     studentProfileId = profile!.id
   })
 
-  test('S-2: student completes 4-step onboarding wizard', async ({ page }) => {
+  test('S-2: student completes 5-step onboarding wizard', async ({ page }) => {
     await loginWithEmailPassword(page, studentEmail, studentPassword)
     await page.goto('/zh/s/onboarding')
 
     // Step 1: basic info
-    await expect(page.getByText(/第 1 \/ 4 步/)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/第 1 \/ 5 步/)).toBeVisible({ timeout: 10000 })
     await page.fill('[id="fullName"]', '全流程测试同学')
     await page.selectOption('[id="workAuth"]', 'STUDENT_PASS')
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 2 \/ 4 步/)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/第 2 \/ 5 步/)).toBeVisible({ timeout: 10000 })
 
     // Step 2: job preferences
     const internshipCheckbox = page
@@ -169,16 +170,26 @@ test.describe.serial('M7-T07 全流程 E2E 冒烟', () => {
       .locator('input[type="checkbox"]')
     if (await internshipCheckbox.count() > 0) await internshipCheckbox.check()
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 3 \/ 4 步/)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/第 3 \/ 5 步/)).toBeVisible({ timeout: 10000 })
 
     // Step 3: skills & languages (skip)
     await page.click('button:has-text("下一步")')
-    await expect(page.getByText(/第 4 \/ 4 步/)).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/第 4 \/ 5 步/)).toBeVisible({ timeout: 10000 })
 
-    // Step 4: experience → finish
+    // Step 4: experience (skip)
+    await page.click('button:has-text("下一步")')
+    await expect(page.getByText(/第 5 \/ 5 步/)).toBeVisible({ timeout: 10000 })
+
+    // Step 5: one contact method and a PDF resume are required before finishing
+    await page.fill('#contact-email', 'full-flow-contact@example.test')
+    const pdf = await PDFDocument.create()
+    pdf.addPage().drawText('Synthetic full-flow resume')
+    await page.locator('input[type="file"]').setInputFiles({
+      name: 'full-flow-resume.pdf', mimeType: 'application/pdf', buffer: Buffer.from(await pdf.save()),
+    })
+    await expect(page.getByText('full-flow-resume.pdf', { exact: true })).toBeVisible({ timeout: 20_000 })
     await page.click('button:has-text("完成")')
-    await page.waitForURL('**/s', { timeout: 15000 })
-    await expect(page).toHaveURL(/\/s$/)
+    await page.waitForURL('**/s/jobs', { timeout: 15000 })
   })
 
   test('S-3: student school-verify (via DB) + enables talent pool on /s/privacy', async ({ page }) => {
@@ -265,7 +276,9 @@ test.describe.serial('M7-T07 全流程 E2E 冒烟', () => {
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible({ timeout: 10000 })
     await page.fill('[id="legalName"]', `全流程测试企业 ${Date.now()} Sdn Bhd`)
     await page.click('button[type="submit"]:has-text("创建企业")')
-    await page.waitForURL('**/e/company', { timeout: 15000 })
+    // Lands on the jobs page, whose banner points at the next step (verification).
+    await page.waitForURL('**/e/jobs', { timeout: 15000 })
+    await expect(page.getByRole('link', { name: '立即提交认证' })).toBeVisible()
 
     // Store IDs
     const user = await db.user.findUnique({ where: { email: employerEmail } })
@@ -489,6 +502,10 @@ test.describe.serial('M7-T07 全流程 E2E 冒烟', () => {
     const statusSelect = page.locator('select').first()
     await expect(statusSelect).toBeVisible({ timeout: 5000 })
     await statusSelect.selectOption('OFFER')
+    // Outcome statuses email the student, so the board asks for confirmation first.
+    const confirm = page.getByRole('dialog')
+    await expect(confirm).toContainText('学生会立即收到站内通知和邮件')
+    await confirm.getByRole('button', { name: '确认修改' }).click()
 
     // DB reflects OFFER
     await expect

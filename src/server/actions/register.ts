@@ -10,6 +10,7 @@ import { logger } from '@/server/lib/logger'
 import { env } from '@/env'
 import { employerRegistrationContext } from '@/server/lib/employer-registration-context'
 import { attachReferral } from '@/server/services/referrals'
+import { verificationCallbackPath } from '@/lib/email-verification'
 
 const signUpUrl = new URL('/api/auth/sign-up/email', env.APP_URL).toString()
 
@@ -22,6 +23,7 @@ const studentInput = z.object({
   joinTalentPool: z.boolean().default(false),
   ref: z.string().max(255).optional(),
   turnstileToken: z.string().min(1).max(2048),
+  locale: z.enum(['zh', 'en']).default('zh'),
 })
 
 const employerInput = z.object({
@@ -31,6 +33,7 @@ const employerInput = z.object({
   agreeTerms: z.literal(true),
   agreePrivacy: z.literal(true),
   turnstileToken: z.string().min(1).max(2048),
+  locale: z.enum(['zh', 'en']).default('zh'),
 })
 
 /**
@@ -105,6 +108,7 @@ export const registerStudent = action(
         agreePrivacy: input.agreePrivacy,
         // Pass joinTalentPool so databaseHooks.user.create.after can read it.
         joinTalentPool: input.joinTalentPool,
+        callbackURL: verificationCallbackPath(input.locale),
       },
       ip,
       userAgent,
@@ -155,6 +159,7 @@ export const registerEmployer = action(
           turnstileToken: input.turnstileToken,
           agreeTerms: input.agreeTerms,
           agreePrivacy: input.agreePrivacy,
+          callbackURL: verificationCallbackPath(input.locale),
         },
         ip,
         userAgent,

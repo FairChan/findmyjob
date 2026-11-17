@@ -5,6 +5,8 @@ import { submitReconsentAction } from './actions'
 
 interface ReconsentFormProps {
   locale: string
+  /** Same-origin path the user was heading to before being asked to re-consent. */
+  next?: string | null
   version: string
   messages: {
     reconsentAgree: string
@@ -17,7 +19,7 @@ interface ReconsentFormProps {
   }
 }
 
-export default function ReconsentForm({ locale, version, messages }: ReconsentFormProps) {
+export default function ReconsentForm({ locale, next, version, messages }: ReconsentFormProps) {
   const router = useRouter()
   const [agreed, setAgreed] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -35,9 +37,8 @@ export default function ReconsentForm({ locale, version, messages }: ReconsentFo
       const result = await submitReconsentAction({ agreed: true, version })
       if (result.ok) {
         setDone(true)
-        // M1-T04 will replace this with a redirect to the original destination.
         setTimeout(() => {
-          router.push(`/${locale}`)
+          router.push(next ?? `/${locale}`)
         }, 1500)
       } else {
         setError(

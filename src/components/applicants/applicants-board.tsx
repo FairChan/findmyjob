@@ -52,6 +52,10 @@ interface Props {
     colCompleteness: string
     colActions: string
     statusChangeError: string
+    confirmStatusTitle: string
+    confirmStatusBody: string
+    confirmStatusAction: string
+    confirmStatusCancel: string
   }
   changeStatusAction: (input: { applicationId: string; toStatus: ApplicationStatus; note?: string | null }) => Promise<ActionResult<void>>
   updateNoteAction: (input: { applicationId: string; note: string | null }) => Promise<ActionResult<void>>
@@ -74,6 +78,13 @@ const KANBAN_COLS: ApplicationStatus[] = [
   ApplicationStatus.VIEWED,
   ApplicationStatus.SHORTLISTED,
   ApplicationStatus.INTERVIEW,
+  ApplicationStatus.OFFER,
+  ApplicationStatus.HIRED,
+  ApplicationStatus.REJECTED,
+]
+
+// Outcomes the student is told about by notification and email; a mis-pick is costly, so confirm first.
+const CONFIRM_STATUSES: ApplicationStatus[] = [
   ApplicationStatus.OFFER,
   ApplicationStatus.HIRED,
   ApplicationStatus.REJECTED,
@@ -102,6 +113,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
 
   // Status change error
   const [statusChangeError, setStatusChangeError] = useState<string | null>(null)
+  const [pendingStatus, setPendingStatus] = useState<{ applicationId: string; toStatus: ApplicationStatus } | null>(null)
 
   // Drag state
   const [draggingId, setDraggingId] = useState<string | null>(null)
@@ -122,6 +134,14 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
       })
     },
     [changeStatusAction, t.errorForbidden, t.statusChangeError],
+  )
+
+  const requestStatusChange = useCallback(
+    (applicationId: string, toStatus: ApplicationStatus) => {
+      if (CONFIRM_STATUSES.includes(toStatus)) setPendingStatus({ applicationId, toStatus })
+      else handleStatusChange(applicationId, toStatus)
+    },
+    [handleStatusChange],
   )
 
   const handleViewProfile = useCallback(
@@ -166,8 +186,9 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
   }
   const onDrop = (e: React.DragEvent, toStatus: ApplicationStatus) => {
     e.preventDefault()
-    if (draggingId && COMPANY_SETTABLE.includes(toStatus)) {
-      handleStatusChange(draggingId, toStatus)
+    const current = applicants.find((a) => a.applicationId === draggingId)
+    if (draggingId && COMPANY_SETTABLE.includes(toStatus) && current?.status !== toStatus) {
+      requestStatusChange(draggingId, toStatus)
     }
     setDraggingId(null)
     setDragOverCol(null)
@@ -243,6 +264,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
                       onDragStart={onDragStart}
                       onDragEnd={onDragEnd}
                       onNoteOpen={openNoteDialog}
+                      onStatusChange={requestStatusChange}
                       onViewProfile={handleViewProfile}
                     />
                   ))}
@@ -264,7 +286,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
                 locale={locale}
                 t={t}
                 onNoteOpen={openNoteDialog}
-                onStatusChange={handleStatusChange}
+                onStatusChange={requestStatusChange}
                 onViewProfile={handleViewProfile}
               />
             ))}
@@ -327,7 +349,7 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
                     locale={locale}
                     t={t}
                     onNoteOpen={openNoteDialog}
-                    onStatusChange={handleStatusChange}
+                    onStatusChange={requestStatusChange}
                     onViewProfile={handleViewProfile}
                   />
                 ))}
@@ -359,6 +381,32 @@ export default function ApplicantsBoard({ applicants: initialApplicants, locale,
             </div>
           )}
         </div>
+      )}
+
+      {pendingStatus && (
+        <Dialog open onOpenChange={(o) => !o && setPendingStatus(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {t.confirmStatusTitle.replace('{status}', t[STATUS_LABEL_KEY[pendingStatus.toStatus]])}
+              </DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">{t.confirmStatusBody}</p>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPendingStatus(null)}>
+                {t.confirmStatusCancel}
+              </Button>
+              <Button
+                onClick={() => {
+                  handleStatusChange(pendingStatus.applicationId, pendingStatus.toStatus)
+                  setPendingStatus(null)
+                }}
+              >
+                {t.confirmStatusAction}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Note dialog */}
@@ -436,6 +484,12 @@ function ApplicantCard({
         <span className="rounded-full bg-muted px-1.5 text-xs">{t[STATUS_LABEL_KEY[a.status]]}</span>
         <span className="text-xs text-muted-foreground">{a.card.completeness}%</span>
       </div>
+      {a.coverNote && (
+        <p className="mt-1 line-clamp-3 whitespace-pre-line rounded bg-muted/40 px-1.5 py-1 text-xs" title={a.coverNote}>
+          <span className="block font-medium">{t.coverNoteLabel}</span>
+          {a.coverNote}
+        </p>
+      )}
       {/* Status change select */}
       {onStatusChange && a.status !== ApplicationStatus.WITHDRAWN && (
         <select
@@ -444,6 +498,11 @@ function ApplicantCard({
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onStatusChange(a.applicationId, e.target.value as ApplicationStatus)}
           aria-label={t.changeStatusLabel}
         >
+          {a.status === ApplicationStatus.APPLIED && (
+            <option value={ApplicationStatus.APPLIED} disabled>
+              {t.statusAPPLIED}
+            </option>
+          )}
           {COMPANY_SETTABLE.map((s) => (
             <option key={s} value={s}>
               {t[STATUS_LABEL_KEY[s]]}
@@ -508,6 +567,13 @@ function ApplicantTableRow({
         ) : (
           <span className="text-muted-foreground">{a.card.name}</span>
         )}
+        <div className="text-xs font-normal text-muted-foreground">{t[STATUS_LABEL_KEY[a.status]]}</div>
+        {a.coverNote && (
+          <p className="mt-1 line-clamp-2 max-w-[16rem] whitespace-pre-line text-xs font-normal" title={a.coverNote}>
+            <span className="block font-medium">{t.coverNoteLabel}</span>
+            {a.coverNote}
+          </p>
+        )}
       </td>
       <td className="px-3 py-2 text-muted-foreground">{schoolName}</td>
       <td className="px-3 py-2 text-muted-foreground">{a.card.major ?? '—'}</td>
@@ -530,6 +596,11 @@ function ApplicantTableRow({
               }
               aria-label={t.changeStatusLabel}
             >
+              {a.status === ApplicationStatus.APPLIED && (
+                <option value={ApplicationStatus.APPLIED} disabled>
+                  {t.statusAPPLIED}
+                </option>
+              )}
               {COMPANY_SETTABLE.map((s) => (
                 <option key={s} value={s}>
                   {t[STATUS_LABEL_KEY[s]]}

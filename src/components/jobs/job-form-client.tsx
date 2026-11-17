@@ -38,6 +38,8 @@ interface Props {
   jdAssistant?: { submittedVersion: string }
   canPurchase?: boolean
   mode: 'create' | 'edit'
+  /** Current status in edit mode; decides which save buttons make sense. */
+  status?: 'DRAFT' | 'PENDING_REVIEW' | 'PUBLISHED' | 'REJECTED' | 'CLOSED'
   isVerified: boolean
   isEditable?: boolean
   initialData?: JobFormData
@@ -78,11 +80,16 @@ interface Props {
     headcountLabel: string
     deadlineLabel: string
     saveDraft: string
+    saveChanges: string
+    pendingReviewHint: string
+    publishedEditHint: string
     submitReview: string
     saving: string
     saveSuccess: string
     submitSuccess: string
     errorRequired: string
+    errorSalaryRange: string
+    errorInvalid: string
     errorForbidden: string
     errorUnknown: string
     verifiedOnly: string
@@ -93,6 +100,7 @@ interface Props {
 
 export default function JobFormClient({
   mode,
+  status,
   isVerified,
   isEditable = true,
   initialData,
@@ -115,6 +123,8 @@ export default function JobFormClient({
   const [category, setCategory] = useState(initialData?.category ?? '')
   const [description, setDescription] = useState(initialData?.description ?? '')
   const descriptionId = useId()
+  const fid = useId()
+  const fieldId = (name: string) => `${fid}-${name}`
   const descriptionElement = useRef<HTMLTextAreaElement>(null)
   const revisionRef = useRef(0)
   const [descriptionRevision, setDescriptionRevision] = useState(0)
@@ -144,6 +154,7 @@ export default function JobFormClient({
   )
   const [titleError, setTitleError] = useState('')
   const [descError, setDescError] = useState('')
+  const [salaryError, setSalaryError] = useState('')
   const [formUpdatedAt, setFormUpdatedAt] = useState(initialData?.updatedAt)
 
   function updateDescription(value: string) {
@@ -170,6 +181,11 @@ export default function JobFormClient({
     setInput('')
   }
 
+  function withPendingTag(list: string[], pending: string): string[] {
+    const value = pending.trim()
+    return value && !list.includes(value) ? [...list, value] : list
+  }
+
   function buildPayload(submit: boolean) {
     return {
       ...(mode === 'edit' && initialData?.jobId ? { jobId: initialData.jobId } : {}),
@@ -185,8 +201,9 @@ export default function JobFormClient({
       salaryMin: salaryMin ? parseInt(salaryMin, 10) : undefined,
       salaryMax: salaryMax ? parseInt(salaryMax, 10) : undefined,
       salaryVisible,
-      languages,
-      skills,
+      // Text left in a tag box without pressing Enter still counts; dropping it silently surprised users.
+      languages: withPendingTag(languages, languagesInput),
+      skills: withPendingTag(skills, skillsInput),
       acceptsStudentPass,
       sponsorsWorkPass,
       headcount: headcount ? parseInt(headcount, 10) : undefined,
@@ -210,6 +227,12 @@ export default function JobFormClient({
     } else {
       setDescError('')
     }
+    if (salaryMin && salaryMax && parseInt(salaryMin, 10) > parseInt(salaryMax, 10)) {
+      setSalaryError(t.errorSalaryRange)
+      ok = false
+    } else {
+      setSalaryError('')
+    }
     return ok
   }
 
@@ -223,10 +246,15 @@ export default function JobFormClient({
       if (!result.ok) {
         if (result.code === 'JOB_POST_LIMIT_EXCEEDED') setLimitReached(true)
         else if (result.code === 'FORBIDDEN') setError(t.errorForbidden)
+        else if (result.code === 'VALIDATION_ERROR') setError(t.errorInvalid)
         else setError(t.errorUnknown)
         return
       }
       if (result.data.updatedAt) setFormUpdatedAt(result.data.updatedAt)
+      setLanguages(withPendingTag(languages, languagesInput))
+      setLanguagesInput('')
+      setSkills(withPendingTag(skills, skillsInput))
+      setSkillsInput('')
       setSuccessMsg(submit ? t.submitSuccess : t.saveSuccess)
       if (mode === 'create') {
         router.push(`/e/jobs/${result.data.id}/edit`)
@@ -235,6 +263,8 @@ export default function JobFormClient({
   }
 
   const disabled = isPending || !isEditable
+  // Once submitted or published, "save draft" / "submit for review" no longer describe what saving does.
+  const isLive = mode === 'edit' && (status === 'PENDING_REVIEW' || status === 'PUBLISHED')
 
   return (
     <form
@@ -245,9 +275,10 @@ export default function JobFormClient({
     >
       {/* Title */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.titleLabel}</label>
+        <label htmlFor={fieldId('title')} className="mb-1 block text-sm font-medium">{t.titleLabel}</label>
         <input
           type="text"
+          id={fieldId('title')}
           value={title}
           onChange={e => setTitle(e.target.value)}
           placeholder={t.titlePlaceholder}
@@ -255,13 +286,14 @@ export default function JobFormClient({
           maxLength={200}
           className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
-        {titleError && <p className="mt-1 text-xs text-destructive">{titleError}</p>}
+        {titleError && <p role="alert" className="mt-1 text-xs text-destructive">{titleError}</p>}
       </div>
 
       {/* Type */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.typeLabel}</label>
+        <label htmlFor={fieldId('type')} className="mb-1 block text-sm font-medium">{t.typeLabel}</label>
         <select
+          id={fieldId('type')}
           value={type}
           onChange={e => setType(e.target.value as typeof type)}
           disabled={disabled}
@@ -275,9 +307,10 @@ export default function JobFormClient({
 
       {/* Category */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.categoryLabel}</label>
+        <label htmlFor={fieldId('category')} className="mb-1 block text-sm font-medium">{t.categoryLabel}</label>
         <input
           type="text"
+          id={fieldId('category')}
           value={category}
           onChange={e => setCategory(e.target.value)}
           placeholder={t.categoryPlaceholder}
@@ -301,7 +334,7 @@ export default function JobFormClient({
           maxLength={10000}
           className="w-full rounded-control border px-3 py-2 text-sm disabled:opacity-50"
         />
-        {descError && <p className="mt-1 text-xs text-destructive">{descError}</p>}
+        {descError && <p role="alert" className="mt-1 text-xs text-destructive">{descError}</p>}
         {jdAssistant && isEditable && (
           <JdAssistant
             title={title}
@@ -318,8 +351,9 @@ export default function JobFormClient({
 
       {/* Requirements */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.requirementsLabel}</label>
+        <label htmlFor={fieldId('requirements')} className="mb-1 block text-sm font-medium">{t.requirementsLabel}</label>
         <textarea
+          id={fieldId('requirements')}
           value={requirements}
           onChange={e => setRequirements(e.target.value)}
           placeholder={t.requirementsPlaceholder}
@@ -332,8 +366,9 @@ export default function JobFormClient({
 
       {/* Benefits */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.benefitsLabel}</label>
+        <label htmlFor={fieldId('benefits')} className="mb-1 block text-sm font-medium">{t.benefitsLabel}</label>
         <textarea
+          id={fieldId('benefits')}
           value={benefits}
           onChange={e => setBenefits(e.target.value)}
           placeholder={t.benefitsPlaceholder}
@@ -346,8 +381,9 @@ export default function JobFormClient({
 
       {/* Work Mode */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.workModeLabel}</label>
+        <label htmlFor={fieldId('workMode')} className="mb-1 block text-sm font-medium">{t.workModeLabel}</label>
         <select
+          id={fieldId('workMode')}
           value={workMode}
           onChange={e => setWorkMode(e.target.value as typeof workMode)}
           disabled={disabled}
@@ -362,8 +398,9 @@ export default function JobFormClient({
       {/* Location */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">{t.stateLabel}</label>
+          <label htmlFor={fieldId('state')} className="mb-1 block text-sm font-medium">{t.stateLabel}</label>
           <select
+            id={fieldId('state')}
             value={state}
             onChange={e => setState(e.target.value)}
             disabled={disabled}
@@ -378,9 +415,10 @@ export default function JobFormClient({
           </select>
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">{t.cityLabel}</label>
+          <label htmlFor={fieldId('city')} className="mb-1 block text-sm font-medium">{t.cityLabel}</label>
           <input
             type="text"
+            id={fieldId('city')}
             value={city}
             onChange={e => setCity(e.target.value)}
             placeholder={t.cityPlaceholder}
@@ -395,9 +433,10 @@ export default function JobFormClient({
       <div className="space-y-2">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="mb-1 block text-sm font-medium">{t.salaryMinLabel}</label>
+            <label htmlFor={fieldId('salaryMin')} className="mb-1 block text-sm font-medium">{t.salaryMinLabel}</label>
             <input
               type="number"
+              id={fieldId('salaryMin')}
               value={salaryMin}
               onChange={e => setSalaryMin(e.target.value)}
               min={0}
@@ -406,9 +445,10 @@ export default function JobFormClient({
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium">{t.salaryMaxLabel}</label>
+            <label htmlFor={fieldId('salaryMax')} className="mb-1 block text-sm font-medium">{t.salaryMaxLabel}</label>
             <input
               type="number"
+              id={fieldId('salaryMax')}
               value={salaryMax}
               onChange={e => setSalaryMax(e.target.value)}
               min={0}
@@ -417,6 +457,7 @@ export default function JobFormClient({
             />
           </div>
         </div>
+        {salaryError && <p role="alert" className="text-xs text-destructive">{salaryError}</p>}
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
@@ -431,7 +472,7 @@ export default function JobFormClient({
 
       {/* Languages */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.languagesLabel}</label>
+        <label htmlFor={fieldId('languages')} className="mb-1 block text-sm font-medium">{t.languagesLabel}</label>
         <div className="flex flex-wrap gap-1 rounded-control border p-2">
           {languages.map(lang => (
             <span
@@ -454,7 +495,9 @@ export default function JobFormClient({
           {!disabled && (
             <input
               type="text"
+              id={fieldId('languages')}
               value={languagesInput}
+              onBlur={() => addTag(languagesInput, setLanguagesInput, languages, setLanguages)}
               onChange={e => setLanguagesInput(e.target.value)}
               onKeyDown={e => {
                 if (isImeComposing(e)) return
@@ -473,7 +516,7 @@ export default function JobFormClient({
 
       {/* Skills */}
       <div>
-        <label className="mb-1 block text-sm font-medium">{t.skillsLabel}</label>
+        <label htmlFor={fieldId('skills')} className="mb-1 block text-sm font-medium">{t.skillsLabel}</label>
         <div className="flex flex-wrap gap-1 rounded-control border p-2">
           {skills.map(skill => (
             <span
@@ -496,7 +539,9 @@ export default function JobFormClient({
           {!disabled && (
             <input
               type="text"
+              id={fieldId('skills')}
               value={skillsInput}
+              onBlur={() => addTag(skillsInput, setSkillsInput, skills, setSkills)}
               onChange={e => setSkillsInput(e.target.value)}
               onKeyDown={e => {
                 if (isImeComposing(e)) return
@@ -540,9 +585,10 @@ export default function JobFormClient({
       {/* Headcount & Deadline */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="mb-1 block text-sm font-medium">{t.headcountLabel}</label>
+          <label htmlFor={fieldId('headcount')} className="mb-1 block text-sm font-medium">{t.headcountLabel}</label>
           <input
             type="number"
+            id={fieldId('headcount')}
             value={headcount}
             onChange={e => setHeadcount(e.target.value)}
             min={1}
@@ -552,9 +598,10 @@ export default function JobFormClient({
           />
         </div>
         <div>
-          <label className="mb-1 block text-sm font-medium">{t.deadlineLabel}</label>
+          <label htmlFor={fieldId('deadline')} className="mb-1 block text-sm font-medium">{t.deadlineLabel}</label>
           <input
             type="date"
+            id={fieldId('deadline')}
             value={deadline}
             onChange={e => setDeadline(e.target.value)}
             disabled={disabled}
@@ -571,7 +618,22 @@ export default function JobFormClient({
       )}
 
       {/* Actions */}
-      {isEditable && (
+      {isEditable && isLive && (
+        <div className="space-y-3 pt-2">
+          <p className="text-sm text-muted-foreground">
+            {status === 'PUBLISHED' ? t.publishedEditHint : t.pendingReviewHint}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Button type="button" disabled={isPending} onClick={() => handleSave(false)}>
+              {isPending ? t.saving : t.saveChanges}
+            </Button>
+            <Button type="button" variant="ghost" disabled={isPending} onClick={() => router.push(backHref)}>
+              {t.back}
+            </Button>
+          </div>
+        </div>
+      )}
+      {isEditable && !isLive && (
         <div className="flex flex-wrap gap-3 pt-2">
           <Button
             type="button"

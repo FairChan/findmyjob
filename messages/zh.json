@@ -353,8 +353,8 @@
     "emailPlaceholder": "you@example.com",
     "passwordLabel": "密码",
     "passwordPlaceholder": "至少 8 位",
-    "agreeTerms": "我已阅读并同意《用户协议》",
-    "agreePrivacy": "我已阅读并同意《隐私政策》",
+    "agreeTerms": "我已阅读并同意<terms>《用户协议》</terms>",
+    "agreePrivacy": "我已阅读并同意<privacy>《隐私政策》</privacy>",
     "joinTalentPool": "加入人才库：允许认证企业查看我的匿名档案，并在付费解锁后查看我的联系方式",
     "submitStudent": "注册",
     "submitEmployer": "注册",
@@ -372,7 +372,11 @@
     "errorSignupClosed": "学生名额已满，注册暂停。",
     "turnstileLoading": "正在进行人机验证，请稍候…",
     "errorTurnstileFailed": "人机验证失败，请刷新页面后重试。",
-    "errorNetwork": "网络连接出错，请稍后重试。"
+    "errorNetwork": "网络连接出错，请稍后重试。",
+    "errorMustAgree": "请阅读并勾选同意",
+    "errorPasswordTooLong": "密码最多 128 位",
+    "errorCheckFields": "提交的信息有误，请检查各项后重试。",
+    "submitting": "正在提交…"
   },
   "twoFactorSetup": {
     "title": "设置双重验证",
@@ -417,9 +421,20 @@
   "verifyEmail": {
     "title": "请验证您的邮箱",
     "message": "我们已向您的注册邮箱发送了一封验证邮件。请点击邮件中的链接完成注册。",
-    "hint": "没有收到邮件？请检查垃圾邮件文件夹，或",
+    "hint": "没有收到邮件？请先检查垃圾邮件文件夹，也可以重新发送：",
     "resendLink": "重新发送",
-    "backToRegister": "返回注册"
+    "backToRegister": "返回注册",
+    "expiryHint": "验证链接 1 小时内有效。",
+    "resendTitle": "重新发送验证邮件",
+    "resendEmailLabel": "注册时使用的邮箱",
+    "resendButton": "重新发送",
+    "resending": "发送中…",
+    "resendSent": "如果该邮箱已注册且尚未验证，我们已重新发送验证邮件，请查收。",
+    "resendError": "发送失败，请稍后重试。",
+    "resendRateLimited": "发送太频繁，请 1 分钟后再试。",
+    "resendInvalidEmail": "请输入有效的邮箱地址",
+    "alreadyVerified": "已经验证过？",
+    "goToLogin": "去登录"
   },
   "login": {
     "title": "登录",
@@ -451,7 +466,12 @@
     "errorTotpInvalid": "验证码错误或已过期，请输入当前验证码重试。",
     "errorBackupCodeRequired": "请输入备用码。",
     "errorBackupCodeInvalid": "备用码无效或已被使用。",
-    "errorTwoFactorExpired": "本次登录验证已过期，请返回密码登录后重试。"
+    "errorTwoFactorExpired": "本次登录验证已过期，请返回密码登录后重试。",
+    "submitting": "正在登录…",
+    "emailVerified": "邮箱已验证，请登录。",
+    "verifyLinkExpired": "验证链接已过期。请重新发送验证邮件。",
+    "verifyLinkInvalid": "验证链接无效或已被使用。如仍无法登录，请重新发送验证邮件。",
+    "resendHint": "没收到或链接已过期？可以重新发送验证邮件："
   },
   "forgotPassword": {
     "title": "找回密码",
@@ -939,7 +959,7 @@
     "reconsentRequired": "请勾选同意后继续",
     "reconsentSuccess": "感谢您的确认",
     "reconsentVersionMismatch": "条款已更新，请刷新页面后重新阅读",
-    "lastUpdated": "最后更新：{version}",
+    "lastUpdated": "版本：{version}",
     "backToHome": "返回首页"
   },
   "contact": {
@@ -1281,7 +1301,8 @@
     "errorAlreadyMember": "您已经属于一家企业",
     "errorIdentityLocked": "企业认证期间及认证后，法定名称、展示名和 SSM 注册号不可修改。如需更改，请联系运营。",
     "errorFailed": "创建失败，请稍后重试",
-    "errorUnknown": "发生未知错误，请稍后重试"
+    "errorUnknown": "发生未知错误，请稍后重试",
+    "errorCheckFields": "部分内容不符合要求，请检查后重试（官网请填写完整网址，例如 https://example.com）。"
   },
   "companyVerification": {
     "title": "企业认证",
@@ -1433,7 +1454,8 @@
     "saveSuccess": "企业资料已更新",
     "errorFailed": "保存失败，请稍后重试",
     "errorSsmDuplicate": "该 SSM 注册号已被使用",
-    "errorUnknown": "发生未知错误，请稍后重试"
+    "errorUnknown": "发生未知错误，请稍后重试",
+    "errorCheckFields": "部分内容不符合要求，请检查后重试（官网请填写完整网址，例如 https://example.com）。"
   },
   "team": {
     "title": "团队管理",
@@ -1552,7 +1574,12 @@
       "errorRequired": "此项为必填",
       "verifiedOnly": "企业认证通过后才能提交职位审核",
       "back": "返回列表",
-      "removeTagLabel": "移除"
+      "removeTagLabel": "移除",
+      "saveChanges": "保存修改",
+      "pendingReviewHint": "此职位正在审核中。保存的修改会一并进入本次审核。",
+      "publishedEditHint": "此职位已发布，保存后立即更新线上内容。若修改职位名称、描述、薪资等关键信息，可能需要重新审核，审核期间学生暂时看不到该职位。",
+      "errorSalaryRange": "最低月薪不能高于最高月薪",
+      "errorInvalid": "部分内容不符合要求，请检查后重试；如果这个职位在别处刚被修改过，请刷新页面再改。"
     }
   },
   "adminStudents": {
@@ -1847,13 +1874,19 @@
     "inviteDialogSubmit": "发送邀请",
     "inviteDialogCancel": "取消",
     "inviteSuccess": "邀请已发送",
-    "inviteAlreadyExists": "已对该候选人发出过该职位的邀请",
+    "inviteAlreadyExists": "已经就这个职位邀请过该候选人，对方还没有回复，无需重复发送。",
     "inviteAlreadyApplied": "该候选人已投递此职位",
     "inviteErrorQuota": "本月邀请次数已用完",
     "inviteErrorGeneral": "发送失败，请稍后重试",
     "inviteNoJobs": "暂无在招职位，请先发布职位后再邀请",
     "companyInvites": "{company} 邀请你投递「{job}」",
-    "navInvitations": "收到的邀请"
+    "navInvitations": "收到的邀请",
+    "acceptErrorUnavailable": "这条邀请已过期或已处理，请刷新页面查看最新状态。",
+    "acceptErrorJobClosed": "这个职位已关闭或已过截止日期，无法再投递。",
+    "declineConfirmTitle": "确定婉拒这条邀请？",
+    "declineConfirmBody": "婉拒后无法撤销，企业会看到你已婉拒。",
+    "declineConfirmCancel": "再想想",
+    "inviteUnavailable": "无法发出邀请：职位已关闭或已截止，或该候选人目前不可见。"
   },
   "applicants": {
     "title": "投递看板 · {jobTitle}",
@@ -1898,7 +1931,10 @@
     "colCampus": "校园活动",
     "colCompleteness": "完成度",
     "colActions": "操作",
-    "statusChangeError": "状态更新失败，请重试"
+    "statusChangeError": "状态更新失败，请重试",
+    "confirmStatusTitle": "将状态改为「{status}」？",
+    "confirmStatusBody": "学生会立即收到站内通知和邮件。",
+    "confirmStatusAction": "确认修改"
   },
   "adminSchools": {
     "title": "学校管理",
@@ -2602,5 +2638,11 @@
       "rateLimited": "操作过于频繁，请稍候重试。",
       "generic": "未能保存你的选择，请重试。"
     }
+  },
+  "withdrawConfirm": {
+    "title": "确定撤回这份投递？",
+    "body": "撤回后企业将看不到你的这次投递，而且你不能再次投递这个职位。",
+    "cancel": "再想想",
+    "confirm": "确定撤回"
   }
 }

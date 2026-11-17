@@ -8,6 +8,7 @@ import { getAllIndustryCodes } from '../lib/taxonomy/industries'
 import type { UserCtx, CompanyCtx } from '../authz'
 import { deleteAllVersions } from '@/lib/storage'
 import { logger } from '../lib/logger'
+import { normalizeWebsiteInput } from '@/lib/url-utils'
 
 const COMPANY_SIZES = ['S1_10', 'S11_50', 'S51_200', 'S201_1000', 'S1000_PLUS'] as const
 
@@ -23,13 +24,17 @@ export const createCompanySchema = z.object({
       message: 'Invalid industry code',
     }),
   size: z.enum(COMPANY_SIZES).optional(),
-  website: z
-    .string()
-    .max(255)
-    .optional()
-    .refine(v => v === undefined || v === '' || /^https?:\/\//i.test(v), {
-      message: 'Website must start with http:// or https://',
-    }),
+  // "abc.com.my" is what people type; it is stored as https://abc.com.my.
+  website: z.preprocess(
+    v => (typeof v === 'string' ? normalizeWebsiteInput(v) : v),
+    z
+      .string()
+      .max(255)
+      .optional()
+      .refine(v => v === undefined || /^https?:\/\/\S+$/i.test(v), {
+        message: 'Website must start with http:// or https://',
+      }),
+  ),
   state: z.string().max(50).optional(),
   city: z.string().max(100).optional(),
   address: z.string().max(500).optional(),

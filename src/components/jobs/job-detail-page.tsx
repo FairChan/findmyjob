@@ -186,7 +186,12 @@ export default async function JobDetailPage({ params, listHref = '/jobs', presen
     })
 
     if (existing && existing.status !== 'WITHDRAWN') {
-      applySection = <AppliedStatus applicationId={existing.id} />
+      applySection = (
+        <AppliedStatus
+          applicationId={existing.id}
+          canWithdraw={['APPLIED', 'VIEWED', 'SHORTLISTED', 'INTERVIEW'].includes(existing.status)}
+        />
+      )
     } else if (existing?.status === 'WITHDRAWN') {
       applySection = <WithdrawnStatus />
     } else {

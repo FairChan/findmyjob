@@ -109,7 +109,8 @@ export default async function MyApplicationsPage({
                   </div>
                 )}
 
-                {app.status !== 'WITHDRAWN' && (
+                {/* Once there is an outcome, withdrawing only confuses both sides. */}
+                {['APPLIED', 'VIEWED', 'SHORTLISTED', 'INTERVIEW'].includes(app.status) && (
                   <div>
                     <WithdrawButton applicationId={app.id} />
                   </div>

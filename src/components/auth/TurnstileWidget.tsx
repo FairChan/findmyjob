@@ -31,6 +31,7 @@ declare global {
       remove: (widgetId: string) => void
     }
     onloadTurnstileCallback?: () => void
+    __findmyjobTurnstileQueue?: Array<() => void>
   }
 }
 
@@ -76,12 +77,21 @@ export default function TurnstileWidget({ siteKey, action, onToken, onExpire, on
         script.onerror = () => onError?.()
         document.head.appendChild(script)
       }
-      window.onloadTurnstileCallback = renderWidget
+      // Several widgets can mount before the script loads (e.g. login + resend verification);
+      // a single shared callback would render only the last one, so queue them all.
+      const queue = (window.__findmyjobTurnstileQueue ??= [])
+      queue.push(renderWidget)
+      window.onloadTurnstileCallback = () => {
+        const pending = window.__findmyjobTurnstileQueue ?? []
+        window.__findmyjobTurnstileQueue = []
+        pending.forEach((render) => render())
+      }
     }
 
     // Always clean up on unmount or dependency change to prevent stale callbacks
     // from firing into a remounted component's state.
     return () => {
+      window.__findmyjobTurnstileQueue = window.__findmyjobTurnstileQueue?.filter((render) => render !== renderWidget)
       if (widgetIdRef.current && window.turnstile) {
         window.turnstile.remove(widgetIdRef.current)
         widgetIdRef.current = null

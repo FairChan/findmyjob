@@ -40,7 +40,10 @@ export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onC
     setLimitReached(false)
     try {
       const result = await sendInvitationAction({ studentId, jobId, message: message.trim() || null })
-      if (result.ok) {
+      if (result.ok && result.data.alreadyExists) {
+        // An unanswered invitation for this job already exists; nothing new reaches the student.
+        setError(t('inviteAlreadyExists'))
+      } else if (result.ok) {
         setSuccess(true)
         router.refresh()
         setTimeout(() => {
@@ -53,7 +56,7 @@ export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onC
         } else if (result.code === 'DUPLICATE_APPLICATION') {
           setError(t('inviteAlreadyApplied'))
         } else if (result.code === 'NOT_FOUND') {
-          setError(t('inviteAlreadyExists'))
+          setError(t('inviteUnavailable'))
         } else {
           setError(t('inviteErrorGeneral'))
         }

@@ -18,6 +18,7 @@ import { getSetting } from './services/settings'
 import { SignupClosedError } from './errors'
 import { logger } from './lib/logger'
 import { alert } from './lib/alert'
+import { verificationEmailContent } from './lib/verification-email'
 
 const emailProvider = createEmailProvider()
 const emailVerificationProvider = createEmailProvider({
@@ -261,9 +262,7 @@ export const auth = betterAuth({
         await emailVerificationProvider
           .sendEmail({
             to: user.email,
-            subject: 'Verify your FindMYJob account',
-            html: `<p>Click <a href="${url}">here</a> to verify your email address.</p>`,
-            text: `Verify your email: ${url}`,
+            ...verificationEmailContent(url),
           })
           .catch((err: unknown) => {
             const code = (err as NodeJS.ErrnoException)?.code ?? 'EMAIL_SEND_FAILED'

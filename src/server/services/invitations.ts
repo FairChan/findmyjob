@@ -189,7 +189,7 @@ export async function acceptInvitation(
 
   let applicationId: string
   try {
-    applicationId = (await applyToJob(ctx, { jobId })).applicationId
+    applicationId = (await applyToJob(ctx, { jobId, reactivateWithdrawn: true })).applicationId
   } catch (err) {
     if (!(err instanceof DuplicateApplicationError)) throw err
     const existing = await db.application.findUnique({

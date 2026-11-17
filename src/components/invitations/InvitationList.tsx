@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils'
 import { Badge, type BadgeProps } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { EmptyState } from '@/components/ui/empty-state'
 
 // Cards sit on the muted surface, so the closed states use the plain chip.
@@ -30,6 +31,7 @@ export function InvitationList({ invitations, locale }: Props) {
   const router = useRouter()
   const [pending, setPending] = useState<string | null>(null)
   const [toast, setToast] = useState<{ id: string; msg: string; ok: boolean; repairPath?: string } | null>(null)
+  const [confirmDecline, setConfirmDecline] = useState<string | null>(null)
 
   const statusLabel: Record<string, string> = {
     SENT: t('statusSent'),
@@ -53,7 +55,10 @@ export function InvitationList({ invitations, locale }: Props) {
           msg: missingMaterials
             ? tApply(result.code === 'CONTACT_REQUIRED' ? 'applyBlockedContact' : 'applyBlockedResume')
             : lowCompleteness ? tApply('applyBlockedProfile')
-              : result.code === 'INVITATION_QUOTA_EXCEEDED' ? t('inviteErrorQuota') : t('acceptError'),
+              : result.code === 'INVITATION_QUOTA_EXCEEDED' ? t('inviteErrorQuota')
+                // FORBIDDEN: expired or already handled; NOT_FOUND: the job closed or passed its deadline.
+                : result.code === 'FORBIDDEN' ? t('acceptErrorUnavailable')
+                  : result.code === 'NOT_FOUND' ? t('acceptErrorJobClosed') : t('acceptError'),
           ok: false,
           ...(missingMaterials ? { repairPath: `/${locale}/s/onboarding` }
             : lowCompleteness ? { repairPath: `/${locale}/s/profile` } : {}),
@@ -135,7 +140,7 @@ export function InvitationList({ invitations, locale }: Props) {
                     variant="ghost"
                     size="sm"
                     disabled={pending === inv.id}
-                    onClick={() => handleDecline(inv.id)}
+                    onClick={() => setConfirmDecline(inv.id)}
                   >
                     {t('declineButton')}
                   </Button>
@@ -148,6 +153,29 @@ export function InvitationList({ invitations, locale }: Props) {
           </li>
         )
       })}
+      <Dialog open={confirmDecline !== null} onOpenChange={(open) => !open && setConfirmDecline(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('declineConfirmTitle')}</DialogTitle>
+            <DialogDescription>{t('declineConfirmBody')}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmDecline(null)}>
+              {t('declineConfirmCancel')}
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                const id = confirmDecline
+                setConfirmDecline(null)
+                if (id) void handleDecline(id)
+              }}
+            >
+              {t('declineButton')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ul>
   )
 }

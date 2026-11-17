@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { getSetting } from '@/server/services/settings'
 import ReconsentForm from './reconsent-form'
+import { safeReturnPath } from '@/lib/safe-return-path'
 
 export async function generateMetadata({
   params,
@@ -18,10 +19,13 @@ export async function generateMetadata({
 
 export default async function ReconsentPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ locale: string }>
+  searchParams: Promise<{ next?: string }>
 }) {
   const { locale } = await params
+  const { next } = await searchParams
   const t = await getTranslations({ locale, namespace: 'legal' })
   const currentVersion = await getSetting('legal.currentVersion', '2026-11-draft')
 
@@ -39,6 +43,7 @@ export default async function ReconsentPage({
         </p>
         <ReconsentForm
           locale={locale}
+          next={safeReturnPath(next, locale)}
           version={currentVersion}
           messages={{
             reconsentAgree: t('reconsentAgree'),

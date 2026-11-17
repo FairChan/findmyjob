@@ -28,6 +28,8 @@ import { MY_STATES, COMMON_INDUSTRIES } from '@/lib/malaysia'
 
 const TOTAL_STEPS = 5
 
+const NO_SCHOOL = '__none__'
+
 interface Props {
   locale: string
   initialStep: number
@@ -76,6 +78,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
   // ---- Step 1 state ----
   const [fullName, setFullName] = useState(profile.fullName ?? '')
+  // '' = not chosen yet (shows the placeholder); NO_SCHOOL = explicitly "not in the list".
   const [schoolId, setSchoolId] = useState(profile.schoolId ?? '')
   const [degreeLevel, setDegreeLevel] = useState(profile.degreeLevel ?? '')
   const [major, setMajor] = useState(profile.major ?? '')
@@ -150,7 +153,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
   function buildStep1Payload() {
     return {
       fullName: fullName.trim(),
-      schoolId: schoolId || undefined,
+      schoolId: schoolId && schoolId !== NO_SCHOOL ? schoolId : undefined,
       degreeLevel: degreeLevel || undefined,
       major: major.trim() || undefined,
       graduationYear: graduationYear ? parseInt(graduationYear, 10) : undefined,
@@ -177,7 +180,10 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
       languages: languages
         .filter((l) => l.language && l.level)
         .map((l) => ({ language: l.language, level: l.level as 'BASIC' | 'CONVERSATIONAL' | 'FLUENT' | 'NATIVE' })),
-      skills,
+      // A skill typed but not confirmed with Enter is still what the student meant to save.
+      skills: skillInput.trim() && !skills.includes(skillInput.trim()) && skills.length < 30
+        ? [...skills, skillInput.trim()]
+        : skills,
       headline: headline.trim() || undefined,
       summary: summary.trim() || undefined,
     }
@@ -389,7 +395,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                     {locale === 'zh' ? s.nameZh : s.nameEn}
                   </option>
                 ))}
-                <option value="">{t('schoolNone')}</option>
+                <option value={NO_SCHOOL}>{t('schoolNone')}</option>
               </select>
             </div>
 
@@ -656,6 +662,11 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                   value={skillInput}
                   onChange={(e) => setSkillInput(e.target.value)}
                   onKeyDown={handleSkillKeyDown}
+                  onBlur={() => {
+                    const tag = skillInput.trim()
+                    if (tag && !skills.includes(tag) && skills.length < 30) setSkills([...skills, tag])
+                    setSkillInput('')
+                  }}
                   placeholder={skills.length === 0 ? t('skillsPlaceholder') : ''}
                   className="flex-1 min-w-[120px] border-none outline-none bg-transparent text-sm"
                   disabled={skills.length >= 30}

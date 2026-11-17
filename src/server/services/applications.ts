@@ -24,6 +24,11 @@ export interface ApplyInput {
   /** Defaults to the student's primary/latest resume; an owned resume is required. */
   resumeId?: string | null
   coverNote?: string | null
+  /**
+   * Invitation accept only: the company re-invited a student who had withdrawn, so the old
+   * WITHDRAWN row is brought back to APPLIED instead of being linked while staying invisible.
+   */
+  reactivateWithdrawn?: boolean
 }
 
 export interface ApplyResult {
@@ -82,6 +87,28 @@ export async function applyToJob(ctx: UserCtx, input: ApplyInput): Promise<Apply
     const result = await db.$transaction(async (tx) => {
       await lockXact(tx, LOCK_NS.STUDENT_DATA, ctx.userId)
       const resumeId = await requireApplicationMaterialsTx(tx, studentId, input.resumeId)
+      const previous = await tx.application.findUnique({
+        where: { jobId_studentId: { jobId: input.jobId, studentId } },
+        select: { id: true, status: true },
+      })
+      if (previous) {
+        if (!input.reactivateWithdrawn || previous.status !== ApplicationStatus.WITHDRAWN) {
+          throw new DuplicateApplicationError()
+        }
+        await tx.application.update({
+          where: { id: previous.id },
+          data: { status: ApplicationStatus.APPLIED, resumeId, coverNote },
+        })
+        await tx.applicationEvent.create({
+          data: {
+            applicationId: previous.id,
+            fromStatus: ApplicationStatus.WITHDRAWN,
+            toStatus: ApplicationStatus.APPLIED,
+            actorId: ctx.userId,
+          },
+        })
+        return { id: previous.id }
+      }
       const app = await tx.application.create({
         data: {
           jobId: input.jobId,

@@ -5,6 +5,13 @@ import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { registerStudent } from '@/server/actions/register'
 import TurnstileWidget from './TurnstileWidget'
+import RegistrationCoreFields from './RegistrationCoreFields'
+import {
+  firstInvalidField,
+  validateRegistration,
+  type RegistrationErrorKey,
+  type RegistrationField,
+} from './registration-validation'
 
 interface Props {
   locale: string
@@ -17,41 +24,52 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<RegistrationField, RegistrationErrorKey>>>({})
   const [turnstileToken, setTurnstileToken] = useState<string>('')
   // Incrementing key causes TurnstileWidget to remount and issue a fresh token.
   const [turnstileKey, setTurnstileKey] = useState(0)
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
   const handleTurnstileError = useCallback(() => setError(t('errorTurnstileFailed')), [t])
+  const clearFieldError = useCallback((field: RegistrationField) => {
+    setFieldErrors((current) => (current[field] ? { ...current, [field]: undefined } : current))
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
 
-    const data = new FormData(e.currentTarget)
-    const name = (data.get('name') as string).trim()
-    const email = (data.get('email') as string).trim()
-    const password = data.get('password') as string
-    const agreeTerms = data.get('agreeTerms') === 'on'
-    const agreePrivacy = data.get('agreePrivacy') === 'on'
+    const form = e.currentTarget
+    const data = new FormData(form)
+    const input = {
+      name: ((data.get('name') as string) ?? '').trim(),
+      email: ((data.get('email') as string) ?? '').trim(),
+      password: (data.get('password') as string) ?? '',
+      agreeTerms: data.get('agreeTerms') === 'on',
+      agreePrivacy: data.get('agreePrivacy') === 'on',
+    }
     const joinTalentPool = data.get('joinTalentPool') === 'on'
 
-    if (!agreeTerms || !agreePrivacy) {
-      setError(t('errorRequired'))
+    const errors = validateRegistration(input)
+    setFieldErrors(errors)
+    const firstInvalid = firstInvalidField(errors)
+    if (firstInvalid) {
+      form.querySelector<HTMLElement>(`#${firstInvalid}`)?.focus()
       return
     }
 
     startTransition(async () => {
       try {
         const result = await registerStudent({
-          name,
-          email,
-          password,
+          name: input.name,
+          email: input.email,
+          password: input.password,
           agreeTerms: true,
           agreePrivacy: true,
           joinTalentPool,
           ref: refCode || undefined,
           turnstileToken,
+          locale: locale === 'en' ? 'en' : 'zh',
         })
 
         if (result.ok) {
@@ -62,7 +80,7 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
           setTurnstileToken('')
 
           if (result.code === 'VALIDATION_ERROR') {
-            setError(t('errorRequired'))
+            setError(t('errorCheckFields'))
           } else if (result.code === 'SIGNUP_CLOSED') {
             setError(t('errorSignupClosed'))
           } else if (result.code === 'REGISTER_FAILED') {
@@ -84,86 +102,17 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium mb-1">
-          {t('nameLabel')} <span aria-hidden="true" className="text-destructive">*</span>
-        </label>
+      <RegistrationCoreFields errors={fieldErrors} onFieldChange={clearFieldError} />
+
+      <label className="flex cursor-pointer items-start gap-2">
         <input
-          id="name"
-          name="name"
-          type="text"
-          required
-          autoComplete="name"
-          placeholder={t('namePlaceholder')}
-          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+          id="joinTalentPool"
+          name="joinTalentPool"
+          type="checkbox"
+          className="mt-0.5 h-6 w-6 shrink-0 rounded border-input accent-brand"
         />
-      </div>
-
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium mb-1">
-          {t('emailLabel')} <span aria-hidden="true" className="text-destructive">*</span>
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          placeholder={t('emailPlaceholder')}
-          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium mb-1">
-          {t('passwordLabel')} <span aria-hidden="true" className="text-destructive">*</span>
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          placeholder={t('passwordPlaceholder')}
-          onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            id="agreeTerms"
-            name="agreeTerms"
-            type="checkbox"
-            required
-            className="mt-0.5 h-6 w-6 rounded border-input accent-brand shrink-0"
-          />
-          <span className="text-sm">{t('agreeTerms')}</span>
-        </label>
-
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            id="agreePrivacy"
-            name="agreePrivacy"
-            type="checkbox"
-            required
-            className="mt-0.5 h-6 w-6 rounded border-input accent-brand shrink-0"
-          />
-          <span className="text-sm">{t('agreePrivacy')}</span>
-        </label>
-
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            id="joinTalentPool"
-            name="joinTalentPool"
-            type="checkbox"
-            className="mt-0.5 h-6 w-6 rounded border-input accent-brand shrink-0"
-          />
-          <span className="text-sm text-muted-foreground">{t('joinTalentPool')}</span>
-        </label>
-      </div>
+        <span className="text-sm text-muted-foreground">{t('joinTalentPool')}</span>
+      </label>
 
       <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} onError={handleTurnstileError} />
 
@@ -180,7 +129,7 @@ export default function StudentRegisterForm({ locale, ref: refCode, siteKey }: P
       )}
 
       <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !turnstileToken}>
-        {isPending ? '...' : t('submitStudent')}
+        {isPending ? t('submitting') : t('submitStudent')}
       </Button>
     </form>
   )

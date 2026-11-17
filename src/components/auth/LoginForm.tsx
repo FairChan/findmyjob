@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { authClient } from '@/lib/auth-client'
 import { getPostLoginRedirect } from '@/server/actions/account'
 import TurnstileWidget from './TurnstileWidget'
+import ResendVerificationForm from './ResendVerificationForm'
 
 interface Props {
   locale: string
@@ -25,6 +26,8 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
   const [twoFactorRequired, setTwoFactorRequired] = useState(false)
   const [useBackupCode, setUseBackupCode] = useState(false)
   const [code, setCode] = useState('')
+  // Set when sign-in fails because the address is unverified, so the user can resend in place.
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null)
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
   const handleTurnstileError = useCallback(() => setError(t('errorTurnstileFailed')), [t])
@@ -80,6 +83,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
+    setUnverifiedEmail(null)
 
     const data = new FormData(e.currentTarget)
     const email = (data.get('email') as string).trim()
@@ -101,6 +105,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
 
           if (authError.code === 'EMAIL_NOT_VERIFIED') {
             setError(t('errorEmailNotVerified'))
+            setUnverifiedEmail(email)
           } else if (authError.status === 429) {
             setError(t('errorRateLimited'))
           } else if (authError.code === 'TURNSTILE_FAILED') {
@@ -182,6 +187,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
       <div>
         <label htmlFor="email" className="block text-sm font-medium mb-1">
@@ -238,7 +244,7 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
       )}
 
       <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !turnstileToken}>
-        {isPending ? '...' : t('submit')}
+        {isPending ? t('submitting') : t('submit')}
       </Button>
 
       <div className="text-center text-sm text-muted-foreground">
@@ -248,5 +254,12 @@ export default function LoginForm({ locale, redirect, siteKey }: Props) {
         </Link>
       </div>
     </form>
+    {unverifiedEmail && (
+      <div className="mt-4 rounded-control bg-muted/50 p-3">
+        <p className="mb-2 text-sm text-muted-foreground">{t('resendHint')}</p>
+        <ResendVerificationForm key={unverifiedEmail} siteKey={siteKey} defaultEmail={unverifiedEmail} compact />
+      </div>
+    )}
+    </>
   )
 }

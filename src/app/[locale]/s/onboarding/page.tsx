@@ -42,6 +42,10 @@ export default async function StudentOnboardingPage({ params }: Props) {
   })
 
   const currentStep = Math.min(Math.max(profile.onboardingStep, 1), 5)
+  // Prefill the name typed at sign-up instead of asking for it twice.
+  const accountName = profile.fullName
+    ? null
+    : (await db.user.findUnique({ where: { id: userId }, select: { name: true } }))?.name ?? null
 
   return (
     <div>
@@ -51,7 +55,7 @@ export default async function StudentOnboardingPage({ params }: Props) {
       <OnboardingWizard
         locale={locale}
         initialStep={currentStep}
-        profile={profile}
+        profile={accountName ? { ...profile, fullName: accountName } : profile}
         schools={schools}
         contact={contact}
         resumes={resumes}

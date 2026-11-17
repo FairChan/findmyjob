@@ -13,6 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { applyToJobAction, withdrawApplicationAction } from '@/server/actions/applications'
+import { WithdrawConfirmButton } from './WithdrawConfirmButton'
 import type { ApplicationBlocker } from '@/lib/application-readiness'
 
 export interface ResumeOption {
@@ -187,9 +188,11 @@ export function WithdrawnStatus() {
 
 interface AppliedStatusProps {
   applicationId: string
+  /** False once the company has reached an outcome (offer, hired, rejected). */
+  canWithdraw?: boolean
 }
 
-export function AppliedStatus({ applicationId }: AppliedStatusProps) {
+export function AppliedStatus({ applicationId, canWithdraw = true }: AppliedStatusProps) {
   const t = useTranslations('publicJobs')
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -221,15 +224,14 @@ export function AppliedStatus({ applicationId }: AppliedStatusProps) {
       <span className="inline-flex min-h-9 items-center rounded-full bg-success-muted px-4 text-sm font-semibold text-success">
         ✓ {t('appliedBadge')}
       </span>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleWithdraw}
-        disabled={loading}
-        className="min-h-[36px] text-sm"
-      >
-        {t('withdrawButton')}
-      </Button>
+      {canWithdraw && (
+        <WithdrawConfirmButton
+          label={t('withdrawButton')}
+          loading={loading}
+          onConfirm={() => void handleWithdraw()}
+          className="min-h-[36px] text-sm"
+        />
+      )}
       {error && <p className="text-sm text-destructive w-full">{error}</p>}
     </div>
   )

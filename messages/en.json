@@ -353,8 +353,8 @@
     "emailPlaceholder": "you@example.com",
     "passwordLabel": "Password",
     "passwordPlaceholder": "At least 8 characters",
-    "agreeTerms": "I have read and agree to the Terms of Service",
-    "agreePrivacy": "I have read and agree to the Privacy Policy",
+    "agreeTerms": "I have read and agree to the <terms>Terms of Service</terms>",
+    "agreePrivacy": "I have read and agree to the <privacy>Privacy Policy</privacy>",
     "joinTalentPool": "Join Talent Pool: Allow verified companies to view my anonymized profile, and my contact details after paid unlock",
     "submitStudent": "Register",
     "submitEmployer": "Register",
@@ -372,7 +372,11 @@
     "errorSignupClosed": "Student registration is currently full.",
     "turnstileLoading": "Human verification in progress, please wait…",
     "errorTurnstileFailed": "Human verification failed. Please refresh the page and try again.",
-    "errorNetwork": "Network error. Please try again."
+    "errorNetwork": "Network error. Please try again.",
+    "errorMustAgree": "Please read and tick to agree",
+    "errorPasswordTooLong": "Password can be at most 128 characters",
+    "errorCheckFields": "Some details are not valid. Please check each field and try again.",
+    "submitting": "Submitting…"
   },
   "twoFactorSetup": {
     "title": "Set up two-factor authentication",
@@ -417,9 +421,20 @@
   "verifyEmail": {
     "title": "Verify Your Email",
     "message": "We sent a verification email to your registered address. Please click the link in the email to complete your registration.",
-    "hint": "Didn't receive the email? Check your spam folder, or",
+    "hint": "No email? Check your spam folder first, or send it again:",
     "resendLink": "resend it",
-    "backToRegister": "Back to Registration"
+    "backToRegister": "Back to sign-up",
+    "expiryHint": "The verification link is valid for 1 hour.",
+    "resendTitle": "Resend verification email",
+    "resendEmailLabel": "Email you signed up with",
+    "resendButton": "Resend",
+    "resending": "Sending…",
+    "resendSent": "If this email is registered and not yet verified, we have sent a new verification email.",
+    "resendError": "Could not send. Please try again later.",
+    "resendRateLimited": "Too many attempts. Please try again in a minute.",
+    "resendInvalidEmail": "Please enter a valid email address",
+    "alreadyVerified": "Already verified?",
+    "goToLogin": "Sign in"
   },
   "login": {
     "title": "Log In",
@@ -451,7 +466,12 @@
     "errorTotpInvalid": "The code is incorrect or expired. Enter the current code and try again.",
     "errorBackupCodeRequired": "Enter a backup code.",
     "errorBackupCodeInvalid": "This backup code is invalid or has already been used.",
-    "errorTwoFactorExpired": "This login attempt has expired. Return to password login and try again."
+    "errorTwoFactorExpired": "This login attempt has expired. Return to password login and try again.",
+    "submitting": "Signing in…",
+    "emailVerified": "Your email is verified. Please sign in.",
+    "verifyLinkExpired": "This verification link has expired. Please send a new one.",
+    "verifyLinkInvalid": "This verification link is invalid or already used. If you still cannot sign in, send a new one.",
+    "resendHint": "Didn't get it, or the link expired? Send a new verification email:"
   },
   "forgotPassword": {
     "title": "Forgot Password",
@@ -939,7 +959,7 @@
     "reconsentRequired": "Please check the box to continue",
     "reconsentSuccess": "Thank you for confirming",
     "reconsentVersionMismatch": "The terms have been updated. Please refresh the page and read again.",
-    "lastUpdated": "Last updated: {version}",
+    "lastUpdated": "Version: {version}",
     "backToHome": "Back to Home"
   },
   "contact": {
@@ -1281,7 +1301,8 @@
     "errorAlreadyMember": "You are already a member of a company",
     "errorIdentityLocked": "Legal name, display names, and SSM registration number cannot be changed once verification has been submitted. Contact our team to make changes.",
     "errorFailed": "Creation failed. Please try again.",
-    "errorUnknown": "An unexpected error occurred. Please try again."
+    "errorUnknown": "An unexpected error occurred. Please try again.",
+    "errorCheckFields": "Some details are not valid. Please check and try again (enter the full website address, e.g. https://example.com)."
   },
   "companyVerification": {
     "title": "Company Verification",
@@ -1433,7 +1454,8 @@
     "saveSuccess": "Company profile updated",
     "errorFailed": "Save failed. Please try again.",
     "errorSsmDuplicate": "This SSM registration number is already in use",
-    "errorUnknown": "An unexpected error occurred. Please try again."
+    "errorUnknown": "An unexpected error occurred. Please try again.",
+    "errorCheckFields": "Some details are not valid. Please check and try again (enter the full website address, e.g. https://example.com)."
   },
   "team": {
     "title": "Team Management",
@@ -1543,7 +1565,12 @@
       "errorRequired": "This field is required",
       "verifiedOnly": "Your company must be verified before submitting jobs for review.",
       "back": "Back to list",
-      "removeTagLabel": "Remove"
+      "removeTagLabel": "Remove",
+      "saveChanges": "Save changes",
+      "pendingReviewHint": "This job is under review. Saved changes are included in the current review.",
+      "publishedEditHint": "This job is live. Saving updates it immediately. Changing key details such as the title, description or salary may send it back for review, and students will not see it until it is approved.",
+      "errorSalaryRange": "Minimum salary cannot be higher than maximum salary",
+      "errorInvalid": "Some details are not valid. Please check and try again; if this job was just edited elsewhere, refresh the page first."
     }
   },
   "companyProfile": {
@@ -1847,13 +1874,19 @@
     "inviteDialogSubmit": "Send Invitation",
     "inviteDialogCancel": "Cancel",
     "inviteSuccess": "Invitation sent",
-    "inviteAlreadyExists": "You have already invited this candidate for this position",
+    "inviteAlreadyExists": "You have already invited this candidate to this job and they have not replied yet, so nothing new was sent.",
     "inviteAlreadyApplied": "This candidate has already applied for this position",
     "inviteErrorQuota": "Monthly invitation quota exhausted",
     "inviteErrorGeneral": "Failed to send invitation, please try again",
     "inviteNoJobs": "No open positions. Please publish a job first.",
     "companyInvites": "{company} invited you to apply for \"{job}\"",
-    "navInvitations": "Invitations"
+    "navInvitations": "Invitations",
+    "acceptErrorUnavailable": "This invitation has expired or was already handled. Refresh the page to see its current status.",
+    "acceptErrorJobClosed": "This job has closed or passed its deadline, so you can no longer apply.",
+    "declineConfirmTitle": "Decline this invitation?",
+    "declineConfirmBody": "This cannot be undone. The company will see that you declined.",
+    "declineConfirmCancel": "Keep it",
+    "inviteUnavailable": "Could not send: the job is closed or past its deadline, or the candidate is not currently visible."
   },
   "applicants": {
     "title": "Applicants · {jobTitle}",
@@ -1898,7 +1931,10 @@
     "colCampus": "Campus",
     "colCompleteness": "Completeness",
     "colActions": "Actions",
-    "statusChangeError": "Status change failed, please try again"
+    "statusChangeError": "Status change failed, please try again",
+    "confirmStatusTitle": "Change status to \"{status}\"?",
+    "confirmStatusBody": "The student is notified in the app and by email right away.",
+    "confirmStatusAction": "Confirm"
   },
   "adminSchools": {
     "title": "School Management",
@@ -2602,5 +2638,11 @@
       "rateLimited": "Too many changes. Please wait a moment and retry.",
       "generic": "We could not save your choice. Please try again."
     }
+  },
+  "withdrawConfirm": {
+    "title": "Withdraw this application?",
+    "body": "The company will no longer see this application, and you cannot apply to this job again.",
+    "cancel": "Keep it",
+    "confirm": "Withdraw"
   }
 }

@@ -82,6 +82,7 @@ export default async function EditJobPage({
         canPurchase={usage.canPurchase}
         jdAssistant={jdAssistant ?? undefined}
         mode="edit"
+        status={job.status}
         isVerified={isVerified}
         isEditable={isEditable}
         initialData={initialData}
@@ -122,11 +123,16 @@ export default async function EditJobPage({
           headcountLabel: t('form.headcountLabel'),
           deadlineLabel: t('form.deadlineLabel'),
           saveDraft: t('form.saveDraft'),
+          saveChanges: t('form.saveChanges'),
+          pendingReviewHint: t('form.pendingReviewHint'),
+          publishedEditHint: t('form.publishedEditHint'),
           submitReview: t('form.submitReview'),
           saving: t('form.saving'),
           saveSuccess: t('form.saveSuccess'),
           submitSuccess: t('form.submitSuccess'),
           errorRequired: t('form.errorRequired'),
+          errorSalaryRange: t('form.errorSalaryRange'),
+          errorInvalid: t('form.errorInvalid'),
           errorForbidden: t('errorForbidden'),
           errorUnknown: t('errorUnknown'),
           verifiedOnly: t('form.verifiedOnly'),

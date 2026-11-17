@@ -1,10 +1,17 @@
 'use client'
 import { useState, useCallback, useTransition } from 'react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
 import { registerEmployer } from '@/server/actions/register'
 import TurnstileWidget from './TurnstileWidget'
+import RegistrationCoreFields from './RegistrationCoreFields'
+import {
+  firstInvalidField,
+  validateRegistration,
+  type RegistrationErrorKey,
+  type RegistrationField,
+} from './registration-validation'
 
 interface Props {
   siteKey: string
@@ -12,52 +19,64 @@ interface Props {
 
 export default function EmployerRegisterForm({ siteKey }: Props) {
   const t = useTranslations('register')
+  const locale = useLocale()
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<RegistrationField, RegistrationErrorKey>>>({})
   const [turnstileToken, setTurnstileToken] = useState<string>('')
   // Incrementing key causes TurnstileWidget to remount and issue a fresh token.
   const [turnstileKey, setTurnstileKey] = useState(0)
   const handleToken = useCallback((token: string) => setTurnstileToken(token), [])
   const handleExpire = useCallback(() => setTurnstileToken(''), [])
   const handleTurnstileError = useCallback(() => setError(t('errorTurnstileFailed')), [t])
+  const clearFieldError = useCallback((field: RegistrationField) => {
+    setFieldErrors((current) => (current[field] ? { ...current, [field]: undefined } : current))
+  }, [])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
 
-    const data = new FormData(e.currentTarget)
-    const name = (data.get('name') as string).trim()
-    const email = (data.get('email') as string).trim()
-    const password = data.get('password') as string
-    const agreeTerms = data.get('agreeTerms') === 'on'
-    const agreePrivacy = data.get('agreePrivacy') === 'on'
+    const form = e.currentTarget
+    const data = new FormData(form)
+    const input = {
+      name: ((data.get('name') as string) ?? '').trim(),
+      email: ((data.get('email') as string) ?? '').trim(),
+      password: (data.get('password') as string) ?? '',
+      agreeTerms: data.get('agreeTerms') === 'on',
+      agreePrivacy: data.get('agreePrivacy') === 'on',
+    }
 
-    if (!agreeTerms || !agreePrivacy) {
-      setError(t('errorRequired'))
+    const errors = validateRegistration(input)
+    setFieldErrors(errors)
+    const firstInvalid = firstInvalidField(errors)
+    if (firstInvalid) {
+      form.querySelector<HTMLElement>(`#${firstInvalid}`)?.focus()
       return
     }
 
     startTransition(async () => {
       try {
         const result = await registerEmployer({
-          name,
-          email,
-          password,
+          name: input.name,
+          email: input.email,
+          password: input.password,
           agreeTerms: true,
           agreePrivacy: true,
           turnstileToken,
+          locale: locale === 'en' ? 'en' : 'zh',
         })
 
         if (result.ok) {
-          router.push('/register/verify-email')
+          router.push('/register/verify-email?role=employer')
         } else {
           // Reset Turnstile so the token can be refreshed before the next attempt.
           setTurnstileKey((k) => k + 1)
           setTurnstileToken('')
 
           if (result.code === 'VALIDATION_ERROR') {
-            setError(t('errorRequired'))
+            setError(t('errorCheckFields'))
           } else if (result.code === 'REGISTER_FAILED') {
             setError(t('errorRegisterFailed'))
           } else if (result.code === 'TURNSTILE_FAILED') {
@@ -77,76 +96,11 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="space-y-4">
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium mb-1">
-          {t('nameLabel')} <span aria-hidden="true" className="text-destructive">*</span>
-        </label>
-        <input
-          id="name"
-          name="name"
-          type="text"
-          required
-          autoComplete="name"
-          placeholder={t('namePlaceholder')}
-          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium mb-1">
-          {t('emailLabel')} <span aria-hidden="true" className="text-destructive">*</span>
-        </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          autoComplete="email"
-          placeholder={t('emailPlaceholder')}
-          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-        />
-      </div>
-
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium mb-1">
-          {t('passwordLabel')} <span aria-hidden="true" className="text-destructive">*</span>
-        </label>
-        <input
-          id="password"
-          name="password"
-          type="password"
-          required
-          minLength={8}
-          autoComplete="new-password"
-          placeholder={t('passwordPlaceholder')}
-          onPaste={(e) => e.stopPropagation()}
-          className="w-full rounded-control border border-input bg-background px-3 py-2.5 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-        />
-      </div>
-
-      <div className="space-y-2">
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            id="agreeTerms"
-            name="agreeTerms"
-            type="checkbox"
-            required
-            className="mt-0.5 h-4 w-4 rounded border-input accent-brand"
-          />
-          <span className="text-sm">{t('agreeTerms')}</span>
-        </label>
-
-        <label className="flex items-start gap-2 cursor-pointer">
-          <input
-            id="agreePrivacy"
-            name="agreePrivacy"
-            type="checkbox"
-            required
-            className="mt-0.5 h-4 w-4 rounded border-input accent-brand"
-          />
-          <span className="text-sm">{t('agreePrivacy')}</span>
-        </label>
-      </div>
+      <RegistrationCoreFields
+        errors={fieldErrors}
+        onFieldChange={clearFieldError}
+        checkboxClassName="mt-0.5 h-4 w-4 rounded border-input accent-brand"
+      />
 
       <TurnstileWidget key={turnstileKey} siteKey={siteKey} action="register" onToken={handleToken} onExpire={handleExpire} onError={handleTurnstileError} />
 
@@ -163,7 +117,7 @@ export default function EmployerRegisterForm({ siteKey }: Props) {
       )}
 
       <Button type="submit" variant="brand" className="h-11 w-full" disabled={isPending || !turnstileToken}>
-        {isPending ? '...' : t('submitEmployer')}
+        {isPending ? t('submitting') : t('submitEmployer')}
       </Button>
     </form>
   )
