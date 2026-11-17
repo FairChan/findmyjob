@@ -1998,10 +1998,11 @@
 
 ### MA4 · 企业轻量版（约 2 周，v1.1）
 
-#### [ ] MA4-T01 企业端点
+#### [x] MA4-T01 企业端点
 依赖：MA1-T05
 做：`/api/m/v1/e/*`：职位（只读，可暂停或恢复）、候选人、投递状态、邀请、人才库（游标分页）、解锁（走 unlock → applyLedgerEntry）、余额只读。companyId 只来自 `requireCompanyMember()`，学生数据只经 talent-card 序列化输出。
 验收：防泄漏测试扩到 `/api/m/v1/e/*`；authz-matrix 加行。
+> 完成 2026-11-18：12 个端点：`GET /e/jobs`、`POST /e/jobs/:id/close`、`GET /e/jobs/:id/applicants`、`GET /e/applications/:id`、`POST /e/applications/:id/status`、`POST /e/applications/:id/viewed`、`GET/POST /e/invitations`、`GET /e/talent`、`GET /e/talent/:id`、`POST /e/talent/:id/unlock`、`GET /e/wallet`。鉴权与 Web 对应页面和 action 一致：职位、邀请列表、人才库、余额用 `{ type: 'company', minRole: 'RECRUITER' }`；候选人、改状态、标记已读、发邀请、解锁用同样的 RECRUITER 起加 `verified: true`（Web 的这些 action 也没有 OWNER/ADMIN 的区分，OWNER 专属的只有账单，App 不提供）。全部调 Web 企业端用的同一批 service（listCompanyJobs、closeJob、listJobApplicants、getApplicantDetail、changeApplicationStatus、markApplicationViewed、listCompanyInvitations、getMonthlyInvitationUsage、sendInvitation、searchTalents、viewTalentProfile、unlockStudent、getBalance），学生数据只用 toTalentCard / toTalentDetail 的输出，服务层 `services/mobile-employer.ts` 只改日期格式、去掉 resumePreview。人才库游标就是页码，页数上限（talentSearch.maxPage）、每人每天翻页数、关键词 redact、ProfileView 与每日查看上限、解锁的 CREDIT 锁事务和幂等都原样沿用。测试：`mobile-employer.test.ts` 31 条（每个端点：匿名、学生、没有公司的企业账号、浏览器 Origin、仿冒 scheme 都 403 且不写审计，非法输入 400；未认证企业的限制；防泄漏：解锁前所有响应里没有全名、联系方式、简历 id 和存储 key，自由文本已 redact；翻页游标、页数上限、翻页上限 429 并写 talent.limit.hit；查看同一学生当天只计一次、成员上限 429；解锁扣 1 点、重复解锁不再扣、解锁后才出现全名、联系方式和简历 id，并写 contact.read；点数不足 402）；authz-matrix +8 条（三种角色都不能碰别家公司的职位、候选人和投递；学生、未认证企业、没有公司的账号不能解锁、查看、邀请，点数不动；用别家职位邀请 404、伪造 companyId 400；RECRUITER 能改状态和解锁）；重新同意表格 +12 行（企业账号没同意新版条款时 409）。**偏差**：① Web 没有"暂停/恢复"职位，只有关闭（重新上架要在 Web 编辑后重新提交审核），所以只做了 `POST /e/jobs/:id/close`；② 企业内部备注的修改（Web 的 updateNoteAction）和企业通知列表不在这次清单里，没做；③ 人才库详情和搜索是 GET（与 Web 页面一样），但会计数，已在 MOBILE-API.md 写明 App 不得预取、不得自动重取；④ 候选人详情和 Web 一样不读联系方式（contact 恒为 null），要看联系方式走人才库详情。
 
 #### [ ] MA4-T02 企业端页面 E01–E10
 依赖：MA4-T01

@@ -3430,3 +3430,111 @@ describe('Android App 学生本人联系方式与简历删除（MA1-T08）', () 
     } finally { vi.unstubAllEnvs() }
   })
 })
+
+describe('Android App 企业端（MA4-T01）', () => {
+  const APP = 'findmyjob-dev://'
+  const appReq = (path: string, method: string, body?: unknown) =>
+    new Request(`http://localhost:3000${path}`, {
+      method,
+      headers: { 'expo-origin': APP, 'x-app-version': '0.1.0', 'content-type': 'application/json' },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+  async function company(role: 'OWNER' | 'ADMIN' | 'RECRUITER' = 'OWNER', verified = true) {
+    const e = await createEmployer(testDb)
+    if (verified) await testDb.company.update({ where: { id: e.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    if (role !== 'OWNER') await testDb.companyMember.update({ where: { userId: e.userId }, data: { role } })
+    await testDb.consent.createMany({ data: (['TERMS', 'PRIVACY'] as const).map(type => ({ userId: e.userId, type, version: '2026-11-draft', granted: true })) })
+    return e
+  }
+  async function scenario() {
+    const victim = await company()
+    const job = await createJob(testDb, victim.companyId, victim.userId)
+    const s = await createStudent(testDb, { completeness: 90 })
+    await testDb.studentProfile.update({ where: { id: s.profileId }, data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() } })
+    const app = await testDb.application.create({ data: { jobId: job.id, studentId: s.profileId } })
+    return { victim, job, s, app }
+  }
+
+  it.each(['OWNER', 'ADMIN', 'RECRUITER'] as const)('%s of another company cannot read or change the victim company’s job, applicants or applications', async role => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    try {
+      clearSettingsCache()
+      const { job, app } = await scenario()
+      const attacker = await company(role)
+      mockSession(attacker.userId)
+      const applicants = await import('@/app/api/m/v1/e/jobs/[id]/applicants/route')
+      const detail = await import('@/app/api/m/v1/e/applications/[id]/route')
+      const status = await import('@/app/api/m/v1/e/applications/[id]/status/route')
+      const viewed = await import('@/app/api/m/v1/e/applications/[id]/viewed/route')
+      const close = await import('@/app/api/m/v1/e/jobs/[id]/close/route')
+      expect((await applicants.GET(appReq(`/api/m/v1/e/jobs/${job.id}/applicants`, 'GET'))).status).toBe(404)
+      expect((await detail.GET(appReq(`/api/m/v1/e/applications/${app.id}`, 'GET'))).status).toBe(404)
+      expect((await status.POST(appReq(`/api/m/v1/e/applications/${app.id}/status`, 'POST', { toStatus: 'REJECTED' }))).status).toBe(404)
+      expect((await viewed.POST(appReq(`/api/m/v1/e/applications/${app.id}/viewed`, 'POST'))).status).toBe(200) // Web 同样是静默 no-op
+      expect((await close.POST(appReq(`/api/m/v1/e/jobs/${job.id}/close`, 'POST'))).status).toBe(404)
+      expect(await testDb.application.findUniqueOrThrow({ where: { id: app.id } })).toMatchObject({ status: 'APPLIED' })
+      expect(await testDb.applicationEvent.count()).toBe(0)
+      expect((await testDb.job.findUniqueOrThrow({ where: { id: job.id } })).status).toBe('PUBLISHED')
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it.each(['student', 'unverified-owner', 'employer-without-company'] as const)('%s cannot unlock, view talent or send invitations; no credits move', async actor => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    try {
+      clearSettingsCache()
+      const { job, s } = await scenario()
+      if (actor === 'student') mockSession((await createStudent(testDb)).userId)
+      else if (actor === 'unverified-owner') mockSession((await company('OWNER', false)).userId)
+      else mockSession((await createEmployerWithoutCompany(testDb)).userId)
+      const unlock = await import('@/app/api/m/v1/e/talent/[id]/unlock/route')
+      const view = await import('@/app/api/m/v1/e/talent/[id]/route')
+      const invite = await import('@/app/api/m/v1/e/invitations/route')
+      expect((await unlock.POST(appReq(`/api/m/v1/e/talent/${s.profileId}/unlock`, 'POST'))).status).toBe(403)
+      expect((await view.GET(appReq(`/api/m/v1/e/talent/${s.profileId}`, 'GET'))).status).toBe(403)
+      expect((await invite.POST(appReq('/api/m/v1/e/invitations', 'POST', { studentId: s.profileId, jobId: job.id }))).status).toBe(403)
+      expect(await testDb.talentUnlock.count()).toBe(0)
+      expect(await testDb.creditLedger.count()).toBe(0)
+      expect(await testDb.profileView.count()).toBe(0)
+      expect(await testDb.invitation.count()).toBe(0)
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it('a company cannot invite with another company’s job, and forged companyId/studentId fields are rejected', async () => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    try {
+      clearSettingsCache()
+      const { job, s, victim } = await scenario()
+      const attacker = await company('RECRUITER')
+      mockSession(attacker.userId)
+      const invite = await import('@/app/api/m/v1/e/invitations/route')
+      expect((await invite.POST(appReq('/api/m/v1/e/invitations', 'POST', { studentId: s.profileId, jobId: job.id }))).status).toBe(404)
+      expect((await invite.POST(appReq('/api/m/v1/e/invitations', 'POST', { studentId: s.profileId, jobId: job.id, companyId: victim.companyId }))).status).toBe(400)
+      expect(await testDb.invitation.count()).toBe(0)
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it('RECRUITER has the same employer rights as on the web (status change and unlock allowed)', async () => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    try {
+      clearSettingsCache()
+      const owner = await company()
+      const recruiter = await createEmployer(testDb)
+      await testDb.companyMember.update({ where: { userId: recruiter.userId }, data: { companyId: owner.companyId, role: 'RECRUITER' } })
+      await testDb.consent.createMany({ data: (['TERMS', 'PRIVACY'] as const).map(type => ({ userId: recruiter.userId, type, version: '2026-11-draft', granted: true })) })
+      await testDb.creditWallet.create({ data: { companyId: owner.companyId } })
+      const { applyLedgerEntry } = await import('@/server/services/credits')
+      const { LedgerReason } = await import('@prisma/client')
+      await testDb.$transaction(tx => applyLedgerEntry(tx, { companyId: owner.companyId, delta: 1, reason: LedgerReason.ADMIN_ADJUST }))
+      const job = await createJob(testDb, owner.companyId, owner.userId)
+      const s = await createStudent(testDb, { completeness: 90 })
+      await testDb.studentProfile.update({ where: { id: s.profileId }, data: { visibility: 'PUBLIC', schoolVerifiedAt: new Date() } })
+      const app = await testDb.application.create({ data: { jobId: job.id, studentId: s.profileId } })
+      mockSession(recruiter.userId)
+      const status = await import('@/app/api/m/v1/e/applications/[id]/status/route')
+      const unlock = await import('@/app/api/m/v1/e/talent/[id]/unlock/route')
+      expect((await status.POST(appReq(`/api/m/v1/e/applications/${app.id}/status`, 'POST', { toStatus: 'INTERVIEW' }))).status).toBe(200)
+      expect((await unlock.POST(appReq(`/api/m/v1/e/talent/${s.profileId}/unlock`, 'POST'))).status).toBe(200)
+      expect(await testDb.talentUnlock.count({ where: { companyId: owner.companyId, studentId: s.profileId } })).toBe(1)
+    } finally { vi.unstubAllEnvs() }
+  })
+})

@@ -19,7 +19,7 @@ vi.mock('@/server/jobs/boss', () => ({
 vi.mock('@/server/services/notify', () => ({ sendNotificationEmail: vi.fn().mockResolvedValue(undefined) }))
 
 import { setupTestDb, testDb } from '../setup/db'
-import { createStudent } from '../factories'
+import { createEmployer, createStudent } from '../factories'
 import { APP_ORIGIN, LEGAL_VERSION, appRequest, grantLegalConsent, mockSession, readJson } from '../helpers/mobile-api'
 import { clearSettingsCache, setSetting } from '@/server/services/settings'
 
@@ -27,7 +27,7 @@ setupTestDb()
 
 const ID = 'c' + '2'.repeat(24)
 type Handler = (req: Request) => Promise<Response>
-type Row = { file: string; method: string; path: string; body?: unknown; exempt: boolean; load: () => Promise<Handler> }
+type Row = { file: string; method: string; path: string; body?: unknown; exempt: boolean; employer?: boolean; load: () => Promise<Handler> }
 
 const ROWS: Row[] = [
   { file: 'me', method: 'GET', path: '/api/m/v1/me', exempt: true, load: () => import('@/app/api/m/v1/me/route').then((m) => m.GET) },
@@ -67,6 +67,19 @@ const ROWS: Row[] = [
   { file: 'invitations/[id]/accept', method: 'POST', path: `/api/m/v1/invitations/${ID}/accept`, exempt: false, load: () => import('@/app/api/m/v1/invitations/[id]/accept/route').then((m) => m.POST) },
   { file: 'invitations/[id]/decline', method: 'POST', path: `/api/m/v1/invitations/${ID}/decline`, exempt: false, load: () => import('@/app/api/m/v1/invitations/[id]/decline/route').then((m) => m.POST) },
   { file: 'referrals/me', method: 'GET', path: '/api/m/v1/referrals/me', exempt: false, load: () => import('@/app/api/m/v1/referrals/me/route').then((m) => m.GET) },
+  // MA4-T01 企业端：一律检查（用未同意新版条款的已认证企业账号测）
+  { file: 'e/jobs', method: 'GET', path: `/api/m/v1/e/jobs`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/jobs/route').then((m) => m.GET) },
+  { file: 'e/jobs/[id]/close', method: 'POST', path: `/api/m/v1/e/jobs/${ID}/close`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/jobs/[id]/close/route').then((m) => m.POST) },
+  { file: 'e/jobs/[id]/applicants', method: 'GET', path: `/api/m/v1/e/jobs/${ID}/applicants`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/jobs/[id]/applicants/route').then((m) => m.GET) },
+  { file: 'e/applications/[id]', method: 'GET', path: `/api/m/v1/e/applications/${ID}`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/applications/[id]/route').then((m) => m.GET) },
+  { file: 'e/applications/[id]/status', method: 'POST', path: `/api/m/v1/e/applications/${ID}/status`, body: { toStatus: 'SHORTLISTED' }, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/applications/[id]/status/route').then((m) => m.POST) },
+  { file: 'e/applications/[id]/viewed', method: 'POST', path: `/api/m/v1/e/applications/${ID}/viewed`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/applications/[id]/viewed/route').then((m) => m.POST) },
+  { file: 'e/invitations', method: 'GET', path: `/api/m/v1/e/invitations`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/invitations/route').then((m) => m.GET) },
+  { file: 'e/invitations', method: 'POST', path: `/api/m/v1/e/invitations`, body: { studentId: ID, jobId: ID }, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/invitations/route').then((m) => m.POST) },
+  { file: 'e/talent', method: 'GET', path: `/api/m/v1/e/talent`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/talent/route').then((m) => m.GET) },
+  { file: 'e/talent/[id]', method: 'GET', path: `/api/m/v1/e/talent/${ID}`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/talent/[id]/route').then((m) => m.GET) },
+  { file: 'e/talent/[id]/unlock', method: 'POST', path: `/api/m/v1/e/talent/${ID}/unlock`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/talent/[id]/unlock/route').then((m) => m.POST) },
+  { file: 'e/wallet', method: 'GET', path: `/api/m/v1/e/wallet`, exempt: false, employer: true, load: () => import('@/app/api/m/v1/e/wallet/route').then((m) => m.GET) },
   // MA1-T08
   { file: 'resumes', method: 'GET', path: '/api/m/v1/resumes', exempt: false, load: () => import('@/app/api/m/v1/resumes/route').then((m) => m.GET) },
   { file: 'resumes/[id]/primary', method: 'POST', path: `/api/m/v1/resumes/${ID}/primary`, exempt: false, load: () => import('@/app/api/m/v1/resumes/[id]/primary/route').then((m) => m.POST) },
@@ -118,9 +131,15 @@ describe('NEEDS_RECONSENT on /api/m/v1', () => {
   })
 
   for (const row of ROWS.filter((r) => !r.exempt)) {
-    it(`${row.method} ${row.file}: 409 NEEDS_RECONSENT for a student who never consented`, async () => {
-      const s = await createStudent(testDb)
-      mockSession(s.userId)
+    it(`${row.method} ${row.file}: 409 NEEDS_RECONSENT for a ${row.employer ? 'company member' : 'student'} who never consented`, async () => {
+      if (row.employer) {
+        const e = await createEmployer(testDb)
+        await testDb.company.update({ where: { id: e.companyId }, data: { verificationStatus: 'VERIFIED' } })
+        mockSession(e.userId)
+      } else {
+        const s = await createStudent(testDb)
+        mockSession(s.userId)
+      }
       const res = await (await row.load())(rowRequest(row))
       expect(res.status).toBe(409)
       expect(await readJson(res)).toEqual({ ok: false, code: 'NEEDS_RECONSENT' })

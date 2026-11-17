@@ -106,6 +106,27 @@ App 端硬性规则：`open` 只能由用户点击触发，查询层不得预取
 | POST | `/data-requests/export` | 学生 | 豁免 | `{}` | `mobileDataExportSchema` | 24 小时内去重（`existing: true`）；写 `data.export` 审计；导出包在 Web 隐私中心下载，App 不缓存 |
 | POST | `/account/delete` | 学生 | 豁免 | `{ confirm: true }` | `mobileEmptySchema` | 标记 DELETED、隐藏档案、吊销全部会话、写 `data.delete` 审计；App 收到后清空 SecureStore 和缓存 |
 
+### 企业端 `/e/*`（MA4-T01）
+
+"认证"列：`成员` = `{ type: 'company', minRole: 'RECRUITER' }`；`已认证成员` = 同上再加 `verified: true`（企业未认证返回 403）。companyId 只来自会话里的成员关系，请求里带 companyId 会被 strict schema 拒绝（400）。学生数据只来自 talent-card 序列化器：未解锁时 `name` 是打码名、自由文本已 redact，没有联系方式和简历 id。全部端点都检查重新同意。**没有任何购买、充值或账单端点。**
+
+| 方法 | 路径 | 认证 | 输入 | 输出 | 说明 |
+|---|---|---|---|---|---|
+| GET | `/e/jobs` | 成员 | — | `mobileEmployerJobListSchema` | 本公司全部职位和投递数 |
+| POST | `/e/jobs/:id/close` | 成员 | — | `mobileEmployerJobStatusSchema` | 关闭职位（Web 没有暂停/恢复）；草稿和被拒的 422，别家公司的 404 |
+| GET | `/e/jobs/:id/applicants` | 已认证成员 | — | `mobileApplicantListSchema` | 不含已撤回；别家公司的职位 404 |
+| GET | `/e/applications/:id` | 已认证成员 | — | `mobileApplicantDetailSchema` | toTalentDetail，联系方式恒为 null |
+| POST | `/e/applications/:id/status` | 已认证成员 | `{ toStatus, note? }` | `mobileEmptySchema` | 不能设 APPLIED/WITHDRAWN（422），已撤回 403，并发冲突 409；通知学生（不含备注） |
+| POST | `/e/applications/:id/viewed` | 已认证成员 | — | `mobileEmptySchema` | APPLIED → VIEWED，其余情况 no-op |
+| GET | `/e/invitations` | 成员 | — | `mobileCompanyInvitationListSchema` | 已发邀请（不可见的学生被过滤）和本月用量 |
+| POST | `/e/invitations` | 已认证成员 | `{ studentId, jobId, message? }` | `mobileSendInvitationResultSchema` | 按 KL 自然月计额度（超额 429）；同一职位未过期的邀请幂等 |
+| GET | `/e/talent` | 成员（服务端再查已认证） | `mobileTalentQuerySchema`：`cursor(页码), keyword, sort, schoolId, degreeLevel, gradFrom, gradTo, intents, workAuths` | `mobileTalentPageSchema` | **计数**：每次调用计入 `limits.searchPagesPerDay`（超了 429）；超过 `talentSearch.maxPage` 422 |
+| GET | `/e/talent/:id` | 成员（服务端再查已认证） | — | `mobileTalentViewSchema` | **计数**：写 ProfileView 和 talent.view 审计，按成员和公司计每日查看上限（429）；解锁后带联系方式（写 contact.read）和简历 id |
+| POST | `/e/talent/:id/unlock` | 已认证成员 | — | `mobileUnlockResultSchema` | CREDIT 锁事务内 applyLedgerEntry 扣点；已解锁的不重复扣；点数不足 402；返回扣后余额 |
+| GET | `/e/wallet` | 成员 | — | `mobileWalletSchema` | 余额只读，未认证为 null |
+
+App 端硬性规则：`/e/talent` 和 `/e/talent/:id` 会计数，和学生端的 `open` 一样只能由用户操作触发，查询层不预取、不自动重取。
+
 ### 推送（MA3 实现，这里只登记同意规则）
 
 | 方法 | 路径 | 认证 | 同意 | 说明 |
@@ -117,5 +138,5 @@ App 端硬性规则：`open` 只能由用户点击触发，查询层不得预取
 ## 没有做的（不在 MA1-T04～T07 范围）
 
 - 简历解析草稿（`/resume-drafts/*`）。
-- 企业端 `/e/*`（v1.1）。
+- 企业端的备注修改、通知列表（MA4-T01 清单外）。
 - OpenAPI JSON：未生成。本文件和共享 zod 契约已经覆盖 App 的需要（App 直接 import schema 拿类型）；如需机器可读文档，可以对 `src/shared/mobile-api` 里的 schema 调 `z.toJSONSchema()` 生成。
