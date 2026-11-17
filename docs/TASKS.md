@@ -1916,58 +1916,78 @@
 
 ### MA2 · 学生端核心（约 3–4 周）
 
-#### [ ] MA2-T01 主题与基础组件
+#### [x] MA2-T01 主题与基础组件
 依赖：MA0-T03
 做：从 `globals.css` 抽取 token 的脚本和 `mobile/src/theme`；做 Button、Card、Chip、Sheet、Input、Skeleton、EmptyState、Toast；深色模式。
 验收：组件单测；token 漂移检查脚本。
+> 完成 2026-11-18：d4226d4。useTheme + Button/Card/Chip/TextField/Sheet/Toast/Screen/Skeleton/EmptyState，48dp 触控、TalkBack 标签、深色模式；颜色漂移测试覆盖全部 10 个 token（对照 globals.css）。新增依赖 react-native-svg、lucide-react-native（见 DECISIONS）。
 
-#### [ ] MA2-T02 apiClient 与查询层
+#### [x] MA2-T02 apiClient 与查询层
 依赖：MA1-T04、MA2-T01
 做：expoClient 会话（Cookie 存 SecureStore）、版本头、错误码转成 i18n 文案、收到 401 或 403 时先查一次 get-session，确认会话失效才登出（会话过期时 authz 返回的是 403 FORBIDDEN）、409 弹出条款页、426 强制更新；配置 TanStack Query。**会计数的端点禁止预取和自动重取**。
 验收：单测覆盖每种错误码；一条 lint 或单测守住"会计数的端点只能由用户点击触发"。
+> 完成 2026-11-18：b6425bb。apiFetch：expo-origin + 版本头 + SecureStore 里的 Cookie，credentials omit；计数端点 `/jobs/:id/open` 没有 `userInitiated: true` 直接拒绝；426/409/401·403 广播全局事件（403 先查 get-session 再决定登出）；写操作不自动重试。
 
-#### [ ] MA2-T03 国际化
+#### [x] MA2-T03 国际化
 依赖：MA0-T03
 做：接 use-intl，读共享 messages；App 专用的新文案放 `mobile.*` 命名空间，中英两份同步。
 验收：缺失 key 的检查脚本通过。
+> 完成 2026-11-18：b6425bb。use-intl 读 Web 的 messages；App 文案在 `mobile.*`，中英 key 集合由测试守着一致，另有测试检查代码里用到的 key 两种语言都存在。
 
-#### [ ] MA2-T04 S01–S04 认证流程（含 Integrity 和 2FA）
-#### [ ] MA2-T05 S05–S06 建档引导与学校认证
-#### [ ] MA2-T06 S07–S10 首页、职位、筛选、预览与额度
+#### [x] MA2-T04 S01–S04 认证流程（含 Integrity 和 2FA）
+> 完成 2026-11-18：1a7d4fb。欢迎/注册/去邮箱验证/登录/找回密码与启动分流；Integrity 失败或拿不到时 WebView 打开网页 `/app-check` 跑 Turnstile；回调一律 https。**偏差**：2FA 只对管理员开放，App 不做 2FA 页面（管理员和企业账号引导去网页版）。
+
+#### [x] MA2-T05 S05–S06 建档引导与学校认证
+> 完成 2026-11-18：2705386（子代理）。建档 Stepper 与学校认证；首页显示"继续建档"卡片，不强制。onboarding 第 6 步完成接口待 MA1-T08。
+
+#### [x] MA2-T06 S07–S10 首页、职位、筛选、预览与额度
 验收补充：滑过列表 50 条，额度不变；已投递或被邀请的职位不扣额度。
-#### [ ] MA2-T07 S11–S14 投递与邀请
-#### [ ] MA2-T08 S15–S18 企业、通知、档案、简历上传（SAF，不申请存储权限）
-#### [ ] MA2-T09 S19–S24 邀请同学、隐私、设置、全局状态页
+> 完成 2026-11-18：5b78c85（子代理）。首页、职位列表（500ms 防抖，组字中不搜）、筛选 Sheet、预览 → 确认扣额度 → 详情；jobOpen 缓存的查询函数会直接抛错，任何刷新都不会触发扣额度（有测试）。
+
+#### [x] MA2-T07 S11–S14 投递与邀请
+> 完成 2026-11-18：926c63a（子代理）。投递确认（阻断项、防骗提示）、我的投递三分段、时间线、撤回、邀请接受与婉拒。婉拒理由未做（服务端接口不收理由）。
+
+#### [x] MA2-T08 S15–S18 企业、通知、档案、简历上传（SAF，不申请存储权限）
+> 完成 2026-11-18：9259c54（子代理）。企业列表与主页、通知、档案查看与编辑、简历上传（expo-document-picker，SAF，不申请存储权限）。简历列表依赖的 `GET /resumes` 在 MA1-T08 补。
+
+#### [x] MA2-T09 S19–S24 邀请同学、隐私、设置、全局状态页
+> 完成 2026-11-18：8ca5ef3、e502d9c（子代理）。邀请同学（系统分享）、隐私（可见性、屏蔽企业、导出、注销双重确认）、设置（语言、深浅色、周报）、帮助与防骗。安全复查发现退出登录在服务端失败时会留下本机 Cookie，e502d9c 改为无条件清除。未做：已登录设备列表、维护页 S23。
 
 #### [ ] MA2-T10 Maestro 主路径
 依赖：MA2-T04 至 MA2-T09
 做：6 条主路径（注册到认证、建档、搜索到预览再扣额度、投递、接受邀请、注销）。
 验收：在模拟器上全绿。
+> 部分完成 2026-11-18：e091a4c、7dd5b37（子代理）。六条 Maestro 流程写在 `mobile/.maestro/`，**本机没有 Android SDK/模拟器，从未运行**；同样的路径用 Jest + RNTL 覆盖（App 测试共 135 条）。勾选留待在模拟器上跑通。
 
 ### MA3 · 推送、深链与离线（约 1.5 周）
 
-#### [ ] MA3-T01 DeviceToken
+#### [x] MA3-T01 DeviceToken
 依赖：MA1-T05
 做：新建 migration（只做 expand）：`DeviceToken`，token 用 `encryptField` 加密（带 AAD），另存 sha256 哈希用于去重；写 device-tokens service，以及 `POST /devices`、`DELETE /devices/:id`；退出登录、改密码、注销账号时一并吊销。
 验收：`db:check`；单测覆盖加密存储和去重。
+> 完成 2026-11-18：3055a2d。迁移 ma3_push_devices（三张新表 + Notification(createdAt) 索引，纯新增，db:check 通过）；token 用 encryptField 存放；**比原计划多一项**：DeviceToken.sessionId 级联到 Session，退出、改密码踢下线、注销时 token 随之删除。eslint 只对 device-tokens.ts 放开 decryptField 一条（DECISIONS）。
 
-#### [ ] MA3-T02 推送 worker
+#### [x] MA3-T02 推送 worker
 依赖：MA3-T01
 做：通知事务提交后投递 pg-boss 任务 `push.send`，由 worker 调 FCM HTTP v1；按偏好过滤、静默时段 23:00–08:00（马来西亚时间）、同类合并；UNREGISTERED 的 token 吊销。推送正文只用类型化的通用文案，data 字段只放 `{type, id}`。
 验收：mock FCM 的集成测试；断言推送 payload 不含 PII（学生姓名、联系方式、学生侧默认也不含企业名）。
+> 完成 2026-11-18：3055a2d。**偏差**：不在 createNotification 后投递任务，改为 worker 每分钟扫描已提交的学生通知（发件箱模式，不改 22 处调用、事务里不发 HTTP）；先占位再发（至多一次），多条合并，静默时段顺延，失效 token 吊销，临时错误重试；FCM 未配置时不推送。集成测试 14 条（含 payload 不含企业名、职位、状态的断言）。
 
-#### [ ] MA3-T03 App 端推送
+#### [x] MA3-T03 App 端推送
 依赖：MA3-T02、MA2-T07
 做：首次投递成功后才请求通知权限；前台、后台、冷启动三种情况下点击通知都能路由到正确页面；没有 GMS 的手机给出降级提示。
+> 完成 2026-11-18：6eba828。原生 FCM token 注册到 /devices；第一次投递或接受邀请成功后先展示说明再请求权限（只问一次）；前台/后台/冷启动点开推送按白名单路由跳转；设置页分类开关与夜间免打扰；无 GMS 手机提示走邮件。真机推送未验证（需 MA0-H01 的 Firebase 项目）。
 
-#### [ ] MA3-T04 App Links
+#### [x] MA3-T04 App Links
 依赖：MA2-T02
 做：新增 `/.well-known/assetlinks.json`（证书摘要从环境变量读）；配置 intent-filter；带一次性令牌的链接处理完立刻从导航栈清掉，不进日志，也不进 Sentry。
 验收：真机上点邮件链接直接进入 App；没装 App 时打开网页，行为不变。
+> 完成 2026-11-18：c48398e（服务端 assetlinks.json，ANDROID_APP_LINKS 配置）、6eba828（App：staging/prod 变体 autoVerify intent-filter，+native-intent 映射网页路径）。带令牌的验证、重置链接和导出下载链接不接管。真机验证待签名证书确定后做。
 
-#### [ ] MA3-T05 离线
+#### [x] MA3-T05 离线
 依赖：MA2-T02
 做：查询缓存持久化只对白名单字段（不含联系方式、简历文件和导出包）；离线横幅；离线时投递和上传按钮禁用；退出登录清空全部缓存。
+> 完成 2026-11-18：6eba828。TanStack 持久化（AsyncStorage）只落白名单：职位、企业、投递、邀请、通知；me、档案、隐私、简历、邀请同学、jobOpen 不落盘；版本号变化时整体作废；退出登录清空。离线横幅与写按钮禁用由 MA2 实现。
 
 ### MA4 · 企业轻量版（约 2 周，v1.1）
 
@@ -1992,8 +2012,9 @@
 #### [ ] MA5-T02 无障碍与设备矩阵回归
 做：按 MOBILE.md §7 的设备矩阵回归一遍。
 
-#### [ ] MA5-T03 威胁模型移动端一节
+#### [x] MA5-T03 威胁模型移动端一节
 做：在 `docs/security/threat-model.md` 写移动端一节；安全技能由人交互运行。
+> 完成 2026-11-18：303b5fe。threat-model.md 新增 TB8（TM-035～TM-042）；第 8 节统计未重算，GATE-APP 前更新；安全技能未运行（只能由人在闸门交互调用）。
 
 #### [ ] MA5-H01 合规材料（人工）
 做：隐私政策补充 FCM 等子处理者（D10 律师）并更新 SUBPROCESSORS；Play 数据安全表单；网页注销说明页；官网 APK 下载页；商店素材（只用合成数据）。
