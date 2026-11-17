@@ -2783,7 +2783,17 @@
       "success": "投递成功",
       "notifyPrompt": "开启通知，第一时间收到企业回复",
       "notifyEnable": "开启通知",
-      "notifyLater": "以后再说"
+      "notifyLater": "以后再说",
+      "needDetailTitle": "请先查看职位详情",
+      "needDetailBody": "投递前需要在职位页点开完整详情，确认职位信息后再投递。",
+      "backToJob": "回到职位页",
+      "viewApplication": "查看我的投递",
+      "primaryResume": "主简历",
+      "safetyMore": "了解防骗知识",
+      "fixResume": "去上传简历",
+      "fixContact": "去填写联系方式",
+      "fixProfile": "去完善档案",
+      "opensWeb": "在浏览器中打开 FindMYJob 网页版"
     },
     "applications": {
       "active": "进行中",
@@ -2795,7 +2805,11 @@
       "timeline": "进度",
       "accept": "接受",
       "decline": "婉拒",
-      "expired": "已过期"
+      "expired": "已过期",
+      "emptyClosed": "还没有已结束的投递",
+      "notFound": "找不到这条投递",
+      "viewJob": "查看职位",
+      "detailTitle": "投递详情"
     },
     "me": {
       "profile": "档案与简历",

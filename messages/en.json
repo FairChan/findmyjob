@@ -2783,7 +2783,17 @@
       "success": "Application sent",
       "notifyPrompt": "Turn on notifications to hear back from employers right away",
       "notifyEnable": "Turn on",
-      "notifyLater": "Not now"
+      "notifyLater": "Not now",
+      "needDetailTitle": "Open the job details first",
+      "needDetailBody": "Open the full job details on the job page and check them before applying.",
+      "backToJob": "Back to the job",
+      "viewApplication": "View my application",
+      "primaryResume": "Primary",
+      "safetyMore": "Learn how to spot scams",
+      "fixResume": "Upload a resume",
+      "fixContact": "Add contact details",
+      "fixProfile": "Complete your profile",
+      "opensWeb": "Opens the FindMYJob website in your browser"
     },
     "applications": {
       "active": "Active",
@@ -2795,7 +2805,11 @@
       "timeline": "Progress",
       "accept": "Accept",
       "decline": "Decline",
-      "expired": "Expired"
+      "expired": "Expired",
+      "emptyClosed": "No closed applications yet",
+      "notFound": "This application can't be found",
+      "viewJob": "View job",
+      "detailTitle": "Application"
     },
     "me": {
       "profile": "Profile & resume",
