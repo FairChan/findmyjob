@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { EntitlementLimitNotice } from '@/components/billing/entitlement-limit-notice'
@@ -149,7 +150,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
                 <td className="px-4 py-3 text-sm text-muted-foreground">{member.email}</td>
                 <td className="px-4 py-3 text-sm">
                   {canChangeRole && member.role !== 'OWNER' ? (
-                    <select
+                    <Select
                       value={member.role}
                       onChange={e => handleChangeRole(member.id, e.target.value as 'ADMIN' | 'RECRUITER')}
                       disabled={isPending}
@@ -158,7 +159,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
                     >
                       <option value="ADMIN">{t.roleAdmin}</option>
                       <option value="RECRUITER">{t.roleRecruiter}</option>
-                    </select>
+                    </Select>
                   ) : (
                     <span>{roleLabel(member.role)}</span>
                   )}
@@ -201,7 +202,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
             </div>
             <div>
               <label htmlFor="invite-role" className="mb-1 block text-sm font-medium">{t.roleLabel}</label>
-              <select
+              <Select
                 id="invite-role"
                 value={inviteRole}
                 onChange={e => setInviteRole(e.target.value as 'ADMIN' | 'RECRUITER')}
@@ -209,7 +210,7 @@ export default function TeamPageClient({ members: initialMembers, currentUserId,
               >
                 <option value="RECRUITER">{t.roleRecruiter}</option>
                 <option value="ADMIN">{t.roleAdmin}</option>
-              </select>
+              </Select>
             </div>
             <button
               type="submit"

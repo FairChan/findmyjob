@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
@@ -63,10 +64,10 @@ export default async function GrowthPage({ params, searchParams }: {
       </section>
       <form method="GET" action={path} className="grid items-end gap-3 sm:grid-cols-[1fr_2fr_auto]">
         <div className="space-y-1 text-sm font-medium"><label htmlFor="referral-status">{t('status')}</label>
-          <select id="referral-status" name="status" defaultValue={query.status ?? ''} className={fieldClass}>
+          <Select id="referral-status" name="status" defaultValue={query.status ?? ''} className={fieldClass}>
             <option value="">{t('all')}</option>
             {Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+          </Select>
         </div>
         <div className="space-y-1 text-sm font-medium"><label htmlFor="referrer-id">{t('referrerId')}</label>
           <input id="referrer-id" name="referrerId" defaultValue={query.referrerId ?? ''} maxLength={128} className={fieldClass} />

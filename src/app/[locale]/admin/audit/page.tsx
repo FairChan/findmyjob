@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
@@ -80,7 +81,7 @@ export default async function AdminAuditPage({
 
       {/* Filter form */}
       <form method="GET" action={`/${locale}/admin/audit`} className="mb-5 flex flex-wrap gap-3">
-        <select
+        <Select
           name="action"
           aria-label={t('filterAction')}
           defaultValue={action ?? ''}
@@ -92,7 +93,7 @@ export default async function AdminAuditPage({
               {a}
             </option>
           ))}
-        </select>
+        </Select>
 
         <input
           type="email"

@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
@@ -47,10 +48,10 @@ export default async function ArticlesPage({ params, searchParams }: {
       </div>
       <form method="GET" action={path} className="flex flex-wrap items-end gap-3">
         <div className="min-w-0 flex-1 space-y-1 text-sm font-medium"><label htmlFor="article-category-filter">{t('category')}</label>
-          <select id="article-category-filter" name="category" defaultValue={query.category ?? ''} className="h-10 w-full rounded-card border border-border bg-card px-3 text-sm focus-visible:outline-2 focus-visible:outline-brand">
+          <Select id="article-category-filter" name="category" defaultValue={query.category ?? ''} className="h-10 w-full rounded-card border border-border bg-card px-3 text-sm focus-visible:outline-2 focus-visible:outline-brand">
             <option value="">{t('all')}</option>
             {(['FRAUD_CASE', 'GUIDE', 'CONTACT'] as const).map((category) => <option key={category} value={category}>{t('categories.' + category)}</option>)}
-          </select>
+          </Select>
         </div>
         <button type="submit" className="h-10 rounded-full bg-brand px-5 text-sm font-medium text-brand-foreground hover:bg-brand/90">{t('filter')}</button>
         <a href={path} className="inline-flex min-h-10 items-center text-sm text-brand underline underline-offset-2">{t('reset')}</a>

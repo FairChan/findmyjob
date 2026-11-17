@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { useTranslations } from 'next-intl'
 import { Button } from '@/components/ui/button'
@@ -190,9 +191,9 @@ export function PlanForm({ plan }: { plan?: EditablePlan }) {
             </div>
             <div className="min-w-0 space-y-2">
               <label htmlFor={id + '-kind'} className="text-sm font-medium">{t('kind')}</label>
-              <select id={id + '-kind'} value={kind} disabled={!!plan || free} onChange={(event) => changeKind(event.target.value as Draft['kind'])} aria-describedby={id + '-kind-hint'} className={fieldClass}>
+              <Select id={id + '-kind'} value={kind} disabled={!!plan || free} onChange={(event) => changeKind(event.target.value as Draft['kind'])} aria-describedby={id + '-kind-hint'} className={fieldClass}>
                 <option value="PLAN">{t('kinds.PLAN')}</option><option value="CREDIT_PACK">{t('kinds.CREDIT_PACK')}</option>
-              </select>
+              </Select>
               <p id={id + '-kind-hint'} className="text-xs text-muted-foreground">{t('kindHint')}</p>
             </div>
             {(['nameZh', 'nameEn'] as const).map((key) => <div key={key} className="min-w-0 space-y-2">

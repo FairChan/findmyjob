@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useState, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
@@ -166,7 +167,7 @@ export function PartnerForm({ locale, partner, initialLogoUrl }: Props) {
         <label className="block text-sm font-medium mb-1" htmlFor="type">
           {t('typeLabel')} *
         </label>
-        <select
+        <Select
           id="type"
           value={type}
           onChange={(e) => setType(e.target.value as (typeof PARTNER_TYPES)[number])}
@@ -178,7 +179,7 @@ export function PartnerForm({ locale, partner, initialLogoUrl }: Props) {
               {t(`type${pt}` as 'typeSCHOOL')}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       <div>

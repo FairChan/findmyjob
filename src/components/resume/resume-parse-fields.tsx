@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useId } from 'react'
 import { useTranslations } from 'next-intl'
 import type { ResumeSuggestionV1 } from '@/server/schemas/resume-parsing'
@@ -71,9 +72,9 @@ export function ResumeGroupEditor({ group, value, onChange }: {
         const raw = (entry as unknown as Record<string, string | null>)[field.name] ?? ''
         return <div key={field.name} className="space-y-1">
           <label htmlFor={inputId} className="block text-sm">{label('field.' + field.name)}</label>
-          {field.options ? <select id={inputId} value={raw} onChange={event => edit(index, field.name, event.target.value)} className={inputClass}>
+          {field.options ? <Select id={inputId} value={raw} onChange={event => edit(index, field.name, event.target.value)} className={inputClass}>
             {field.options.map(option => <option key={option} value={option}>{option ? label('enum.' + option) : t('notProvided')}</option>)}
-          </select> : field.multiline ? <textarea id={inputId} rows={4} maxLength={field.max} value={raw}
+          </Select> : field.multiline ? <textarea id={inputId} rows={4} maxLength={field.max} value={raw}
             onChange={event => edit(index, field.name, event.target.value)} className={inputClass} />
             : <input id={inputId} type={field.date ? 'date' : 'text'} maxLength={field.max} value={field.date ? raw.slice(0, 10) : raw}
               onChange={event => edit(index, field.name, event.target.value)} className={inputClass} />}

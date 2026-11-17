@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
@@ -95,7 +96,7 @@ export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onC
           <div className="space-y-4">
             <div className="space-y-1.5">
               <Label htmlFor="invite-job">{t('inviteDialogJobLabel')}</Label>
-              <select
+              <Select
                 id="invite-job"
                 value={jobId}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setJobId(e.target.value)}
@@ -104,7 +105,7 @@ export function InviteDialog({ studentId, jobs, usedQuota, totalQuota, open, onC
                 {jobs.map((j) => (
                   <option key={j.id} value={j.id}>{j.title}</option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <div className="space-y-1.5">

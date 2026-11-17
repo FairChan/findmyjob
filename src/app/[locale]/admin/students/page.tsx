@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import Link from 'next/link'
 import { headers } from 'next/headers'
 import { getTranslations } from 'next-intl/server'
@@ -43,7 +44,7 @@ export default async function AdminStudentsPage({
           placeholder={t('searchPlaceholder')}
           className="flex-1 rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
-        <select
+        <Select
           name="status"
           defaultValue={status ?? ''}
           className="rounded-control border border-input bg-background px-3 py-2 text-sm"
@@ -51,7 +52,7 @@ export default async function AdminStudentsPage({
           <option value="">{t('statusAll')}</option>
           <option value="ACTIVE">{t('statusActive')}</option>
           <option value="SUSPENDED">{t('statusSuspended')}</option>
-        </select>
+        </Select>
         <button
           type="submit"
           className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"

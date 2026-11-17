@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useId, useRef, useState, type FormEvent } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { ArrowDown, ArrowUp, X } from 'lucide-react'
@@ -63,7 +64,7 @@ export function ShowcaseForm({ initialValue, options }: {
           return <div key={kind} className="min-w-0 space-y-4 border-t border-border pt-5">
             <h3 className="font-semibold">{t(kind)}</h3>
             <label htmlFor={`${id}-${kind}`} className="block text-sm font-medium">{t('addSelection')}</label>
-            <select id={`${id}-${kind}`} value="" disabled={selected.length >= SHOWCASE_LIMIT} className={fieldClass} onChange={event => {
+            <Select id={`${id}-${kind}`} value="" disabled={selected.length >= SHOWCASE_LIMIT} className={fieldClass} onChange={event => {
               const value = event.target.value
               if (!value) return
               setSaved(false)
@@ -71,7 +72,7 @@ export function ShowcaseForm({ initialValue, options }: {
             }} aria-describedby={`${id}-${kind}-hint`}>
               <option value="">{t(selected.length >= SHOWCASE_LIMIT ? 'limitReached' : 'choose')}</option>
               {available.map(option => <option key={option.id} value={option.id}>{option.label}</option>)}
-            </select>
+            </Select>
             <p id={`${id}-${kind}-hint`} className="text-xs text-muted-foreground">{t('selectionHint')}</p>
             <ol className="space-y-2">{selected.map((selection, index) => {
               const option = options[kind].find(option => option.id === selection)

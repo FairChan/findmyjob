@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
@@ -120,7 +121,7 @@ export function ApplyModal({ jobId, resumes, locale, incompleteStepPath, blocker
             {resumes.length > 0 && (
               <div className="space-y-1.5">
                 <Label htmlFor="apply-resume">{t('applyDialogResume')}</Label>
-                <select
+                <Select
                   id="apply-resume"
                   value={resumeId}
                   onChange={(e) => setResumeId(e.target.value)}
@@ -131,7 +132,7 @@ export function ApplyModal({ jobId, resumes, locale, incompleteStepPath, blocker
                       {r.fileName}{r.isPrimary ? ' ★' : ''}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
             )}
             {resumes.length === 0 && (

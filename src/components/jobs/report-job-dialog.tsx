@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { type FormEvent, useId, useRef, useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { Flag } from 'lucide-react'
@@ -98,7 +99,7 @@ export function ReportJobDialog({ jobId }: { jobId: string }) {
             {error && <p role="alert" className="text-sm text-destructive">{t(error)}</p>}
             <div className="space-y-2">
               <label htmlFor={`${id}-reason`} className="block text-sm font-medium">{t('reason')}</label>
-              <select
+              <Select
                 id={`${id}-reason`}
                 name="reason"
                 defaultValue={reasons[0]}
@@ -107,7 +108,7 @@ export function ReportJobDialog({ jobId }: { jobId: string }) {
                 className="min-h-10 w-full rounded-control border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50"
               >
                 {reasons.map((reason) => <option key={reason} value={reason}>{t(`reasons.${reason}`)}</option>)}
-              </select>
+              </Select>
             </div>
             <div className="space-y-2">
               <label htmlFor={`${id}-note`} className="block text-sm font-medium">{t('note')}</label>
