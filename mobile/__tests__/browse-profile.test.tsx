@@ -6,9 +6,11 @@ import Companies from '../app/companies/index'
 import Notifications from '../app/notifications'
 import EditProfileSection from '../app/profile/edit'
 import ProfileScreen from '../app/profile/index'
+import Contact from '../app/contact'
 import Resumes from '../app/resumes'
 import { notificationKey, notificationTarget } from '@/features/notifications/api'
 import { localResumeProblem } from '@/features/resume/api'
+import { ApiError } from '@/lib/api-client'
 import { apiCalls, callsTo, resetApi, route } from './helpers/api-mock'
 import { company, completeness, ids, profile, schools } from './helpers/fixtures'
 import { renderScreen } from './helpers/render'
@@ -140,9 +142,47 @@ describe('S18 resume upload', () => {
     expect(await screen.findByText('不支持加密的 PDF')).toBeOnTheScreen()
   })
 
-  it('still allows uploading while the resume list endpoint is not live', async () => {
+  it('sets a primary resume and deletes one only after confirming', async () => {
+    const resume = (id: string, isPrimary: boolean, fileName: string) => ({ id, fileName, isPrimary, sizeBytes: 1024, pageCount: 1, createdAt: '2026-11-10T00:00:00.000Z' })
+    route('GET /resumes', { items: [resume(ids.resume, true, 'cv-zh.pdf'), resume(ids.resume2, false, 'cv-en.pdf')] })
+    route(`POST /resumes/${ids.resume2}/primary`, {})
+    route(`DELETE /resumes/${ids.resume2}`, {})
     await renderScreen(<Resumes />)
-    expect(await screen.findByText(/App 暂时还不能显示简历列表/)).toBeOnTheScreen()
-    expect(screen.getByTestId('resume-upload')).toBeEnabled()
+    expect(await screen.findByTestId(`resume-${ids.resume}`)).toHaveTextContent(/主简历/)
+    expect(screen.queryByTestId(`resume-primary-${ids.resume}`)).toBeNull()
+    await fireEvent.press(screen.getByTestId(`resume-primary-${ids.resume2}`))
+    await waitFor(() => expect(callsTo('POST', `/resumes/${ids.resume2}/primary`)).toHaveLength(1))
+    expect(await screen.findByText('已设为主简历')).toBeOnTheScreen()
+    await fireEvent.press(screen.getByTestId(`resume-delete-${ids.resume2}`))
+    expect(callsTo('DELETE', '/resumes/')).toHaveLength(0)
+    await fireEvent.press(screen.getByTestId('resume-delete-confirm'))
+    await waitFor(() => expect(callsTo('DELETE', `/resumes/${ids.resume2}`)).toHaveLength(1))
+  })
+})
+
+describe('contact details', () => {
+  it('shows the saved contact and replaces the whole record on save', async () => {
+    route('GET /contact', { phone: '+60123456789', email: null, whatsapp: null, wechat: 'wx_test', linkedinUrl: null })
+    route('PUT /contact', (body: unknown) => body)
+    route('GET /profile', profile)
+    await renderScreen(<Contact />)
+    expect(await screen.findByTestId('contact-phone')).toHaveDisplayValue('+60123456789')
+    await fireEvent.changeText(screen.getByTestId('contact-wechat'), '  ')
+    await fireEvent.changeText(screen.getByTestId('contact-email'), 'li@example.test')
+    await fireEvent.press(screen.getByTestId('contact-save'))
+    await waitFor(() => expect(callsTo('PUT', '/contact')).toHaveLength(1))
+    expect(callsTo('PUT', '/contact')[0]?.body).toEqual({ phone: '+60123456789', email: 'li@example.test', whatsapp: null, wechat: null, linkedinUrl: null })
+    await waitFor(() => expect(mockRouter.back).toHaveBeenCalled())
+  })
+
+  it('explains format problems the server rejects', async () => {
+    route('GET /contact', { phone: null, email: null, whatsapp: null, wechat: null, linkedinUrl: null })
+    route('PUT /contact', () => {
+      throw new ApiError('VALIDATION_ERROR', 400)
+    })
+    await renderScreen(<Contact />)
+    await fireEvent.changeText(await screen.findByTestId('contact-phone'), '0123')
+    await fireEvent.press(screen.getByTestId('contact-save'))
+    expect(await screen.findByTestId('contact-error')).toHaveTextContent(/国际区号/)
   })
 })

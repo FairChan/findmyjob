@@ -24,7 +24,8 @@ appId: asia.findmyjob.app.dev
     id: "onboarding-skip"
 - assertVisible:
     id: "onboarding-step-4"
+# 种子学生不一定有联系方式和简历：用"以后再说"回首页（完成引导由 Jest 覆盖）
 - tapOn:
-    id: "onboarding-finish"
+    id: "onboarding-later"
 - assertVisible:
     id: "home-bell"

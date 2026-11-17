@@ -98,7 +98,7 @@ export default function ProfileScreen() {
       <Card>
         <ListRow label={m('resumes')} onPress={() => router.push('/resumes')} />
         <ListRow label={m('schoolVerification')} value={completeness.data?.schoolVerified ? m('verified') : undefined} onPress={() => router.push('/school-verification')} />
-        <ListRow label={m('contact')} accessibilityHint={m('opensWeb')} onPress={() => void WebBrowser.openBrowserAsync(webUrl(`/${locale}/s/contact`))} />
+        <ListRow testID="profile-contact" label={m('contact')} value={completeness.data?.hasContact ? m('filled') : undefined} onPress={() => router.push('/contact')} />
       </Card>
     </Screen>
   )

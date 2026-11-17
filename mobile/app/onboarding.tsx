@@ -1,14 +1,12 @@
 import { useNavigation, usePreventRemove, useRouter } from 'expo-router'
-import * as WebBrowser from 'expo-web-browser'
 import { BadgeCheck, FileText, Phone } from 'lucide-react-native'
 import { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { useLocale, useTranslations } from 'use-intl'
+import { useTranslations } from 'use-intl'
 
 import { Button, ErrorState, ListRow, ListSkeleton, Screen, Sheet, TopBar, useToast } from '@/components/ui'
-import { webUrl } from '@/features/auth/actions'
 import { useMe } from '@/features/auth/use-me'
-import { useCompleteness, useProfile, useSaveProfileSection, useSchools } from '@/features/profile/api'
+import { useCompleteOnboarding, useCompleteness, useProfile, useSaveProfileSection, useSchools } from '@/features/profile/api'
 import {
   BasicFields,
   PreferencesFields,
@@ -25,6 +23,7 @@ import {
   type SkillsState,
 } from '@/features/profile/forms'
 import { useErrorMessage } from '@/i18n/error-message'
+import { ApiError } from '@/lib/api-client'
 import { useOnline } from '@/lib/online'
 import { useTheme } from '@/theme/use-theme'
 
@@ -123,6 +122,22 @@ function Stepper({ profile, schools }: { profile: NonNullable<ReturnType<typeof 
     }
   }
 
+  // 完成引导（POST /onboarding/complete）：服务端检查前四节、联系方式和简历；已完成过的直接回首页
+  const complete = useCompleteOnboarding()
+  function completeError(err: unknown): string {
+    return err instanceof ApiError && err.code === 'VALIDATION_ERROR' ? m('completeIncomplete') : errorMessage(err)
+  }
+  async function finish() {
+    if (profile.onboardingStep >= 6) return router.replace('/home')
+    try {
+      await complete.mutateAsync()
+      toast(m('completed'))
+      router.replace('/home')
+    } catch {
+      // 原因显示在按钮上方（缺联系方式、缺简历或前面几步没完成）
+    }
+  }
+
   function skip() {
     setDirty(false)
     setStep((s) => Math.min(s + 1, TOTAL))
@@ -139,7 +154,15 @@ function Stepper({ profile, schools }: { profile: NonNullable<ReturnType<typeof 
         </View>
       </View>
     ) : (
-      <Button testID="onboarding-finish" label={t('finish')} onPress={() => router.replace('/home')} fullWidth />
+      <>
+        {complete.isError ? (
+          <Text testID="onboarding-complete-error" accessibilityRole="alert" style={{ color: colors.destructive }}>
+            {completeError(complete.error)}
+          </Text>
+        ) : null}
+        <Button testID="onboarding-finish" label={t('finish')} onPress={finish} loading={complete.isPending} disabled={!online} fullWidth />
+        <Button testID="onboarding-later" label={m('later')} variant="ghost" onPress={() => router.replace('/home')} fullWidth />
+      </>
     )
 
   return (
@@ -182,7 +205,6 @@ function Stepper({ profile, schools }: { profile: NonNullable<ReturnType<typeof 
 /** 最后一步：投递前的材料（简历、联系方式）和学校认证，三项都可以以后再补 */
 function FinishStep() {
   const router = useRouter()
-  const locale = useLocale()
   const t = useTranslations('onboarding')
   const m = useTranslations('mobile.onboarding')
   const done = useTranslations('mobile.common')
@@ -203,8 +225,8 @@ function FinishStep() {
         icon={<Phone color={colors.brand} size={20} />}
         label={m('fillContact')}
         value={c?.hasContact ? done('done') : undefined}
-        accessibilityHint={m('opensWeb')}
-        onPress={() => void WebBrowser.openBrowserAsync(webUrl(`/${locale}/s/contact`))}
+        testID="onboarding-contact"
+        onPress={() => router.push('/contact')}
       />
       <ListRow
         testID="onboarding-school"

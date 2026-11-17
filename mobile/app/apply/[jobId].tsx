@@ -1,6 +1,5 @@
 import type { MobileJobOpen } from '@shared/mobile-api'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import * as WebBrowser from 'expo-web-browser'
 import { Check, ShieldAlert } from 'lucide-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
@@ -8,7 +7,6 @@ import { useLocale, useTranslations } from 'use-intl'
 
 import { Button, Card, EmptyState, OfflineBanner, Screen, SectionTitle, TextField, TopBar, useToast } from '@/components/ui'
 import { useApply } from '@/features/applications/api'
-import { webUrl } from '@/features/auth/actions'
 import { useOpenedJob } from '@/features/jobs/api'
 import { companyName } from '@/features/jobs/components'
 import { useErrorMessage } from '@/i18n/error-message'
@@ -158,10 +156,9 @@ function ApplyForm({ data }: { data: MobileJobOpen }) {
   )
 }
 
-/** 投递阻碍：列出缺什么，每项给跳转（联系方式目前只能在网页版填，见 MA2 报告） */
+/** 投递阻碍：列出缺什么，每项给跳转 */
 function Blockers({ blocker }: { blocker: NonNullable<MobileJobOpen['applyBlocker']> }) {
   const router = useRouter()
-  const locale = useLocale()
   const t = useTranslations('mobile.apply')
   const pub = useTranslations('publicJobs')
   const { colors } = useTheme()
@@ -187,8 +184,7 @@ function Blockers({ blocker }: { blocker: NonNullable<MobileJobOpen['applyBlocke
           testID="apply-fix-contact"
           label={t('fixContact')}
           variant="secondary"
-          accessibilityHint={t('opensWeb')}
-          onPress={() => void WebBrowser.openBrowserAsync(webUrl(`/${locale}/s/contact`))}
+          onPress={() => router.push('/contact')}
         />
       ) : null}
       {blocker === 'profile' ? <Button testID="apply-fix-profile" label={t('fixProfile')} variant="secondary" onPress={() => router.push('/onboarding')} /> : null}

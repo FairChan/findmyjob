@@ -41,6 +41,25 @@ describe('S05 onboarding stepper', () => {
     expect(callsTo('PUT', '/profile/skills')).toHaveLength(0)
     await fireEvent.press(screen.getByTestId('onboarding-resume'))
     expect(mockRouter.push).toHaveBeenCalledWith('/resumes')
+    await fireEvent.press(screen.getByTestId('onboarding-contact'))
+    expect(mockRouter.push).toHaveBeenCalledWith('/contact')
+  })
+
+  it('finishes through POST /onboarding/complete and explains what is missing', async () => {
+    route('GET /profile', { ...profile, onboardingStep: 5 })
+    let fail = true
+    route('POST /onboarding/complete', () => {
+      if (fail) throw new ApiError('RESUME_REQUIRED', 422)
+      return {}
+    })
+    await renderScreen(<Onboarding />)
+    await fireEvent.press(await screen.findByTestId('onboarding-finish'))
+    expect(await screen.findByTestId('onboarding-complete-error')).toHaveTextContent('请先上传简历')
+    expect(mockRouter.replace).not.toHaveBeenCalled()
+    fail = false
+    await fireEvent.press(screen.getByTestId('onboarding-finish'))
+    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith('/home'))
+    expect(callsTo('POST', '/onboarding/complete')).toHaveLength(2)
   })
 
   it('validates locally before calling the API and guards unsaved edits on back', async () => {

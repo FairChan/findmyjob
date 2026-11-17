@@ -1,4 +1,3 @@
-import type { MobileProfile, MobileSchoolList } from '@shared/mobile-api'
 import { X } from 'lucide-react-native'
 import { useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
@@ -9,23 +8,43 @@ import { COMMON_INDUSTRIES, MY_STATES, localized } from '@/lib/reference-data'
 import { useTheme } from '@/theme/use-theme'
 import { basicFromProfile, preferencesFromProfile, skillsFromProfile } from './api'
 import {
-  DEGREE_LEVELS,
-  JOB_TYPES,
-  LANGUAGE_LEVELS,
-  WORK_AUTH,
-  basicInputSchema,
-  emptyToNull,
-  parseOptionalNumber,
-  preferencesInputSchema,
-  skillsInputSchema,
-  type BasicInput,
-  type DegreeLevel,
-  type JobType,
-  type LanguageLevel,
-  type PreferencesInput,
-  type SkillsInput,
-  type WorkAuth,
-} from './schemas'
+  degreeLevelSchema,
+  jobTypeSchema,
+  languageLevelSchema,
+  step1Schema,
+  step2Schema,
+  step3Schema,
+  workAuthSchema,
+  type MobileProfile,
+  type MobileSchoolList,
+  type Step1Data,
+  type Step2Data,
+  type Step3Data,
+} from '@shared/mobile-api'
+import type { PreferencesInput, SkillsInput } from './api'
+
+// 枚举和校验都直接用共享的建档 schema（src/shared/mobile-api/profile-inputs.ts，Web 服务端同一份）
+const WORK_AUTH = workAuthSchema.options
+const DEGREE_LEVELS = degreeLevelSchema.options
+const LANGUAGE_LEVELS = languageLevelSchema.options
+const JOB_TYPES = jobTypeSchema.options
+type WorkAuth = (typeof WORK_AUTH)[number]
+type DegreeLevel = (typeof DEGREE_LEVELS)[number]
+type LanguageLevel = (typeof LANGUAGE_LEVELS)[number]
+type JobType = (typeof JOB_TYPES)[number]
+
+/** 文本框里的数字：空串是 null，非数字返回 NaN 交给 schema 报错 */
+export function parseOptionalNumber(raw: string): number | null {
+  const s = raw.trim()
+  if (!s) return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : Number.NaN
+}
+
+export function emptyToNull(raw: string): string | null {
+  const s = raw.trim()
+  return s ? s : null
+}
 
 // 表单状态里数字字段先存字符串（用户可能正在输入"3."），提交时才转换和校验。
 export type FieldErrors = Partial<Record<string, string>>
@@ -106,9 +125,10 @@ export function basicStateFrom(p: MobileProfile | undefined, fallbackName = ''):
 
 export function useParseBasic() {
   const t = useTranslations('onboarding')
-  return (s: BasicState): ParseResult<BasicInput> => {
-    const r = basicInputSchema.safeParse({
-      fullName: s.fullName,
+  return (s: BasicState): ParseResult<Step1Data> => {
+    const r = step1Schema.safeParse({
+      // 共享 schema 不做 trim：全是空格的名字在这里先变成空串，按必填报错
+      fullName: s.fullName.trim(),
       schoolId: s.schoolId,
       degreeLevel: s.degreeLevel,
       major: emptyToNull(s.major),
@@ -189,9 +209,9 @@ export function preferencesStateFrom(p: MobileProfile | undefined): PreferencesS
 
 export function useParsePreferences() {
   const t = useTranslations('onboarding')
-  return (s: PreferencesState): ParseResult<PreferencesInput> => {
+  return (s: PreferencesState): ParseResult<Step2Data> => {
     const { salaryMin, salaryMax, ...rest } = s
-    const r = preferencesInputSchema.safeParse({ ...rest, expectedSalaryMin: parseOptionalNumber(salaryMin), expectedSalaryMax: parseOptionalNumber(salaryMax) })
+    const r = step2Schema.safeParse({ ...rest, expectedSalaryMin: parseOptionalNumber(salaryMin), expectedSalaryMax: parseOptionalNumber(salaryMax) })
     if (r.success) return { ok: true, value: r.data }
     return { ok: false, errors: firstErrors(r.error.issues, (f) => (f === 'intents' ? t('errorAtLeastOneIntent') : t('errorRequired'))) }
   }
@@ -256,9 +276,9 @@ export function skillsStateFrom(p: MobileProfile | undefined): SkillsState {
 
 export function useParseSkills() {
   const t = useTranslations('onboarding')
-  return (s: SkillsState): ParseResult<SkillsInput> => {
-    const r = skillsInputSchema.safeParse({
-      languages: s.languages.filter((l) => l.language.trim()),
+  return (s: SkillsState): ParseResult<Step3Data> => {
+    const r = step3Schema.safeParse({
+      languages: s.languages.map((l) => ({ ...l, language: l.language.trim() })).filter((l) => l.language),
       skills: s.skills,
       headline: emptyToNull(s.headline),
       summary: emptyToNull(s.summary),

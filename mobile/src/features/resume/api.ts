@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as DocumentPicker from 'expo-document-picker'
+import { mobileEmptySchema, mobileResumeListSchema } from '@shared/mobile-api'
 import { z } from 'zod'
 
 import { ApiError, apiFetch, apiUpload } from '@/lib/api-client'
@@ -8,29 +9,19 @@ import { qk } from '@/lib/query-keys'
 /** 与服务端 RESUME_MAX_BYTES 一致；超过就不上传，省流量也给出明确提示 */
 export const RESUME_MAX_BYTES = 5 * 1024 * 1024
 
-/**
- * GET /resumes 还没有实现（docs/MOBILE-API.md "没有做的"）。先按 MOBILE.md §4.2 的路径和
- * Web 简历页展示的字段写一个本地 schema；端点上线后把它换成 @shared 里的契约。
- */
-export const resumeListSchema = z.object({
-  items: z.array(
-    z.object({
-      id: z.string(),
-      fileName: z.string(),
-      isPrimary: z.boolean(),
-      pageCount: z.number().int().nullable().optional(),
-      createdAt: z.string(),
-    }),
-  ),
-})
-export type ResumeList = z.infer<typeof resumeListSchema>
-
 export function useResumes() {
-  return useQuery({
-    queryKey: qk.resumes,
-    queryFn: ({ signal }) => apiFetch('/resumes', { schema: resumeListSchema, signal }),
-    // 端点未上线时是 404：不要反复重试
-    retry: false,
+  return useQuery({ queryKey: qk.resumes, queryFn: ({ signal }) => apiFetch('/resumes', { schema: mobileResumeListSchema, signal }) })
+}
+
+/** 设为主简历、删除（MA1-T08）；成功后简历列表和完成度（hasResume）都重拉 */
+export function useResumeAction() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'primary' | 'delete' }) =>
+      action === 'primary'
+        ? apiFetch(`/resumes/${id}/primary`, { method: 'POST', schema: mobileEmptySchema })
+        : apiFetch(`/resumes/${id}`, { method: 'DELETE', schema: mobileEmptySchema }),
+    onSettled: () => Promise.all([queryClient.invalidateQueries({ queryKey: qk.resumes }), queryClient.invalidateQueries({ queryKey: qk.profile })]),
   })
 }
 

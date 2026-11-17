@@ -2792,8 +2792,7 @@
       "safetyMore": "Learn how to spot scams",
       "fixResume": "Upload a resume",
       "fixContact": "Add contact details",
-      "fixProfile": "Complete your profile",
-      "opensWeb": "Opens the FindMYJob website in your browser"
+      "fixProfile": "Complete your profile"
     },
     "applications": {
       "active": "Active",
@@ -2854,9 +2853,10 @@
       "opensWeb": "Opens the FindMYJob website in your browser",
       "resumes": "My resumes",
       "schoolVerification": "School verification",
-      "contact": "Contact details (website)",
+      "contact": "Contact details",
       "verified": "Verified",
-      "schoolChangeWarning": "Changing your school removes your current school email verification. You'll need to verify again."
+      "schoolChangeWarning": "Changing your school removes your current school email verification. You'll need to verify again.",
+      "filled": "Added"
     },
     "onboarding": {
       "step3Title": "Languages & skills",
@@ -2867,12 +2867,14 @@
       "discardCancel": "Keep editing",
       "uploadResume": "Upload a PDF resume",
       "fillContact": "Add contact details",
-      "opensWeb": "Opens the FindMYJob website in your browser",
       "verifySchool": "Verify your school email",
       "experienceLater": "You can add education and internship experience later on your profile.",
       "cardTitle": "Complete your profile for better matches",
       "cardBody": "A few steps left: basics, job preferences and your resume.",
-      "cardAction": "Continue"
+      "cardAction": "Continue",
+      "later": "Later",
+      "completed": "Profile complete. You can start applying.",
+      "completeIncomplete": "Some required fields in the earlier steps are missing. Go back and fill them in."
     },
     "school": {
       "noSchools": "Email verification isn't available for your school yet. We'll let you know when it is.",
@@ -2882,10 +2884,7 @@
       "resendIn": "Resend in {seconds}s"
     },
     "resume": {
-      "uploaded": "Resume uploaded",
-      "listUnavailable": "The app can't list your resumes yet. After uploading, you can set a primary resume or delete one on the website.",
-      "manageOnWeb": "Manage resumes on the website (primary, delete)",
-      "opensWeb": "Opens the FindMYJob website in your browser"
+      "uploaded": "Resume uploaded"
     },
     "companies": {
       "title": "Company",

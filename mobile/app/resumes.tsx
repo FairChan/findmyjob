@@ -1,19 +1,17 @@
-import * as WebBrowser from 'expo-web-browser'
 import { FileText, Upload } from 'lucide-react-native'
+import { useState } from 'react'
 import { StyleSheet, Text, View } from 'react-native'
-import { useFormatter, useLocale, useTranslations } from 'use-intl'
+import { useFormatter, useTranslations } from 'use-intl'
 
-import { Button, Card, Chip, EmptyState, ErrorState, ListSkeleton, OfflineBanner, Screen, TopBar, useToast } from '@/components/ui'
-import { webUrl } from '@/features/auth/actions'
-import { pickPdf, uploadErrorKey, useResumes, useUploadResume } from '@/features/resume/api'
+import { Button, Card, Chip, EmptyState, ErrorState, ListSkeleton, OfflineBanner, Screen, Sheet, TopBar, useToast } from '@/components/ui'
+import { pickPdf, uploadErrorKey, useResumeAction, useResumes, useUploadResume } from '@/features/resume/api'
 import { useErrorMessage } from '@/i18n/error-message'
-import { ApiError } from '@/lib/api-client'
 import { useOnline } from '@/lib/online'
 import { useTheme } from '@/theme/use-theme'
 
 /**
- * S18 简历：列表 + 上传 PDF（系统文件选择器，不申请存储权限）。
- * 设为主简历、删除和解析草稿确认暂时没有 App 端点，引导到网页版简历页（见 MA2 报告）。
+ * S18 简历：列表、上传 PDF（系统文件选择器，不申请存储权限）、设为主简历、删除（二次确认）。
+ * 解析草稿逐项确认（/resume-drafts）还没有 App 端点，不在这一页。
  */
 export default function Resumes() {
   const t = useTranslations('resume')
@@ -21,12 +19,13 @@ export default function Resumes() {
   const common = useTranslations('mobile.common')
   const toast = useToast()
   const online = useOnline()
-  const locale = useLocale()
   const format = useFormatter()
   const errorMessage = useErrorMessage()
   const { colors } = useTheme()
   const resumes = useResumes()
   const upload = useUploadResume()
+  const action = useResumeAction()
+  const [deleting, setDeleting] = useState<{ id: string; fileName: string } | null>(null)
 
   async function pickAndUpload() {
     const file = await pickPdf().catch(() => null)
@@ -40,30 +39,62 @@ export default function Resumes() {
     }
   }
 
-  // 列表端点未上线（404）时不当成错误：照样可以上传，管理去网页版
-  const listMissing = resumes.error instanceof ApiError && resumes.error.code === 'NOT_FOUND'
+  function run(id: string, kind: 'primary' | 'delete') {
+    action.mutate(
+      { id, action: kind },
+      {
+        onSuccess: () => toast(kind === 'primary' ? t('setPrimarySuccess') : t('deleteSuccess')),
+        onError: (err) => toast(errorMessage(err), 'error'),
+      },
+    )
+  }
+
+  const busyId = action.isPending ? action.variables?.id : undefined
 
   let body
   if (resumes.isPending) body = <ListSkeleton rows={2} />
-  else if (listMissing) body = <Text style={[styles.note, { color: colors.mutedForeground }]}>{m('listUnavailable')}</Text>
   else if (resumes.isError) body = <ErrorState message={errorMessage(resumes.error)} onRetry={() => void resumes.refetch()} />
-  else if (!resumes.data?.items.length) body = <EmptyState title={t('empty')} body={t('privacy')} />
+  else if (!resumes.data.items.length) body = <EmptyState title={t('empty')} body={t('privacy')} />
   else
     body = (
       <View style={styles.list}>
         {resumes.data.items.map((r) => (
-          <Card key={r.id}>
-            <View style={styles.row} accessible accessibilityLabel={[r.fileName, r.isPrimary ? t('primary') : null].filter(Boolean).join('，')}>
-              <FileText color={colors.brand} size={22} />
-              <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={2}>
-                {r.fileName}
+          <View key={r.id} testID={`resume-${r.id}`}>
+            <Card>
+              <View style={styles.row} accessible accessibilityLabel={[r.fileName, r.isPrimary ? t('primary') : null].filter(Boolean).join('，')}>
+                <FileText color={colors.brand} size={22} />
+                <Text style={[styles.name, { color: colors.foreground }]} numberOfLines={2}>
+                  {r.fileName}
+                </Text>
+                {r.isPrimary ? <Chip label={t('primary')} /> : null}
+              </View>
+              <Text style={{ color: colors.mutedForeground }}>
+                {[t('uploadedAt', { date: format.dateTime(new Date(r.createdAt), { dateStyle: 'medium' }) }), r.pageCount ? t('pages', { count: r.pageCount }) : null].filter(Boolean).join(' · ')}
               </Text>
-              {r.isPrimary ? <Chip label={t('primary')} /> : null}
-            </View>
-            <Text style={{ color: colors.mutedForeground }}>
-              {[t('uploadedAt', { date: format.dateTime(new Date(r.createdAt), { dateStyle: 'medium' }) }), r.pageCount ? t('pages', { count: r.pageCount }) : null].filter(Boolean).join(' · ')}
-            </Text>
-          </Card>
+              <View style={styles.actions}>
+                {!r.isPrimary ? (
+                  <Button
+                    testID={`resume-primary-${r.id}`}
+                    label={t('setPrimary')}
+                    variant="secondary"
+                    accessibilityLabel={`${t('setPrimary')} ${r.fileName}`}
+                    disabled={!online || action.isPending}
+                    loading={busyId === r.id && action.variables?.action === 'primary'}
+                    onPress={() => run(r.id, 'primary')}
+                  />
+                ) : null}
+                <Button
+                  testID={`resume-delete-${r.id}`}
+                  label={t('delete')}
+                  variant="ghost"
+                  accessibilityLabel={`${t('delete')} ${r.fileName}`}
+                  disabled={!online || action.isPending}
+                  loading={busyId === r.id && action.variables?.action === 'delete'}
+                  onPress={() => setDeleting({ id: r.id, fileName: r.fileName })}
+                />
+              </View>
+            </Card>
+          </View>
         ))}
       </View>
     )
@@ -86,7 +117,21 @@ export default function Resumes() {
       <OfflineBanner />
       <Text style={[styles.note, { color: colors.mutedForeground }]}>{t('uploadHint')}</Text>
       {body}
-      <Button label={m('manageOnWeb')} variant="ghost" accessibilityHint={m('opensWeb')} onPress={() => void WebBrowser.openBrowserAsync(webUrl(`/${locale}/s/resume`))} />
+      <Sheet open={deleting !== null} onClose={() => setDeleting(null)} title={t('deleteConfirm')} closeLabel={common('close')}>
+        <Text style={[styles.note, { color: colors.foreground }]}>{deleting?.fileName}</Text>
+        <Button
+          testID="resume-delete-confirm"
+          label={t('delete')}
+          variant="destructive"
+          fullWidth
+          onPress={() => {
+            const target = deleting
+            setDeleting(null)
+            if (target) run(target.id, 'delete')
+          }}
+        />
+        <Button label={common('cancel')} variant="secondary" fullWidth onPress={() => setDeleting(null)} />
+      </Sheet>
     </Screen>
   )
 }
@@ -96,4 +141,5 @@ const styles = StyleSheet.create({
   list: { gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   name: { flex: 1, fontSize: 16, fontWeight: '500' },
+  actions: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
 })

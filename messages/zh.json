@@ -2792,8 +2792,7 @@
       "safetyMore": "了解防骗知识",
       "fixResume": "去上传简历",
       "fixContact": "去填写联系方式",
-      "fixProfile": "去完善档案",
-      "opensWeb": "在浏览器中打开 FindMYJob 网页版"
+      "fixProfile": "去完善档案"
     },
     "applications": {
       "active": "进行中",
@@ -2854,9 +2853,10 @@
       "opensWeb": "在浏览器中打开 FindMYJob 网页版",
       "resumes": "我的简历",
       "schoolVerification": "学校认证",
-      "contact": "联系方式（网页版）",
+      "contact": "联系方式",
       "verified": "已认证",
-      "schoolChangeWarning": "更换学校后，原来的学校邮箱认证会失效，需要重新认证。"
+      "schoolChangeWarning": "更换学校后，原来的学校邮箱认证会失效，需要重新认证。",
+      "filled": "已填写"
     },
     "onboarding": {
       "step3Title": "语言与技能",
@@ -2867,12 +2867,14 @@
       "discardCancel": "继续填写",
       "uploadResume": "上传 PDF 简历",
       "fillContact": "填写联系方式",
-      "opensWeb": "在浏览器中打开 FindMYJob 网页版",
       "verifySchool": "认证学校邮箱",
       "experienceLater": "教育和实习经历可以稍后在档案页补充。",
       "cardTitle": "完善档案，获得更准的推荐",
       "cardBody": "还差几步：基本信息、求职意向和简历。",
-      "cardAction": "继续建档"
+      "cardAction": "继续建档",
+      "later": "以后再说",
+      "completed": "档案已完善，可以开始投递了",
+      "completeIncomplete": "前面几步还有必填项没完成，请返回补充。"
     },
     "school": {
       "noSchools": "你所在的学校暂未开通邮箱认证，开通后会通知你。",
@@ -2882,10 +2884,7 @@
       "resendIn": "{seconds} 秒后可重新发送"
     },
     "resume": {
-      "uploaded": "简历已上传",
-      "listUnavailable": "App 暂时还不能显示简历列表。上传后可以在网页版设为主简历或删除。",
-      "manageOnWeb": "在网页版管理简历（设为主简历、删除）",
-      "opensWeb": "在浏览器中打开 FindMYJob 网页版"
+      "uploaded": "简历已上传"
     },
     "companies": {
       "title": "企业主页",
