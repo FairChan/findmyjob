@@ -1,9 +1,11 @@
 import * as Notifications from 'expo-notifications'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'expo-router'
 import { useEffect, useRef } from 'react'
 import { useLocale, useTranslations } from 'use-intl'
 
 import { useMe } from '@/features/auth/use-me'
+import { ensureCacheOwner } from '@/lib/query-persist'
 import { ensureChannel, registerDeviceIfPermitted, safePushRoute } from './push'
 
 // 前台收到推送时也弹横幅（内容本身是通用句子）
@@ -21,6 +23,12 @@ export function PushBridge() {
   const t = useTranslations('mobile.tabs')
   const { me } = useMe()
   const registeredFor = useRef<string | null>(null)
+  const queryClient = useQueryClient()
+
+  // 磁盘缓存要属于当前账号（防止上一个账号的缓存残留）
+  useEffect(() => {
+    if (me?.id) void ensureCacheOwner(queryClient, me.id)
+  }, [me?.id, queryClient])
 
   useEffect(() => {
     void ensureChannel(t('notifications')).catch(() => {})

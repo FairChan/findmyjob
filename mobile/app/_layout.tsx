@@ -14,7 +14,7 @@ import { appVersion } from '@/lib/api-config'
 import { onAppEvent } from '@/lib/app-events'
 import { bindOnlineManager } from '@/lib/online'
 import { createQueryClient } from '@/lib/query-client'
-import { PERSIST_MAX_AGE_MS, queryPersister, shouldPersistQuery } from '@/lib/query-persist'
+import { PERSIST_MAX_AGE_MS, queryPersister, resetAllCaches, shouldPersistQuery } from '@/lib/query-persist'
 import { useTheme } from '@/theme/use-theme'
 
 // 离线时查询暂停、缓存照常显示，恢复联网后自动续上（MOBILE.md §5.5 离线）
@@ -29,8 +29,8 @@ function AppEventBridge() {
       onAppEvent((event) => {
         if (event === 'signed-out') {
           // 会话失效或注销账号后：本机凭据必清（signOut 内部 finally），再清缓存回欢迎页
-          void signOut().finally(() => {
-            queryClient.clear()
+          void signOut().finally(async () => {
+            await resetAllCaches(queryClient)
             router.replace('/welcome')
           })
         } else if (event === 'needs-reconsent') {
@@ -52,7 +52,7 @@ export default function RootLayout() {
         <PersistQueryClientProvider
           client={queryClient}
           // 离线缓存只落白名单里的查询（MA3-T05）；换版本号时整体作废，避免旧结构的缓存
-          persistOptions={{ persister: queryPersister, maxAge: PERSIST_MAX_AGE_MS, buster: appVersion(), dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery } }}
+          persistOptions={{ persister: queryPersister, maxAge: PERSIST_MAX_AGE_MS, buster: appVersion(), dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery, shouldDehydrateMutation: () => false } }}
         >
           <ToastProvider>
             <HumanCheckProvider>

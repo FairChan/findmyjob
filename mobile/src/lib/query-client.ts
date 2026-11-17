@@ -14,6 +14,8 @@ export function createQueryClient(): QueryClient {
       mutations: {
         // 写操作（投递、扣额度）绝不自动重试，避免重复提交
         retry: false,
+        // 离线时直接失败，不进入"暂停、联网后自动补发"：投递必须是学生在线时亲手确认的（MOBILE.md §5.1）
+        networkMode: 'always',
       },
     },
   })

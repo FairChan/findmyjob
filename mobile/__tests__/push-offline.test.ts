@@ -84,3 +84,19 @@ describe('offline cache whitelist', () => {
     expect(await AsyncStorage.getItem(PERSIST_STORAGE_KEY)).toBeNull()
   })
 })
+
+describe('cache ownership', () => {
+  it('drops another account’s cached data and keeps the current one', async () => {
+    const { QueryClient } = jest.requireActual('@tanstack/react-query') as typeof import('@tanstack/react-query')
+    const { ensureCacheOwner } = jest.requireActual('@/lib/query-persist') as typeof import('@/lib/query-persist')
+    const client = new QueryClient()
+    client.setQueryData(['applications'], { items: ['A的投递'] })
+    client.setQueryData(['me'], { id: 'userB' })
+    expect(await ensureCacheOwner(client, 'userA')).toBe(false) // 第一次登记
+    expect(client.getQueryData(['applications'])).toBeDefined()
+    expect(await ensureCacheOwner(client, 'userB')).toBe(true) // 换了账号
+    expect(client.getQueryData(['applications'])).toBeUndefined()
+    expect(client.getQueryData(['me'])).toEqual({ id: 'userB' })
+    expect(await ensureCacheOwner(client, 'userB')).toBe(false)
+  })
+})
