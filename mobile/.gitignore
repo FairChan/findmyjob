@@ -1,0 +1,15 @@
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+# 原生目录由 expo prebuild 生成（CNG），不入库
+android/
+ios/
+*.jks
+*.keystore
+*.p8
+*.p12
+*.pem
+google-services.json
+credentials.json

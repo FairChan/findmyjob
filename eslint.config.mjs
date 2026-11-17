@@ -97,6 +97,8 @@ const eslintConfig = [
   {
     ignores: [
       'prototype/**',
+      // mobile/ 是独立的 Expo 项目，有自己的 eslint 配置
+      'mobile/**',
       '.next/**',
       'out/**',
       'node_modules/**',

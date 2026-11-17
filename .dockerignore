@@ -47,3 +47,5 @@ load
 prototype
 CLAUDE.md
 scripts/auto-build.sh
+# Android App（独立 Expo 项目）不进 Web 镜像
+mobile

@@ -1844,10 +1844,11 @@
 验收：DECISIONS 有 2026-11-18 的 MA 段。
 > 完成 2026-11-18：范围、架构、依赖和变体四行写进 DECISIONS；设计文档 docs/MOBILE.md 入库。
 
-#### [ ] MA0-T02 Expo 工程骨架
+#### [x] MA0-T02 Expo 工程骨架
 依赖：MA0-T01
 做：新建 `mobile/`（Expo SDK 58 + TypeScript + Expo Router），作为独立 pnpm 项目，有自己的 lockfile，**不加入根 workspace**；在根 `.dockerignore` 里排除 `mobile/`，让 Web 镜像不受影响；配好 tsconfig、eslint、jest。三个构建变体 dev、staging、prod 分别用不同的包名。
 验收：`mobile/` 下 `pnpm typecheck`、`pnpm lint`、`pnpm test` 都通过；`expo export --platform android` 能出 bundle；根目录 `pnpm lint && pnpm typecheck` 不受影响。
+> 完成 2026-11-18：Expo SDK 58 + Expo Router 骨架、三变体 app.config.ts、品牌 token（有对照 globals.css 的漂移测试）；mobile 的 typecheck、lint、jest 6/6 全过，Android Hermes bundle 2.4MB；根目录 lint 和 typecheck 通过。根目录的 vitest 在新工作区里因为没有 .env 报环境变量缺失（不读 .env，所以没有跑），本任务只改了根目录的 tsconfig exclude、eslint ignores 和 .dockerignore，不影响测试代码。
 
 #### [ ] MA0-T03 共享层
 依赖：MA0-T02

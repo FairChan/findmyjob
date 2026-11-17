@@ -1,0 +1,7 @@
+# mobile/ 是独立的 pnpm 项目（不在根 workspace 里），Web 镜像和根 lockfile 都不受它影响。
+# React Native 的原生自动链接要求依赖平铺。
+nodeLinker: hoisted
+minimumReleaseAge: "1440"
+allowBuilds:
+  # Metro 的文件监听原生模块，和根 workspace 的批准一致
+  '@parcel/watcher': true
