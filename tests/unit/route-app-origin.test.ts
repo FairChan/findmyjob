@@ -16,6 +16,9 @@ vi.mock('@/server/authz', () => ({
 }))
 const getSetting = vi.fn()
 vi.mock('@/server/services/settings', () => ({ getSetting: (...a: unknown[]) => getSetting(...a) }))
+// MA1-T07：origin 'app' 的登录态端点会查是否需要重新同意；默认"不需要"，个别用例改返回值
+const needsReconsent = vi.fn().mockResolvedValue(false)
+vi.mock('@/server/services/legal-consent', () => ({ needsReconsent: (...a: unknown[]) => needsReconsent(...a) }))
 
 import { route } from '@/server/route'
 import { parseAppOrigins, requestAppOrigin } from '@/server/lib/app-origin'
@@ -117,6 +120,37 @@ describe("route({ origin: 'app' })", () => {
       expect(res.status).toBe(426)
       expect(handler).not.toHaveBeenCalled()
     }
+  })
+})
+
+describe('reconsent gate (MA1-T07)', () => {
+  beforeEach(() => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    vi.stubEnv('APP_URL', 'http://localhost:3000')
+    getSetting.mockReset().mockResolvedValue('0.0.0')
+    needsReconsent.mockReset().mockResolvedValue(true)
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    needsReconsent.mockReset().mockResolvedValue(false)
+  })
+
+  it('returns 409 NEEDS_RECONSENT on app routes, after auth and before the handler', async () => {
+    const handler = ok()
+    const res = await route({ auth: 'user', origin: 'app' }, handler)(req('POST', { 'expo-origin': APP }))
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ ok: false, code: 'NEEDS_RECONSENT' })
+    expect(res.headers.get('cache-control')).toBe('private, no-store')
+    expect(needsReconsent).toHaveBeenCalledWith('u1')
+    expect(handler).not.toHaveBeenCalled()
+  })
+
+  it("lets 'exempt' app routes through and never checks public, web or web+app routes", async () => {
+    expect((await route({ auth: 'user', origin: 'app', reconsent: 'exempt' }, ok())(req('POST', { 'expo-origin': APP }))).status).toBe(200)
+    expect((await route({ auth: 'public', origin: 'app' }, ok())(req('GET', { 'expo-origin': APP }))).status).toBe(200)
+    expect((await route({ auth: 'user' }, ok())(req('POST', { origin: 'http://localhost:3000' }))).status).toBe(200)
+    expect((await route({ auth: 'user', origin: 'web+app' }, ok())(req('POST', { 'expo-origin': APP }))).status).toBe(200)
+    expect(needsReconsent).not.toHaveBeenCalled()
   })
 })
 

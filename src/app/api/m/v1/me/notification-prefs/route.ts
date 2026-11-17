@@ -6,11 +6,11 @@ import { marketingConsentSchema, type MarketingConsentInput } from '@/schemas/ma
 import { mobileNotificationPrefsSchema } from '@/shared/mobile-api'
 
 // 学生目前唯一可控的通知偏好是每周职位周报邮件，背后是 MARKETING 同意（写 marketing.consent 审计）
-export const GET = route({ auth: 'student', origin: 'app' }, async (_req, ctx) => {
+export const GET = route({ auth: 'student', origin: 'app', reconsent: 'exempt' }, async (_req, ctx) => {
   return mobileOk(mobileNotificationPrefsSchema, await getMobileNotificationPrefs({ userId: ctx.userId! }))
 })
 
-export const PUT = route({ auth: 'student', origin: 'app', input: marketingConsentSchema }, async (_req, ctx) => {
+export const PUT = route({ auth: 'student', origin: 'app', reconsent: 'exempt', input: marketingConsentSchema }, async (_req, ctx) => {
   const user = { userId: ctx.userId! }
   await setMarketingConsent(user, ctx.input as MarketingConsentInput)
   return mobileOk(mobileNotificationPrefsSchema, await getMobileNotificationPrefs(user))

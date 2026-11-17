@@ -373,9 +373,9 @@ describe('privacy, blocking and audit client tagging', () => {
     const s = await createStudent(testDb)
     await grantLegalConsent(testDb, s.userId, 'old-version')
     mockSession(s.userId)
-    // 这里只测 setVisibility 本身的规则；MA1-T07 之后同一请求会先被 409 NEEDS_RECONSENT 拦下
+    // PUT /privacy 豁免重新同意检查（MA1-T07），所以这里拦下它的是 setVisibility 自己的规则
     const res = await putPrivacy(appRequest('/api/m/v1/privacy', { method: 'PUT', body: { granted: true } }))
-    expect([403, 409]).toContain(res.status)
+    expect(res.status).toBe(403)
     expect((await testDb.studentProfile.findUniqueOrThrow({ where: { id: s.profileId } })).visibility).toBe('HIDDEN')
   })
 

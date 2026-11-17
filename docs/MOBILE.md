@@ -167,6 +167,15 @@ Caddy (TLS) ─► Next.js
 - App 端的类型直接 import 共享 schema，不手写。
 - vitest 契约测试覆盖每个端点的 200、401、403 和 zod 400。
 
+**实际落地（MA1-T04～T07，2026-11-18）**：逐个端点的方法、认证、输入、输出契约和额度/审计说明见 `docs/MOBILE-API.md`。和上表的差异：
+- 学校列表单独放在 `GET /schools`（`/config` 保持只放版本信息）。
+- 建档按 Web 的做法整节替换：`PUT /profile/basic|preferences|skills|experience`，没有逐条增删改的端点。
+- 新增 `POST /legal/reconsent`（App 收到 409 NEEDS_RECONSENT 后提交同意）；`GET /privacy/companies`（屏蔽前搜企业）；屏蔽和取消屏蔽是 `POST /privacy/blocked-companies`、`DELETE /privacy/blocked-companies/:companyId`。
+- "通知偏好"目前只有每周职位周报（MARKETING 同意）。
+- 简历列表和解析草稿（`GET /resumes`、`/resume-drafts/*`）还没做；上传简历直接用现有的 `POST /api/uploads/RESUME`（MA1-T06 已放行 App）。
+- OpenAPI JSON 暂未生成，App 直接 import `src/shared/mobile-api` 的 zod 契约。
+- 重新同意：route() 的 `reconsent` 选项，origin 'app' 的登录态端点默认检查，数据权利、隐私撤回、注销、同意本身和注销推送设备设为 'exempt'。
+
 ### 4.3 推送（新链路）
 
 **数据模型**（新 migration，只做 expand）：

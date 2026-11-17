@@ -112,6 +112,13 @@ export function route(
      * clients share (uploads). Browsers cannot forge Origin, so this is the app's CSRF boundary.
      */
     origin?: 'web' | 'app' | 'web+app'
+    /**
+     * MA1-T07，只对 origin 'app' 生效：已登录用户没有同意当前版本的条款和隐私政策时，
+     * 返回 409 NEEDS_RECONSENT（Web 由 proxy.ts 在页面导航时重定向，App 没有这一层）。
+     * 'exempt' 用于数据权利、隐私撤回、注销和同意本身，与 proxy.ts 对 /s/privacy 的豁免一致。
+     * 'web' 和 'web+app' 路由不受影响。
+     */
+    reconsent?: 'enforce' | 'exempt'
   },
   handler: RouteHandler,
 ): (req: Request) => Promise<Response> {
@@ -159,6 +166,12 @@ export function route(
           })
         }
         throw err
+      }
+
+      // 先鉴权再查同意：匿名或角色不对的请求照旧 401/403，不泄露"这个账号要不要重新同意"
+      if (originMode === 'app' && opts.reconsent !== 'exempt' && authCtx.userId) {
+        const { needsReconsent } = await import('./services/legal-consent')
+        if (await needsReconsent(authCtx.userId)) return jsonError(409, 'NEEDS_RECONSENT')
       }
 
       // Note: route handlers that need raw body (e.g. webhook signature verification)

@@ -1908,10 +1908,11 @@
 验收：已有上传测试不变；新增用例：App Origin 上传成功，其他端点照样拒绝 App Origin。
 > 完成 2026-11-18：`/api/uploads/[purpose]` 改为 `route({ auth: 'user', origin: 'web+app' })`，handler 一字未改。**偏差**：没有新加 `allowAppOrigin`，直接用 MA1-T01 已经实现的 `origin: 'web+app'`（语义相同：App 请求要精确匹配 MOBILE_APP_ORIGINS 并过版本门控，浏览器请求照旧走 APP_URL 的 Origin 校验）。新增 `tests/integration/mobile-upload.test.ts` 5 条：App 用 expo-origin 和 Origin 两种方式上传简历都成功、Web 照旧成功；非 PDF 被拒并写 upload.reject 审计（带 client: 'android'）；企业账号从 App 传简历 403；仿冒 scheme、没有来源头、外站 Origin 都是 403，App 版本过低 426（浏览器不受影响）；没配 MOBILE_APP_ORIGINS 时 App 403。新增架构测试 `tests/architecture/app-origin-routes.test.ts` 2 条：`/api/m/**` 下每个 route() 都必须是 origin 'app'，`origin: 'web+app'` 只允许出现在上传端点（其他端点保持默认 web，App origin 访问照样 403；route() 层面的反例由 route-app-origin 单测覆盖）。已有上传测试（upload-authz、resume-upload-lifecycle 等）未改动；本次运行的 15 个文件 520 条全部通过。
 
-#### [ ] MA1-T07 重新同意与 OpenAPI
+#### [x] MA1-T07 重新同意与 OpenAPI
 依赖：MA1-T05
 做：需要重新同意条款时统一返回 `409 NEEDS_RECONSENT`（数据权利和注销端点除外，和 proxy.ts 的规则一致）；用 zod `toJSONSchema` 生成 OpenAPI，写进 `docs/MOBILE-API.md`。
 验收：契约测试覆盖 409 和例外端点。
+> 完成 2026-11-18：route() 新增 `reconsent?: 'enforce' | 'exempt'`，只对 origin 'app' 生效：鉴权之后、校验输入之前调 `needsReconsent(userId)`，需要时返回 409 NEEDS_RECONSENT；'web' 和 'web+app' 路由完全不受影响（单测覆盖）。豁免：`GET /me`、`POST /legal/reconsent`（新增，复用 recordLegalConsent，记 IP 和 UA，写 user.reconsent 审计）、`GET/PUT /privacy`、`GET /privacy/companies`、屏蔽和取消屏蔽、`POST /data-requests/export`、`POST /account/delete`、`GET/PUT /me/notification-prefs`（周报撤回在 Web 也在 /s/privacy 上），以及 `DELETE /devices/:id`（退出登录不能被挡住；这是 MA3 的文件，只加了这一个选项）。`docs/MOBILE-API.md` 列出全部端点的方法、认证、同意、输入、输出契约和额度/审计说明，MOBILE.md §4.2 补了与原清单的差异。测试：`mobile-reconsent.test.ts` 45 条（表格覆盖 /api/m/v1 下每一个路由方法，漏登记会失败；非豁免端点 409，豁免端点不返回 NEEDS_RECONSENT；旧版本同意和后来撤回都要求重新同意；提交同意后解锁、旧版本号 VERSION_MISMATCH；匿名仍是 403；Web 路由不检查），route-app-origin 单测新增 2 条。**偏差**：OpenAPI JSON 没有生成（可选项）：App 直接 import 共享 zod 契约，文档用表格写清楚；需要时可对 `src/shared/mobile-api` 的 schema 调 `z.toJSONSchema()`。上传端点（web+app）从 App 调用时也不检查同意，与 Web 一致（Web 的 proxy 只在页面导航时检查）。
 
 ### MA2 · 学生端核心（约 3–4 周）
 
