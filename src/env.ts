@@ -54,6 +54,13 @@ const schema = z
         .optional(),
     ),
 
+    // Play Integrity（MA1-T03）：三项都配齐才启用，否则 App 走 WebView 里的 Turnstile
+    PLAY_INTEGRITY_PACKAGE_NAME: z.preprocess(v => (v === '' ? undefined : v), z.string().regex(/^[a-z][a-z0-9_]*(\.[a-z0-9_]+)+$/).optional()),
+    // 服务账号 JSON 的文件路径（生产放 /opt/findmyjob/secrets/，权限 600）；FCM（MA3）也用它
+    GOOGLE_SERVICE_ACCOUNT_FILE: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
+    // App 签名证书 SHA-256（Play Integrity 返回的 base64url 形式），逗号分隔：Play App Signing 证书 + 上传证书
+    ANDROID_CERT_SHA256: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
+
     TURNSTILE_SITE_KEY: z.string().min(1),
     TURNSTILE_SECRET_KEY: z.string().min(1),
 

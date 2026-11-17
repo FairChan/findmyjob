@@ -1884,10 +1884,11 @@
 验收：现有认证 E2E 全绿；Web 登录响应里没有 set-auth-token；MA0-T04 报告末尾的 6 项运行时清单全部通过。
 > 完成 2026-11-18：better-auth 1.7.16 → 1.7.25，加 @better-auth/expo 1.7.25 的 server 插件；trustedOrigins 加 `MOBILE_APP_ORIGINS`；before-hook 新增 `findUnsafeCallbackUrl`（只允许站内相对路径和 http(s)，拒绝自定义 scheme、协议相对地址和非字符串，返回 INVALID_CALLBACK_URL）。另外：2FA 只对管理员开放，学生和企业的 App 不会走到它；Web 用邮件链接验证邮箱（OTP 验证是禁用路径），App 也一样，学生点完链接回 App 登录。运行时：`scripts/mobile/app-session-probe.mjs` 在本地隔离环境（3030）22/22 通过（App 注册、链接验证、登录、Cookie 自存、get-session、/me、/config、三种反例 403、缺版本头 426、自定义 scheme callbackURL 400、登出后拒绝）；Web 注册、验证、登录都没有 set-auth-token；认证相关 4 个测试文件 70 条用例通过。**未验证的 3 项**（需要真机或生产模式，放进 GATE-APP）：Android 上 `credentials: 'omit'` 的请求不被系统 cookie jar 自动带 Cookie；生产模式下 `__Secure-` 前缀的 Cookie 存取；staging 镜像里没有 exp://（插件只在 NODE_ENV=development 时加）。
 
-#### [ ] MA1-T03 Play Integrity 替代 Turnstile
+#### [x] MA1-T03 Play Integrity 替代 Turnstile
 依赖：MA1-T02
 做：`src/server/lib/play-integrity.ts` 在服务端验证 token（包名、证书摘要、应用正版、设备可信、nonce 绑定请求摘要）；在 before-hook 的 5 个 Turnstile 端点上，Integrity 通过和 Turnstile 通过二选一即可。限流和 `getClientIp()` 两条路径共用。新环境变量同步写进 `env.example` 和 `src/env.ts`。
 验收：伪造 token、包名不符、nonce 重放都被拒；第 6 次请求照样返回 429。
+> 完成 2026-11-18：`src/server/lib/play-integrity.ts` 用服务账号 JWT 换 access token（Node crypto，没有新依赖，token 会缓存），调 decodeIntegrityToken，校验 7 项：请求包名、requestHash（sha256(findmyjob:动作:规范化邮箱)）、5 分钟时效、PLAY_RECOGNIZED、应用包名、签名证书、MEETS_DEVICE_INTEGRITY；同一个 token 写一行 RateLimitBucket（主键冲突就是重放，过期行由现有 prune 清理）。before-hook 只在 App origin、请求带 integrityToken、三个环境变量都配齐时才走 Integrity，否则照旧走 Turnstile；校验失败统一返回 TURNSTILE_FAILED，同一请求内不降级。限流照旧走 Better Auth 的 rateLimit。官网直装的 APK 是 UNRECOGNIZED_VERSION，会回退到 WebView Turnstile。测试：play-integrity 12 条（含重放、Google 不可达时拒绝、OAuth token 复用）、hook 层 5 条（浏览器和仿冒 scheme 不能用 integrityToken；未配置时回退）。"第 6 次 429"由现有 auth-real-config 的限流用例覆盖，本任务没有改限流。**未做**：真机拿真实 token（需要 MA0-H01 的 Google 账号），App 端调用放在 MA2-T04。
 
 #### [ ] MA1-T04 学生端只读端点
 依赖：MA1-T01

@@ -20,7 +20,8 @@ import { SignupClosedError } from './errors'
 import { logger } from './lib/logger'
 import { alert } from './lib/alert'
 import { verificationEmailContent } from './lib/verification-email'
-import { parseAppOrigins } from './lib/app-origin'
+import { isAppOriginRequest, parseAppOrigins } from './lib/app-origin'
+import { isPlayIntegrityConfigured, PlayIntegrityError, verifyPlayIntegrity } from './lib/play-integrity'
 import { findUnsafeCallbackUrl } from './lib/auth-callback-url'
 
 const emailProvider = createEmailProvider()
@@ -63,11 +64,24 @@ const beforeHook = createAuthMiddleware(async (ctx) => {
   const turnstileAction = TURNSTILE_PATHS[path]
   if (turnstileAction) {
     const token = body?.turnstileToken
+    const integrityToken = body?.integrityToken
     const ip = ctx.request ? getClientIp(ctx.request.headers) : null
+    // Android app (MA1-T03): a Play Integrity token stands in for Turnstile, but only on requests
+    // from the configured app origin; the web keeps Turnstile. Same rate limits either way.
+    const useIntegrity =
+      typeof integrityToken === 'string' && integrityToken !== '' &&
+      !!ctx.request && isAppOriginRequest(ctx.request.headers) && isPlayIntegrityConfigured()
     try {
-      await verifyTurnstile(typeof token === 'string' ? token : '', { action: turnstileAction, ip })
+      if (useIntegrity) {
+        await verifyPlayIntegrity(integrityToken as string, {
+          action: turnstileAction,
+          email: typeof body?.email === 'string' ? body.email : '',
+        })
+      } else {
+        await verifyTurnstile(typeof token === 'string' ? token : '', { action: turnstileAction, ip })
+      }
     } catch (err) {
-      if (err instanceof TurnstileError) {
+      if (err instanceof TurnstileError || err instanceof PlayIntegrityError) {
         throw new APIError('BAD_REQUEST', { message: err.message, code: 'TURNSTILE_FAILED' })
       }
       throw err
