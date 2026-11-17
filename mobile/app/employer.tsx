@@ -1,17 +1,15 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { useRouter } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
 import { StyleSheet, Text } from 'react-native'
 import { useLocale, useTranslations } from 'use-intl'
 
 import { Button, Screen } from '@/components/ui'
-import { signOut, webUrl } from '@/features/auth/actions'
+import { webUrl } from '@/features/auth/actions'
+import { useSignOut } from '@/features/auth/use-sign-out'
 import { useTheme } from '@/theme/use-theme'
 
 /** 企业和管理员账号：v1.0 只做学生端，引导去网页版（企业轻量版是 MA4 / v1.1） */
 export default function EmployerNotice() {
-  const router = useRouter()
-  const queryClient = useQueryClient()
+  const signOut = useSignOut()
   const locale = useLocale()
   const t = useTranslations('mobile.auth')
   const { colors } = useTheme()
@@ -24,11 +22,7 @@ export default function EmployerNotice() {
           <Button
             label={t('signOut')}
             variant="secondary"
-            onPress={async () => {
-              await signOut()
-              queryClient.clear()
-              router.replace('/welcome')
-            }}
+            onPress={signOut}
             fullWidth
           />
         </>

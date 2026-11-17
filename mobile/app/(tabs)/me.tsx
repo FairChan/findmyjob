@@ -1,4 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query'
 import Constants from 'expo-constants'
 import { useRouter } from 'expo-router'
 import { BadgeCheck, Bell, FileText, Gift, LifeBuoy, Lock, Settings, UserRound } from 'lucide-react-native'
@@ -6,7 +5,7 @@ import { StyleSheet, Text } from 'react-native'
 import { useTranslations } from 'use-intl'
 
 import { Button, Card, ListRow, Screen } from '@/components/ui'
-import { signOut } from '@/features/auth/actions'
+import { useSignOut } from '@/features/auth/use-sign-out'
 import { useMe } from '@/features/auth/use-me'
 import { useCompleteness } from '@/features/profile/api'
 import { useTheme } from '@/theme/use-theme'
@@ -14,7 +13,7 @@ import { useTheme } from '@/theme/use-theme'
 /** "我的"（MOBILE.md §5.3）：档案与简历、学校认证、邀请同学、通知、隐私、设置、帮助与防骗 */
 export default function MeTab() {
   const router = useRouter()
-  const queryClient = useQueryClient()
+  const signOut = useSignOut()
   const { me } = useMe()
   const completeness = useCompleteness()
   const t = useTranslations('mobile')
@@ -52,11 +51,7 @@ export default function MeTab() {
         testID="me-sign-out"
         label={t('auth.signOut')}
         variant="secondary"
-        onPress={async () => {
-          await signOut().catch(() => {})
-          queryClient.clear()
-          router.replace('/welcome')
-        }}
+        onPress={signOut}
       />
       <Text style={[styles.version, { color: colors.mutedForeground }]}>{t('me.version', { version: Constants.expoConfig?.version ?? '' })}</Text>
     </Screen>

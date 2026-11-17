@@ -3,6 +3,7 @@ jest.mock('@/lib/auth-client', () => ({
   AUTH_STORAGE_PREFIX: 'findmyjob',
   appOrigin: () => 'findmyjob-dev://',
   sessionCookie: async () => '',
+  clearLocalSession: async () => {},
   authClient: {
     useSession: () => ({ data: null, isPending: false }),
     getSession: async () => ({ data: null }),

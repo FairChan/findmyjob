@@ -1,7 +1,7 @@
 import type { HumanCheckAction } from '@shared/mobile-api'
 
 import { apiBaseUrl } from '@/lib/api-config'
-import { authClient } from '@/lib/auth-client'
+import { authClient, clearLocalSession } from '@/lib/auth-client'
 import type { HumanProof } from './human-check'
 
 export type RequestProof = (action: HumanCheckAction, email: string, opts?: { forceTurnstile?: boolean }) => Promise<HumanProof>
@@ -86,6 +86,17 @@ export async function requestPasswordReset(requestProof: RequestProof, input: { 
   )
 }
 
-export async function signOut() {
-  await authClient.signOut()
+/**
+ * 唯一的退出登录入口：先尽力通知服务端吊销会话（失败也不管），本机凭据无论如何都要清掉。
+ * 不抛错：调用方接着清查询缓存、回欢迎页即可。
+ * TODO(MA3-T01)：在清本机凭据之前，先吊销这台设备的推送 token（DELETE /devices/:id）。
+ */
+export async function signOut(): Promise<void> {
+  try {
+    await authClient.signOut()
+  } catch {
+    // 离线、5xx、会话已被服务端吊销（注销账号后）都会走到这里
+  } finally {
+    await clearLocalSession()
+  }
 }

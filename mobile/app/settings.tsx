@@ -1,12 +1,10 @@
-import { useQueryClient } from '@tanstack/react-query'
 import Constants from 'expo-constants'
-import { useRouter } from 'expo-router'
 import { Check } from 'lucide-react-native'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useTranslations } from 'use-intl'
 
 import { Button, Card, OfflineBanner, Screen, SectionTitle, SwitchRow, TopBar, useToast } from '@/components/ui'
-import { signOut } from '@/features/auth/actions'
+import { useSignOut } from '@/features/auth/use-sign-out'
 import { patchLocale, useNotificationPrefs, useSetWeeklyDigest } from '@/features/settings/api'
 import { usePreferences } from '@/features/settings/prefs'
 import { useErrorMessage } from '@/i18n/error-message'
@@ -16,8 +14,7 @@ import { useTheme, type ThemePreference } from '@/theme/use-theme'
 
 /** S21 设置：语言（立即生效 + 同步到服务端）、深浅色、通知偏好、退出登录 */
 export default function Settings() {
-  const router = useRouter()
-  const queryClient = useQueryClient()
+  const signOut = useSignOut()
   const toast = useToast()
   const online = useOnline()
   const { locale, setLocale, theme, setTheme } = usePreferences()
@@ -46,11 +43,7 @@ export default function Settings() {
           label={auth('signOut')}
           variant="secondary"
           fullWidth
-          onPress={async () => {
-            await signOut().catch(() => {})
-            queryClient.clear()
-            router.replace('/welcome')
-          }}
+          onPress={signOut}
         />
       }
     >

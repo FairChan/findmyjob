@@ -34,3 +34,32 @@ export async function sessionCookie(): Promise<string> {
 export function appOrigin(): string {
   return `${appScheme()}://`
 }
+
+/**
+ * 退出登录时无条件清掉本机凭据（fail-closed）：服务端 /sign-out 失败（离线、5xx、会话已被吊销）时，
+ * 不能让 Cookie 继续留在 SecureStore 里。@better-auth/expo 的值可能被拆成多个分片键
+ * （基键里存 "ba-chunks:<数量>[:<槽位>[:<旧数量>]]"），分片也一起删。
+ */
+export async function clearLocalSession(): Promise<void> {
+  for (const key of [`${AUTH_STORAGE_PREFIX}_cookie`, `${AUTH_STORAGE_PREFIX}_session_data`]) {
+    let base: string | null = null
+    try {
+      base = await SecureStore.getItemAsync(key)
+    } catch {
+      base = null
+    }
+    if (base?.startsWith('ba-chunks:')) {
+      const max = Math.min(Math.max(0, ...(base.slice('ba-chunks:'.length).match(/\d+/g) ?? []).map(Number)), 100)
+      for (let i = 0; i < max; i++) {
+        for (const chunk of [`${key}.${i}`, `${key}.0.${i}`, `${key}.1.${i}`]) await SecureStore.deleteItemAsync(chunk).catch(() => {})
+      }
+    }
+    await SecureStore.deleteItemAsync(key).catch(() => {})
+  }
+  // 让 useSession 立即变成未登录（会话原子按信号重新读取，此时已经没有 Cookie）
+  try {
+    authClient.$store.notify('$sessionSignal')
+  } catch {
+    // 只影响界面刷新时机，凭据已经删了
+  }
+}

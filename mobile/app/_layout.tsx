@@ -5,10 +5,10 @@ import { useEffect, useState } from 'react'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
 import { ToastProvider } from '@/components/ui'
+import { signOut } from '@/features/auth/actions'
 import { HumanCheckProvider } from '@/features/auth/human-check'
 import { PreferencesProvider } from '@/features/settings/prefs'
 import { onAppEvent } from '@/lib/app-events'
-import { authClient } from '@/lib/auth-client'
 import { bindOnlineManager } from '@/lib/online'
 import { createQueryClient } from '@/lib/query-client'
 import { useTheme } from '@/theme/use-theme'
@@ -24,9 +24,11 @@ function AppEventBridge() {
     () =>
       onAppEvent((event) => {
         if (event === 'signed-out') {
-          queryClient.clear()
-          void authClient.signOut().catch(() => {})
-          router.replace('/welcome')
+          // 会话失效或注销账号后：本机凭据必清（signOut 内部 finally），再清缓存回欢迎页
+          void signOut().finally(() => {
+            queryClient.clear()
+            router.replace('/welcome')
+          })
         } else if (event === 'needs-reconsent') {
           router.push('/status/reconsent')
         } else if (event === 'update-required') {
