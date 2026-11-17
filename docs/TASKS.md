@@ -2003,14 +2003,17 @@
 做：`/api/m/v1/e/*`：职位（只读，可暂停或恢复）、候选人、投递状态、邀请、人才库（游标分页）、解锁（走 unlock → applyLedgerEntry）、余额只读。companyId 只来自 `requireCompanyMember()`，学生数据只经 talent-card 序列化输出。
 验收：防泄漏测试扩到 `/api/m/v1/e/*`；authz-matrix 加行。
 > 完成 2026-11-18：12 个端点：`GET /e/jobs`、`POST /e/jobs/:id/close`、`GET /e/jobs/:id/applicants`、`GET /e/applications/:id`、`POST /e/applications/:id/status`、`POST /e/applications/:id/viewed`、`GET/POST /e/invitations`、`GET /e/talent`、`GET /e/talent/:id`、`POST /e/talent/:id/unlock`、`GET /e/wallet`。鉴权与 Web 对应页面和 action 一致：职位、邀请列表、人才库、余额用 `{ type: 'company', minRole: 'RECRUITER' }`；候选人、改状态、标记已读、发邀请、解锁用同样的 RECRUITER 起加 `verified: true`（Web 的这些 action 也没有 OWNER/ADMIN 的区分，OWNER 专属的只有账单，App 不提供）。全部调 Web 企业端用的同一批 service（listCompanyJobs、closeJob、listJobApplicants、getApplicantDetail、changeApplicationStatus、markApplicationViewed、listCompanyInvitations、getMonthlyInvitationUsage、sendInvitation、searchTalents、viewTalentProfile、unlockStudent、getBalance），学生数据只用 toTalentCard / toTalentDetail 的输出，服务层 `services/mobile-employer.ts` 只改日期格式、去掉 resumePreview。人才库游标就是页码，页数上限（talentSearch.maxPage）、每人每天翻页数、关键词 redact、ProfileView 与每日查看上限、解锁的 CREDIT 锁事务和幂等都原样沿用。测试：`mobile-employer.test.ts` 31 条（每个端点：匿名、学生、没有公司的企业账号、浏览器 Origin、仿冒 scheme 都 403 且不写审计，非法输入 400；未认证企业的限制；防泄漏：解锁前所有响应里没有全名、联系方式、简历 id 和存储 key，自由文本已 redact；翻页游标、页数上限、翻页上限 429 并写 talent.limit.hit；查看同一学生当天只计一次、成员上限 429；解锁扣 1 点、重复解锁不再扣、解锁后才出现全名、联系方式和简历 id，并写 contact.read；点数不足 402）；authz-matrix +8 条（三种角色都不能碰别家公司的职位、候选人和投递；学生、未认证企业、没有公司的账号不能解锁、查看、邀请，点数不动；用别家职位邀请 404、伪造 companyId 400；RECRUITER 能改状态和解锁）；重新同意表格 +12 行（企业账号没同意新版条款时 409）。**偏差**：① Web 没有"暂停/恢复"职位，只有关闭（重新上架要在 Web 编辑后重新提交审核），所以只做了 `POST /e/jobs/:id/close`；② 企业内部备注的修改（Web 的 updateNoteAction）和企业通知列表不在这次清单里，没做；③ 人才库详情和搜索是 GET（与 Web 页面一样），但会计数，已在 MOBILE-API.md 写明 App 不得预取、不得自动重取；④ 候选人详情和 Web 一样不读联系方式（contact 恒为 null），要看联系方式走人才库详情。
+> 修复 2026-11-18（安全审查）：`GET /e/applications/:id` 原先调 getApplicantDetail，Web 没有页面用它——会返回已撤回的投递，而且不经 viewTalentProfile 的屏蔽、可见性、ProfileView、每日查看上限和 talent.view 审计。改为按 Web 看板的路径：先找本公司、非 WITHDRAWN 的投递（否则 404），profile 调与 `/e/talent/:id` 相同的 viewTalentProfile，求职信按看板用 toEmployerCoverNote；契约只加了 `studentId`，profile 形状不变（解锁后会带联系方式，与人才库详情一致；上面④作废）。新增测试：撤回、不在人才库、屏蔽、别家公司都是 404 且不计数，与人才库详情结果相同；同一学生当天只计一次（两个入口合计）、talent.view 审计、每日上限 429。
 
-#### [ ] MA4-T02 企业端页面 E01–E10
+#### [x] MA4-T02 企业端页面 E01–E10
 依赖：MA4-T01
 做：解锁确认弹窗显示余额；App 内不出现任何购买入口或外链。
+> 完成 2026-11-18：784bd27（子代理）。E01 工作台、E02 职位（关闭需确认；Web 没有暂停/恢复）、E03/E04 候选人与详情（改状态需确认）、E05/E06 人才库与档案（解锁确认 Sheet 显示成本和余额，余额不足禁用，不重试）、E07/E08 邀请、E09 我的、E10 设置。人才搜索、档案、候选人详情、解锁都在 api-client 计数保护里，只能由用户点击触发；全 App 无购买入口（测试扫描 app/e 与 features/employer）；企业查询不进离线缓存。未做：App 内下载已解锁简历（无端点）、学校筛选、企业通知列表、企业 Maestro 流程。
 
-#### [ ] MA4-T03 企业推送与截屏保护
+#### [x] MA4-T03 企业推送与截屏保护
 依赖：MA4-T02、MA3-T02
 做：企业推送的 payload 只放 serializer 的输出；候选人详情页开启 FLAG_SECURE。
+> 完成 2026-11-18：c22d631（子代理，App 部分）。expo-screen-capture：人才档案与候选人详情获得焦点时开 FLAG_SECURE；库带进来的 READ_MEDIA_IMAGES、DETECT_SCREEN_CAPTURE 加入 blockedPermissions。**偏差**：企业推送不做（推送 worker 只发学生，App 只为学生注册设备）。
 
 ### MA5 · 打磨与上架准备（约 1.5 周）
 
