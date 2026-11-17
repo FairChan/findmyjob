@@ -1831,6 +1831,171 @@
 
 ---
 
+## MA · Android App（学生版 v1.0 + 企业轻量版 v1.1）
+
+> 设计与约定见 `docs/MOBILE.md`；决策见 DECISIONS「开发中决策」2026-11-18 的 MA 各行。用户 2026-11-18 确认按默认值开工。
+> 通用验收（每个 App 页面任务都适用）：中英文案齐全；360dp 宽、系统字号 200%、深色模式各截一张图存证；TalkBack 能读出所有可操作元素；触控目标 ≥ 48dp。
+> 通用验收（每个 `/api/m/v1` 端点都适用）：契约测试覆盖 200、401、403 和 zod 400；响应带 `Cache-Control: private, no-store` 和 `X-Robots-Tag: noindex`；handler 里不写业务判断，只调 service。
+
+### MA0 · 准备（约 1 周）
+
+#### [x] MA0-T01 决策落盘
+做：把 MOBILE.md §0 的五项范围决定和 §3 的选型写进 DECISIONS（每个新直接依赖一行，写明用途和备选）。
+验收：DECISIONS 有 2026-11-18 的 MA 段。
+> 完成 2026-11-18：范围、架构、依赖和变体四行写进 DECISIONS；设计文档 docs/MOBILE.md 入库。
+
+#### [ ] MA0-T02 Expo 工程骨架
+依赖：MA0-T01
+做：新建 `mobile/`（Expo SDK 58 + TypeScript + Expo Router），作为独立 pnpm 项目，有自己的 lockfile，**不加入根 workspace**；在根 `.dockerignore` 里排除 `mobile/`，让 Web 镜像不受影响；配好 tsconfig、eslint、jest。三个构建变体 dev、staging、prod 分别用不同的包名。
+验收：`mobile/` 下 `pnpm typecheck`、`pnpm lint`、`pnpm test` 都通过；`expo export --platform android` 能出 bundle；根目录 `pnpm lint && pnpm typecheck` 不受影响。
+
+#### [ ] MA0-T03 共享层
+依赖：MA0-T02
+做：用 Metro 的 watchFolders 加 tsconfig paths 共享 `messages/*.json`，以及不依赖 server-only 的 zod schema 和错误码；共享文件里的依赖（例如 zod）统一从 `mobile/node_modules` 解析。必要时把 schema 拆成纯文件（只拆，不改语义）。
+验收：App 能 import 共享 schema 并通过类型检查；Web 的 `pnpm test` 全绿。
+
+#### [ ] MA0-H01 账号与云资源（人工）
+做：Play Console 组织账号（等 D3 公司主体和 D-U-N-S 编码）；Firebase 项目（FCM）；在 Google Cloud 开启 Play Integrity；EAS 账号。上传密钥离线备份两份。
+验收：各控制台截图存进 `.reports/`（不含任何密钥）。
+
+#### [ ] MA0-H02 线框确认（人工）
+做：MOBILE.md §5.4 的 S01–S24 低保真线框，由你和合伙人确认。
+验收：确认记录写进 DECISIONS。
+
+#### [ ] MA0-T04 认证 spike（R1）
+依赖：MA0-T02
+做：在隔离的本地库上验证 better-auth `plugins/bearer` 和现有 before-hook（Turnstile、同意条款、注册名额、2FA）叠加后的行为；只出结论报告，不合进业务代码。
+验收：`.reports/<日期>-mobile-auth-spike/` 里有报告，写明"注册 → OTP → 登录 → 2FA → 登出"每一步的结论，以及 MA1-T02 选定的做法。
+
+### MA1 · 移动 API 与认证（约 2 周）
+
+#### [ ] MA1-T01 `mobileRoute()` 包装器
+依赖：MA0-T04
+做：在 `src/server/mobile-route.ts` 新写包装器：只认 `Authorization: Bearer`，带 Cookie 的请求一律拒绝（所以可以不查 Origin）；读 `X-App-Version`，低于 `mobile.minSupportedVersion`（getSetting）时返回 426；加 no-store 和 noindex 头、requestId，并做错误码映射。现有 `route()` 不改。
+验收：单测覆盖；authz-matrix 新增"Bearer 和 Cookie 混用 → 403""Cookie 访问 /api/m → 401"两行。
+
+#### [ ] MA1-T02 Bearer 会话
+依赖：MA1-T01
+做：按 MA0-T04 的结论接入 bearer；trustedOrigins 只新增精确的 `findmyjob://`；Web 的 Cookie 配置不动。改密码和注销账号时吊销该用户的全部会话。
+验收：现有认证 E2E 全绿；集成测试覆盖 App 的登录、登出和会话刷新。
+
+#### [ ] MA1-T03 Play Integrity 替代 Turnstile
+依赖：MA1-T02
+做：`src/server/lib/play-integrity.ts` 在服务端验证 token（包名、证书摘要、应用正版、设备可信、nonce 绑定请求摘要）；在 before-hook 的 5 个 Turnstile 端点上，Integrity 通过和 Turnstile 通过二选一即可。限流和 `getClientIp()` 两条路径共用。新环境变量同步写进 `env.example` 和 `src/env.ts`。
+验收：伪造 token、包名不符、nonce 重放都被拒；第 6 次请求照样返回 429。
+
+#### [ ] MA1-T04 学生端只读端点
+依赖：MA1-T01
+做：`/api/m/v1` 下的 config、me、profile、jobs（列表和 preview）、companies、notifications、applications、invitations、referrals/me。
+验收：契约测试；"列表和 preview 不产生 JobView"的断言。
+
+#### [ ] MA1-T05 学生端写端点
+依赖：MA1-T04
+做：建档的增删改、学校认证、`POST /jobs/:id/open`（只经 job-view-quota 扣额度）、投递和撤回、邀请的接受和拒绝、通知已读、隐私设置、导出申请、注销账号、语言和通知偏好。审计 metadata 加 `client: 'android'`。
+验收：额度、审计和防泄漏测试全绿；authz-matrix 加行。
+
+#### [ ] MA1-T06 上传端点放开 Bearer
+依赖：MA1-T01
+做：`/api/uploads/[purpose]` 接受经 mobileRoute 认证的 Bearer 请求；校验逻辑一字不改。
+验收：已有上传测试不变；新增 Bearer 上传成功和失败的用例。
+
+#### [ ] MA1-T07 重新同意与 OpenAPI
+依赖：MA1-T05
+做：需要重新同意条款时统一返回 `409 NEEDS_RECONSENT`（数据权利和注销端点除外，和 proxy.ts 的规则一致）；用 zod `toJSONSchema` 生成 OpenAPI，写进 `docs/MOBILE-API.md`。
+验收：契约测试覆盖 409 和例外端点。
+
+### MA2 · 学生端核心（约 3–4 周）
+
+#### [ ] MA2-T01 主题与基础组件
+依赖：MA0-T03
+做：从 `globals.css` 抽取 token 的脚本和 `mobile/src/theme`；做 Button、Card、Chip、Sheet、Input、Skeleton、EmptyState、Toast；深色模式。
+验收：组件单测；token 漂移检查脚本。
+
+#### [ ] MA2-T02 apiClient 与查询层
+依赖：MA1-T04、MA2-T01
+做：Bearer、版本头、错误码转成 i18n 文案、401 自动登出、409 弹出条款页、426 强制更新；配置 TanStack Query。**会计数的端点禁止预取和自动重取**。
+验收：单测覆盖每种错误码；一条 lint 或单测守住"会计数的端点只能由用户点击触发"。
+
+#### [ ] MA2-T03 国际化
+依赖：MA0-T03
+做：接 use-intl，读共享 messages；App 专用的新文案放 `mobile.*` 命名空间，中英两份同步。
+验收：缺失 key 的检查脚本通过。
+
+#### [ ] MA2-T04 S01–S04 认证流程（含 Integrity 和 2FA）
+#### [ ] MA2-T05 S05–S06 建档引导与学校认证
+#### [ ] MA2-T06 S07–S10 首页、职位、筛选、预览与额度
+验收补充：滑过列表 50 条，额度不变；已投递或被邀请的职位不扣额度。
+#### [ ] MA2-T07 S11–S14 投递与邀请
+#### [ ] MA2-T08 S15–S18 企业、通知、档案、简历上传（SAF，不申请存储权限）
+#### [ ] MA2-T09 S19–S24 邀请同学、隐私、设置、全局状态页
+
+#### [ ] MA2-T10 Maestro 主路径
+依赖：MA2-T04 至 MA2-T09
+做：6 条主路径（注册到认证、建档、搜索到预览再扣额度、投递、接受邀请、注销）。
+验收：在模拟器上全绿。
+
+### MA3 · 推送、深链与离线（约 1.5 周）
+
+#### [ ] MA3-T01 DeviceToken
+依赖：MA1-T05
+做：新建 migration（只做 expand）：`DeviceToken`，token 用 `encryptField` 加密（带 AAD），另存 sha256 哈希用于去重；写 device-tokens service，以及 `POST /devices`、`DELETE /devices/:id`；退出登录、改密码、注销账号时一并吊销。
+验收：`db:check`；单测覆盖加密存储和去重。
+
+#### [ ] MA3-T02 推送 worker
+依赖：MA3-T01
+做：通知事务提交后投递 pg-boss 任务 `push.send`，由 worker 调 FCM HTTP v1；按偏好过滤、静默时段 23:00–08:00（马来西亚时间）、同类合并；UNREGISTERED 的 token 吊销。推送正文只用类型化的通用文案，data 字段只放 `{type, id}`。
+验收：mock FCM 的集成测试；断言推送 payload 不含 PII（学生姓名、联系方式、学生侧默认也不含企业名）。
+
+#### [ ] MA3-T03 App 端推送
+依赖：MA3-T02、MA2-T07
+做：首次投递成功后才请求通知权限；前台、后台、冷启动三种情况下点击通知都能路由到正确页面；没有 GMS 的手机给出降级提示。
+
+#### [ ] MA3-T04 App Links
+依赖：MA2-T02
+做：新增 `/.well-known/assetlinks.json`（证书摘要从环境变量读）；配置 intent-filter；带一次性令牌的链接处理完立刻从导航栈清掉，不进日志，也不进 Sentry。
+验收：真机上点邮件链接直接进入 App；没装 App 时打开网页，行为不变。
+
+#### [ ] MA3-T05 离线
+依赖：MA2-T02
+做：查询缓存持久化只对白名单字段（不含联系方式、简历文件和导出包）；离线横幅；离线时投递和上传按钮禁用；退出登录清空全部缓存。
+
+### MA4 · 企业轻量版（约 2 周，v1.1）
+
+#### [ ] MA4-T01 企业端点
+依赖：MA1-T05
+做：`/api/m/v1/e/*`：职位（只读，可暂停或恢复）、候选人、投递状态、邀请、人才库（游标分页）、解锁（走 unlock → applyLedgerEntry）、余额只读。companyId 只来自 `requireCompanyMember()`，学生数据只经 talent-card 序列化输出。
+验收：防泄漏测试扩到 `/api/m/v1/e/*`；authz-matrix 加行。
+
+#### [ ] MA4-T02 企业端页面 E01–E10
+依赖：MA4-T01
+做：解锁确认弹窗显示余额；App 内不出现任何购买入口或外链。
+
+#### [ ] MA4-T03 企业推送与截屏保护
+依赖：MA4-T02、MA3-T02
+做：企业推送的 payload 只放 serializer 的输出；候选人详情页开启 FLAG_SECURE。
+
+### MA5 · 打磨与上架准备（约 1.5 周）
+
+#### [ ] MA5-T01 性能
+做：中端机冷启动 < 2 秒；列表滚动 60fps；AAB < 25MB；开启 R8 和 Hermes。
+
+#### [ ] MA5-T02 无障碍与设备矩阵回归
+做：按 MOBILE.md §7 的设备矩阵回归一遍。
+
+#### [ ] MA5-T03 威胁模型移动端一节
+做：在 `docs/security/threat-model.md` 写移动端一节；安全技能由人交互运行。
+
+#### [ ] MA5-H01 合规材料（人工）
+做：隐私政策补充 FCM 等子处理者（D10 律师）并更新 SUBPROCESSORS；Play 数据安全表单；网页注销说明页；官网 APK 下载页；商店素材（只用合成数据）。
+
+### MA6 · 发布
+
+#### [ ] MA6-H01 internal 轨道 → closed 测试（人工）
+#### [ ] MA6-H02 🚦 GATE-APP（见闸门检查清单）
+#### [ ] MA6-H03 production 分阶段放量（人工）
+
+---
+
 ## 闸门检查清单
 
 > AI 扫描的顺序、范围和花费记录方法见 `docs/AI-SKILLS.md`；扫描都在干净的 worktree 里由人交互运行，报告写到 `.reports/`。
@@ -1886,3 +2051,12 @@
 - [ ] 已提前 2 周通知公益期企业，并发出创始合作伙伴优惠
 - [ ] E7：RPO ≤1 小时已上线，并做过一次演练；用备份凭据删对象返回 AccessDenied
 - [ ] AI 扫描：用 Stripe 测试模式做一次 differential-review，范围限定为 billing 和 webhook
+
+### 🚦 GATE-APP · Android App 正式发布
+- [ ] closed 测试已满 14 天；无崩溃会话占比 ≥ 99.5%，ANR 和崩溃率低于 Play Vitals 当时的阈值
+- [ ] Maestro 的 6 条主路径在 staging 包上全绿；在没有 GMS 的手机上，APK 直装和推送降级各走一遍
+- [ ] 隐私抽查：抓包看企业端响应，里面没有手机、邮箱、全名、简历 URL；锁屏推送里没有 PII；退出登录后本地缓存为空
+- [ ] 额度抽查：滑过列表、从推送打开详情、断网重试都不会多扣
+- [ ] 律师确认已补充 FCM 的隐私政策；SUBPROCESSORS 已更新；Play 数据安全表单与实际收集的数据一致
+- [ ] 上传密钥两份离线备份已核对；App 内找不到任何秘密（反编译抽查）
+- [ ] 晚于 Web 端 GATE-M7（D11 牌照问题同样阻塞 App）
