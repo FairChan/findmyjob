@@ -2809,5 +2809,23 @@
       "empty": "No notifications yet",
       "markAllRead": "Mark all as read"
     }
+  },
+  "appDownload": {
+    "title": "FindMYJob Android app",
+    "lead": "Find internships, apply and hear back from employers on your phone. Free for students.",
+    "downloadTitle": "Download",
+    "playStore": "Google Play: coming soon.",
+    "apkDownload": "Download the official installer (APK)",
+    "apkChecksum": "Before installing, you can check the file's SHA-256 checksum:",
+    "apkSoon": "Official installer (for phones without Google Play): coming soon.",
+    "requirements": "Requires Android 8.0 or later. Phones without Google services can't receive push notifications; important updates are also sent to your email.",
+    "apkWarning": "Only install from this page or Google Play. FindMYJob installers from anywhere else are not official and may have been tampered with.",
+    "deleteTitle": "How to delete your account",
+    "deleteInApp": "In the app: open Me → Privacy → Delete account and confirm.",
+    "deleteOnWeb": "On the web: sign in, open your privacy settings and choose to delete your account.",
+    "deleteOnWebLink": "Go to privacy settings",
+    "deleteWhat": "After deletion, your profile, resumes, applications and push devices are deleted. A small number of records required by law (such as internal IDs in audit logs) are kept for the period stated in our Privacy Policy and then removed.",
+    "deleteMore": "For what is kept and for how long, see the",
+    "privacyLink": "Privacy Policy"
   }
 }

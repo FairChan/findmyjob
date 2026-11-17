@@ -60,6 +60,9 @@ const schema = z
     GOOGLE_SERVICE_ACCOUNT_FILE: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
     // App Links（MA3-T04）：包名=SHA256指纹1|指纹2,包名2=…；留空则 assetlinks.json 返回 []
     ANDROID_APP_LINKS: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
+    // 官网 APK（MA5-H01）：https 地址和 SHA-256；任一不合法时下载页显示「即将推出」
+    ANDROID_APK_URL: z.preprocess(v => (v === '' ? undefined : v), z.string().url().optional()),
+    ANDROID_APK_SHA256: z.preprocess(v => (v === '' ? undefined : v), z.string().regex(/^[0-9a-fA-F]{64}$/).optional()),
     // FCM HTTP v1 的 Firebase 项目 ID（MA3）；和 GOOGLE_SERVICE_ACCOUNT_FILE 都配了才推送
     FCM_PROJECT_ID: z.preprocess(v => (v === '' ? undefined : v), z.string().optional()),
     // App 签名证书 SHA-256（Play Integrity 返回的 base64url 形式），逗号分隔：Play App Signing 证书 + 上传证书

@@ -2809,5 +2809,23 @@
       "empty": "暂时没有通知",
       "markAllRead": "全部已读"
     }
+  },
+  "appDownload": {
+    "title": "FindMYJob 安卓 App",
+    "lead": "在手机上找实习、投递、接收企业回复。学生免费使用。",
+    "downloadTitle": "下载",
+    "playStore": "Google Play：即将上架。",
+    "apkDownload": "下载官方安装包（APK）",
+    "apkChecksum": "安装前可以核对文件的 SHA-256 校验值：",
+    "apkSoon": "官方安装包（适用于没有 Google Play 的手机）：即将推出。",
+    "requirements": "需要 Android 8.0 或更高版本。没有 Google 服务的手机收不到推送，重要消息会同时发到你的邮箱。",
+    "apkWarning": "只从本页或 Google Play 安装。任何其他渠道的 FindMYJob 安装包都不是官方的，可能被篡改。",
+    "deleteTitle": "如何删除账号",
+    "deleteInApp": "在 App 里：打开「我的」→「隐私」→「注销账号」，按提示确认。",
+    "deleteOnWeb": "在网页上：登录后进入隐私设置页，选择注销账号。",
+    "deleteOnWebLink": "前往隐私设置",
+    "deleteWhat": "注销后，你的档案、简历、投递记录和推送设备会被删除；为满足法律要求的少量记录（例如审计日志里的内部编号）会按隐私政策的期限保留后清除。",
+    "deleteMore": "保留范围和期限详见",
+    "privacyLink": "隐私政策"
   }
 }
