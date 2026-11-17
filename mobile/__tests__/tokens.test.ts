@@ -21,10 +21,16 @@ function toHsl(raw: string): string {
 
 describe('theme tokens', () => {
   it.each([
-    ['brand', 'brand'],
-    ['brand-muted', 'brandMuted'],
     ['background', 'background'],
     ['foreground', 'foreground'],
+    ['muted', 'muted'],
+    ['muted-foreground', 'mutedForeground'],
+    ['border', 'border'],
+    ['destructive', 'destructive'],
+    ['brand', 'brand'],
+    ['brand-foreground', 'brandForeground'],
+    ['brand-muted', 'brandMuted'],
+    ['brand-muted-foreground', 'brandMutedForeground'],
   ] as const)('%s matches web in light and dark', (cssName, key) => {
     expect(colors.light[key]).toBe(toHsl(webToken('root', cssName)))
     expect(colors.dark[key]).toBe(toHsl(webToken('dark', cssName)))
