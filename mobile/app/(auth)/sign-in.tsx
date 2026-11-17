@@ -8,6 +8,7 @@ import { Button, Screen, TextField } from '@/components/ui'
 import { AuthActionError, signInWithEmail } from '@/features/auth/actions'
 import { useHumanCheck } from '@/features/auth/human-check'
 import { useErrorMessage } from '@/i18n/error-message'
+import { resetAllCaches } from '@/lib/query-persist'
 import { useTheme } from '@/theme/use-theme'
 
 /** S04 登录 */
@@ -28,7 +29,8 @@ export default function SignIn() {
     setError(null)
     try {
       await signInWithEmail(requestProof, { email: email.trim(), password })
-      await queryClient.invalidateQueries()
+      // 新登录一律从空缓存开始：内存和磁盘里可能还有别的账号留下的数据（安全复查）
+      await resetAllCaches(queryClient)
       router.replace('/')
     } catch (err) {
       if (err instanceof AuthActionError && err.code === 'EMAIL_NOT_VERIFIED') {

@@ -92,11 +92,25 @@ describe('cache ownership', () => {
     const client = new QueryClient()
     client.setQueryData(['applications'], { items: ['A的投递'] })
     client.setQueryData(['me'], { id: 'userB' })
-    expect(await ensureCacheOwner(client, 'userA')).toBe(false) // 第一次登记
+    expect(await ensureCacheOwner(client, 'userA')).toBe(false) // 第一次登记，磁盘上还没有缓存
     expect(client.getQueryData(['applications'])).toBeDefined()
     expect(await ensureCacheOwner(client, 'userB')).toBe(true) // 换了账号
     expect(client.getQueryData(['applications'])).toBeUndefined()
     expect(client.getQueryData(['me'])).toEqual({ id: 'userB' })
     expect(await ensureCacheOwner(client, 'userB')).toBe(false)
+  })
+})
+
+describe('cache ownership fails closed', () => {
+  it('drops a persisted cache that has no owner record', async () => {
+    const { QueryClient } = jest.requireActual('@tanstack/react-query') as typeof import('@tanstack/react-query')
+    const { ensureCacheOwner, PERSIST_STORAGE_KEY: KEY } = jest.requireActual('@/lib/query-persist') as typeof import('@/lib/query-persist')
+    await AsyncStorage.clear()
+    await AsyncStorage.setItem(KEY, '{"clientState":{}}')
+    const client = new QueryClient()
+    client.setQueryData(['notifications'], { items: ['someone else'] })
+    expect(await ensureCacheOwner(client, 'userC')).toBe(true)
+    expect(client.getQueryData(['notifications'])).toBeUndefined()
+    expect(await AsyncStorage.getItem(KEY)).toBeNull()
   })
 })

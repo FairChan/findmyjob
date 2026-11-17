@@ -43,12 +43,21 @@ export async function resetAllCaches(queryClient: QueryClient): Promise<void> {
 const OWNER_KEY = 'findmyjob-query-cache-owner'
 
 /**
- * 磁盘缓存属于哪个账号：登录后的第一次 /me 结果和记录不一致（上一个账号退出时没清干净，
+ * 纵深防御（主要防线是登录成功和退出登录时都清空缓存）。磁盘缓存属于哪个账号：登录后的第一次 /me 结果和记录不一致（上一个账号退出时没清干净，
  * 例如退出途中 App 被杀），就整个丢掉，绝不把 A 的投递、通知显示给 B。
  */
 export async function ensureCacheOwner(queryClient: QueryClient, userId: string): Promise<boolean> {
-  const owner = await AsyncStorage.getItem(OWNER_KEY).catch(() => null)
-  const mismatch = owner !== null && owner !== userId
+  // 失败即丢弃（fail-closed）：读不到登记、或者没有登记却已经有磁盘缓存，都当作"不是你的"
+  let owner: string | null
+  let hasBlob: boolean
+  try {
+    owner = await AsyncStorage.getItem(OWNER_KEY)
+    hasBlob = (await AsyncStorage.getItem(PERSIST_STORAGE_KEY)) !== null
+  } catch {
+    owner = null
+    hasBlob = true
+  }
+  const mismatch = owner !== userId && (owner !== null || hasBlob)
   if (mismatch) {
     queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'me' })
     await clearPersistedQueries()
