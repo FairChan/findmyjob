@@ -100,6 +100,8 @@ function isProtectedApi(pathname: string): boolean {
   if (pathname === '/api/marketing/unsubscribe') return false
   if (pathname.startsWith('/api/auth/')) return false
   if (pathname === '/api/health') return false
+  // Android App 启动时取配置（最低版本、开关），未登录也要能访问；route() 仍只放行 App origin
+  if (pathname === '/api/m/v1/config') return false
   if (pathname === '/api/csp-report') return false
   if (pathname === '/api/payments/stripe/webhook') return false
   if (pathname.startsWith('/api/partner-logos/')) return false

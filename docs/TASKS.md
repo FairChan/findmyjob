@@ -1872,10 +1872,11 @@
 
 ### MA1 · 移动 API 与认证（约 2 周）
 
-#### [ ] MA1-T01 `mobileRoute()` 包装器
+#### [x] MA1-T01 `route()` 的 App 来源选项（原计划叫 mobileRoute）
 依赖：MA0-T04
 做：在 `src/server/mobile-route.ts` 新写包装器：会话照常从 Cookie 读取（App 用 @better-auth/expo 手动带 Cookie）；Origin（或 `expo-origin`）必须精确等于环境变量 `MOBILE_APP_ORIGINS` 里的某个值，否则一律 403（浏览器不能伪造 Origin，这就是 CSRF 防线）；读 `X-App-Version`，低于 `mobile.minSupportedVersion`（getSetting）时返回 426；加 no-store 和 noindex 头、requestId，并做错误码映射。现有 `route()` 不改。
 验收：单测覆盖；authz-matrix 新增三行：浏览器 Origin 访问 /api/m → 403；没有 Origin → 403；前缀相同但不完全相等的 scheme（如 `findmyjob-evil://`）→ 403。
+> 完成 2026-11-18：**偏差**：不新写 mobileRoute，而是给 `route()` 加 `origin: 'web' | 'app' | 'web+app'` 选项。原因是架构测试 server-boundary 要求每个 route.ts 只导出 `route(...)`，这个约束要保住。'app' 模式对所有方法校验 App origin（有 Origin 时只看 Origin，没有才看 expo-origin），再检查 `mobile.minSupportedVersion`，版本过低或没带版本头返回 426；默认 'web' 的行为不变，App origin 访问 Web 路由照样 403。新增环境变量 `MOBILE_APP_ORIGINS`（env.ts 校验只允许自定义 scheme，http/https/exp 一律拒绝），proxy 放行未登录访问 `/api/m/v1/config`。单测 16 条覆盖三种反例，以及其他变体的 scheme、浏览器同时伪带 expo-origin 的情况；authz-matrix 的行等 MA1-T04 有了真实端点再加。
 
 #### [ ] MA1-T02 App 会话（@better-auth/expo）
 依赖：MA1-T01

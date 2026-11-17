@@ -42,6 +42,18 @@ const schema = z
     PII_KEYS: z.string().min(1),
     PII_ACTIVE_KEY_ID: z.string().default("v1"),
 
+    // Android App 的 scheme origin（逗号分隔，如 findmyjob://），只放本环境那个变体；留空 = /api/m 全部 403
+    MOBILE_APP_ORIGINS: z.preprocess(
+      v => (v === '' ? undefined : v),
+      z
+        .string()
+        .refine(
+          v => v.split(',').every(s => /^[a-z][a-z0-9+.-]*:\/\/$/.test(s.trim()) && !/^(https?|javascript|data|file|exp):\/\/$/.test(s.trim())),
+          'MOBILE_APP_ORIGINS entries must be custom-scheme origins like findmyjob://',
+        )
+        .optional(),
+    ),
+
     TURNSTILE_SITE_KEY: z.string().min(1),
     TURNSTILE_SECRET_KEY: z.string().min(1),
 

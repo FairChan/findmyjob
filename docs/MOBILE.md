@@ -116,7 +116,7 @@ Caddy (TLS) ─► Next.js
    - App 的来源标识是各变体的自定义 scheme，用 `MOBILE_APP_ORIGINS` 配置，每个环境**只放自己那个精确值**。
    - App 发出的请求永远不传自定义 scheme 的 callbackURL，否则 expo 插件会把 Cookie 拼进跳转 URL，被抢注同一 scheme 的 App 截获。
 2. **CSRF / Origin**：
-   - 新写 `mobileRoute()` 包装器：会话从 Cookie 读，**Origin（或 expo-origin）必须精确等于 `MOBILE_APP_ORIGINS` 里的值**。浏览器不能伪造 Origin，所以这就是 CSRF 防线。
+   - 给 `route()` 加 `origin: 'app'` 选项（不另写包装器，保住"route.ts 只导出 route(...)"的架构测试）：会话从 Cookie 读，**Origin（或 expo-origin）必须精确等于 `MOBILE_APP_ORIGINS` 里的值**。浏览器不能伪造 Origin，所以这就是 CSRF 防线。
    - 现有 `route()` 的 Origin 校验保持不变。
    - `authz-matrix.test.ts` 加行，覆盖三条反例：浏览器 Origin → 403、没有 Origin → 403、前缀相同但不完全相等的 scheme → 403。
 3. **人机校验**：

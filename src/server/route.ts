@@ -3,6 +3,8 @@ import { randomUUID } from 'crypto'
 import { z } from 'zod'
 import { AppError, ForbiddenError } from './errors'
 import { logger } from './lib/logger'
+import { isAppOriginRequest } from './lib/app-origin'
+import { APP_VERSION_HEADER, compareAppVersions } from '@/shared/mobile-api'
 import type { CompanyMemberRole } from '@prisma/client'
 import type { AuthOption, CompanyAuthOpt } from './action'
 
@@ -69,6 +71,25 @@ async function resolveRouteAuth(
   return { userId: ctx.userId, companyId: ctx.companyId, companyRole: ctx.role }
 }
 
+function jsonError(status: number, code: string): Response {
+  return new Response(JSON.stringify({ ok: false, code }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'private, no-store',
+      'X-Robots-Tag': 'noindex, nofollow',
+    },
+  })
+}
+
+// A missing or malformed version header compares below every real version, so an app that
+// forgets the header is told to update instead of slipping past the gate.
+async function isAppVersionTooOld(version: string | null): Promise<boolean> {
+  const { getSetting } = await import('./services/settings')
+  const min = await getSetting<string>('mobile.minSupportedVersion', '0.0.0')
+  return compareAppVersions(version ?? '', min) < 0
+}
+
 type RouteHandler = (
   req: Request,
   ctx: { userId?: string; companyId?: string; companyRole?: CompanyMemberRole; input?: unknown },
@@ -83,15 +104,32 @@ export function route(
      * that authenticate the original body themselves before changing any state.
      */
     skipOriginCheck?: boolean
+    /**
+     * Who may call this route (MA1-T01). 'web' (default): the site's own origin, as before.
+     * 'app': only the Android app — exact MOBILE_APP_ORIGINS match for every method, plus the
+     * mobile.minSupportedVersion gate; used by /api/m/v1. 'web+app': either, for endpoints both
+     * clients share (uploads). Browsers cannot forge Origin, so this is the app's CSRF boundary.
+     */
+    origin?: 'web' | 'app' | 'web+app'
   },
   handler: RouteHandler,
 ): (req: Request) => Promise<Response> {
   const skipOrigin = opts.skipOriginCheck === true && opts.auth === 'public'
+  const originMode = opts.origin ?? 'web'
   return async (req: Request): Promise<Response> => {
     const requestId = req.headers.get('x-request-id') ?? randomUUID()
     try {
+      const fromApp = originMode !== 'web' && isAppOriginRequest(req.headers)
+      if (originMode === 'app' && !fromApp) {
+        return jsonError(403, 'FORBIDDEN')
+      }
+      if (fromApp) {
+        const tooOld = await isAppVersionTooOld(req.headers.get(APP_VERSION_HEADER))
+        if (tooOld) return jsonError(426, 'APP_UPDATE_REQUIRED')
+      }
+
       // Origin check for state-mutating methods
-      if (!skipOrigin && req.method !== 'GET' && req.method !== 'HEAD') {
+      if (!fromApp && !skipOrigin && req.method !== 'GET' && req.method !== 'HEAD') {
         const origin = req.headers.get('origin')
         if (!isOriginAllowed(origin)) {
           return new Response(JSON.stringify({ ok: false, code: 'FORBIDDEN' }), {
