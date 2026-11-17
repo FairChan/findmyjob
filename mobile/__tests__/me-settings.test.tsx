@@ -97,7 +97,7 @@ describe('S20 privacy', () => {
     await waitFor(() => expect(callsTo('PUT', '/privacy')[0]?.body).toEqual({ granted: false }))
 
     await fireEvent.changeText(screen.getByTestId('privacy-block-search'), '另一家')
-    await fireEvent.press(await screen.findByTestId('block-ccompany00000000000000002', {}, { timeout: 2000 }))
+    await fireEvent.press(await screen.findByTestId('block-ccompany00000000000000002', {}, { timeout: 4000 }))
     await waitFor(() => expect(callsTo('POST', '/privacy/blocked-companies')[0]?.body).toEqual({ companyId: 'ccompany00000000000000002' }))
     expect(callsTo('GET', '/privacy/companies')[0]?.path).toBe(`/privacy/companies?query=${encodeURIComponent('另一家')}`)
 

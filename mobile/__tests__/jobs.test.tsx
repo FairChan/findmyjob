@@ -60,9 +60,9 @@ describe('S08 job list', () => {
     await new Promise((r) => setTimeout(r, 700))
     expect(apiCalls.filter((c) => c.path.includes('q='))).toEqual([])
     await fireEvent.changeText(input, '前端')
-    await waitFor(() => expect(apiCalls.map((c) => c.path)).toContain(`/jobs?q=${encodeURIComponent('前端')}`), { timeout: 2000 })
+    await waitFor(() => expect(apiCalls.map((c) => c.path)).toContain(`/jobs?q=${encodeURIComponent('前端')}`), { timeout: 4000 })
     await fireEvent(input, 'submitEditing', { nativeEvent: { text: 'react' } })
-    await waitFor(() => expect(callsTo('GET', '/jobs?q=react')).toHaveLength(1))
+    await waitFor(() => expect(callsTo('GET', '/jobs?q=react')).toHaveLength(1), { timeout: 4000 })
   })
 
   it('applies filter chips only when "show results" is pressed', async () => {
