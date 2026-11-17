@@ -1890,10 +1890,11 @@
 验收：伪造 token、包名不符、nonce 重放都被拒；第 6 次请求照样返回 429。
 > 完成 2026-11-18：`src/server/lib/play-integrity.ts` 用服务账号 JWT 换 access token（Node crypto，没有新依赖，token 会缓存），调 decodeIntegrityToken，校验 7 项：请求包名、requestHash（sha256(findmyjob:动作:规范化邮箱)）、5 分钟时效、PLAY_RECOGNIZED、应用包名、签名证书、MEETS_DEVICE_INTEGRITY；同一个 token 写一行 RateLimitBucket（主键冲突就是重放，过期行由现有 prune 清理）。before-hook 只在 App origin、请求带 integrityToken、三个环境变量都配齐时才走 Integrity，否则照旧走 Turnstile；校验失败统一返回 TURNSTILE_FAILED，同一请求内不降级。限流照旧走 Better Auth 的 rateLimit。官网直装的 APK 是 UNRECOGNIZED_VERSION，会回退到 WebView Turnstile。测试：play-integrity 12 条（含重放、Google 不可达时拒绝、OAuth token 复用）、hook 层 5 条（浏览器和仿冒 scheme 不能用 integrityToken；未配置时回退）。"第 6 次 429"由现有 auth-real-config 的限流用例覆盖，本任务没有改限流。**未做**：真机拿真实 token（需要 MA0-H01 的 Google 账号），App 端调用放在 MA2-T04。
 
-#### [ ] MA1-T04 学生端只读端点
+#### [x] MA1-T04 学生端只读端点
 依赖：MA1-T01
 做：`/api/m/v1` 下的 config、me、profile、jobs（列表和 preview）、companies、notifications、applications、invitations、referrals/me。
 验收：契约测试；"列表和 preview 不产生 JobView"的断言。
+> 完成 2026-11-18：新增 12 个 GET 端点（profile、profile/completeness、schools、jobs、jobs/:id/preview、companies、companies/:id、notifications、applications、applications/:id/timeline、invitations、referrals/me），config 和 me 在 MA1-T02 已有。全部用 `route({ auth: 'student', origin: 'app' })`；读模型集中在 `src/server/services/mobile-student.ts`，只调现有 service（searchJobs、getQuota/canApplyToJob、listPublicCompanies、listCompanyBrowseJobs、listStudentApplications、getStudentApplicationTimeline、listStudentInvitations、getOrCreateReferralCode）；响应契约在 `src/shared/mobile-api/student-contracts.ts`，返回前再 parse 一遍，丢掉多余字段。`tests/integration/mobile-student-read.test.ts` 24 条通过：每个端点都覆盖 200、匿名 403、企业账号 403、浏览器 Origin 403、仿冒 scheme 403、缺版本头 426，带参数的端点另覆盖 400；"列表翻完 3 页、preview 50 个职位之后，JobView=0、viewCount=0、额度不变"；隐藏薪资为 null，通知不带 payload，时间线没有企业备注，邀请同学只给打码名。架构测试、route 单测、mobile-app 测试 31 条通过。**偏差**：① 新增 `GET /schools`（建档和学校认证要用的下拉选项，§4.2 清单里没有）；② 通知只给 type 和时间，不给 payload（Web 通知页本来也不展示 payload），另给 unreadCount；③ 投递和企业邀请列表与 Web 一样一次返回全部，nextCursor 恒为 null；④ 邀请链接用 APP_URL 拼（Web 用请求的 Host，App 请求没有可信的 Host）；⑤ 没有输入参数的端点（profile、schools、applications 等）不存在 400 的情形。
 
 #### [ ] MA1-T05 学生端写端点
 依赖：MA1-T04
