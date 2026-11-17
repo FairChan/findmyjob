@@ -1878,10 +1878,11 @@
 验收：单测覆盖；authz-matrix 新增三行：浏览器 Origin 访问 /api/m → 403；没有 Origin → 403；前缀相同但不完全相等的 scheme（如 `findmyjob-evil://`）→ 403。
 > 完成 2026-11-18：**偏差**：不新写 mobileRoute，而是给 `route()` 加 `origin: 'web' | 'app' | 'web+app'` 选项。原因是架构测试 server-boundary 要求每个 route.ts 只导出 `route(...)`，这个约束要保住。'app' 模式对所有方法校验 App origin（有 Origin 时只看 Origin，没有才看 expo-origin），再检查 `mobile.minSupportedVersion`，版本过低或没带版本头返回 426；默认 'web' 的行为不变，App origin 访问 Web 路由照样 403。新增环境变量 `MOBILE_APP_ORIGINS`（env.ts 校验只允许自定义 scheme，http/https/exp 一律拒绝），proxy 放行未登录访问 `/api/m/v1/config`。单测 16 条覆盖三种反例，以及其他变体的 scheme、浏览器同时伪带 expo-origin 的情况；authz-matrix 的行等 MA1-T04 有了真实端点再加。
 
-#### [ ] MA1-T02 App 会话（@better-auth/expo）
+#### [x] MA1-T02 App 会话（@better-auth/expo）
 依赖：MA1-T01
 做：better-auth 从 1.7.16 升到 ^1.7.25（@better-auth/expo 要求的版本，Web 要全量回归）；server 端加 expo 插件，App 端用 expoClient + expo-secure-store；trustedOrigins 加 `MOBILE_APP_ORIGINS`（每个环境只放自己那个变体的精确 scheme）；Web 的 Cookie 配置不动。before-hook 拒绝自定义 scheme 的 callbackURL（spike 的风险 R1-a）。改密码和注销账号时吊销该用户的全部会话。
 验收：现有认证 E2E 全绿；Web 登录响应里没有 set-auth-token；MA0-T04 报告末尾的 6 项运行时清单全部通过。
+> 完成 2026-11-18：better-auth 1.7.16 → 1.7.25，加 @better-auth/expo 1.7.25 的 server 插件；trustedOrigins 加 `MOBILE_APP_ORIGINS`；before-hook 新增 `findUnsafeCallbackUrl`（只允许站内相对路径和 http(s)，拒绝自定义 scheme、协议相对地址和非字符串，返回 INVALID_CALLBACK_URL）。另外：2FA 只对管理员开放，学生和企业的 App 不会走到它；Web 用邮件链接验证邮箱（OTP 验证是禁用路径），App 也一样，学生点完链接回 App 登录。运行时：`scripts/mobile/app-session-probe.mjs` 在本地隔离环境（3030）22/22 通过（App 注册、链接验证、登录、Cookie 自存、get-session、/me、/config、三种反例 403、缺版本头 426、自定义 scheme callbackURL 400、登出后拒绝）；Web 注册、验证、登录都没有 set-auth-token；认证相关 4 个测试文件 70 条用例通过。**未验证的 3 项**（需要真机或生产模式，放进 GATE-APP）：Android 上 `credentials: 'omit'` 的请求不被系统 cookie jar 自动带 Cookie；生产模式下 `__Secure-` 前缀的 Cookie 存取；staging 镜像里没有 exp://（插件只在 NODE_ENV=development 时加）。
 
 #### [ ] MA1-T03 Play Integrity 替代 Turnstile
 依赖：MA1-T02
@@ -1917,7 +1918,7 @@
 
 #### [ ] MA2-T02 apiClient 与查询层
 依赖：MA1-T04、MA2-T01
-做：expoClient 会话（Cookie 存 SecureStore）、版本头、错误码转成 i18n 文案、401 自动登出、409 弹出条款页、426 强制更新；配置 TanStack Query。**会计数的端点禁止预取和自动重取**。
+做：expoClient 会话（Cookie 存 SecureStore）、版本头、错误码转成 i18n 文案、收到 401 或 403 时先查一次 get-session，确认会话失效才登出（会话过期时 authz 返回的是 403 FORBIDDEN）、409 弹出条款页、426 强制更新；配置 TanStack Query。**会计数的端点禁止预取和自动重取**。
 验收：单测覆盖每种错误码；一条 lint 或单测守住"会计数的端点只能由用户点击触发"。
 
 #### [ ] MA2-T03 国际化
@@ -2063,4 +2064,5 @@
 - [ ] 额度抽查：滑过列表、从推送打开详情、断网重试都不会多扣
 - [ ] 律师确认已补充 FCM 的隐私政策；SUBPROCESSORS 已更新；Play 数据安全表单与实际收集的数据一致
 - [ ] 上传密钥两份离线备份已核对；App 内找不到任何秘密（反编译抽查）
+- [ ] MA1-T02 遗留的 3 项：真机上 `credentials: 'omit'` 不会自动带 Cookie；staging 的 `__Secure-` Cookie 由 App 正确存取；staging 的 trustedOrigins 不含 exp://（用 `BASE=https://findmyjob.asia` 跑一遍 `scripts/mobile/app-session-probe.mjs` 的只读部分）
 - [ ] 晚于 Web 端 GATE-M7（D11 牌照问题同样阻塞 App）

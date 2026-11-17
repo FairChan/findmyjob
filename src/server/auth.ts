@@ -5,6 +5,7 @@ import { createAuthMiddleware, APIError, getSessionFromCtx, setShouldSkipSession
 import { prismaAdapter } from 'better-auth/adapters/prisma'
 import { emailOTP } from 'better-auth/plugins/email-otp'
 import { twoFactor } from 'better-auth/plugins/two-factor'
+import { expo } from '@better-auth/expo'
 import { db } from './db'
 import { env } from '@/env'
 import { createEmailProvider } from '@/lib/email'
@@ -19,6 +20,8 @@ import { SignupClosedError } from './errors'
 import { logger } from './lib/logger'
 import { alert } from './lib/alert'
 import { verificationEmailContent } from './lib/verification-email'
+import { parseAppOrigins } from './lib/app-origin'
+import { findUnsafeCallbackUrl } from './lib/auth-callback-url'
 
 const emailProvider = createEmailProvider()
 const emailVerificationProvider = createEmailProvider({
@@ -48,6 +51,13 @@ const TURNSTILE_PATHS: Record<string, string> = {
 const beforeHook = createAuthMiddleware(async (ctx) => {
   const path = ctx.path ?? ''
   const body = ctx.body as Record<string, unknown> | undefined
+
+  // --- Callback URLs must stay on the web (MA1-T02) ---
+  // The Expo plugin copies Set-Cookie into custom-scheme redirect URLs; another app that claims
+  // the same scheme could read the session from that URL. The Android app never sends one.
+  if (findUnsafeCallbackUrl(body)) {
+    throw new APIError('BAD_REQUEST', { message: 'Invalid callback URL', code: 'INVALID_CALLBACK_URL' })
+  }
 
   // --- Turnstile verification ---
   const turnstileAction = TURNSTILE_PATHS[path]
@@ -120,8 +130,9 @@ const beforeHook = createAuthMiddleware(async (ctx) => {
   }
 })
 
-// Trusted origins: APP_URL always, plus localhost only in development
-const trustedOrigins = [env.APP_URL]
+// Trusted origins: APP_URL always, plus localhost only in development, plus this environment's
+// exact Android app scheme (MOBILE_APP_ORIGINS, MA1-T02). Never a wildcard.
+const trustedOrigins = [env.APP_URL, ...parseAppOrigins(env.MOBILE_APP_ORIGINS)]
 if (env.APP_ENV === 'development') {
   trustedOrigins.push('http://localhost:3000')
 }
@@ -358,6 +369,11 @@ export const auth = betterAuth({
   },
 
   plugins: [
+    // Android app sessions (MA0-T04): the app keeps Better Auth's cookies in SecureStore and sends
+    // them with expo-origin; this plugin maps expo-origin to Origin only when the request has none,
+    // so browser requests are unaffected. Chosen over the bearer plugin, which would expose the
+    // session token in a set-auth-token header on web sign-ins too.
+    expo(),
     twoFactor({
       issuer: 'FindMYJob',
       accountLockout: { enabled: true, maxFailedAttempts: 5, durationSeconds: 900 },
