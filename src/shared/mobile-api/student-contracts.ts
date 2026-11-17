@@ -279,3 +279,38 @@ export const mobileReferralsSchema = z.object({
   ),
 })
 export type MobileReferrals = z.infer<typeof mobileReferralsSchema>
+
+// ---- 写端点（MA1-T05）----
+
+export const mobileApplicationRefSchema = z.object({ applicationId: z.string() })
+export type MobileApplicationRef = z.infer<typeof mobileApplicationRefSchema>
+
+export const mobileLocaleResultSchema = z.object({ locale: z.enum(['zh', 'en']) })
+
+/** 隐私中心：与 Web /s/privacy 一致——人才库开关、已屏蔽企业、谁看过我、谁解锁过我 */
+export const mobilePrivacySchema = z.object({
+  talentPoolVisible: z.boolean(),
+  blockedCompanies: z.array(z.object({ companyId: z.string(), companyName: z.string(), blockedAt: isoDate })),
+  profileViews: z.array(z.object({ companyId: z.string(), companyName: z.string(), viewedAt: isoDate })),
+  unlocks: z.array(
+    z.object({
+      companyId: z.string(),
+      companyName: z.string(),
+      unlockedAt: isoDate,
+      source: z.enum(['CREDIT', 'APPLICATION', 'ADMIN']),
+    }),
+  ),
+})
+export type MobilePrivacy = z.infer<typeof mobilePrivacySchema>
+
+export const mobileCompanySearchSchema = z.object({ items: z.array(z.object({ id: z.string(), name: z.string() })) })
+
+export const mobileDataExportSchema = z.object({ requestId: z.string(), existing: z.boolean() })
+
+/** 通知偏好：目前学生能控制的只有每周职位周报邮件（MARKETING 同意） */
+export const mobileNotificationPrefsSchema = z.object({
+  weeklyDigest: z.object({ available: z.boolean(), granted: z.boolean() }),
+  /** 开启周报时要原样回传的条款版本；未配置时为 null */
+  legalVersion: z.string().nullable(),
+})
+export type MobileNotificationPrefs = z.infer<typeof mobileNotificationPrefsSchema>

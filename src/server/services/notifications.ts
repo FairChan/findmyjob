@@ -33,6 +33,15 @@ export async function listNotifications(
   }))
 }
 
+/** 只改调用者自己的未读通知；别人的 id 混进来也只会被 where 过滤掉 */
+export async function markNotificationsRead(ctx: { userId: string }, ids: string[]): Promise<number> {
+  const res = await db.notification.updateMany({
+    where: { userId: ctx.userId, id: { in: ids }, readAt: null },
+    data: { readAt: new Date() },
+  })
+  return res.count
+}
+
 export async function markAllNotificationsRead(ctx: { userId: string }): Promise<void> {
   await db.notification.updateMany({
     where: { userId: ctx.userId, readAt: null },

@@ -3278,3 +3278,80 @@ describe('M9-T04 marketing sensitive action matrix', () => {
     await expect(setMarketingConsentAction({ granted: false })).resolves.toEqual({ ok: false, code: 'FORBIDDEN' })
   })
 })
+
+describe('Android App 学生端敏感端点（MA1-T05）', () => {
+  const APP = 'findmyjob-dev://'
+  const appReq = (path: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
+    new Request(`http://localhost:3000${path}`, {
+      method,
+      headers: { 'expo-origin': APP, 'x-app-version': '0.1.0', 'content-type': 'application/json', ...headers },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+  async function seedJob() {
+    const e = await createEmployer(testDb)
+    await testDb.company.update({ where: { id: e.companyId }, data: { verificationStatus: 'VERIFIED' } })
+    return (await createJob(testDb, e.companyId, e.userId)).id
+  }
+  const endpoints = [
+    { name: 'POST /api/m/v1/applications', load: () => import('@/app/api/m/v1/applications/route').then(m => m.POST), method: 'POST', path: (jobId: string) => ['/api/m/v1/applications', { jobId }] as const },
+    { name: 'POST /api/m/v1/jobs/:id/open', load: () => import('@/app/api/m/v1/jobs/[id]/open/route').then(m => m.POST), method: 'POST', path: (jobId: string) => [`/api/m/v1/jobs/${jobId}/open`, undefined] as const },
+    { name: 'PUT /api/m/v1/privacy', load: () => import('@/app/api/m/v1/privacy/route').then(m => m.PUT), method: 'PUT', path: () => ['/api/m/v1/privacy', { granted: true }] as const },
+    { name: 'POST /api/m/v1/data-requests/export', load: () => import('@/app/api/m/v1/data-requests/export/route').then(m => m.POST), method: 'POST', path: () => ['/api/m/v1/data-requests/export', {}] as const },
+    { name: 'POST /api/m/v1/account/delete', load: () => import('@/app/api/m/v1/account/delete/route').then(m => m.POST), method: 'POST', path: () => ['/api/m/v1/account/delete', { confirm: true }] as const },
+  ]
+  for (const ep of endpoints) {
+    it.each(['anonymous', 'employer', 'suspended-student', 'browser-origin', 'no-origin', 'lookalike-scheme'] as const)(
+      `${ep.name} denies %s and writes nothing`, async actor => {
+        vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+        try {
+          clearSettingsCache()
+          const jobId = await seedJob()
+          const s = await createStudent(testDb, { completeness: 90 })
+          await seedApplicationMaterials(testDb, s.profileId)
+          let headers: Record<string, string> = {}
+          if (actor === 'anonymous') mockSession(null)
+          else if (actor === 'employer') mockSession((await createEmployer(testDb)).userId)
+          else {
+            if (actor === 'suspended-student') await testDb.user.update({ where: { id: s.userId }, data: { status: 'SUSPENDED' } })
+            mockSession(s.userId)
+            if (actor === 'browser-origin') headers = { origin: 'http://localhost:3000' }
+            if (actor === 'no-origin') headers = { 'expo-origin': '' }
+            if (actor === 'lookalike-scheme') headers = { 'expo-origin': 'findmyjob-dev-evil://' }
+          }
+          const handler = await ep.load()
+          const [path, body] = ep.path(jobId)
+          const res = await handler(appReq(path, ep.method, body, headers))
+          expect(res.status).toBe(403)
+          expect(res.headers.get('cache-control')).toBe('private, no-store')
+          expect(await testDb.application.count()).toBe(0)
+          expect(await testDb.jobView.count()).toBe(0)
+          expect(await testDb.dataRequest.count()).toBe(0)
+          expect(await testDb.consent.count({ where: { type: 'TALENT_POOL' } })).toBe(0)
+          expect(await testDb.auditLog.count()).toBe(0)
+          expect((await testDb.user.findUniqueOrThrow({ where: { id: s.userId } })).status).not.toBe('DELETED')
+        } finally { vi.unstubAllEnvs() }
+      },
+    )
+  }
+
+  it('open job and apply ignore forged identity fields and act only for the session student', async () => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    try {
+      clearSettingsCache()
+      const jobId = await seedJob()
+      const victim = await createStudent(testDb, { completeness: 90 })
+      const s = await createStudent(testDb, { completeness: 90 })
+      await seedApplicationMaterials(testDb, s.profileId)
+      await testDb.consent.createMany({ data: (['TERMS', 'PRIVACY'] as const).map(type => ({ userId: s.userId, type, version: '2026-11-draft', granted: true })) })
+      mockSession(s.userId)
+      const { POST: open } = await import('@/app/api/m/v1/jobs/[id]/open/route')
+      expect((await open(appReq(`/api/m/v1/jobs/${jobId}/open?userId=${victim.userId}`, 'POST'))).status).toBe(200)
+      const { POST: apply } = await import('@/app/api/m/v1/applications/route')
+      // 多余的身份字段直接 400（strict schema），不会被当成别人的 studentId
+      expect((await apply(appReq('/api/m/v1/applications', 'POST', { jobId, studentId: victim.profileId }))).status).toBe(400)
+      expect((await apply(appReq('/api/m/v1/applications', 'POST', { jobId }))).status).toBe(200)
+      expect(await testDb.jobView.findMany({ select: { studentId: true } })).toEqual([{ studentId: s.profileId }])
+      expect(await testDb.application.findMany({ select: { studentId: true } })).toEqual([{ studentId: s.profileId }])
+    } finally { vi.unstubAllEnvs() }
+  })
+})

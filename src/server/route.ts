@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { AppError, ForbiddenError } from './errors'
 import { logger } from './lib/logger'
 import { isAppOriginRequest } from './lib/app-origin'
+import { runAsRequestClient } from './lib/request-client'
 import { APP_VERSION_HEADER, compareAppVersions } from '@/shared/mobile-api'
 import type { CompanyMemberRole } from '@prisma/client'
 import type { AuthOption, CompanyAuthOpt } from './action'
@@ -196,7 +197,11 @@ export function route(
         parsedInput = result.data
       }
 
-      const response = await handler(req, { ...authCtx, input: parsedInput })
+      const handlerCtx = { ...authCtx, input: parsedInput }
+      // 只有通过了精确 App origin 校验的请求才打上来源标记，供审计 metadata 记 client: 'android'
+      const response = fromApp
+        ? await runAsRequestClient('android', () => handler(req, handlerCtx))
+        : await handler(req, handlerCtx)
 
       // Ensure Cache-Control and X-Robots-Tag are set for all /api responses.
       // partner-logos sets its own Cache-Control (public, max-age=86400) so only
