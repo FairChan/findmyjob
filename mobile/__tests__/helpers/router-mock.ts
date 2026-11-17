@@ -24,7 +24,8 @@ export function expoRouterMock() {
     usePreventRemove: (enabled: boolean) => {
       preventRemove.enabled = enabled
     },
-    useFocusEffect: () => {},
+    // 测试里页面挂载即"聚焦"：和真实导航一样执行回调，卸载时执行清理
+    useFocusEffect: (cb: () => void | (() => void)) => (jest.requireActual('react') as typeof import('react')).useEffect(cb, [cb]),
     Redirect: () => null,
     Link: ({ children }: { children: unknown }) => children,
   }

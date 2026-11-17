@@ -58,6 +58,9 @@ const config: ExpoConfig = {
       'android.permission.READ_EXTERNAL_STORAGE',
       'android.permission.WRITE_EXTERNAL_STORAGE',
       'android.permission.SYSTEM_ALERT_WINDOW',
+      // expo-screen-capture 的库清单自带这两个；App 只用 FLAG_SECURE（不监听截屏），不需要
+      'android.permission.READ_MEDIA_IMAGES',
+      'android.permission.DETECT_SCREEN_CAPTURE',
     ],
     allowBackup: false,
     // FCM 配置文件（google-services.json）不入库，由构建环境提供；没有时照样能构建，只是拿不到推送 token
