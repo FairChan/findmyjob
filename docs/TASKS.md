@@ -1902,10 +1902,11 @@
 验收：额度、审计和防泄漏测试全绿；authz-matrix 加行。
 > 完成 2026-11-18：新增 22 个端点：建档四节 `PUT /profile/basic|preferences|skills|experience`（复用 step1~4 的 schema 和 service）、`POST /school-verification/send|confirm`、`POST /jobs/:id/open`、`POST /applications`、`POST /applications/:id/withdraw`、`POST /invitations/:id/accept|decline`、`POST /notifications/read`（ids 或 all）、`GET/PUT /privacy`、`GET /privacy/companies`、`POST /privacy/blocked-companies`、`DELETE /privacy/blocked-companies/:companyId`、`POST /data-requests/export`、`POST /account/delete`（必须带 confirm=true）、`PATCH /me/locale`、`GET/PUT /me/notification-prefs`。open 只经 job-view-quota 的 openJob 扣额度，规则与 Web 详情页一致（投过、被邀请过的职位不扣，重复打开不重复扣，首次打开 viewCount+1，额度用完返回锁定结果并发 quota.exhausted 通知）。审计来源标记没有改 service 签名：route() 在 App origin 校验通过后用 AsyncLocalStorage 标记请求来源，logAudit 读到标记就在 metadata 里补 `client: 'android'`，Web 路径的 metadata 不变（有测试）。测试：`mobile-student-write.test.ts` 71 条（每个端点覆盖匿名、企业、浏览器 Origin、仿冒 scheme 都是 403 且不写审计，非法输入 400，坏 JSON 400；另有功能和审计断言）；authz-matrix 新增 31 条（apply、open、privacy、export、delete 各 6 种拒绝情形且什么都不写，外加伪造身份字段不生效）。连同 authz-matrix 全量、mobile 读端点、architecture、route 单测、audit-actions、upload-authz、visibility-audit、data-rights，15 个文件 520 条全部通过。**偏差**：① 建档的"增删改"按 Web 的做法整节替换（教育、经历、语言都提交完整列表），没有做逐条的 CRUD 端点，避免出现第二套业务规则；② "通知偏好"目前只有每周职位周报（MARKETING 同意），所以 notification-prefs 就是它的读写；③ `PATCH /me/locale` 和 Web 一样是 `auth: 'user'`，企业账号也能调；④ 联系方式和简历管理不在本任务清单里，没有做。
 
-#### [ ] MA1-T06 上传端点接受 App 请求
+#### [x] MA1-T06 上传端点接受 App 请求
 依赖：MA1-T01
 做：给 `route()` 加 `allowAppOrigin` 选项，只在 `/api/uploads/[purpose]` 上打开，让 Origin 等于 `MOBILE_APP_ORIGINS` 的请求也能通过；校验逻辑一字不改。
 验收：已有上传测试不变；新增用例：App Origin 上传成功，其他端点照样拒绝 App Origin。
+> 完成 2026-11-18：`/api/uploads/[purpose]` 改为 `route({ auth: 'user', origin: 'web+app' })`，handler 一字未改。**偏差**：没有新加 `allowAppOrigin`，直接用 MA1-T01 已经实现的 `origin: 'web+app'`（语义相同：App 请求要精确匹配 MOBILE_APP_ORIGINS 并过版本门控，浏览器请求照旧走 APP_URL 的 Origin 校验）。新增 `tests/integration/mobile-upload.test.ts` 5 条：App 用 expo-origin 和 Origin 两种方式上传简历都成功、Web 照旧成功；非 PDF 被拒并写 upload.reject 审计（带 client: 'android'）；企业账号从 App 传简历 403；仿冒 scheme、没有来源头、外站 Origin 都是 403，App 版本过低 426（浏览器不受影响）；没配 MOBILE_APP_ORIGINS 时 App 403。新增架构测试 `tests/architecture/app-origin-routes.test.ts` 2 条：`/api/m/**` 下每个 route() 都必须是 origin 'app'，`origin: 'web+app'` 只允许出现在上传端点（其他端点保持默认 web，App origin 访问照样 403；route() 层面的反例由 route-app-origin 单测覆盖）。已有上传测试（upload-authz、resume-upload-lifecycle 等）未改动；本次运行的 15 个文件 520 条全部通过。
 
 #### [ ] MA1-T07 重新同意与 OpenAPI
 依赖：MA1-T05

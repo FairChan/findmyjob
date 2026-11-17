@@ -41,7 +41,9 @@ function rejectJson(code: string, status: number): Response {
 // Note: this route handler reads formData directly (no route() input schema),
 // because route()'s input parsing only handles JSON bodies.
 // auth:'user' is the minimum check; purpose-specific role checks happen below.
-export const POST = route({ auth: 'user' }, async (req, ctx) => {
+// origin 'web+app'（MA1-T06）：Android App 上传简历也走这里；App 请求要精确匹配 MOBILE_APP_ORIGINS
+// 并通过最低版本门控，之后的大小、文件头、白名单和限流校验与 Web 完全相同。
+export const POST = route({ auth: 'user', origin: 'web+app' }, async (req, ctx) => {
   await assertUploadsEnabled()
 
   const userId = ctx.userId!
