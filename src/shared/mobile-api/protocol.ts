@@ -21,6 +21,18 @@ export type ApiResult<T> = ApiSuccess<T> | ApiFailure
 /** 分页统一用游标；nextCursor 为 null 表示没有下一页 */
 export type CursorPage<T> = { items: T[]; nextCursor: string | null }
 
+/**
+ * Play Integrity 的 requestHash = base64url(sha256(这个字符串))。App 和服务端各自做哈希，
+ * 但输入格式只在这里定义一次，绑定动作和规范化后的邮箱（MA1-T03）。
+ */
+export function playIntegrityHashInput(action: string, email: string): string {
+  return `findmyjob:${action}:${email.trim().toLowerCase()}`
+}
+
+/** 受人机校验保护的认证动作（与服务端 TURNSTILE_PATHS 的值一致） */
+export const HUMAN_CHECK_ACTIONS = ['login', 'register', 'send-otp', 'forgot-password', 'send-verification'] as const
+export type HumanCheckAction = (typeof HUMAN_CHECK_ACTIONS)[number]
+
 /** 语义化版本比较，只认 MAJOR.MINOR.PATCH；格式不对的一律当作最旧版本 */
 export function compareAppVersions(a: string, b: string): number {
   const parse = (v: string): [number, number, number] => {

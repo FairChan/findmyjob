@@ -2713,7 +2713,7 @@
       "email": "Email",
       "password": "Password",
       "name": "Name",
-      "passwordHelper": "At least 8 characters with letters and numbers",
+      "passwordHelper": "At least 8 characters",
       "forgotPassword": "Forgot password?",
       "agreeTerms": "I have read and agree to the Terms of Use",
       "agreePrivacy": "I have read and agree to the Privacy Policy",

@@ -3,6 +3,7 @@ import { createHash, createSign } from 'crypto'
 import { readFileSync } from 'fs'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
+import { playIntegrityHashInput } from '@/shared/mobile-api'
 import { logger } from './logger'
 
 /**
@@ -45,7 +46,7 @@ export function isPlayIntegrityConfigured(): boolean {
 
 /** App 和服务端用同一个算法得到 requestHash：绑定动作和邮箱，防止把别处拿到的 token 挪用过来 */
 export function playIntegrityRequestHash(action: string, email: string): string {
-  return createHash('sha256').update(`findmyjob:${action}:${email.trim().toLowerCase()}`).digest('base64url')
+  return createHash('sha256').update(playIntegrityHashInput(action, email)).digest('base64url')
 }
 
 // ---- Google OAuth（服务账号 JWT → access token），不引入新依赖 ----

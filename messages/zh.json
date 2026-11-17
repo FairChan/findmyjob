@@ -2713,7 +2713,7 @@
       "email": "邮箱",
       "password": "密码",
       "name": "姓名",
-      "passwordHelper": "至少 8 位，包含字母和数字",
+      "passwordHelper": "至少 8 位",
       "forgotPassword": "忘记密码？",
       "agreeTerms": "我已阅读并同意《用户协议》",
       "agreePrivacy": "我已阅读并同意《隐私政策》",

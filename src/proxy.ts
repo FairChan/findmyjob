@@ -35,6 +35,8 @@ const AUTH_PAGE_SLUGS = [
   'forgot-password',
   'legal/reconsent',
   'two-factor/setup',
+  // Android App 的人机校验页（WebView 内打开，MA2-T04）
+  'app-check',
 ] as const
 
 function requiresNoIndex(pathname: string): boolean {

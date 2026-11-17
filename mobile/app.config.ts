@@ -65,6 +65,8 @@ const config: ExpoConfig = {
   extra: {
     variant,
     apiBaseUrl: process.env.FINDMYJOB_API_BASE_URL ?? v.apiBaseUrl,
+    // Google Cloud 项目编号（不是密钥）；没填时 App 直接走 WebView Turnstile（MA1-T03）
+    playIntegrityProjectNumber: process.env.PLAY_INTEGRITY_PROJECT_NUMBER ?? '',
   },
 }
 
