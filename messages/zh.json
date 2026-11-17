@@ -2898,8 +2898,7 @@
       "localeSyncFailed": "语言已在本机切换，但没能同步到服务器，邮件可能仍用原来的语言。",
       "weeklyDigest": "每周职位周报邮件",
       "weeklyDigestDesc": "每周把可能适合你的新职位发到你的邮箱，可随时关闭。",
-      "weeklyDigestUnavailable": "职位周报暂未开放。",
-      "pushLater": "App 推送通知将在后续版本提供。"
+      "weeklyDigestUnavailable": "职位周报暂未开放。"
     },
     "privacy": {
       "block": "屏蔽",
@@ -2923,6 +2922,18 @@
       "moreOnWeb": "查看完整的防骗指南和真实案例",
       "opensWeb": "在浏览器中打开 FindMYJob 网页版",
       "call999": "拨打 999"
+    },
+    "push": {
+      "title": "推送通知",
+      "enable": "开启推送",
+      "enabled": "推送已开启",
+      "denied": "推送已被系统关闭，请到手机的「设置 → 应用 → FindMYJob → 通知」里打开。",
+      "unsupported": "你的手机不支持推送（没有 Google 服务），重要消息会发到你的邮箱。",
+      "applications": "投递进展",
+      "invitations": "企业邀请",
+      "account": "账号消息（邀请同学达标、额度用完）",
+      "quietHours": "夜间免打扰（23:00–08:00）",
+      "quietHoursDesc": "夜间的消息会在早上 8 点合并成一条推送"
     }
   },
   "appDownload": {

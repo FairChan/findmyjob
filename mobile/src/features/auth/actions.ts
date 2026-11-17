@@ -1,7 +1,9 @@
 import type { HumanCheckAction } from '@shared/mobile-api'
 
+import { revokeThisDevice } from '@/features/push/push'
 import { apiBaseUrl } from '@/lib/api-config'
 import { authClient, clearLocalSession } from '@/lib/auth-client'
+import { clearPersistedQueries } from '@/lib/query-persist'
 import type { HumanProof } from './human-check'
 
 export type RequestProof = (action: HumanCheckAction, email: string, opts?: { forceTurnstile?: boolean }) => Promise<HumanProof>
@@ -93,10 +95,13 @@ export async function requestPasswordReset(requestProof: RequestProof, input: { 
  */
 export async function signOut(): Promise<void> {
   try {
+    // 先注销本机推送 token（要带着还有效的 Cookie）；失败无妨，服务端删会话时 token 会级联删除
+    await revokeThisDevice().catch(() => {})
     await authClient.signOut()
   } catch {
     // 离线、5xx、会话已被服务端吊销（注销账号后）都会走到这里
   } finally {
     await clearLocalSession()
+    await clearPersistedQueries()
   }
 }

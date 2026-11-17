@@ -1,5 +1,8 @@
 import type { ExpoConfig } from 'expo/config'
 
+// 与 src/lib/deep-links.ts 的 APP_LINK_PATH_PREFIXES 一致（app.config 不能 import TS 源码，测试守着两边相同）
+export const APP_LINK_PATH_PREFIXES = ['/zh/s/jobs', '/en/s/jobs', '/zh/s/applications', '/en/s/applications', '/zh/s/invitations', '/en/s/invitations', '/zh/s/notifications', '/en/s/notifications', '/zh/jobs/', '/en/jobs/', '/zh/companies/', '/en/companies/']
+
 // 三个变体用不同的包名和 scheme，可以在同一台手机上并存；服务端 trustedOrigins 只放对应变体的精确 scheme。
 type Variant = 'dev' | 'staging' | 'prod'
 
@@ -49,16 +52,34 @@ const config: ExpoConfig = {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#ffffff',
     },
-    // 只申请 MOBILE.md §5.6 允许的权限；通知权限在 MA3 再加
-    permissions: [],
+    // 只申请 MOBILE.md §5.6 允许的权限：通知（Android 13+ 运行时权限，第一次投递成功后才问）
+    permissions: ['android.permission.POST_NOTIFICATIONS'],
     blockedPermissions: [
       'android.permission.READ_EXTERNAL_STORAGE',
       'android.permission.WRITE_EXTERNAL_STORAGE',
       'android.permission.SYSTEM_ALERT_WINDOW',
     ],
     allowBackup: false,
+    // FCM 配置文件（google-services.json）不入库，由构建环境提供；没有时照样能构建，只是拿不到推送 token
+    ...(process.env.GOOGLE_SERVICES_JSON ? { googleServicesFile: process.env.GOOGLE_SERVICES_JSON } : {}),
+    // App Links（MA3-T04）：只有连真实站点的变体接管网页链接；dev 变体只用自定义 scheme
+    intentFilters:
+      variant === 'dev'
+        ? []
+        : [
+            {
+              action: 'VIEW',
+              autoVerify: true,
+              data: APP_LINK_PATH_PREFIXES.map((pathPrefix) => ({ scheme: 'https', host: new URL(v.apiBaseUrl).host, pathPrefix })),
+              category: ['BROWSABLE', 'DEFAULT'],
+            },
+          ],
   },
-  plugins: ['expo-router'],
+  plugins: [
+    'expo-router',
+    // 推送通知的小图标颜色用品牌蓝；默认渠道由 App 启动时创建（锁屏只显示"有新消息"）
+    ['expo-notifications', { color: '#0066CC', defaultChannel: 'default' }],
+  ],
   experiments: {
     typedRoutes: true,
   },

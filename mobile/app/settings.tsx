@@ -5,6 +5,7 @@ import { useTranslations } from 'use-intl'
 
 import { Button, Card, OfflineBanner, Screen, SectionTitle, SwitchRow, TopBar, useToast } from '@/components/ui'
 import { useSignOut } from '@/features/auth/use-sign-out'
+import { PushSettings } from '@/features/push/push-settings'
 import { patchLocale, useNotificationPrefs, useSetWeeklyDigest } from '@/features/settings/api'
 import { usePreferences } from '@/features/settings/prefs'
 import { useErrorMessage } from '@/i18n/error-message'
@@ -25,6 +26,7 @@ export default function Settings() {
   const errorMessage = useErrorMessage()
   const { colors } = useTheme()
   const prefs = useNotificationPrefs()
+  const p = useTranslations('mobile.push')
   const setDigest = useSetWeeklyDigest()
 
   function changeLocale(next: AppLocale) {
@@ -94,7 +96,11 @@ export default function Settings() {
             }}
           />
         )}
-        <Text style={[styles.note, { color: colors.mutedForeground }]}>{s('pushLater')}</Text>
+      </Card>
+
+      <SectionTitle>{p('title')}</SectionTitle>
+      <Card>
+        <PushSettings online={online} />
       </Card>
 
       <Text style={[styles.version, { color: colors.mutedForeground }]}>{t('version', { version: Constants.expoConfig?.version ?? '' })}</Text>

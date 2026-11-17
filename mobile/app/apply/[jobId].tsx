@@ -75,7 +75,8 @@ function ApplyForm({ data }: { data: MobileJobOpen }) {
     try {
       const { applicationId } = await apply.mutateAsync({ resumeId, coverNote: coverNote.trim() || null })
       toast(t('success'))
-      router.replace(`/applications/${applicationId}`)
+      // justApplied=1：详情页据此在第一次投递后提示开启通知（MA3-T03）
+      router.replace(`/applications/${applicationId}?justApplied=1`)
     } catch {
       // 错误码（完成度不足、缺联系方式、重复投递等）已映射成文案，显示在按钮上方
     }

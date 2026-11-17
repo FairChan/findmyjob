@@ -51,7 +51,7 @@ export default function ApplicationsTab() {
     try {
       const res = await respond.mutateAsync({ id, action: 'accept' })
       toast(inv('acceptSuccess'))
-      if (res.applicationId) router.push(`/applications/${res.applicationId}`)
+      if (res.applicationId) router.push(`/applications/${res.applicationId}?justApplied=1`)
     } catch (err) {
       toast(respondError(err), 'error')
     }

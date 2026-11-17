@@ -2898,8 +2898,7 @@
       "localeSyncFailed": "The app language changed, but we couldn't sync it to the server. Emails may still use the old language.",
       "weeklyDigest": "Weekly job digest email",
       "weeklyDigestDesc": "A weekly email with new jobs that may suit you. Turn it off any time.",
-      "weeklyDigestUnavailable": "The weekly digest isn't available yet.",
-      "pushLater": "Push notifications are coming in a later version."
+      "weeklyDigestUnavailable": "The weekly digest isn't available yet."
     },
     "privacy": {
       "block": "Block",
@@ -2923,6 +2922,18 @@
       "moreOnWeb": "Read the full safety guide and real cases",
       "opensWeb": "Opens the FindMYJob website in your browser",
       "call999": "Call 999"
+    },
+    "push": {
+      "title": "Push notifications",
+      "enable": "Turn on push",
+      "enabled": "Push notifications are on",
+      "denied": "Push notifications are blocked by the system. Turn them on in Settings → Apps → FindMYJob → Notifications.",
+      "unsupported": "This phone can't receive push notifications (no Google services). Important updates are sent to your email.",
+      "applications": "Application updates",
+      "invitations": "Employer invitations",
+      "account": "Account updates (referral rewards, quota used up)",
+      "quietHours": "Quiet hours (23:00–08:00)",
+      "quietHoursDesc": "Night-time updates arrive as one notification at 8 am"
     }
   },
   "appDownload": {

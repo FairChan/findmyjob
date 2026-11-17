@@ -1,4 +1,5 @@
-import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import { Stack, useRouter } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
@@ -7,10 +8,13 @@ import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { ToastProvider } from '@/components/ui'
 import { signOut } from '@/features/auth/actions'
 import { HumanCheckProvider } from '@/features/auth/human-check'
+import { PushBridge } from '@/features/push/push-bridge'
 import { PreferencesProvider } from '@/features/settings/prefs'
+import { appVersion } from '@/lib/api-config'
 import { onAppEvent } from '@/lib/app-events'
 import { bindOnlineManager } from '@/lib/online'
 import { createQueryClient } from '@/lib/query-client'
+import { PERSIST_MAX_AGE_MS, queryPersister, shouldPersistQuery } from '@/lib/query-persist'
 import { useTheme } from '@/theme/use-theme'
 
 // 离线时查询暂停、缓存照常显示，恢复联网后自动续上（MOBILE.md §5.5 离线）
@@ -45,13 +49,17 @@ export default function RootLayout() {
   return (
     <PreferencesProvider>
       <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
+        <PersistQueryClientProvider
+          client={queryClient}
+          // 离线缓存只落白名单里的查询（MA3-T05）；换版本号时整体作废，避免旧结构的缓存
+          persistOptions={{ persister: queryPersister, maxAge: PERSIST_MAX_AGE_MS, buster: appVersion(), dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery } }}
+        >
           <ToastProvider>
             <HumanCheckProvider>
               <ThemedStack />
             </HumanCheckProvider>
           </ToastProvider>
-        </QueryClientProvider>
+        </PersistQueryClientProvider>
       </SafeAreaProvider>
     </PreferencesProvider>
   )
@@ -64,6 +72,7 @@ function ThemedStack() {
     <>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <AppEventBridge />
+      <PushBridge />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }} />
     </>
   )

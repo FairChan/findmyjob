@@ -8,10 +8,11 @@ import { useApplications, useTimeline, useWithdraw } from '@/features/applicatio
 import { useErrorMessage } from '@/i18n/error-message'
 import { useOnline } from '@/lib/online'
 import { useTheme } from '@/theme/use-theme'
+import { PushPrompt } from '@/features/push/push-prompt'
 
 /** S13 投递详情：状态时间线（不含企业内部备注）和撤回（二次确认） */
 export default function ApplicationDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>()
+  const { id, justApplied } = useLocalSearchParams<{ id: string; justApplied?: string }>()
   const router = useRouter()
   const toast = useToast()
   const online = useOnline()
@@ -84,6 +85,7 @@ export default function ApplicationDetail() {
 
   return (
     <Screen footer={footer} onRefresh={() => void Promise.all([applications.refetch(), timeline.refetch()])} refreshing={applications.isRefetching || timeline.isRefetching}>
+      <PushPrompt enabled={justApplied === '1'} />
       <TopBar title={t('detailTitle')} />
       <OfflineBanner />
       {body}

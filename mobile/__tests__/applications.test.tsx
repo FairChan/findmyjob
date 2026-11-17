@@ -61,7 +61,7 @@ describe('S11 apply confirm', () => {
     await fireEvent.press(screen.getByTestId(`apply-resume-${ids.resume2}`))
     await fireEvent.changeText(screen.getByTestId('apply-cover-note'), '  期待加入  ')
     await fireEvent.press(screen.getByTestId('apply-submit'))
-    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith(`/applications/${ids.application}`))
+    await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith(`/applications/${ids.application}?justApplied=1`))
     expect(callsTo('POST', '/applications')[0]?.body).toEqual({ jobId: ids.job(1), resumeId: ids.resume2, coverNote: '期待加入' })
     expect(apiCalls.filter((c) => c.path.includes('/open'))).toEqual([])
   })
@@ -135,7 +135,7 @@ describe('S14 invitations', () => {
     expect(await screen.findByText('示例科技 邀请你投递「数据分析实习生」')).toBeOnTheScreen()
     expect(screen.getByRole('tab', { name: '收到的邀请 (1)' })).toBeOnTheScreen()
     await fireEvent.press(screen.getByTestId(`invitation-accept-${ids.invitation}`))
-    await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith(`/applications/${ids.application}`))
+    await waitFor(() => expect(mockRouter.push).toHaveBeenCalledWith(`/applications/${ids.application}?justApplied=1`))
   })
 
   it('declines only after confirming, and hides actions on expired invitations', async () => {
