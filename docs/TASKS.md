@@ -1850,10 +1850,11 @@
 验收：`mobile/` 下 `pnpm typecheck`、`pnpm lint`、`pnpm test` 都通过；`expo export --platform android` 能出 bundle；根目录 `pnpm lint && pnpm typecheck` 不受影响。
 > 完成 2026-11-18：Expo SDK 58 + Expo Router 骨架、三变体 app.config.ts、品牌 token（有对照 globals.css 的漂移测试）；mobile 的 typecheck、lint、jest 6/6 全过，Android Hermes bundle 2.4MB；根目录 lint 和 typecheck 通过。根目录的 vitest 在新工作区里因为没有 .env 报环境变量缺失（不读 .env，所以没有跑），本任务只改了根目录的 tsconfig exclude、eslint ignores 和 .dockerignore，不影响测试代码。
 
-#### [ ] MA0-T03 共享层
+#### [x] MA0-T03 共享层
 依赖：MA0-T02
 做：用 Metro 的 watchFolders 加 tsconfig paths 共享 `messages/*.json`，以及不依赖 server-only 的 zod schema 和错误码；共享文件里的依赖（例如 zod）统一从 `mobile/node_modules` 解析。必要时把 schema 拆成纯文件（只拆，不改语义）。
 验收：App 能 import 共享 schema 并通过类型检查；Web 的 `pnpm test` 全绿。
+> 完成 2026-11-18：新建 `src/shared/mobile-api`（API 前缀、版本头、ApiResult、游标分页、版本比较、App 会遇到的错误码表），架构测试 `shared-boundary` 禁止这里 import server-only、Prisma、Next、RN；现有 zod schema 都内联在 actions 里，没有拆，接口 schema 在 MA1 写进 shared。App 端通过 Metro watchFolders + 自定义 resolveRequest（共用代码的第三方依赖从 mobile/node_modules 解析）、tsconfig paths、Jest moduleNameMapper 引用 `@shared/*` 和 `@messages/*`；use-intl 读 Web 的 messages，品牌句已在首页显示。App 11/11，Web 新增 8 条用例通过，lint 和 typecheck 通过，bundle 2.7MB。
 
 #### [ ] MA0-H01 账号与云资源（人工）
 做：Play Console 组织账号（等 D3 公司主体和 D-U-N-S 编码）；Firebase 项目（FCM）；在 Google Cloud 开启 Play Integrity；EAS 账号。上传密钥离线备份两份。
