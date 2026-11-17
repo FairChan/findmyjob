@@ -67,6 +67,13 @@ const ROWS: Row[] = [
   { file: 'invitations/[id]/accept', method: 'POST', path: `/api/m/v1/invitations/${ID}/accept`, exempt: false, load: () => import('@/app/api/m/v1/invitations/[id]/accept/route').then((m) => m.POST) },
   { file: 'invitations/[id]/decline', method: 'POST', path: `/api/m/v1/invitations/${ID}/decline`, exempt: false, load: () => import('@/app/api/m/v1/invitations/[id]/decline/route').then((m) => m.POST) },
   { file: 'referrals/me', method: 'GET', path: '/api/m/v1/referrals/me', exempt: false, load: () => import('@/app/api/m/v1/referrals/me/route').then((m) => m.GET) },
+  // MA1-T08
+  { file: 'resumes', method: 'GET', path: '/api/m/v1/resumes', exempt: false, load: () => import('@/app/api/m/v1/resumes/route').then((m) => m.GET) },
+  { file: 'resumes/[id]/primary', method: 'POST', path: `/api/m/v1/resumes/${ID}/primary`, exempt: false, load: () => import('@/app/api/m/v1/resumes/[id]/primary/route').then((m) => m.POST) },
+  { file: 'resumes/[id]', method: 'DELETE', path: `/api/m/v1/resumes/${ID}`, exempt: false, load: () => import('@/app/api/m/v1/resumes/[id]/route').then((m) => m.DELETE) },
+  { file: 'contact', method: 'GET', path: '/api/m/v1/contact', exempt: false, load: () => import('@/app/api/m/v1/contact/route').then((m) => m.GET) },
+  { file: 'contact', method: 'PUT', path: '/api/m/v1/contact', body: { email: 'me@example.test' }, exempt: false, load: () => import('@/app/api/m/v1/contact/route').then((m) => m.PUT) },
+  { file: 'onboarding/complete', method: 'POST', path: '/api/m/v1/onboarding/complete', exempt: false, load: () => import('@/app/api/m/v1/onboarding/complete/route').then((m) => m.POST) },
   // MA3 的推送端点：注册设备和推送偏好照常检查；退出登录时注销设备必须可用，所以豁免
   { file: 'devices', method: 'POST', path: '/api/m/v1/devices', body: {}, exempt: false, load: () => import('@/app/api/m/v1/devices/route').then((m) => m.POST) },
   { file: 'devices/[id]', method: 'DELETE', path: `/api/m/v1/devices/${ID}`, exempt: true, load: () => import('@/app/api/m/v1/devices/[id]/route').then((m) => m.DELETE) },

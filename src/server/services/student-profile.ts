@@ -1,5 +1,4 @@
 import 'server-only'
-import { z } from 'zod'
 import { Prisma } from '@prisma/client'
 import { db } from '../db'
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors'
@@ -11,90 +10,10 @@ import { lockXact, LOCK_NS } from '../lib/advisory-locks'
 import { logger } from '../lib/logger'
 import { invalidateStudentMatchingIndexTx } from './semantic-matching'
 import { requireApplicationMaterialsTx } from './application-materials'
-import {
-  resumeDegreeLevelSchema as DegreeLevelEnum,
-  resumeLanguageLevelSchema as LanguageLevelEnum,
-  resumeExperienceKindSchema as ExperienceKindEnum,
-} from '../schemas/resume-parsing'
-
-// ---- Enums (mirror Prisma enums for Zod) ----
-
-const WorkAuthEnum = z.enum([
-  'MY_CITIZEN',
-  'MY_PR',
-  'STUDENT_PASS',
-  'DEPENDANT_PASS',
-  'NEEDS_WORK_PASS',
-  'OTHER',
-])
-
-const JobTypeEnum = z.enum(['INTERNSHIP', 'FULL_TIME', 'PART_TIME'])
-
-// ---- Step Schemas ----
-
-export const step1Schema = z.object({
-  fullName: z.string().min(1).max(100),
-  schoolId: z.string().min(1).max(64).nullable().optional(),
-  degreeLevel: DegreeLevelEnum.nullable().optional(),
-  major: z.string().max(100).nullable().optional(),
-  graduationYear: z.number().int().min(2000).max(2040).nullable().optional(),
-  graduationMonth: z.number().int().min(1).max(12).nullable().optional(),
-  cgpa: z.number().min(0).max(4).nullable().optional(),
-  nationality: z.string().length(2).toUpperCase().nullable().optional(),
-  workAuth: WorkAuthEnum,
-})
-
-export const step2Schema = z.object({
-  intents: z.array(JobTypeEnum).min(1),
-  availableFrom: z.string().datetime({ offset: true }).nullable().optional(),
-  preferredStates: z.array(z.string().max(10)).max(20).optional(),
-  preferredIndustries: z.array(z.string().max(50)).max(20).optional(),
-  expectedSalaryMin: z.number().int().nonnegative().nullable().optional(),
-  expectedSalaryMax: z.number().int().nonnegative().nullable().optional(),
-})
-
-const languageEntrySchema = z.object({
-  language: z.string().min(1).max(20),
-  level: LanguageLevelEnum,
-})
-
-export const step3Schema = z.object({
-  languages: z.array(languageEntrySchema).max(20),
-  skills: z.array(z.string().min(1).max(50)).max(30),
-  headline: z.string().max(100).nullable().optional(),
-  summary: z.string().max(2000).nullable().optional(),
-})
-
-const educationEntrySchema = z.object({
-  schoolName: z.string().min(1).max(200),
-  degreeLevel: DegreeLevelEnum.nullable().optional(),
-  major: z.string().max(100).nullable().optional(),
-  startDate: z.string().datetime({ offset: true }).nullable().optional(),
-  endDate: z.string().datetime({ offset: true }).nullable().optional(),
-  gpa: z.string().max(20).nullable().optional(),
-  description: z.string().max(1000).nullable().optional(),
-  sortOrder: z.number().int().nonnegative().optional(),
-})
-
-const experienceEntrySchema = z.object({
-  kind: ExperienceKindEnum,
-  title: z.string().min(1).max(200),
-  organization: z.string().max(200).nullable().optional(),
-  startDate: z.string().datetime({ offset: true }).nullable().optional(),
-  endDate: z.string().datetime({ offset: true }).nullable().optional(),
-  description: z.string().max(1000).nullable().optional(),
-  sortOrder: z.number().int().nonnegative().optional(),
-})
-
-export const step4Schema = z.object({
-  educations: z.array(educationEntrySchema).max(20),
-  experiences: z.array(experienceEntrySchema).max(50),
-})
-
-export type Step1Data = z.infer<typeof step1Schema>
-export type Step2Data = z.infer<typeof step2Schema>
-export type Step3Data = z.infer<typeof step3Schema>
-export type Step4Data = z.infer<typeof step4Schema>
+// 建档四节的请求 schema 已挪到 src/shared/mobile-api/profile-inputs.ts（Web 与 App 共用，MA1-T08），这里 re-export 保持原有引用不变
+export { step1Schema, step2Schema, step3Schema, step4Schema } from '@/shared/mobile-api/profile-inputs'
+export type { Step1Data, Step2Data, Step3Data, Step4Data } from '@/shared/mobile-api/profile-inputs'
+import type { Step1Data, Step2Data, Step3Data, Step4Data } from '@/shared/mobile-api/profile-inputs'
 
 // ---- Profile read types ----
 

@@ -314,3 +314,30 @@ export const mobileNotificationPrefsSchema = z.object({
   legalVersion: z.string().nullable(),
 })
 export type MobileNotificationPrefs = z.infer<typeof mobileNotificationPrefsSchema>
+
+// ---- 简历、联系方式（MA1-T08）----
+
+/** 与 Web 简历页同一份数据；pageCount 在旧数据里可能为空 */
+export const mobileResumeListSchema = z.object({
+  items: z.array(
+    z.object({
+      id: z.string(),
+      fileName: z.string(),
+      isPrimary: z.boolean(),
+      sizeBytes: z.number().int(),
+      pageCount: z.number().int().nullable(),
+      createdAt: isoDate,
+    }),
+  ),
+})
+export type MobileResumeList = z.infer<typeof mobileResumeListSchema>
+
+/** 学生本人的联系方式（只有本人能读到明文）；未填写的字段为 null */
+export const mobileContactSchema = z.object({
+  phone: z.string().nullable(),
+  email: z.string().nullable(),
+  whatsapp: z.string().nullable(),
+  wechat: z.string().nullable(),
+  linkedinUrl: z.string().nullable(),
+})
+export type MobileContact = z.infer<typeof mobileContactSchema>

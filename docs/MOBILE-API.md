@@ -46,6 +46,19 @@
 | GET | `/schools` | 学生 | 检查 | — | `mobileSchoolListSchema` | 启用中的学校和邮箱域名 |
 | POST | `/school-verification/send` | 学生 | 检查 | `{ schoolId, schoolEmail }` | `mobileEmptySchema` | 发 OTP 到学校邮箱；每小时、每邮箱每天限次，超限 429 |
 | POST | `/school-verification/confirm` | 学生 | 检查 | `{ otp }` | `mobileEmptySchema` | 错 5 次锁 30 分钟（429） |
+| POST | `/onboarding/complete` | 学生 | 检查 | — | `mobileEmptySchema` | Web 新手引导最后一步：前四节没填完 422，缺联系方式 `CONTACT_REQUIRED`，缺简历 `RESUME_REQUIRED`（MA1-T08） |
+
+step1~4 的请求 schema 在 `src/shared/mobile-api/profile-inputs.ts`（MA1-T08 起 Web 与 App 共用）。
+
+### 简历与联系方式（MA1-T08）
+
+| 方法 | 路径 | 认证 | 同意 | 输入 | 输出 | 说明 |
+|---|---|---|---|---|---|---|
+| GET | `/resumes` | 学生 | 检查 | — | `mobileResumeListSchema` | 本人简历（主简历在前），不含存储 key |
+| POST | `/resumes/:id/primary` | 学生 | 检查 | — | `mobileEmptySchema` | 别人的简历 403，不存在 404 |
+| DELETE | `/resumes/:id` | 学生 | 检查 | — | `mobileEmptySchema` | 删库后清理存储全部版本；别人的简历 403 |
+| GET | `/contact` | 学生 | 检查 | — | `mobileContactSchema` | 本人联系方式明文（只经 contact-access；解密失败直接报错，不当成空值） |
+| PUT | `/contact` | 学生 | 检查 | contact-access 的 `updateContactSchema` | `mobileContactSchema` | 整份提交，没带的字段清空；电话规范成 E.164，LinkedIn 只收 linkedin.com |
 
 简历上传走现有的 `POST /api/uploads/RESUME`（multipart，`route({ origin: 'web+app' })`，MA1-T06），校验与 Web 完全相同。
 
@@ -103,6 +116,6 @@ App 端硬性规则：`open` 只能由用户点击触发，查询层不得预取
 
 ## 没有做的（不在 MA1-T04～T07 范围）
 
-- 联系方式管理（Web `/s/contact`）、简历列表和简历解析草稿（`GET /resumes`、`/resume-drafts/*`）。
+- 简历解析草稿（`/resume-drafts/*`）。
 - 企业端 `/e/*`（v1.1）。
 - OpenAPI JSON：未生成。本文件和共享 zod 契约已经覆盖 App 的需要（App 直接 import schema 拿类型）；如需机器可读文档，可以对 `src/shared/mobile-api` 里的 schema 调 `z.toJSONSchema()` 生成。

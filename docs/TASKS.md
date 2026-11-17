@@ -1914,6 +1914,13 @@
 验收：契约测试覆盖 409 和例外端点。
 > 完成 2026-11-18：route() 新增 `reconsent?: 'enforce' | 'exempt'`，只对 origin 'app' 生效：鉴权之后、校验输入之前调 `needsReconsent(userId)`，需要时返回 409 NEEDS_RECONSENT；'web' 和 'web+app' 路由完全不受影响（单测覆盖）。豁免：`GET /me`、`POST /legal/reconsent`（新增，复用 recordLegalConsent，记 IP 和 UA，写 user.reconsent 审计）、`GET/PUT /privacy`、`GET /privacy/companies`、屏蔽和取消屏蔽、`POST /data-requests/export`、`POST /account/delete`、`GET/PUT /me/notification-prefs`（周报撤回在 Web 也在 /s/privacy 上），以及 `DELETE /devices/:id`（退出登录不能被挡住；这是 MA3 的文件，只加了这一个选项）。`docs/MOBILE-API.md` 列出全部端点的方法、认证、同意、输入、输出契约和额度/审计说明，MOBILE.md §4.2 补了与原清单的差异。测试：`mobile-reconsent.test.ts` 45 条（表格覆盖 /api/m/v1 下每一个路由方法，漏登记会失败；非豁免端点 409，豁免端点不返回 NEEDS_RECONSENT；旧版本同意和后来撤回都要求重新同意；提交同意后解锁、旧版本号 VERSION_MISMATCH；匿名仍是 403；Web 路由不检查），route-app-origin 单测新增 2 条。**偏差**：OpenAPI JSON 没有生成（可选项）：App 直接 import 共享 zod 契约，文档用表格写清楚；需要时可对 `src/shared/mobile-api` 的 schema 调 `z.toJSONSchema()`。上传端点（web+app）从 App 调用时也不检查同意，与 Web 一致（Web 的 proxy 只在页面导航时检查）。
 
+#### [x] MA1-T08 学生端补充端点（简历、联系方式、完成引导、共享建档 schema）
+依赖：MA1-T07
+做：`GET /resumes`、`POST /resumes/:id/primary`、`DELETE /resumes/:id`（复用 Web 简历页的逻辑）；本人联系方式 `GET/PUT /contact`（只经 contact-access）；`POST /onboarding/complete`（Web 新手引导最后一步）；建档 step1~4 的 zod schema 挪进 `src/shared/mobile-api`，服务端从那里引用，语义不变。
+验收：每个端点 200/401/403/浏览器 Origin 403/400；重新同意表格登记；authz-matrix 加联系方式和简历删除的行。
+> 完成 2026-11-18：简历三件事原来内联在 `actions/resume.ts`，抽成 `services/resume-files.ts`，Web action 和 App 端点调同一份（删除仍是提交后清理存储全部版本，解析草稿级联删除，重算完成度）。`GET /resumes` 返回 `{ items: [{ id, fileName, isPrimary, sizeBytes, pageCount, createdAt }] }`：比 App 现有本地 schema 多一个 sizeBytes，pageCount 总是带上（可能为 null），App 现有解析照常通过。联系方式只调 `getOwnContact` / `updateOwnContact`，校验用 contact-access 的 `updateContactSchema`（电话规范成 E.164、LinkedIn 只收 linkedin.com），整份提交、没带的字段清空，与 Web 表单一致；PUT 返回保存后的本人联系方式。`POST /onboarding/complete` 调 `completeOnboarding`。step1~4 和相关枚举挪到 `src/shared/mobile-api/profile-inputs.ts`，student-profile.ts 原样 re-export（单测断言是同一个对象，枚举与 Prisma 和简历解析 schema 一致）。测试：`mobile-student-t08.test.ts` 16 条、`profile-inputs-shared.test.ts` 3 条、重新同意表格 +6 行（51 条）、authz-matrix +12 条（联系方式和简历删除各 6 种身份：匿名、企业、停用学生、浏览器 Origin、仿冒 scheme 都 403；别的学生只能读写自己那一行，受害者的联系方式和简历都不变）。**偏差**：Web 修改本人联系方式和删除简历本来就不写审计（§5.7 没列这两个动作），App 也不写；`contact.read` 审计只针对企业读取，本人读取不写。
+> 已知：App 的 `mobile/src/features/profile/schemas.ts` 还是手抄的一份，App 改为 import `@shared` 由协调方处理。
+
 ### MA2 · 学生端核心（约 3–4 周）
 
 #### [x] MA2-T01 主题与基础组件

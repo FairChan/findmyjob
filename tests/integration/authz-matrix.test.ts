@@ -3355,3 +3355,78 @@ describe('Android App 学生端敏感端点（MA1-T05）', () => {
     } finally { vi.unstubAllEnvs() }
   })
 })
+
+describe('Android App 学生本人联系方式与简历删除（MA1-T08）', () => {
+  const APP = 'findmyjob-dev://'
+  const appReq = (path: string, method: string, body?: unknown, headers: Record<string, string> = {}) =>
+    new Request(`http://localhost:3000${path}`, {
+      method,
+      headers: { 'expo-origin': APP, 'x-app-version': '0.1.0', 'content-type': 'application/json', ...headers },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+  async function owner() {
+    const s = await createStudent(testDb)
+    await seedApplicationMaterials(testDb, s.profileId)
+    const resume = await testDb.resumeFile.findFirstOrThrow({ where: { studentId: s.profileId } })
+    const contactBefore = await testDb.studentContact.findUniqueOrThrow({ where: { studentId: s.profileId } })
+    return { s, resume, contactBefore }
+  }
+  const actors = ['anonymous', 'employer', 'suspended-student', 'browser-origin', 'lookalike-scheme', 'other-student'] as const
+
+  it.each(actors)('GET/PUT /api/m/v1/contact denies %s or only ever touches the caller’s own row', async actor => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    try {
+      clearSettingsCache()
+      const { s, contactBefore } = await owner()
+      let headers: Record<string, string> = {}
+      if (actor === 'anonymous') mockSession(null)
+      else if (actor === 'employer') mockSession((await createEmployer(testDb)).userId)
+      else if (actor === 'other-student') {
+        const other = await createStudent(testDb)
+        await testDb.consent.createMany({ data: (['TERMS', 'PRIVACY'] as const).map(type => ({ userId: other.userId, type, version: '2026-11-draft', granted: true })) })
+        mockSession(other.userId)
+      } else {
+        if (actor === 'suspended-student') await testDb.user.update({ where: { id: s.userId }, data: { status: 'SUSPENDED' } })
+        mockSession(s.userId)
+        if (actor === 'browser-origin') headers = { origin: 'http://localhost:3000' }
+        if (actor === 'lookalike-scheme') headers = { 'expo-origin': 'findmyjob-dev-evil://' }
+      }
+      const { GET, PUT } = await import('@/app/api/m/v1/contact/route')
+      const read = await GET(appReq('/api/m/v1/contact', 'GET', undefined, headers))
+      const write = await PUT(appReq('/api/m/v1/contact', 'PUT', { email: 'attacker@example.test' }, headers))
+      // 别的学生能成功，但读写的是他自己那一行，看不到也改不到受害者的联系方式
+      const expected = actor === 'other-student' ? 200 : 403
+      expect([read.status, write.status]).toEqual([expected, expected])
+      expect(await read.text()).not.toContain('applicant@example.test')
+      expect(await testDb.studentContact.findUniqueOrThrow({ where: { studentId: s.profileId } })).toEqual(contactBefore)
+      expect(await testDb.auditLog.count({ where: { action: 'contact.read' } })).toBe(0)
+    } finally { vi.unstubAllEnvs() }
+  })
+
+  it.each(actors)('DELETE /api/m/v1/resumes/:id denies %s and keeps the file', async actor => {
+    vi.stubEnv('MOBILE_APP_ORIGINS', APP)
+    try {
+      clearSettingsCache()
+      const { s, resume } = await owner()
+      let headers: Record<string, string> = {}
+      if (actor === 'anonymous') mockSession(null)
+      else if (actor === 'employer') mockSession((await createEmployer(testDb)).userId)
+      else if (actor === 'other-student') {
+        const other = await createStudent(testDb)
+        await testDb.consent.createMany({ data: (['TERMS', 'PRIVACY'] as const).map(type => ({ userId: other.userId, type, version: '2026-11-draft', granted: true })) })
+        mockSession(other.userId)
+      } else {
+        if (actor === 'suspended-student') await testDb.user.update({ where: { id: s.userId }, data: { status: 'SUSPENDED' } })
+        mockSession(s.userId)
+        if (actor === 'browser-origin') headers = { origin: 'http://localhost:3000' }
+        if (actor === 'lookalike-scheme') headers = { 'expo-origin': 'findmyjob-dev-evil://' }
+      }
+      const { DELETE } = await import('@/app/api/m/v1/resumes/[id]/route')
+      const res = await DELETE(appReq(`/api/m/v1/resumes/${resume.id}`, 'DELETE', undefined, headers))
+      expect(res.status).toBe(403)
+      expect(await testDb.resumeFile.count({ where: { id: resume.id } })).toBe(1)
+      const storage = await import('@/lib/storage')
+      expect(vi.mocked(storage.deleteAllVersions)).not.toHaveBeenCalledWith(resume.storageKey)
+    } finally { vi.unstubAllEnvs() }
+  })
+})
