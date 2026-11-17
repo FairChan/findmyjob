@@ -7,7 +7,7 @@ import { useMe } from '@/features/auth/use-me'
 import { useErrorMessage } from '@/i18n/error-message'
 import { useTheme } from '@/theme/use-theme'
 
-/** 启动分流：未登录 → 欢迎页；学生 → 主界面；企业和管理员 → 先提示用网页版（企业版是 v1.1） */
+/** 启动分流：未登录 → 欢迎页；学生 → 主界面；企业成员 → 企业外壳；管理员 → 提示用网页版 */
 export default function Gate() {
   const { loading, signedIn, me, error, refetch } = useMe()
   const { colors } = useTheme()
@@ -33,6 +33,8 @@ export default function Gate() {
       </View>
     )
   }
+  // 企业成员进企业外壳（MA4-T02）；管理员在 App 里没有可用功能，仍提示用网页版
+  if (me.role === 'EMPLOYER') return <Redirect href="/e/dashboard" />
   if (me.role !== 'STUDENT') return <Redirect href="/employer" />
   return <Redirect href="/home" />
 }

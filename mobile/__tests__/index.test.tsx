@@ -34,7 +34,7 @@ describe('Gate (app/index)', () => {
   it.each([
     [{ loading: false, signedIn: false, me: null }, '/welcome'],
     [{ loading: false, signedIn: true, me: { role: 'STUDENT' } }, '/home'],
-    [{ loading: false, signedIn: true, me: { role: 'EMPLOYER' } }, '/employer'],
+    [{ loading: false, signedIn: true, me: { role: 'EMPLOYER' } }, '/e/dashboard'],
     [{ loading: false, signedIn: true, me: { role: 'ADMIN' } }, '/employer'],
   ])('routes %j to %s', async (state, href) => {
     mockUseMe.mockReturnValue({ error: null, refetch: jest.fn(), ...state })

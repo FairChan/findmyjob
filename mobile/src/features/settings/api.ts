@@ -11,8 +11,9 @@ export function patchLocale(locale: AppLocale) {
   return apiFetch('/me/locale', { method: 'PATCH', body: { locale }, schema: mobileLocaleResultSchema })
 }
 
-export function useNotificationPrefs() {
-  return useQuery({ queryKey: PREFS_KEY, queryFn: ({ signal }) => apiFetch('/me/notification-prefs', { schema: mobileNotificationPrefsSchema, signal }) })
+/** 只有学生有这项偏好（企业账号调会 403），企业外壳复用设置页时传 enabled=false */
+export function useNotificationPrefs(enabled = true) {
+  return useQuery({ queryKey: PREFS_KEY, queryFn: ({ signal }) => apiFetch('/me/notification-prefs', { schema: mobileNotificationPrefsSchema, signal }), enabled })
 }
 
 /**

@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { useTranslations } from 'use-intl'
 
 import { Button, Card, OfflineBanner, Screen, SectionTitle, SwitchRow, TopBar, useToast } from '@/components/ui'
+import { useMe } from '@/features/auth/use-me'
 import { useSignOut } from '@/features/auth/use-sign-out'
 import { PushSettings } from '@/features/push/push-settings'
 import { patchLocale, useNotificationPrefs, useSetWeeklyDigest } from '@/features/settings/api'
@@ -25,7 +26,10 @@ export default function Settings() {
   const auth = useTranslations('mobile.auth')
   const errorMessage = useErrorMessage()
   const { colors } = useTheme()
-  const prefs = useNotificationPrefs()
+  // 企业外壳复用这一页（E10）：周报邮件和推送都只对学生开放，企业账号只显示语言、深浅色和退出
+  const { me } = useMe()
+  const studentOnly = me?.role !== 'EMPLOYER' && me?.role !== 'ADMIN'
+  const prefs = useNotificationPrefs(studentOnly)
   const p = useTranslations('mobile.push')
   const setDigest = useSetWeeklyDigest()
 
@@ -76,32 +80,36 @@ export default function Settings() {
         </View>
       </Card>
 
-      <SectionTitle>{t('notifications')}</SectionTitle>
-      <Card>
-        {prefs.isError ? (
-          <Text style={{ color: colors.mutedForeground }}>{errorMessage(prefs.error)}</Text>
-        ) : (
-          <SwitchRow
-            testID="settings-digest"
-            label={s('weeklyDigest')}
-            description={digest && !digest.available ? s('weeklyDigestUnavailable') : s('weeklyDigestDesc')}
-            value={!!digest?.granted}
-            disabled={!digest?.available || setDigest.isPending || !online}
-            onChange={(next) => {
-              const version = prefs.data?.legalVersion
-              if (next && !version) return
-              setDigest.mutate(next ? { granted: true, submittedVersion: version! } : { granted: false }, {
-                onError: (err) => toast(errorMessage(err), 'error'),
-              })
-            }}
-          />
-        )}
-      </Card>
+      {studentOnly ? (
+        <>
+          <SectionTitle>{t('notifications')}</SectionTitle>
+          <Card>
+            {prefs.isError ? (
+              <Text style={{ color: colors.mutedForeground }}>{errorMessage(prefs.error)}</Text>
+            ) : (
+              <SwitchRow
+                testID="settings-digest"
+                label={s('weeklyDigest')}
+                description={digest && !digest.available ? s('weeklyDigestUnavailable') : s('weeklyDigestDesc')}
+                value={!!digest?.granted}
+                disabled={!digest?.available || setDigest.isPending || !online}
+                onChange={(next) => {
+                  const version = prefs.data?.legalVersion
+                  if (next && !version) return
+                  setDigest.mutate(next ? { granted: true, submittedVersion: version! } : { granted: false }, {
+                    onError: (err) => toast(errorMessage(err), 'error'),
+                  })
+                }}
+              />
+            )}
+          </Card>
 
-      <SectionTitle>{p('title')}</SectionTitle>
-      <Card>
-        <PushSettings online={online} />
-      </Card>
+          <SectionTitle>{p('title')}</SectionTitle>
+          <Card>
+            <PushSettings online={online} />
+          </Card>
+        </>
+      ) : null}
 
       <Text style={[styles.version, { color: colors.mutedForeground }]}>{t('version', { version: Constants.expoConfig?.version ?? '' })}</Text>
     </Screen>

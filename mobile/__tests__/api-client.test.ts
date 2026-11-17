@@ -50,6 +50,18 @@ describe('apiFetch', () => {
   it('refuses a quota-counting endpoint unless the user initiated it', async () => {
     expect(isCountingEndpoint('/jobs/abc/open')).toBe(true)
     expect(isCountingEndpoint('/jobs/abc/preview')).toBe(false)
+    // 企业端：人才库搜索每页、人才详情、解锁都算（带查询串也算）；职位、候选人、余额不算
+    expect(isCountingEndpoint('/e/talent')).toBe(true)
+    expect(isCountingEndpoint('/e/talent?cursor=2&keyword=react')).toBe(true)
+    expect(isCountingEndpoint('/e/talent/cstudent1')).toBe(true)
+    expect(isCountingEndpoint('/e/talent/cstudent1/unlock')).toBe(true)
+    expect(isCountingEndpoint('/e/jobs')).toBe(false)
+    expect(isCountingEndpoint('/e/applications/a1')).toBe(true)
+    expect(isCountingEndpoint('/e/applications/a1/status')).toBe(false)
+    expect(isCountingEndpoint('/e/applications/a1/viewed')).toBe(false)
+    expect(isCountingEndpoint('/e/wallet')).toBe(false)
+    await expect(apiFetch('/e/talent?cursor=1')).rejects.toMatchObject({ code: 'COUNTING_ENDPOINT_NOT_USER_INITIATED' })
+    await expect(apiFetch('/e/talent/cstudent1/unlock', { method: 'POST' })).rejects.toMatchObject({ code: 'COUNTING_ENDPOINT_NOT_USER_INITIATED' })
     await expect(apiFetch('/jobs/abc/open', { method: 'POST' })).rejects.toMatchObject({ code: 'COUNTING_ENDPOINT_NOT_USER_INITIATED' })
     expect(fetchMock).not.toHaveBeenCalled()
     respond(200, { ok: true, data: {} })

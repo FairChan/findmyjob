@@ -16,13 +16,23 @@ export class ApiError extends Error {
 }
 
 /**
- * 会计数的端点（扣学生的职位查看额度）只能由用户的点击触发：
+ * 会计数或会花掉东西的端点只能由用户的点击触发：
  * 调用时必须显式传 userInitiated: true，查询层也禁止对它们做预取和自动重取（MOBILE.md §4.2）。
+ * - 学生：打开职位完整详情（扣职位查看额度）
+ * - 企业：人才库搜索每页、人才详情和候选人详情（计每日查看上限）、解锁（扣点数）（MOBILE-API.md MA4-T01）
  */
-const COUNTING_ENDPOINTS: RegExp[] = [/^\/jobs\/[^/]+\/open$/]
+const COUNTING_ENDPOINTS: RegExp[] = [
+  /^\/jobs\/[^/]+\/open$/,
+  /^\/e\/talent$/,
+  /^\/e\/talent\/[^/]+$/,
+  /^\/e\/talent\/[^/]+\/unlock$/,
+  // 只有 GET 详情本身计数；/status、/viewed 不计
+  /^\/e\/applications\/[^/]+$/,
+]
 
 export function isCountingEndpoint(path: string): boolean {
-  return COUNTING_ENDPOINTS.some((re) => re.test(path))
+  const bare = path.split('?')[0] ?? path
+  return COUNTING_ENDPOINTS.some((re) => re.test(bare))
 }
 
 type Options<T> = {
