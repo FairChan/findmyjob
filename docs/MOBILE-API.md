@@ -115,7 +115,7 @@ App 端硬性规则：`open` 只能由用户点击触发，查询层不得预取
 | GET | `/e/jobs` | 成员 | — | `mobileEmployerJobListSchema` | 本公司全部职位和投递数 |
 | POST | `/e/jobs/:id/close` | 成员 | — | `mobileEmployerJobStatusSchema` | 关闭职位（Web 没有暂停/恢复）；草稿和被拒的 422，别家公司的 404 |
 | GET | `/e/jobs/:id/applicants` | 已认证成员 | — | `mobileApplicantListSchema` | 不含已撤回；别家公司的职位 404 |
-| GET | `/e/applications/:id` | 已认证成员 | — | `mobileApplicantDetailSchema` | toTalentDetail，联系方式恒为 null |
+| GET | `/e/applications/:id` | 已认证成员 | — | `mobileApplicantDetailSchema` | **计数**：与 Web 看板点开候选人相同——只认本公司、非 WITHDRAWN 的投递（否则 404），`profile` 就是 `/e/talent/:studentId` 的 viewTalentProfile 输出（屏蔽或不在人才库 404，写 ProfileView 和 talent.view，每日查看上限 429，解锁后带联系方式）；求职信未解锁时 redact；另给 `studentId` |
 | POST | `/e/applications/:id/status` | 已认证成员 | `{ toStatus, note? }` | `mobileEmptySchema` | 不能设 APPLIED/WITHDRAWN（422），已撤回 403，并发冲突 409；通知学生（不含备注） |
 | POST | `/e/applications/:id/viewed` | 已认证成员 | — | `mobileEmptySchema` | APPLIED → VIEWED，其余情况 no-op |
 | GET | `/e/invitations` | 成员 | — | `mobileCompanyInvitationListSchema` | 已发邀请（不可见的学生被过滤）和本月用量 |
@@ -125,7 +125,7 @@ App 端硬性规则：`open` 只能由用户点击触发，查询层不得预取
 | POST | `/e/talent/:id/unlock` | 已认证成员 | — | `mobileUnlockResultSchema` | CREDIT 锁事务内 applyLedgerEntry 扣点；已解锁的不重复扣；点数不足 402；返回扣后余额 |
 | GET | `/e/wallet` | 成员 | — | `mobileWalletSchema` | 余额只读，未认证为 null |
 
-App 端硬性规则：`/e/talent` 和 `/e/talent/:id` 会计数，和学生端的 `open` 一样只能由用户操作触发，查询层不预取、不自动重取。
+App 端硬性规则：`/e/talent`、`/e/talent/:id` 和 `/e/applications/:id` 会计数，和学生端的 `open` 一样只能由用户操作触发，查询层不预取、不自动重取。
 
 ### 推送（MA3 实现，这里只登记同意规则）
 

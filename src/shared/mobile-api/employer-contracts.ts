@@ -101,8 +101,10 @@ export const mobileApplicantListSchema = z.object({
 })
 export type MobileApplicantList = z.infer<typeof mobileApplicantListSchema>
 
+/** 候选人详情：profile 与人才库详情是同一个 viewTalentProfile 的输出（会计数）；studentId 用于跳到 /e/talent/:id */
 export const mobileApplicantDetailSchema = z.object({
   applicationId: z.string(),
+  studentId: z.string(),
   status: applicationStatusSchema,
   coverNote: z.string().nullable(),
   companyNote: z.string().nullable(),

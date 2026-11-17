@@ -1,11 +1,12 @@
 import 'server-only'
-import type { DegreeLevel, JobType, WorkAuth } from '@prisma/client'
+import { ApplicationStatus, type DegreeLevel, type JobType, type WorkAuth } from '@prisma/client'
 import { db } from '../db'
-import type { CompanyCtx } from '../authz'
+import { assertCompanyVerified, type CompanyCtx } from '../authz'
+import { NotFoundError } from '../errors'
 import { toIso } from '../lib/mobile-api'
-import type { TalentCard, TalentDetail } from '../serializers/talent-card'
+import { toEmployerCoverNote, type TalentCard, type TalentDetail } from '../serializers/talent-card'
 import { closeJob, listCompanyJobs } from './jobs'
-import { getApplicantDetail, listJobApplicants } from './applicants'
+import { listJobApplicants } from './applicants'
 import { getMonthlyInvitationUsage, listCompanyInvitations } from './invitations'
 import { searchTalents } from './talent-search'
 import { viewTalentProfile } from './talent-view'
@@ -87,15 +88,35 @@ export async function listMobileApplicants(ctx: CompanyCtx, jobId: string): Prom
   }
 }
 
+/**
+ * 候选人详情，与 Web 看板点开候选人的路径一致：看板只列出非 WITHDRAWN 的投递，点开后进 /e/talent/:studentId，
+ * 也就是 viewTalentProfile。所以这里先按看板的规则找投递（本公司、非 WITHDRAWN，否则 404），
+ * 再调同一个 viewTalentProfile：可见性和屏蔽检查、ProfileView 与每日查看上限（D18）、talent.view 审计、
+ * 解锁后经 contact-access 读联系方式，全部与 Web 相同。会计数，App 只能在用户点击时调用。
+ * 求职信按看板的方式处理（toEmployerCoverNote，未解锁时 redact 并去掉姓名）。
+ */
 export async function getMobileApplicant(ctx: CompanyCtx, applicationId: string): Promise<MobileApplicantDetail> {
-  const d = await getApplicantDetail(ctx, applicationId)
+  await assertCompanyVerified(ctx.companyId)
+  const app = await db.application.findUnique({
+    where: { id: applicationId },
+    select: {
+      id: true, status: true, coverNote: true, companyNote: true, createdAt: true, studentId: true,
+      job: { select: { companyId: true } },
+      student: { select: { fullName: true } },
+    },
+  })
+  if (!app || app.job.companyId !== ctx.companyId || app.status === ApplicationStatus.WITHDRAWN) {
+    throw new NotFoundError('Application not found')
+  }
+  const profile = await viewTalentProfile(ctx, app.studentId)
   return {
-    applicationId: d.applicationId,
-    status: d.status,
-    coverNote: d.coverNote,
-    companyNote: d.companyNote,
-    createdAt: d.createdAt.toISOString(),
-    profile: serializeTalentDetail(d.profile),
+    applicationId: app.id,
+    studentId: app.studentId,
+    status: app.status,
+    coverNote: toEmployerCoverNote(app.coverNote, app.student.fullName, profile.unlocked),
+    companyNote: app.companyNote,
+    createdAt: app.createdAt.toISOString(),
+    profile: serializeTalentDetail(profile),
   }
 }
 

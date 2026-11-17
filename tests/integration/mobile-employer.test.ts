@@ -221,16 +221,74 @@ describe('applicants and status changes', () => {
     expectNoLeak(detailRaw, s)
   })
 
-  it('an applicant who applied through the normal flow is identity-unlocked for that company, still without contact', async () => {
+  it('an applicant who applied through the normal flow is identity-unlocked for that company, exactly like the web talent page', async () => {
     const e = await employer()
     const job = await createJob(testDb, e.companyId, e.userId)
     const s = await visibleStudent()
     const app = await applicationFor(job.id, s.profileId)
     await testDb.talentUnlock.create({ data: { companyId: e.companyId, studentId: s.profileId, unlockedById: s.userId, source: 'APPLICATION', creditsSpent: 0 } })
     const detail = mobileApplicantDetailSchema.parse((await readJson(await getApplicant(appRequest(`/api/m/v1/e/applications/${app.id}`)))).data)
+    const web = mobileTalentViewSchema.parse((await readJson(await viewTalent(appRequest(`/api/m/v1/e/talent/${s.profileId}`)))).data)
+    expect(detail.studentId).toBe(s.profileId)
     expect(detail.profile.unlocked).toBe(true)
     expect(detail.profile.name).toBe(SECRET_NAME)
-    expect(detail.profile.contact).toBeNull()
+    // profile 就是人才库详情（viewTalentProfile）的输出：解锁后联系方式经 contact-access 读出
+    expect(detail.profile).toEqual(web.detail)
+    expect(detail.profile.contact).toMatchObject({ email: SECRET_EMAIL })
+    expect(detail.coverNote).toContain(SECRET_EMAIL)
+  })
+
+  it('applicant detail follows the web board → talent view path: withdrawn, hidden, blocked and other-company are 404', async () => {
+    const e = await employer()
+    const job = await createJob(testDb, e.companyId, e.userId)
+    const withdrawnStudent = await visibleStudent('Synthetic Withdrawn Person')
+    const withdrawn = await testDb.application.create({ data: { jobId: job.id, studentId: withdrawnStudent.profileId, status: 'WITHDRAWN' } })
+    const hiddenStudent = await createStudent(testDb, { completeness: 90 })
+    const hidden = await applicationFor(job.id, hiddenStudent.profileId)
+    const blockedStudent = await visibleStudent('Synthetic Blocking Person')
+    const blocked = await applicationFor(job.id, blockedStudent.profileId)
+    await testDb.blockedCompany.create({ data: { studentId: blockedStudent.profileId, companyId: e.companyId } })
+    const other = await createEmployer(testDb)
+    const otherJob = await createJob(testDb, other.companyId, other.userId)
+    const otherApp = await applicationFor(otherJob.id, (await visibleStudent('Synthetic Elsewhere Person')).profileId)
+
+    for (const id of [withdrawn.id, hidden.id, blocked.id, otherApp.id, ID]) {
+      const res = await getApplicant(appRequest(`/api/m/v1/e/applications/${id}`))
+      expect(res.status, id).toBe(404)
+    }
+    // 与 Web 人才详情对同一学生的结果相同
+    expect((await viewTalent(appRequest(`/api/m/v1/e/talent/${hiddenStudent.profileId}`))).status).toBe(404)
+    expect((await viewTalent(appRequest(`/api/m/v1/e/talent/${blockedStudent.profileId}`))).status).toBe(404)
+    expect(await testDb.profileView.count()).toBe(0)
+    expect(await testDb.auditLog.count({ where: { action: 'talent.view' } })).toBe(0)
+  })
+
+  it('applicant detail counts a ProfileView once per day, audits talent.view, and hits the daily limit like the web', async () => {
+    const e = await employer()
+    const job = await createJob(testDb, e.companyId, e.userId)
+    const a = await visibleStudent()
+    const b = await visibleStudent('Synthetic Second Applicant')
+    const appA = await applicationFor(job.id, a.profileId)
+    const appB = await applicationFor(job.id, b.profileId)
+    await setSetting('limits.profileViewsPerDay', 1)
+    clearSettingsCache()
+
+    const raw = (await readJson(await getApplicant(appRequest(`/api/m/v1/e/applications/${appA.id}`)))).data
+    const first = mobileApplicantDetailSchema.parse(raw)
+    expect(first.profile.unlocked).toBe(false)
+    expect(first.profile.contact).toBeNull()
+    expect(first.coverNote).not.toContain(SECRET_EMAIL)
+    expectNoLeak(raw, a)
+    expect((await getApplicant(appRequest(`/api/m/v1/e/applications/${appA.id}`))).status).toBe(200)
+    // 人才库详情看同一学生也不重复计数（同一天、同一成员）
+    expect((await viewTalent(appRequest(`/api/m/v1/e/talent/${a.profileId}`))).status).toBe(200)
+    expect(await testDb.profileView.count({ where: { companyId: e.companyId } })).toBe(1)
+    expect(await testDb.auditLog.count({ where: { action: 'talent.view' } })).toBe(3)
+
+    const limited = await getApplicant(appRequest(`/api/m/v1/e/applications/${appB.id}`))
+    expect(limited.status).toBe(429)
+    expect(await testDb.auditLog.count({ where: { action: 'talent.limit.hit' } })).toBe(1)
+    expect(await testDb.profileView.count({ where: { companyId: e.companyId } })).toBe(1)
   })
 
   it('changes status with the web state machine, notifies the student without the company note, and marks viewed', async () => {
