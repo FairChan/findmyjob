@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import { getTranslations } from 'next-intl/server'
 import Link from 'next/link'
 import { headers } from 'next/headers'
@@ -70,7 +71,7 @@ export default async function AdminCompaniesPage({
           placeholder={t('searchPlaceholder')}
           className="flex-1 min-w-[200px] rounded-control border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
         />
-        <select
+        <Select
           name="status"
           defaultValue={status ?? ''}
           className="rounded-control border border-input bg-background px-3 py-2 text-sm"
@@ -80,8 +81,8 @@ export default async function AdminCompaniesPage({
           <option value="PENDING">{t('verificationPending')}</option>
           <option value="VERIFIED">{t('verificationVerified')}</option>
           <option value="REJECTED">{t('verificationRejected')}</option>
-        </select>
-        <select
+        </Select>
+        <Select
           name="active"
           defaultValue={active ?? ''}
           className="rounded-control border border-input bg-background px-3 py-2 text-sm"
@@ -89,7 +90,7 @@ export default async function AdminCompaniesPage({
           <option value="">{t('filterAll')}</option>
           <option value="true">{t('filterActive')}</option>
           <option value="false">{t('filterInactive')}</option>
-        </select>
+        </Select>
         <button
           type="submit"
           className="rounded-control bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"

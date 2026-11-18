@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useState, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
@@ -214,7 +215,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
         <label htmlFor="industryCode" className={labelClass}>
           {tO('industryLabel')}
         </label>
-        <select
+        <Select
           id="industryCode"
           name="industryCode"
           defaultValue={initialData?.industryCode ?? ''}
@@ -233,7 +234,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
               ))}
             </optgroup>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Size */}
@@ -241,7 +242,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
         <label htmlFor="size" className={labelClass}>
           {tO('sizeLabel')}
         </label>
-        <select
+        <Select
           id="size"
           name="size"
           defaultValue={initialData?.size ?? ''}
@@ -253,7 +254,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
               {tO(`size_${s}` as 'size_S1_10')}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Website */}
@@ -277,7 +278,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
           <label htmlFor="state" className={labelClass}>
             {tO('stateLabel')}
           </label>
-          <select
+          <Select
             id="state"
             name="state"
             defaultValue={initialData?.state ?? ''}
@@ -289,7 +290,7 @@ export default function CompanyForm({ mode, industries, locale, initialData, onS
                 {locale === 'zh' ? s.labelZh : s.labelEn}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor="city" className={labelClass}>

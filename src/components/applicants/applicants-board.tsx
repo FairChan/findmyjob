@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useState, useTransition, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ApplicationStatus } from '@prisma/client'
@@ -492,7 +493,7 @@ function ApplicantCard({
       )}
       {/* Status change select */}
       {onStatusChange && a.status !== ApplicationStatus.WITHDRAWN && (
-        <select
+        <Select
           className="mt-1 w-full rounded border text-xs"
           value={a.status}
           onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onStatusChange(a.applicationId, e.target.value as ApplicationStatus)}
@@ -508,7 +509,7 @@ function ApplicantCard({
               {t[STATUS_LABEL_KEY[s]]}
             </option>
           ))}
-        </select>
+        </Select>
       )}
       <div className="mt-1 flex gap-2">
         <button
@@ -588,7 +589,7 @@ function ApplicantTableRow({
       <td className="px-3 py-2">
         <div className="flex flex-col gap-1">
           {a.status !== ApplicationStatus.WITHDRAWN && (
-            <select
+            <Select
               className="rounded border text-xs"
               value={a.status}
               onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
@@ -606,7 +607,7 @@ function ApplicantTableRow({
                   {t[STATUS_LABEL_KEY[s]]}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <button
             className="min-h-[24px] min-w-[24px] text-xs text-primary underline"

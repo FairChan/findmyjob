@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useState, useTransition } from 'react'
 import { useTranslations } from 'next-intl'
 import { BadgeCheck } from 'lucide-react'
@@ -162,7 +163,7 @@ export default function SchoolVerifyForm({ schools, locale, initiallyVerified, v
       <Card className="space-y-4">
         <div>
           <Label htmlFor="school-select">{t('schoolLabel')}</Label>
-          <select
+          <Select
             id="school-select"
             value={schoolId}
             onChange={(e) => setSchoolId(e.target.value)}
@@ -177,7 +178,7 @@ export default function SchoolVerifyForm({ schools, locale, initiallyVerified, v
                 {locale === 'zh' ? s.nameZh : s.nameEn}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         <div>

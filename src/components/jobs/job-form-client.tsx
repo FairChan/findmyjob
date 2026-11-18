@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useId, useRef, useState, useTransition } from 'react'
 import { useRouter } from '@/i18n/navigation'
 import { Button } from '@/components/ui/button'
@@ -292,7 +293,7 @@ export default function JobFormClient({
       {/* Type */}
       <div>
         <label htmlFor={fieldId('type')} className="mb-1 block text-sm font-medium">{t.typeLabel}</label>
-        <select
+        <Select
           id={fieldId('type')}
           value={type}
           onChange={e => setType(e.target.value as typeof type)}
@@ -302,7 +303,7 @@ export default function JobFormClient({
           <option value="INTERNSHIP">{t.typeInternship}</option>
           <option value="FULL_TIME">{t.typeFullTime}</option>
           <option value="PART_TIME">{t.typePartTime}</option>
-        </select>
+        </Select>
       </div>
 
       {/* Category */}
@@ -382,7 +383,7 @@ export default function JobFormClient({
       {/* Work Mode */}
       <div>
         <label htmlFor={fieldId('workMode')} className="mb-1 block text-sm font-medium">{t.workModeLabel}</label>
-        <select
+        <Select
           id={fieldId('workMode')}
           value={workMode}
           onChange={e => setWorkMode(e.target.value as typeof workMode)}
@@ -392,14 +393,14 @@ export default function JobFormClient({
           <option value="ONSITE">{t.workModeOnsite}</option>
           <option value="HYBRID">{t.workModeHybrid}</option>
           <option value="REMOTE">{t.workModeRemote}</option>
-        </select>
+        </Select>
       </div>
 
       {/* Location */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label htmlFor={fieldId('state')} className="mb-1 block text-sm font-medium">{t.stateLabel}</label>
-          <select
+          <Select
             id={fieldId('state')}
             value={state}
             onChange={e => setState(e.target.value)}
@@ -412,7 +413,7 @@ export default function JobFormClient({
                 {s.labelZh} / {s.labelEn}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor={fieldId('city')} className="mb-1 block text-sm font-medium">{t.cityLabel}</label>

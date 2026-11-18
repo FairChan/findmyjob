@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import { z } from 'zod'
 import { headers } from 'next/headers'
 import { requireStudent } from '@/server/authz'
@@ -174,20 +175,20 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
           <label htmlFor="jobs-type" className="sr-only">
             {t('filters.type')}
           </label>
-          <select id="jobs-type" key={type ?? 'all'} name="type" defaultValue={type ?? ''} className={FIELD_CLASS}>
+          <Select id="jobs-type" key={type ?? 'all'} name="type" defaultValue={type ?? ''} className={FIELD_CLASS}>
             <option value="">{t('filters.allTypes')}</option>
             {JOB_TYPES.map((value) => (
               <option key={value} value={value}>
                 {t(`type.${value}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor="jobs-work-mode" className="sr-only">
             {t('filters.workMode')}
           </label>
-          <select
+          <Select
             id="jobs-work-mode"
             key={workMode ?? 'all'}
             name="workMode"
@@ -200,20 +201,20 @@ export default async function JobsPage({ params, searchParams }: PageProps) {
                 {t(`workMode.${value}`)}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div>
           <label htmlFor="jobs-state" className="sr-only">
             {t('filters.state')}
           </label>
-          <select id="jobs-state" key={state ?? 'all'} name="state" defaultValue={state ?? ''} className={FIELD_CLASS}>
+          <Select id="jobs-state" key={state ?? 'all'} name="state" defaultValue={state ?? ''} className={FIELD_CLASS}>
             <option value="">{t('filters.allStates')}</option>
             {MY_STATES.map((item) => (
               <option key={item.code} value={item.code}>
                 {locale === 'zh' ? item.labelZh : item.labelEn}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
         <div className="flex items-center gap-1 sm:col-span-3 lg:col-span-1">
           <Button type="submit" variant="brand" className="h-11 flex-1 px-6 lg:flex-none">

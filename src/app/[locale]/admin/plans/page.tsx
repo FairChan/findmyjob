@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
@@ -58,9 +59,9 @@ export default async function PlansPage({ params, searchParams }: {
         <form method="GET" action={path} className="flex flex-wrap items-end gap-3 rounded-card border border-border bg-card p-4">
           <div className="min-w-0 flex-1 space-y-1 text-sm font-medium">
             <label htmlFor="plan-active-filter">{t('filterActive')}</label>
-            <select key={query.active === undefined ? 'all' : String(query.active)} id="plan-active-filter" name="active" defaultValue={query.active === undefined ? '' : String(query.active)} className="h-10 w-full rounded-card border border-border bg-card px-3 text-base focus-visible:outline-2 focus-visible:outline-brand">
+            <Select key={query.active === undefined ? 'all' : String(query.active)} id="plan-active-filter" name="active" defaultValue={query.active === undefined ? '' : String(query.active)} className="h-10 w-full rounded-card border border-border bg-card px-3 text-base focus-visible:outline-2 focus-visible:outline-brand">
               <option value="">{t('all')}</option><option value="true">{t('active')}</option><option value="false">{t('inactive')}</option>
-            </select>
+            </Select>
           </div>
           {query.limit !== undefined && <input type="hidden" name="limit" value={query.limit} />}
           <Button type="submit">{t('filter')}</Button>

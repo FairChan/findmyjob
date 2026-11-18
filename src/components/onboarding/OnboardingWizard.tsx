@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useState, useTransition, KeyboardEvent, type ComponentProps } from 'react'
 import Stepper, { Step } from '@/components/ui/stepper/Stepper'
 import { useTranslations } from 'next-intl'
@@ -383,7 +384,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
             <div>
               <Label htmlFor="school">{t('schoolLabel')}</Label>
-              <select
+              <Select
                 id="school"
                 value={schoolId}
                 onChange={(e) => setSchoolId(e.target.value)}
@@ -396,13 +397,13 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                   </option>
                 ))}
                 <option value={NO_SCHOOL}>{t('schoolNone')}</option>
-              </select>
+              </Select>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="degreeLevel">{t('degreeLevelLabel')}</Label>
-                <select
+                <Select
                   id="degreeLevel"
                   value={degreeLevel}
                   onChange={(e) => setDegreeLevel(e.target.value)}
@@ -414,7 +415,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                   <option value="BACHELOR">{t('degreeLevelBachelor')}</option>
                   <option value="MASTER">{t('degreeLevelMaster')}</option>
                   <option value="PHD">{t('degreeLevelPhd')}</option>
-                </select>
+                </Select>
               </div>
               <div>
                 <Label htmlFor="major">{t('majorLabel')}</Label>
@@ -485,7 +486,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
 
             <div>
               <Label htmlFor="workAuth">{t('workAuthLabel')} *</Label>
-              <select
+              <Select
                 id="workAuth"
                 value={workAuth}
                 onChange={(e) => setWorkAuth(e.target.value)}
@@ -498,7 +499,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                 <option value="DEPENDANT_PASS">{t('workAuthDependantPass')}</option>
                 <option value="NEEDS_WORK_PASS">{t('workAuthNeedsWorkPass')}</option>
                 <option value="OTHER">{t('workAuthOther')}</option>
-              </select>
+              </Select>
             </div>
           </div>
         </Step>
@@ -612,7 +613,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                       placeholder={t('languagePlaceholder')}
                       className="flex-1"
                     />
-                    <select
+                    <Select
                       value={lang.level}
                       onChange={(e) => updateLanguage(i, 'level', e.target.value)}
                       className="h-10 rounded-control border border-input bg-background px-2 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -621,7 +622,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                       <option value="CONVERSATIONAL">{t('langLevelConversational')}</option>
                       <option value="FLUENT">{t('langLevelFluent')}</option>
                       <option value="NATIVE">{t('langLevelNative')}</option>
-                    </select>
+                    </Select>
                     <Button
                       type="button"
                       variant="ghost"
@@ -737,7 +738,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">{t('degreeLevelLabel')}</Label>
-                        <select
+                        <Select
                           value={edu.degreeLevel}
                           onChange={(e) => updateEducation(i, 'degreeLevel', e.target.value)}
                           className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -748,7 +749,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                           <option value="BACHELOR">{t('degreeLevelBachelor')}</option>
                           <option value="MASTER">{t('degreeLevelMaster')}</option>
                           <option value="PHD">{t('degreeLevelPhd')}</option>
-                        </select>
+                        </Select>
                       </div>
                       <div>
                         <Label className="text-xs">{t('majorLabel')}</Label>
@@ -826,7 +827,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <Label className="text-xs">{t('experienceKindLabel')}</Label>
-                        <select
+                        <Select
                           value={exp.kind}
                           onChange={(e) => updateExperience(i, 'kind', e.target.value)}
                           className="mt-1 flex h-10 w-full rounded-control border border-input bg-background px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
@@ -836,7 +837,7 @@ export default function OnboardingWizard({ locale, initialStep, profile, schools
                           <option value="PROJECT">{t('kindProject')}</option>
                           <option value="CAMPUS">{t('kindCampus')}</option>
                           <option value="AWARD">{t('kindAward')}</option>
-                        </select>
+                        </Select>
                       </div>
                       <div>
                         <Label className="text-xs">{t('entryTitleLabel')} *</Label>

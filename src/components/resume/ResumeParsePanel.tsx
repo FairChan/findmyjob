@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useId, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -176,14 +177,14 @@ export function ResumeParsePanel({ resumes, locale, uiState }: ResumeParsePanelP
       </div>}
     </div>
     {!resumes.length ? <p className="text-sm text-muted-foreground">{t('uploadFirst')}</p> : <>
-      <label className="block space-y-2 text-sm"><span>{t('sourceFile')}</span><select value={source ? sourceId : ''} disabled={pending}
+      <label className="block space-y-2 text-sm"><span>{t('sourceFile')}</span><Select value={source ? sourceId : ''} disabled={pending}
         onChange={event => {
           if (dirty) ask({ kind: 'source', sourceId: event.target.value })
           else changeSource(event.target.value)
         }} className="w-full min-w-0 rounded-control border border-input bg-background p-3 text-base">
         {!source && <option value="" disabled>{t('chooseSource')}</option>}
         {resumes.map(resume => <option key={resume.id} value={resume.id}>{resume.fileName}</option>)}
-      </select></label>
+      </Select></label>
       {source && <p className="break-words text-sm text-muted-foreground">{t('sourceUploaded', { date: date(source.createdAt) })}</p>}
       <div className="flex flex-wrap gap-3">
         <Button type="button" variant="outline" disabled={pending || !source} onClick={() => load(false)} className={buttonClass}>{t('loadDraft')}</Button>

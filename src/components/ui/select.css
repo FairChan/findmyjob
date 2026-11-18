@@ -1,0 +1,296 @@
+/*
+ * Select (React Bits GlideSelect motion). Layout lives in the components
+ * layer so the field utility classes passed as className still win; state
+ * rules further down are unlayered because they must beat those utilities.
+ */
+@layer components {
+  .glide-select {
+    --gs-pop: 180ms;
+    --gs-pop-out: 120ms;
+    --gs-glide: 220ms;
+    --gs-row: 2rem;
+    --gs-radius: 0.875rem;
+    --gs-inner-radius: 0.625rem;
+    --gs-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --gs-pill: color-mix(in srgb, hsl(var(--foreground)) 7%, transparent);
+
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    vertical-align: middle;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    transition:
+      background-color 100ms ease,
+      border-color 150ms ease,
+      box-shadow 150ms ease,
+      transform 160ms var(--gs-ease-out);
+  }
+
+  @media (pointer: coarse) {
+    .glide-select {
+      --gs-row: 2.5rem;
+    }
+  }
+
+  .glide-select__native {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    appearance: none;
+    pointer-events: none;
+    font: inherit;
+  }
+
+  .glide-select__trigger {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 0.375rem;
+    min-width: 0;
+    height: 100%;
+  }
+
+  .glide-select__label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-align: start;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .glide-select__label[data-empty] {
+    color: hsl(var(--muted-foreground));
+  }
+
+  .glide-select__chevron {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: hsl(var(--muted-foreground));
+    transition: transform 200ms var(--gs-ease-out);
+  }
+
+  .glide-select__menu {
+    position: fixed;
+    inset: auto;
+    z-index: 70;
+    box-sizing: border-box;
+    min-width: 0;
+    margin: 0;
+    padding: 4px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--gs-radius);
+    background: hsl(var(--popover));
+    color: hsl(var(--popover-foreground));
+    box-shadow:
+      0 12px 32px -12px hsl(240 10% 10% / 0.22),
+      0 2px 6px hsl(240 10% 10% / 0.06);
+    font: inherit;
+    font-weight: 400;
+    line-height: 1.25;
+    text-align: start;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: default;
+    opacity: 0;
+    transform: scale(0.95);
+    transform-origin: top left;
+    transition:
+      opacity var(--gs-pop) var(--gs-ease-out),
+      transform var(--gs-pop) var(--gs-ease-out);
+  }
+
+  .glide-select__menu[data-state='open'] {
+    opacity: 1;
+    transform: none;
+  }
+
+  .glide-select__menu[data-state='closed'] {
+    transition-duration: var(--gs-pop-out);
+    pointer-events: none;
+  }
+
+  /* Browsers without the Popover API: anchor to the field like the original. */
+  .glide-select__menu[data-fallback] {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+  }
+
+  .glide-select__menu[data-fallback][data-side='top'] {
+    top: auto;
+    bottom: calc(100% + 6px);
+  }
+
+  .glide-select__menu[data-fallback][data-align='right'] {
+    right: 0;
+    left: auto;
+  }
+
+  .glide-select__list {
+    position: relative;
+    display: grid;
+    gap: 1px;
+    touch-action: none;
+  }
+
+  .glide-select__menu[data-scrollable] .glide-select__list {
+    touch-action: pan-y;
+  }
+
+  .glide-select__pill {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: var(--gs-row);
+    border-radius: var(--gs-inner-radius);
+    background: var(--gs-pill);
+    opacity: 0;
+    pointer-events: none;
+    transition:
+      transform var(--gs-glide) var(--gs-ease-out),
+      opacity 150ms ease;
+  }
+
+  .glide-select__group {
+    position: relative;
+    z-index: 1;
+    padding: 0.5rem 0.625rem 0.25rem;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+
+  .glide-select__option {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    height: var(--gs-row);
+    padding: 0 0.5rem 0 0.625rem;
+    border-radius: var(--gs-inner-radius);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+
+  .glide-select__option[data-selected] {
+    background: color-mix(in srgb, var(--gs-pill) 60%, transparent);
+  }
+
+  .glide-select__list[data-live] .glide-select__option[data-selected] {
+    background: transparent;
+  }
+
+  .glide-select__option[data-disabled] {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  .glide-select__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .glide-select__option[data-selected] .glide-select__name {
+    font-weight: 500;
+  }
+
+  .glide-select__tag {
+    flex-shrink: 0;
+    color: hsl(var(--muted-foreground));
+    font-size: 0.85em;
+  }
+
+  .glide-select__check {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: hsl(var(--brand));
+    visibility: hidden;
+  }
+
+  .glide-select__check[data-on] {
+    visibility: visible;
+  }
+}
+
+@keyframes gs-swap {
+  from {
+    opacity: 0.6;
+    filter: blur(2px);
+  }
+}
+
+.glide-select[data-swap] .glide-select__label {
+  animation: gs-swap 160ms ease;
+}
+
+.glide-select[data-open] .glide-select__chevron {
+  transform: rotate(180deg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .glide-select:not([data-disabled]):hover {
+    background-image: linear-gradient(var(--gs-pill), var(--gs-pill));
+  }
+}
+
+.glide-select[data-open] {
+  background-image: linear-gradient(var(--gs-pill), var(--gs-pill));
+}
+
+.glide-select:has(> .glide-select__native:focus-visible),
+.glide-select[data-open] {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.3);
+}
+
+.glide-select[data-pressed]:not([data-disabled]) {
+  transform: scale(0.985);
+}
+
+.glide-select[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glide-select,
+  .glide-select[data-pressed]:not([data-disabled]) {
+    transform: none;
+  }
+
+  .glide-select .glide-select__menu {
+    transform: none;
+    transition: opacity var(--gs-pop) ease;
+  }
+
+  .glide-select .glide-select__pill {
+    transition: opacity 150ms ease;
+  }
+
+  .glide-select .glide-select__chevron {
+    transition: none;
+  }
+
+  .glide-select[data-swap] .glide-select__label {
+    animation: none;
+  }
+}

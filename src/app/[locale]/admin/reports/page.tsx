@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { getTranslations } from 'next-intl/server'
@@ -53,7 +54,7 @@ export default async function ReportsPage({ params, searchParams }: {
       <div><h1 className="text-2xl font-semibold">{t('title')}</h1><p className="mt-2 text-sm text-muted-foreground">{t('description')}</p></div>
       <form method="GET" action={path} className="grid items-end gap-3 sm:grid-cols-[1fr_2fr_auto]">
         <div className="space-y-1 text-sm font-medium"><label htmlFor="report-status">{t('status')}</label>
-          <select id="report-status" name="status" defaultValue={query.status ?? 'OPEN'} className={fieldClass}>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <Select id="report-status" name="status" defaultValue={query.status ?? 'OPEN'} className={fieldClass}>{Object.entries(statuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select>
         </div>
         <div className="space-y-1 text-sm font-medium"><label htmlFor="report-job-id">{t('jobId')}</label><input id="report-job-id" name="jobId" defaultValue={query.jobId ?? ''} maxLength={128} className={fieldClass} /></div>
         <button type="submit" className="h-10 rounded-full bg-brand px-5 text-sm font-medium text-brand-foreground hover:bg-brand/90">{t('filter')}</button>

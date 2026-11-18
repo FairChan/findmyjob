@@ -1,4 +1,5 @@
 'use client'
+import { Select } from '@/components/ui/select'
 import { useState, useTransition, KeyboardEvent, DragEvent } from 'react'
 import { useTranslations } from 'next-intl'
 import { useRouter } from '@/i18n/navigation'
@@ -326,7 +327,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
           </div>
           <div>
             <Label htmlFor="pf-school">{tOb('schoolLabel')}</Label>
-            <select
+            <Select
               id="pf-school"
               value={schoolId}
               onChange={(e) => setSchoolId(e.target.value)}
@@ -338,12 +339,12 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                   {locale === 'zh' ? s.nameZh : s.nameEn}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="pf-degreeLevel">{tOb('degreeLevelLabel')}</Label>
-              <select
+              <Select
                 id="pf-degreeLevel"
                 value={degreeLevel}
                 onChange={(e) => setDegreeLevel(e.target.value)}
@@ -355,7 +356,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                 <option value="BACHELOR">{tOb('degreeLevelBachelor')}</option>
                 <option value="MASTER">{tOb('degreeLevelMaster')}</option>
                 <option value="PHD">{tOb('degreeLevelPhd')}</option>
-              </select>
+              </Select>
             </div>
             <div>
               <Label htmlFor="pf-major">{tOb('majorLabel')}</Label>
@@ -423,7 +424,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
           </div>
           <div>
             <Label htmlFor="pf-workAuth">{tOb('workAuthLabel')} *</Label>
-            <select
+            <Select
               id="pf-workAuth"
               value={workAuth}
               onChange={(e) => setWorkAuth(e.target.value)}
@@ -436,7 +437,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
               <option value="DEPENDANT_PASS">{tOb('workAuthDependantPass')}</option>
               <option value="NEEDS_WORK_PASS">{tOb('workAuthNeedsWorkPass')}</option>
               <option value="OTHER">{tOb('workAuthOther')}</option>
-            </select>
+            </Select>
           </div>
         </div>
       </section>
@@ -577,7 +578,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                     placeholder={tOb('languagePlaceholder')}
                     className="flex-1"
                   />
-                  <select
+                  <Select
                     value={lang.level}
                     onChange={(e) =>
                       setLanguages(languages.map((l, idx) => (idx === i ? { ...l, level: e.target.value } : l)))
@@ -588,7 +589,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                     <option value="CONVERSATIONAL">{tOb('langLevelConversational')}</option>
                     <option value="FLUENT">{tOb('langLevelFluent')}</option>
                     <option value="NATIVE">{tOb('langLevelNative')}</option>
-                  </select>
+                  </Select>
                   <Button
                     type="button"
                     variant="ghost"
@@ -760,7 +761,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">{tOb('degreeLevelLabel')}</Label>
-                      <select
+                      <Select
                         value={edu.degreeLevel}
                         onChange={(e) =>
                           educationDnd.setItems(
@@ -777,7 +778,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                         <option value="BACHELOR">{tOb('degreeLevelBachelor')}</option>
                         <option value="MASTER">{tOb('degreeLevelMaster')}</option>
                         <option value="PHD">{tOb('degreeLevelPhd')}</option>
-                      </select>
+                      </Select>
                     </div>
                     <div>
                       <Label className="text-xs">{tOb('majorLabel')}</Label>
@@ -938,7 +939,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <Label className="text-xs">{tOb('experienceKindLabel')}</Label>
-                      <select
+                      <Select
                         value={exp.kind}
                         onChange={(e) =>
                           experienceDnd.setItems(
@@ -954,7 +955,7 @@ export default function ProfileEditor({ locale, profile, schools }: Props) {
                         <option value="PROJECT">{tOb('kindProject')}</option>
                         <option value="CAMPUS">{tOb('kindCampus')}</option>
                         <option value="AWARD">{tOb('kindAward')}</option>
-                      </select>
+                      </Select>
                     </div>
                     <div>
                       <Label className="text-xs">{tOb('entryTitleLabel')} *</Label>

@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useCallback, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTranslations } from 'next-intl'
@@ -117,7 +118,7 @@ function FilterForm({
       {/* Sort */}
       <div className="space-y-1.5">
         <Label htmlFor="filter-sort">{t('sortLabel')}</Label>
-        <select
+        <Select
           id="filter-sort"
           className="h-9 w-full rounded-control border border-input bg-background px-3 py-1 text-sm shadow-sm"
           value={filters.sort}
@@ -126,13 +127,13 @@ function FilterForm({
           <option value="lastActive">{t('sortLastActive')}</option>
           <option value="completeness">{t('sortCompleteness')}</option>
           <option value="graduationYear">{t('sortGraduationYear')}</option>
-        </select>
+        </Select>
       </div>
 
       {/* School */}
       <div className="space-y-1.5">
         <Label htmlFor="filter-school">{t('schoolLabel')}</Label>
-        <select
+        <Select
           id="filter-school"
           className="h-9 w-full rounded-control border border-input bg-background px-3 py-1 text-sm shadow-sm"
           value={filters.schoolId}
@@ -144,13 +145,13 @@ function FilterForm({
               {locale === 'zh' ? s.nameZh : s.nameEn}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Degree Level */}
       <div className="space-y-1.5">
         <Label htmlFor="filter-degree">{t('degreeLevelLabel')}</Label>
-        <select
+        <Select
           id="filter-degree"
           className="h-9 w-full rounded-control border border-input bg-background px-3 py-1 text-sm shadow-sm"
           value={filters.degreeLevel}
@@ -162,7 +163,7 @@ function FilterForm({
               {t(degreeLevelKey(dl))}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Graduation Year Range */}

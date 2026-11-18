@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import type { Metadata } from 'next'
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/i18n/navigation'
@@ -67,7 +68,7 @@ export default async function SafetyPage({ params, searchParams }: Props) {
       >
         <div className="w-full space-y-2 sm:w-auto sm:min-w-60">
           <label htmlFor="safety-category" className="block text-sm font-medium">{t('category')}</label>
-          <select
+          <Select
             key={category ?? 'all'}
             id="safety-category"
             name="category"
@@ -76,7 +77,7 @@ export default async function SafetyPage({ params, searchParams }: Props) {
           >
             <option value="">{t('all')}</option>
             {categories.map((value) => <option key={value} value={value}>{t(`categories.${value}`)}</option>)}
-          </select>
+          </Select>
         </div>
         <Button type="submit" className="h-11">{t('filter')}</Button>
         <Link

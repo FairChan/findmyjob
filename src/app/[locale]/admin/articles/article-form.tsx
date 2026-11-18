@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useId, useRef, useState } from 'react'
 import { useLocale, useTranslations } from 'next-intl'
 import { useRouter } from 'next/navigation'
@@ -105,7 +106,7 @@ export function ArticleForm({ article }: { article?: Article }) {
           <DialogHeader><DialogTitle>{t(article ? 'editTitle' : 'new')}</DialogTitle><DialogDescription>{t('description')}</DialogDescription></DialogHeader>
           <form data-testid="article-form" onSubmit={submit} className="min-w-0 space-y-5" aria-busy={pending}>
             <div className="grid min-w-0 gap-4 sm:grid-cols-2">
-              <div className="min-w-0 space-y-2"><label htmlFor={id + '-category'} className="text-sm font-medium">{t('category')}</label><select id={id + '-category'} value={category} onChange={(event) => setCategory(event.target.value as ArticleCategory)} disabled={pending} className={fieldClass}>{(['FRAUD_CASE', 'GUIDE', 'CONTACT'] as const).map((value) => <option key={value} value={value}>{t('categories.' + value)}</option>)}</select></div>
+              <div className="min-w-0 space-y-2"><label htmlFor={id + '-category'} className="text-sm font-medium">{t('category')}</label><Select id={id + '-category'} value={category} onChange={(event) => setCategory(event.target.value as ArticleCategory)} disabled={pending} className={fieldClass}>{(['FRAUD_CASE', 'GUIDE', 'CONTACT'] as const).map((value) => <option key={value} value={value}>{t('categories.' + value)}</option>)}</Select></div>
               <div className="min-w-0 space-y-2"><label htmlFor={id + '-order'} className="text-sm font-medium">{t('order')}</label><input id={id + '-order'} type="number" min={0} max={10000} step={1} required value={sortOrder} onChange={(event) => setSortOrder(event.target.value)} disabled={pending} aria-describedby={id + '-order-hint'} className={fieldClass} /><p id={id + '-order-hint'} className="text-xs text-muted-foreground">{t('orderHint')}</p></div>
               <div className="min-w-0 space-y-2 sm:col-span-2"><label htmlFor={id + '-title'} className="text-sm font-medium">{t('articleTitle')}</label><input id={id + '-title'} required maxLength={200} value={title} onChange={(event) => setTitle(event.target.value)} disabled={pending} className={fieldClass} /></div>
               <div className="min-w-0 space-y-2 sm:col-span-2"><label htmlFor={id + '-body'} className="text-sm font-medium">{t('body')}</label><textarea id={id + '-body'} rows={8} required maxLength={50000} value={body} onChange={(event) => setBody(event.target.value)} disabled={pending} aria-describedby={id + '-body-hint'} className={fieldClass} /><p id={id + '-body-hint'} className="text-xs text-muted-foreground">{t('bodyHint')}</p></div>

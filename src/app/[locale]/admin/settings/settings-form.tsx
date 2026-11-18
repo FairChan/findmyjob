@@ -1,5 +1,6 @@
 'use client'
 
+import { Select } from '@/components/ui/select'
 import { useState } from 'react'
 import { useTranslations } from 'next-intl'
 import { updateSettingAction } from './actions'
@@ -87,23 +88,23 @@ function SettingRow({ setting }: { setting: SettingDisplay }) {
         </td>
         <td className="p-3 align-middle">
           {isBoolean ? (
-            <select
+            <Select
               value={localValue}
               onChange={(e) => setLocalValue(e.target.value)}
               className="rounded-control border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="true">{t('boolTrue')}</option>
               <option value="false">{t('boolFalse')}</option>
-            </select>
+            </Select>
           ) : isEnum ? (
-            <select
+            <Select
               value={localValue}
               onChange={(e) => setLocalValue(e.target.value)}
               className="rounded-control border border-input bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="EXACT">EXACT</option>
               <option value="RELATED">RELATED</option>
-            </select>
+            </Select>
           ) : (
             <input
               type="text"

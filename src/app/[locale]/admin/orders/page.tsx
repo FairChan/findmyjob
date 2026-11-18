@@ -1,3 +1,4 @@
+import { Select } from '@/components/ui/select'
 import type { Metadata } from 'next'
 import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
@@ -56,10 +57,10 @@ export default async function AdminOrdersPage({ params, searchParams }: Props) {
     <header className="space-y-2"><h1 data-testid="admin-orders-heading" tabIndex={-1} className="text-2xl font-semibold">{t('title')}</h1><p className="text-sm text-muted-foreground">{t('description')}</p></header>
     <AdminActionFeedback>
       <form method="GET" action={path} className="flex flex-wrap items-end gap-3 rounded-card border border-border bg-card p-4">
-        <div className="min-w-0 basis-full space-y-1 sm:basis-auto sm:flex-1"><label htmlFor="order-status-filter" className="text-sm font-medium">{t('status')}</label><select key={query.status ?? 'AWAITING_CONFIRMATION'} id="order-status-filter" name="status" defaultValue={query.status ?? 'AWAITING_CONFIRMATION'} className="h-10 w-full rounded-card border border-border bg-card px-3 text-base focus-visible:outline-2 focus-visible:outline-brand">
+        <div className="min-w-0 basis-full space-y-1 sm:basis-auto sm:flex-1"><label htmlFor="order-status-filter" className="text-sm font-medium">{t('status')}</label><Select key={query.status ?? 'AWAITING_CONFIRMATION'} id="order-status-filter" name="status" defaultValue={query.status ?? 'AWAITING_CONFIRMATION'} className="h-10 w-full rounded-card border border-border bg-card px-3 text-base focus-visible:outline-2 focus-visible:outline-brand">
           <option value="ALL">{t('all')}</option>
           {(['PENDING', 'AWAITING_CONFIRMATION', 'PAID', 'CANCELLED', 'REFUNDED'] as const).map((status) => <option key={status} value={status}>{t('statuses.' + status)}</option>)}
-        </select></div>
+        </Select></div>
         {query.limit !== undefined && <input type="hidden" name="limit" value={query.limit} />}
         <Button type="submit">{t('filter')}</Button><a href={path} className="inline-flex min-h-10 items-center text-sm text-brand underline">{t('reset')}</a>
       </form>
